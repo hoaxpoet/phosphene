@@ -87,8 +87,6 @@ public struct BeatHold: Sendable {
     /// times does not exist — and the pre-grid opening he keeps preferring gets *smoother* than
     /// it was, because the glide also resolves the raw 10 Hz staircase into render-rate motion.
     private let glideBeats: Float
-    /// FTR.16 — absolute-τ variant of the glide; see ``init(glideSeconds:)``.
-    private let glideSeconds: Float
     /// The value actually on screen — always in motion toward `held` (FTR.14).
     private var visible = FeatureVector()
     private var visibleStems = StemFeatures()
@@ -104,7 +102,7 @@ public struct BeatHold: Sendable {
     private var pendingStems = StemFeatures()
 
     /// Hard sample-and-hold: the snapshot snaps on the beat (FTR.10 behaviour, unchanged).
-    public init() { glideBeats = 0; glideSeconds = 0 }
+    public init() { glideBeats = 0 }
 
     /// Gliding hold: the visible value chases the beat-latched target continuously on the
     /// render clock and never holds still. Deliberately a separate initialiser rather than a
@@ -114,28 +112,7 @@ public struct BeatHold: Sendable {
     /// - Parameter glideBeats: exponential time constant as a fraction of a beat, clamped to
     ///   `0…1`. Tempo-relative on purpose, so the motion means the same thing at 94 and 124 BPM
     ///   (the FTR.12c lesson about per-second bars carrying the tempo).
-    public init(glideBeats: Float) {
-        self.glideBeats = min(max(glideBeats, 0), 1)
-        glideSeconds = 0
-    }
-
-    /// SECTION-SCALE glide with an absolute time constant, for quantities that answer to song
-    /// structure rather than to beats (FTR.16).
-    ///
-    /// Tempo-relative τ is right for anything the beat drives, but a section is not a multiple
-    /// of a beat — and `glideBeats` is capped at one beat (0.64 s at 94 BPM), far too fast for
-    /// "how big is the tree". Measured on three captures, `spectral_density` needs τ ≈ 5 s to sit
-    /// in the same motion band as the level rank it replaces (0.75–0.87 direction changes/s
-    /// against 0.66–0.77); at the fast leg's own rate it turns 3.6 times a second, which is the
-    /// restlessness FTR.3f banned from continuous geometry.
-    ///
-    /// - Parameter glideSeconds: exponential time constant in seconds. There is deliberately no
-    ///   beat latch on this path: a section-scale value has nothing to gain from beat
-    ///   quantisation and would only inherit the grid's failure modes.
-    public init(glideSeconds: Float) {
-        glideBeats = 0
-        self.glideSeconds = max(glideSeconds, 0)
-    }
+    public init(glideBeats: Float) { self.glideBeats = min(max(glideBeats, 0), 1) }
 
     /// `true` while the snapshot is frozen between beats — i.e. all three trust conditions
     /// hold. Diagnostics and tests read this; presets never need it.
@@ -191,12 +168,11 @@ public struct BeatHold: Sendable {
         }
 
         // THE TARGET. Latched on the beat while the grid is trusted, otherwise the live frame.
-        // Section mode never latches: `glideSeconds` answers to structure, not to beats.
-        if wrapped || !isStepping || glideSeconds > 0 {
+        if wrapped || !isStepping {
             held = frame
             heldStems = pendingStems
         }
-        guard glideBeats > 0 || glideSeconds > 0 else { return held }
+        guard glideBeats > 0 else { return held }
 
         // First frame: start ON the target rather than gliding up from an all-zero vector,
         // which would read as the tree growing out of nothing at every track change.
@@ -210,10 +186,7 @@ public struct BeatHold: Sendable {
         // last draw (~1/60 s), NOT the analysis interval — that distinction is the whole fix.
         // Passing 0 leaves the visible value untouched, which is what `advanceBeatHold` wants
         // when it is only feeding the beat clock for rows it does not draw.
-        // Section-scale mode ignores the beat period entirely — see `init(glideSeconds:)`.
-        let tau = glideSeconds > 0
-            ? glideSeconds
-            : Self.glideTau(glideBeats: glideBeats, beatPeriod: Self.mean(intervals))
+        let tau = Self.glideTau(glideBeats: glideBeats, beatPeriod: Self.mean(intervals))
         let alpha = Self.glideAlpha(deltaTime: renderDeltaTime, tau: tau)
         visible = Self.lerp(visible, held, alpha, clocksFrom: frame)
         visibleStems = Self.lerpStems(visibleStems, heldStems, alpha)
@@ -247,9 +220,7 @@ public struct BeatHold: Sendable {
 
     /// The stem features on screen — glided identically to ``update(_:renderDeltaTime:)``'s
     /// return value, and advanced by the same call. Read after `offerStems` + `update`.
-    public var glidingStemFeatures: StemFeatures {
-        glideBeats > 0 || glideSeconds > 0 ? visibleStems : heldStems
-    }
+    public var glidingStemFeatures: StemFeatures { glideBeats > 0 ? visibleStems : heldStems }
 
     // MARK: - Glide
 

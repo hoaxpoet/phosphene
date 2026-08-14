@@ -117,23 +117,7 @@ public final class MeshGenerator: @unchecked Sendable {
     /// local-file path (BUG-087) — 2.1 samples of ease then 4.3 samples of stillness per beat.
     /// τ = 1/4 beat: at 94–124 BPM that is 160–120 ms, so ~86 % of the travel happens inside
     /// one beat while the value never actually arrives, which is what removes the freeze.
-    var beatHold = BeatHold(glideBeats: 0.25)
-
-    /// FTR.16 — SECTION-SCALE glide of the same vector, bound at object/mesh buffer(6).
-    ///
-    /// Matt's M7 on FTR.14: *"the growing and shrinking of the trunk and canopy feels random,
-    /// completely divorced from what's going on in the music."* Measured cause: the size read
-    /// LEVEL rank, and on a limited master level moves OPPOSITE to density
-    /// (`r(trunk, spectral_density) = −0.641`), so the tree shrank as the arrangement grew. His
-    /// call: size should follow how dense/full the sound is.
-    ///
-    /// Density needs a much longer τ than the beat glide provides — measured over three captures
-    /// it turns 3.6 times a second at its own rate (the restlessness FTR.3f banned from
-    /// continuous geometry) and ~0.8/s at τ ≈ 5 s, which is the band the level rank it replaces
-    /// occupied. A SEPARATE slot rather than a new `FeatureVector` field on purpose: a layout
-    /// change would ripple into every parallel worktree's `CommonLayoutTest`, and this needs no
-    /// new data — only the same data on a slower clock.
-    var sectionHold = BeatHold(glideSeconds: 5.0)
+    private var beatHold = BeatHold(glideBeats: 0.25)
 
     /// FTR.14 — render-clock state. The delta arithmetic that reads these lives in
     /// `MeshGenerator+RenderClock.swift`; see that file for why the clock is separate from
@@ -146,6 +130,25 @@ public final class MeshGenerator: @unchecked Sendable {
     /// frame then leaves it static — reproducing the FTR.13 staircase in the MEASUREMENT while
     /// production glides correctly. Production leaves this `nil`.
     public var renderDeltaOverride: Float?
+
+    /// Advance the beat clock AND the glide, without drawing.
+    ///
+    /// For still-frame harnesses only: a single draw per drive condition captures the glide's
+    /// first step from the previous condition rather than the geometry at this one. Call this
+    /// repeatedly to settle, then draw. Distinct from ``advanceBeatHold(_:stems:)``, which
+    /// advances only the BEAT clock and must not move the glide (a subsampled strip would
+    /// otherwise glide at the wrong rate).
+    public func advanceBeatHoldForSettling(_ features: FeatureVector, stems: StemFeatures = .zero) {
+        beatHold.offerStems(stems)
+        _ = beatHold.update(features, renderDeltaTime: nextRenderDelta())
+    }
+
+    public func advanceBeatHold(_ features: FeatureVector, stems: StemFeatures = .zero) {
+        beatHold.offerStems(stems)
+        // renderDeltaTime 0: advance the BEAT clock only. These rows are not drawn, so the
+        // glide must not advance for them or a subsampled strip would glide at the wrong rate.
+        _ = beatHold.update(features, renderDeltaTime: 0)
+    }
 
     /// `true` while the snapshot at buffer(4) is frozen between beats. Diagnostic only — a
     /// harness reporting "the trunk still slides" needs to be able to tell a preset that is
@@ -263,12 +266,8 @@ public final class MeshGenerator: @unchecked Sendable {
         // FTR.13 — offer the stems BEFORE update: `update` is the one place the beat boundary
         // is detected, and it latches both sides there.
         beatHold.offerStems(stems)
-        let renderDelta = nextRenderDelta()
-        var heldFeat = beatHold.update(features, renderDeltaTime: renderDelta)
+        var heldFeat = beatHold.update(features, renderDeltaTime: nextRenderDelta())
         var heldStemFeat = beatHold.glidingStemFeatures
-        // FTR.16 — one delta, both holds: two clocks would drift apart within a track.
-        sectionHold.offerStems(stems)
-        var sectionFeat = sectionHold.update(features, renderDeltaTime: renderDelta)
 
         if usesMeshShaderPath {
             // Bind features to all mesh-pipeline stages so preset shaders can read
@@ -300,11 +299,6 @@ public final class MeshGenerator: @unchecked Sendable {
             let heldStemLength = MemoryLayout<StemFeatures>.stride
             encoder.setObjectBytes(&heldStemFeat, length: heldStemLength, index: 5)
             encoder.setMeshBytes(&heldStemFeat, length: heldStemLength, index: 5)
-            // FTR.16 — the section-scale vector at buffer(6). Same struct as buffer(0)/(4) on a
-            // ~5 s glide, for layers that answer to song structure rather than to beats.
-            let sectionLength = MemoryLayout<FeatureVector>.stride
-            encoder.setObjectBytes(&sectionFeat, length: sectionLength, index: 6)
-            encoder.setMeshBytes(&sectionFeat, length: sectionLength, index: 6)
         }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 

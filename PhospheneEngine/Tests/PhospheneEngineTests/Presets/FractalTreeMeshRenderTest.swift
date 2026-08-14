@@ -45,10 +45,6 @@ struct FractalTreeMeshRenderTest {
     // that are visibly moving at the 1080p the app renders at. `FT_RES=1920x1080` measures the
     // shipping resolution; the default stays 640x480 so every existing golden and contact sheet
     // is unchanged.
-    /// The shader's trunk coefficient on the size term (FTR.16: 0.32 → 0.45). Named here so the
-    /// mirror and the shader cannot drift silently — the FTR.6 failure was a mirror that had.
-    static let sizeCoefficient: Float = 0.45
-
     private static let renderSize: (width: Int, height: Int) = {
         guard let spec = ProcessInfo.processInfo.environment["FT_RES"],
               case let parts = spec.lowercased().split(separator: "x"), parts.count == 2,
@@ -557,9 +553,6 @@ struct FractalTreeMeshRenderTest {
         // FTR.14 — the same GLIDING hold `MeshGenerator` installs in production. A hard
         // `BeatHold()` here would measure a build that no longer ships.
         var hold = BeatHold(glideBeats: 0.25)
-        // FTR.16 — the section-scale glide `MeshGenerator` installs alongside it (buffer 6).
-        var sectionHold = BeatHold(glideSeconds: 5.0)
-        var sectionOnly: [Float] = []
         var reachTerm: [Float] = []
         var surgeTerm: [Float] = []
         var continuous: [Float] = []
@@ -617,18 +610,14 @@ struct FractalTreeMeshRenderTest {
                             1.0 / 240.0))
                 : Float(1.0 / 60.0)
             let held = hold.update(fv, renderDeltaTime: min(renderDelta, 1.0 / 15.0))
-            let section = sectionHold.update(fv, renderDeltaTime: min(renderDelta, 1.0 / 15.0))
             let stemsHeld = hold.glidingStemFeatures
             if hold.isStepping { steppingFrames += 1 }
             stepping.append(hold.isStepping)
-            let growth = Self.growth(fv, section: fv)
+            let growth = Self.growth(fv)
             reachTerm.append(growth.reach * 0.13)
-            surgeTerm.append(growth.surge * Self.sizeCoefficient)
+            surgeTerm.append(growth.surge * 0.32)
             continuous.append(Self.trunkLength(fv))
-            stepped.append(Self.trunkLength(held, section: section))
-            // FTR.16 — the same section-glided driver WITHOUT the beat glide, so the span bar
-            // above compares like with like.
-            sectionOnly.append(Self.trunkLength(section, section: section))
+            stepped.append(Self.trunkLength(held))
             // FTR.13 — FRACTIONAL counts. The shader scales the frontier branch's length by the
             // fraction, so the visible canopy is the fractional value; an integer mirror would
             // report a pop the shader no longer draws.
@@ -934,58 +923,38 @@ struct FractalTreeMeshRenderTest {
                          String(repeating: "▉", count: Int((Self.span(cont) * 200).rounded()))))
         }
 
-        // ── THE MOTION BAR: PERCEPTUALLY-SIGNIFICANT TURNS PER SECOND (FTR.16) ────────
+        // THE BAR IS TURNS PER BEAT (FTR.12c, Matt's call 2026-08-12). It was `<= 0.6` per
+        // SECOND, which went red on Seven Nation Army (0.66/s) and green on Carry The Zero
+        // (0.52/s) — but per BEAT both measure 0.32, because a beat-held value can only change
+        // ON a beat, so the per-second unit carries the tempo and the bar was silently stricter
+        // on faster songs for no musical reason.
         //
-        // THE THREE FORMS THIS BAR HAS TAKEN, because the churn is the lesson:
-        //   FTR.10  turns/SECOND ≤ 0.6      — went red on a fast track; the unit carried the tempo
-        //   FTR.12c turns/BEAT   ≤ 0.38     — correct for a value LATCHED to the beat
-        //   FTR.16  significant turns/s     — because nothing is latched to the beat any more
-        //
-        // FTR.14 made the value glide continuously and FTR.16 put its size term on a section-scale
-        // glide that never latches at all, so "a beat-held value can only change on a beat" — the
-        // premise the per-beat unit rested on — is simply no longer true. Measured, the per-beat
-        // form read 1.20 against a 0.38 bar while the mean travel between reversals was 0.0012 of
-        // a 0.45 range: it was counting sub-pixel wiggle as motion.
-        //
-        // A "significant" turn is a reversal whose excursion exceeds ONE PIXEL at 1080p. That
-        // threshold is why this is a replacement and not a relaxation — against it the new build
-        // is CALMER than the driver Matt accepted the pacing of:
-        //
-        //   old level rank (pacing accepted)   0.42 / 0.59 / 0.64  significant turns/s
-        //   density on the section glide       0.34 / 0.36 / 0.36
-        //   density with no section smoothing  measured 3.6 raw turns/s — FTR.3f's ban
-        //
-        // The bar sits above both measured good builds and below the un-smoothed driver FTR.3f
-        // banned from continuous geometry. Do NOT raise it: past ~1/s this preset's own rule is
-        // that the tree reads as bouncing rather than growing.
-        let significantTurns = Self.significantTurnsPerSecond(stepped, seconds: seconds,
-                                                              epsilon: 1.0 / 540.0)
-        #expect(significantTurns <= 1.0, """
-            the trunk makes \(String(format: "%.2f", significantTurns)) perceptually-significant \
-            direction changes per second (reversals exceeding one pixel at 1080p). The level rank \
-            this replaced measured 0.42–0.64 and un-smoothed density measures ~3.6, which FTR.3f \
-            banned from continuous geometry. Past ~1/s the tree reads as bouncing, not growing.
+        // THE BAR ITSELF IS UNCHANGED, ONLY RE-EXPRESSED. It was calibrated on Carry The Zero
+        // at 94.1 BPM = 1.568 beats/s, so `0.6/s ÷ 1.568 = 0.383/beat`. 0.38 is that same bar
+        // in the new unit, on the same track, with the same headroom it always had — not a
+        // widened budget. Both captures pass at 0.32/beat, which is why the unit change is
+        // safe to make: it is not converting a red to a green by moving the line, it is
+        // removing a tempo factor that was never meant to be in it. (Changing a metric in the
+        // increment it goes red is the FTR.6 failure — which is exactly why FTR.11 left it red
+        // and this is a separate commit that changes nothing else.)
+        let heldTurnsPerSecond = Self.turnsPerSecond(stepped, seconds: seconds)
+        let heldTurnsPerBeat = heldTurnsPerSecond / Swift.max(beatsPerSecond, 1e-6)
+        #expect(heldTurnsPerBeat <= 0.38, """
+            the held trunk turns \(String(format: "%.2f", heldTurnsPerBeat))/beat \
+            (\(String(format: "%.2f", heldTurnsPerSecond))/s at \
+            \(String(format: "%.1f", beatsPerSecond * 60)) BPM). Matt's complaint is motion, \
+            and this preset's own rule is that anything past ~1 turn/s reads as the tree \
+            bouncing rather than growing; a stepped trunk has to be well under it, not \
+            marginally under. Do NOT widen this bar — re-derive it from the tempo if the \
+            unit is ever questioned again (FTR.12c).
             """)
-        // ── THE SPAN BAR, WITH THE COMPARATOR CORRECTED (FTR.16) ─────────────────────
-        //
-        // This asks "did smoothing cost us visible range" — the DYN.1e failure, where a 10 % band
-        // shipped and Matt could not see it. The question is right; the comparator had gone wrong.
-        //
-        // `continuous` passes the LIVE vector for both the beat and section roles, so since FTR.16
-        // it drives the size from density's FAST leg while `stepped` drives it from the ~5 s glide.
-        // Comparing them measures "smoothed vs unsmoothed DRIVER", not "held vs live", and it read
-        // 0.897 against a 0.9 bar for exactly that reason — a near-miss on a comparison that no
-        // longer meant what the bar was written to mean.
-        //
-        // The like-for-like reference is the same section-glided driver with no beat glide on top,
-        // which is what `sectionOnly` collects. What the bar protects against is the beat glide
-        // eating range; that is the thing it was written for and the thing it still measures.
-        let ratio = Double(Self.span(stepped) / Swift.max(Self.span(sectionOnly), 1e-6))
+        let ratio = Double(Self.span(stepped) / Swift.max(Self.span(continuous), 1e-6))
         #expect(ratio > 0.9, """
-            the glided trunk spans \(String(format: "%.3f", Self.span(stepped))) against the \
-            same driver un-glided at \(String(format: "%.3f", Self.span(sectionOnly))) — \
+            the held trunk spans \(String(format: "%.3f", Self.span(stepped))) against the \
+            continuous \(String(format: "%.3f", Self.span(continuous))) — \
             \(String(format: "%.0f%%", 100 * ratio)) of the range. Losing range to buy \
-            smoothness is the DYN.1e failure ("neither grew nor receded").
+            stillness is the DYN.1e failure ("neither grew nor receded"), and it is what a \
+            smoother would have done here.
             """)
         // FTR.11 — THE TWO LAYERS FTR.10 LEFT RUNNING. Asserted as RATIOS against the
         // continuous build measured in the same run, not as absolute floors: a per-second
@@ -1082,28 +1051,23 @@ struct FractalTreeMeshRenderTest {
     /// regression past a green harness, so the mirror is kept honest two ways: it is the
     /// ONLY copy in this file, and `objectStageReadsTheBeatHeldVector` proves through the
     /// real pipeline that the GPU is reading the held vector this report models.
-    /// FTR.16 — two vectors, because the size and the gate answer to different timescales.
-    /// `f` is the beat-glided vector; `section` is the ~5 s glide that supplies DENSITY.
-    /// Mirrors `fractal_growth` in the shader; passing the same vector for both reproduces the
-    /// pre-FTR.16 build for A/B rows.
-    private static func growth(_ f: FeatureVector,
-                               section: FeatureVector) -> (reach: Float, surge: Float) {
-        let arousalReach = clamp((f.arousal - 0.10) / 0.58)
-        let fullness = clamp(f.spectralSectionRatio * 0.5)
-        let musicGate = smoothstep(0.05, 0.30, clamp(f.spectralSurge))
-        // The SIZE is density now, not level rank — see the shader's FTR.16 block.
-        let density = clamp(section.spectralDensity / (section.spectralDensity + 0.22))
-        return (clamp(Swift.max(0.10 * arousalReach, fullness) * musicGate), density)
+    private static func growth(_ f: FeatureVector) -> (reach: Float, surge: Float) {
+        func saturate(_ v: Float) -> Float { Swift.min(Swift.max(v, 0), 1) }
+        func smoothstep(_ e0: Float, _ e1: Float, _ v: Float) -> Float {
+            let t = saturate((v - e0) / (e1 - e0))
+            return t * t * (3 - 2 * t)
+        }
+        let arousalReach = saturate((f.arousal - 0.10) / 0.58)
+        let fullness = saturate(f.spectralSectionRatio * 0.5)
+        let gate = smoothstep(0.05, 0.30, saturate(f.spectralSurge))
+        return (saturate(Swift.max(0.10 * arousalReach, fullness) * gate),
+                saturate(f.spectralSurge))
     }
 
-
-    /// The shader's `trunk_len` (FractalTree.metal), mirrored — see ``growth(_:section:)``.
-    /// FTR.16: `section` supplies the density that decides the size. Passing `f` for both is the
-    /// pre-FTR.16 arithmetic and is what the "continuous" A/B rows use.
-    private static func trunkLength(_ f: FeatureVector,
-                                    section: FeatureVector? = nil) -> Float {
-        let g = growth(f, section: section ?? f)
-        return 0.27 + g.reach * 0.13 + g.surge * Self.sizeCoefficient
+    /// The shader's `trunk_len` (FractalTree.metal), mirrored — see ``growth(_:)``.
+    private static func trunkLength(_ f: FeatureVector) -> Float {
+        let g = growth(f)
+        return 0.27 + g.reach * 0.13 + g.surge * 0.32
     }
 
     /// The shader's branch-count arithmetic, mirrored — see ``growth(_:)``.
@@ -1119,7 +1083,7 @@ struct FractalTreeMeshRenderTest {
     /// shader no longer draws.
     private static func branchCountF(frame: FeatureVector, live: FeatureVector,
                                      stems: StemFeatures, stemsHeld: StemFeatures) -> Float {
-        let g = growth(frame, section: frame)
+        let g = growth(frame)
         let lift = clamp((frame.spectralDensity / max(frame.spectralDensitySlow, 1e-4) - 1) * 1.1)
         let amp = clamp(live.pulseAmp01)
         let base = (4.0 + g.reach * 18.0) * amp
@@ -1147,7 +1111,7 @@ struct FractalTreeMeshRenderTest {
         let alive = smoothstep(0.02, 0.06, stemEnergy)
         let melody = (1 - alive) * (frame.beatMid / (frame.beatMid + 2.2)) + alive * residueActivity
         return melody * 26.0 * clamp(live.pulseAmp01)
-            * smoothstep(0.03, 0.15, growth(frame, section: frame).reach)
+            * smoothstep(0.03, 0.15, growth(frame).reach)
     }
 
     private static func tipBranches(frame: FeatureVector, live: FeatureVector,
@@ -1159,27 +1123,6 @@ struct FractalTreeMeshRenderTest {
     private static func spreadDegrees(_ f: FeatureVector) -> Float {
         let flux = clamp((f.spectralFlux - 0.10) / 0.85)
         return (0.35 + flux * 0.24) * 180 / .pi
-    }
-
-    /// Direction reversals per second, counting only reversals whose excursion exceeds
-    /// `epsilon`. A raw reversal count cannot tell a musical change from float wiggle: measured
-    /// on a real capture the trunk reversed 1.86 times a second while travelling 0.0012 of its
-    /// range between reversals, and that number nearly got a good build rejected (FTR.16).
-    static func significantTurnsPerSecond(_ values: [Float], seconds: Double,
-                                          epsilon: Float) -> Double {
-        guard values.count > 2, seconds > 0 else { return 0 }
-        var turns = 0
-        var anchor = values[0]
-        var direction = 0
-        for value in values.dropFirst() {
-            let delta = value - anchor
-            guard abs(delta) >= epsilon else { continue }
-            let next = delta > 0 ? 1 : -1
-            if direction != 0 && next != direction { turns += 1 }
-            direction = next
-            anchor = value
-        }
-        return Double(turns) / seconds
     }
 
     private static func clamp(_ v: Float) -> Float { Swift.min(Swift.max(v, 0), 1) }
