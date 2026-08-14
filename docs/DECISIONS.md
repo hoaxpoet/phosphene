@@ -123,6 +123,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-213 | Accepted | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
 | D-214 | Accepted | **Meniscus CERTIFIED — and the sync came from the audio hierarchy, not from timing accuracy** (MEN.5, Matt's M7 2026-08-05: *"Ready to certify. Looks good!!!"*). First `mesh_animation` member of the Milkdrop-inspired family and the catalog's first projected line-surface preset; count 26 -> 16 certified. **Eleven live rounds, and the first ten optimised the wrong driver.** Drop timing reached a median **6 ms** from the beat and was verified against Beat This! ground truth at +4/+8/+8/+8 ms across a track — and Matt's verdict stayed "not synced" throughout. Three causes, each measured and each invisible to the gates that existed: **(1)** the live stem path lags **5.2 s** (`2026-08-05T13-17-18Z`: drums +5.25 s r=0.550, vs r=0.363 at lag 0) and is documented in-tree as section-scale by design, so MEN.3's per-stem event routing could never work live — offline fixtures hid it by feeding stems in sync; **(2)** the surface had **no continuous audio-driven motion at all** during music (the swell was gated off as volume rose), inverting CLAUDE.md's central rule that continuous energy is the PRIMARY driver — Matt's "feels less tethered" is that rule's predicted failure, and cutting drop density made it WORSE, which is what ruled density out; **(3)** the beat drop scattered **±0.34 (68 % of the sheet)**, so it appeared somewhere different every beat — **visual sync needs an anchor to pulse in place**, and scattered impacts read as noise however perfectly timed. **Two design claims retired on evidence:** §1's "a listener can point at a ripple and say that was the snare" (§7 R3 flagged it ungrounded; eleven viewings never produced it — regions are now spatial variety keyed to bar position), and **§7 R5's jitter**, which was added because "orderly may read as mechanical" and turned out to be what destroyed the connection. **Per-note melodic routing is closed, not deferred** — MEL.1 measured guitar note events at 31 % grid coherence against a 20 % random baseline with a 41 % drums control; distortion adds harmonics rather than amplitude, so notes inside a chord wall have no attack. D-157 flash gate added at cert and measured maxΔ/frame **0.0048** against a 0.05 bar. §Rationale below. |
+| D-216 | Accepted | **Stave: the stem channel comes OFF the traces and onto the field; trace marks stay purely band-driven and in-time** (CHR.2, Matt 2026-08-14, DECISION-NEEDED #1 option D). CHR.2's look spike gated the 2026-08-13 split driver (position <- EMA-centred band split ~0.3 s; colour+weight <- stem pairs ~3.0 s) and **half 1 passed, half 2 failed**. Position passed on its own terms: **median trace-to-beat offset 0 ms** on all four captures, gridline rate matching `grid_bpm` exactly (71/71, 97/98, 172/174.6). Colour failed on a measurement, not a taste call: **at the moment a mark is drawn, `r(position, colour)` = -0.15..+0.25** — the colour peaks against its own trace at **3.0 s** (post-BUG086.1; 5.4 s on the pre-fix capture the renders used), so a mark wears a colour describing a moment **38 % of an 8 s window** in its past. Compounding it, hue is a **static label assigned by frequency band**, so it is asserted even where the named stems do not exist — Clair De Lune is solo piano and its traces still read `drums+bass` / `vocals+other`, both false. **The fix is to stop pairing a fast mark with a slow channel at all.** Stems keep their place in the preset but move to a surface with no per-beat commitment (field tint / backdrop / grid luminance), where 3 s of lag is invisible; the traces carry only band-derived, in-time information. **Consequence, accepted deliberately: the preset can no longer say "this trace is the drums".** The D-121 divergence argument survives on different ground — stems still shape the image (Milkdrop has none) and the beat grid is still structurally un-fakeable — but per-mark instrument identity is out of scope, and the concept sentence changes from four/two *instrument* voices to **low against high, ruled by the beat, in a room the stems tint.** Rejected: **A** (drop stems entirely) discards a real capability for free; **B** (weight/texture instead of hue) changes the medium, not the lag, so it does not touch the defect; **C** (stem-driven position) was weighed and rejected 2026-08-13 and CHR.2 only strengthens the case against — the cost of the split is now measured rather than assumed. **Also retired at CHR.2, both from CHR.1:** the **"converge and diverge"** reading (its divergence ratio 0.75-vs-1.45-null is dominated by the rhythm/melodic **amplitude mismatch**, std ratio **4.4-17.5x**, and collapses onto `sqrt(2(1-r))` once both traces are drawn at visible scale — what survives is near-independence, r -0.27..+0.27 on 13 of 15, which is the property the concept actually wants); and CHR.1 §4's **common-mode table, whose track labels are shifted** — re-measured, worst is **Bohemian Rhapsody 93.4 %** / Superstition 93.1 %, and **Take Five 82.9 % is among the easiest**, so §5's "jazz is the worst case" is false. **Bleed remains an unfixed miss** (r +0.695): its two traces collapse into one flat band, which is what the material does, not something tuning reaches. Preset count unchanged at 28; CHR.3 authors. §Rationale below. |
 | D-215 | Accepted | **Phase MD reconciled to practice — taxonomy, layout, source form and candidate list; Milkdrop Settings toggle deleted; D-115 resolved to C'** (MD.0, 2026-08-07). `MILKDROP_STRATEGY.md` has five commits, all 2026-05-12, and none since; seven Milkdrop-inspired presets shipped and certified between then and now (Dragon Bloom, Fata Morgana, Floret, Glaze, Nacre, Meniscus, Witchlight), every one authored by a process the strategy doc does not describe, producing sidecars its schema would reject. **Four supersessions written back** as `MILKDROP_STRATEGY.md` §13: **(1) taxonomy** — no `family: "milkdrop_inspired"` and no `.milkdropInspired` enum case (**D-123**, 2026-05-13); uplifts file into the 11-case cream-of-crop `PresetCategory` (measured: `hypnotic` ×6, `particles` ×1), and the `inspired_by` sidecar block — documentation-only, no `PresetDescriptor` coding key, ignored by `Codable` — is the only marker of origin; **(2) layout** — `Shaders/Milkdrop/<theme>_<source_name>` was never adopted; all 28 sidecars are flat in `Shaders/`, named for the Phosphene preset, and a source-named file contradicts D-113 besides; **(3) source form** — the operative corpus is the **butterchurn built-in set rendered through `tools/milkdrop-render/`**, not `.milk` (the runtime `.milk` converter renders directory presets poorly, so the gallery Matt picks from is built from built-ins); 6 of 7 uplifts read a butterchurn JSON, only Dragon Bloom read a `.milk` (removed at PUB.1); `sha256` is the hash of the artifact **actually read** and `source_form` names what that was — both normalised across all seven sidecars at MD.0; **(4) candidate list** — `docs/presets/MILKDROP_UPLIFT_PICKS.md` (2026-06-01) is operative; D-112's nine named `.milk` candidates are historical and **none was used**. Plus: **MD.1 retired** (its consumer does not exist — no author opens a `.milk`); **D-120 residue stripped** from `Meniscus.json` + `CymaticResonance.json` — and it is a **recurrence, not a leftover**: the CA.4 audit's 2026-05-20 grep was correct, and both sidecars were created *after* it (CR.1 2026-07-22, MEN.2a 2026-08-03) by authors following design docs that still prescribe the reverted fields; those docs are corrected here, but the durable fix is unknown-key rejection at decode, not built at MD.0. **Measured catalog state:** 28 sidecars − 2 diagnostics = **26 production, 18 certified, 7 inspired-by (all certified)** = **27 % of roster / 39 % of certified**, against D-119's ≥ 50 % — **D-122 trigger 4 fires on the letter**; MD.0 does not halt Phase MD and routes the reading to Matt with D-115 (both open). Also recorded: the failure mode D-122 trigger 3 watches for (over-fidelity) has **never been observed** — Witchlight's 2026-08-03 M7 rejected it for being too *unlike* the source. **Matt's two calls, same day:** (a) **delete the Milkdrop Settings toggle** (DECISION-NEEDED #1, option A) — the QR.4 / D-091 "Coming in a future update" stub, its store property, key, view-model flag, view row, two strings and three tests are removed (app tests 407 → 404); shipping it was impossible to wire honestly through `family`, since `hypnotic` + `particles` also hold **seven Phosphene-native presets** (Aurora Veil, Plasma, Filigree, Mitosis, Cytokinesis, Murmuration, Nebula — five certified), and a per-preset check needs `inspired_by` decoding that does not exist; (b) **D-115 resolved to C' (10 + 10)** after twelve weeks open — **three more uplifts to the D-114 threshold** against six under the superseded A' (7+13), making D-119's ≥ 50 % a **steady-state target rather than a first-release gate**, which in turn resolves **D-122 trigger 4** to `proceed` (the 27 % share is a pre-composition transient, not drift). **§12 is not rewritten in place**; §13 supersedes it on the same terms §12 supersedes §§1–11. §Rationale below. |
 | D-198 | Accepted | Cymatic Resonance CR.1.2 — second-M7 fixes (Matt M7 2026-07-22 "Cherub Rock", clean chain). **(1) Framing:** the oblique tilt left a receding-background triangle at the top; switched to a **top-down orthographic cover-fit** — the square plate fills the 16:9 frame edge-to-edge, no background (Matt: "camera directly above would be better"). **(2) "Only 3 patterns, boring":** widened the ladder traversal (centroid-dev gain 8→12) AND replaced the uniform `(m,m+2)` ladder with a **varied same-parity** set (alternating `m=n` concentric grids with `m<n` cross-hatch) so adjacent rungs are visibly distinct figures. **(3) "Colour doesn't change":** brought CR.3's hue routing forward — a global jewel-palette hue offset driven by the **smoothed harmonic phase** (`tonal_phase_fifths`, D-178; range 6.25 on the track — fully alive), circular-smoothed via sin/cos. Snap depth 0.9→0.65 (top-down, lowest modes read empty). Golden regenerated. Pending Matt's next live M7. §Rationale below. |
 | D-197 | Accepted | Cymatic Resonance CR.1.1 — live-M7 defect fixes (Matt M7 2026-07-22, "Hummer"). **(1) Hero "held its pattern":** real `spectral_centroid` occupies ~0.08–0.18 on music (verified on the session's healthy portion: p5 0.085 / p95 0.162), so the old `centroid × (N-1)` mapping moved the ladder < 1 of 11 rungs (the Nimbus/BUG-027 AGC-calibration trap). Fixed with a **BLEND** (Matt's call): mostly a per-track centroid DEVIATION (guarantees visible travel on any track) + a gentle absolute tilt (brighter ⇒ finer). Regression-locked: the real narrow band now traverses 3.75 rungs (was < 1). **(2) Palette read white:** emissive 2.6 → 1.5 (ridges sit near the bloom threshold so colour survives ACES), white key → warm-gold, hue sweep widened to sapphire→magenta→gold. **(3) White space:** plate zoomed (camDist 2.75→1.85, plateHalf 1.0→1.18, elev 52→48) to fill the 16:9 canvas. **(4) ASH `.critical` nudge gap (folded in):** `PlaybackErrorBridge` fired the low-levels nudge only on `peakBand == .low`; `.critical` (worse) fired nothing, so the degraded-chain M7 ran unflagged — now both bands nudge. Golden regenerated. Pending a clean-chain live re-M7. §Rationale below. |
@@ -3582,3 +3583,120 @@ The strategy doc got ahead of the work in four specific places, and the gap was 
 - **No `PresetCategory` case added, no `Shaders/Milkdrop/` created, no golden regenerated, no preset touched.**
 
 **References.** `MILKDROP_STRATEGY.md` §13 (full text) and §12 (superseded), `ENGINEERING_PLAN.md` §Phase MD, D-123 (the load-bearing supersession), D-105 / D-106 / D-110 / D-112 / D-115 amendment blocks, D-113 / D-114 / D-116 / D-119 / D-121 / D-122 (untouched and still operative), D-120 (`DECISIONS_HISTORY.md`, reverted), `docs/presets/MILKDROP_UPLIFT_PICKS.md`, `docs/CREDITS.md` §Milkdrop-inspired preset attribution, `SHADER_CRAFT.md` §12.6.
+
+---
+
+## D-216: Stave — the stem channel comes off the traces and onto the field (CHR.2, Matt 2026-08-14)
+
+**Status:** Accepted. Resolves CHR.2 DECISION-NEEDED #1 (option D). Unblocks CHR.3.
+
+### What was gated
+
+CHR.2 was a throwaway, motion-gated look spike whose only deliverable was a verdict on the
+driver Matt settled on 2026-08-13:
+
+| layer | driver | measured latency |
+|---|---|---|
+| trace position | band split — rhythm `subBass+lowBass`, melodic `midHigh+highMid+high`, each EMA-centred | ≈0.3 s |
+| trace colour + weight | per-stem — `drums+bass` vs `vocals+other` | **3.0 s** |
+
+Rendered on four captures picked from re-measured worst cases — Bohemian Rhapsody (93.4 %
+common mode, the corpus worst), Bleed (low excursion), Dance Yrself Clean (high excursion),
+Clair De Lune (sparse) — as flat-colour controls and stem-coloured versions of **identical
+geometry**, so the pair isolates exactly one variable.
+
+### Half 1 passed
+
+Two band-driven traces read as two voices on three of four captures. **Median trace-to-beat
+offset 0 ms on every capture** — the split driver delivered precisely the in-time marks it
+was chosen for. Gridlines derived from `beatPhase01` wraps match `grid_bpm` exactly
+(71/71, 97/98, 172/174.6, inter-beat CV 0.02–0.13): the grid is the beat, not decoration.
+
+Two qualifications, both CHR.3's to resolve: one fixed gain does **not** survive the
+excursion span (Dance Yrself Clean clips off frame; a per-trace normaliser fixes it at the
+cost of absolute-amplitude comparison), and grids above ~150 bpm read as graph paper rather
+than pulse (Bleed: 22.9 gridlines per 8 s window).
+
+### Half 2 failed, on a measurement
+
+Cross-correlating each trace's position driver against its own colour driver:
+
+| capture | pair | best lag | r at that lag | **r at lag 0** |
+|---|---|---|---|---|
+| Bohemian Rhapsody | rhythm | 5.5 s | +0.748 | **−0.084** |
+| Bleed | rhythm | 5.4 s | +0.770 | **+0.049** |
+| Dance Yrself Clean | rhythm | 5.4 s | +0.875 | **−0.081** |
+| Clair De Lune | melodic | 5.4 s | +0.198 | **−0.018** |
+| post-fix capture (`2026-08-12T19-06-54Z`, current code) | rhythm / melodic | **3.0 s** | +0.515 / +0.103 | **+0.251 / +0.005** |
+
+**At the moment a mark is drawn, its colour carries essentially no information about its own
+position.** The renders were made on the pre-BUG086.1 capture (5.4 s); CHR.3 faces 3.0 s,
+which on an 8 s window is still 38 % of the screen. The direction does not change.
+
+Two further defects in colour-as-identity, independent of the lag:
+
+1. **Hue is a static label assigned by frequency band**, not by the audio. Amber means "the
+   trace driven by `subBass+lowBass`". It never changes, so it tells a viewer which line is
+   which and nothing about what is playing.
+2. **The label is asserted where the instruments do not exist.** Clair De Lune is solo
+   piano; its traces are still labelled `drums+bass` and `vocals+other`. Both are false and
+   nothing in the image says so.
+
+What the stem channel *does* deliver, and legibly: brightness and weight bursts that read as
+**"this group is active now"** — activity, not identity.
+
+### The decision
+
+**Stop pairing a fast mark with a slow channel.** Stems stay in the preset but move to a
+surface with no per-beat commitment — field tint, backdrop, or grid luminance — where 3 s of
+lag is invisible and "the room is warmer now" is the correct register for a slow signal. The
+traces carry only band-derived, in-time information.
+
+**Accepted consequence: the preset can no longer say "this trace is the drums."** The concept
+sentence changes from instrument voices to **low against high, ruled by the beat, in a room
+the stems tint.** The D-121 divergence argument survives on different ground — stems still
+shape the image and Milkdrop has none, and the beat grid remains structurally un-fakeable —
+but per-mark instrument identity is out of scope, and §0's remaining "four separate voices"
+language is now fully retired rather than merely re-scoped.
+
+### Rejected
+
+- **A — drop the identity claim entirely** (two traces, no stems). Honest, and it is what the
+  spike demonstrably delivers, but it discards a working capability for nothing in return.
+- **B — weight or texture instead of hue.** Cheap and in keeping with the source's dotted
+  register, and CHR.2 showed weight modulation *is* more legible than brightness. But it
+  changes the medium, not the lag; whatever channel carries the stem signal on a trace is
+  still 3 s behind the mark it decorates.
+- **C — stem-driven position.** The only route back to identity-in-the-geometry. Weighed and
+  rejected 2026-08-13; CHR.2 strengthens the case against, because the cost of the split is
+  now measured rather than assumed.
+
+### Also retired at CHR.2 — two CHR.1 claims, both load-bearing
+
+**"Converge and diverge" is gone.** CHR.1 §7a gated direction A on a divergence ratio of 0.75
+against a 1.45 independence null. That statistic is dominated by the rhythm/melodic
+**amplitude mismatch** — `std R / std M` is **4.4–17.5×** across the corpus — and once both
+traces are drawn at visible scale (per-trace gain, which is a precondition for the melodic
+voice existing on screen at all) it collapses onto `√(2(1−r))`, carrying no information
+beyond `r`. What survives is **near-independence** (r −0.27…+0.27 on 13 of 15 tracks), which
+is the property the concept actually wants — but it is not the band locking together and
+pulling apart, and the pitch must stop claiming it.
+
+**CHR.1 §4's common-mode table has shifted track labels** and the correction was never
+committed. Re-measured from `stems.csv` this increment: worst is **Bohemian Rhapsody 93.4 %**
+and Superstition 93.1 %; **Take Five is 82.9 %, among the easiest.** CHR.1 §5's *"Jazz is the
+worst … the opposite of the intuition that sparse material would separate best"* is the label
+shift showing and must not be carried forward. Root cause (recorded earlier, off-repo): a
+`track='([^']*)'` log regex terminating at the apostrophe in `Stayin' Alive`, dropping it from
+a list index-aligned to segments. A correction banner is now on the CHR.1 file.
+
+### Unfixed and carried into CHR.3
+
+**Bleed is a genuine miss** (r +0.695, drawn divergence 0.78): its two traces collapse into a
+single flat band and no amount of looking separates them. Predicted by measurement before the
+render, and **not reachable by tuning** — it is what the material does. CHR.3 should not spend
+rounds on it.
+
+**References.** `docs/diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md` (full verdict, per-capture
+tables, repro), `docs/presets/STAVE_PLAN.md` §CHR.1 AMENDMENT, D-121 (divergence axis),
+D-215 (Phase MD), BUG-086 / BUG086.1 (the stem latency this decision routes around).
