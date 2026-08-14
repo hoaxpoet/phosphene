@@ -377,6 +377,11 @@ enum StaveReplay {
             frame.features.aspectRatio = aspect
             frame.stems.drumsEnergyRel = s("drumsEnergyRel"); frame.stems.bassEnergyRel = s("bassEnergyRel")
             frame.stems.vocalsEnergyRel = s("vocalsEnergyRel"); frame.stems.otherEnergyRel = s("otherEnergyRel")
+            // Raw per-stem energy, for the CHR.3 field-tint spike's share drive. The `Rel`
+            // columns above are each centred on their OWN 10 s EMA (StemAnalyzer), which is
+            // why they cannot carry sustained section identity — see StaveFieldTintSpike.
+            frame.stems.drumsEnergy = s("drumsEnergy"); frame.stems.bassEnergy = s("bassEnergy")
+            frame.stems.vocalsEnergy = s("vocalsEnergy"); frame.stems.otherEnergy = s("otherEnergy")
             frame.track = track(at: f("wallclock_s"), bounds)
             out.append(frame)
         }
