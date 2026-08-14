@@ -453,12 +453,6 @@ step. The LFS history purge itself needs a GitHub Support ticket to GC unreferen
 zero references in this file, uniquely among D-203…D-212.)*
 
 ### Increment GT.3 — BeatBench live baseline ✅ (2026-07-30)
-
-The live-path baseline that D-205 ratifies its per-suite targets against, and that the TRK.3
-row cites. Artifacts: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md` and
-`BEATBENCH_LIVE_BASELINE_2026-07-30.md`. *(Added at RECON.3 — GT.3 was referenced by two
-other rows and by D-205 but had no row of its own.)*
-
 ### Increment BUG-080 fix — manifest-driven `link_fixtures.sh` ✅ (2026-08-03, `2b36c34d`)
 
 Gitignored-asset propagation repaired at both gaps; full engine suite green in a fresh

@@ -356,7 +356,21 @@ void fractal_tree_object_shader(
         // simply tracks the live vector and this expression is bit-identical to the
         // continuous one. There is no frozen-trunk state to reach: a preset can only step
         // while the phase is demonstrably ticking.
-        float trunkLen = 0.27f + reach * 0.13f + surge * 0.32f;
+        // FTR.16 — 0.45, not 0.32, and the coefficient is sized against the DRIVER'S OWN p95
+        // rather than against a theoretical 1.0. Density's knee output reaches ~0.75 where the
+        // level rank it replaced reached ~0.66, but its p05→p95 SPAN is smaller, so keeping 0.32
+        // cost 40 % of the tree's visible growth — the DYN.1e "band Matt could not see" risk.
+        //
+        // Swept on three captures. 0.45 recovers span to 79–90 % of the old driver's while the
+        // practical maximum height (0.68–0.72) stays at or below what the old build already
+        // reached, so there is no new off-screen risk — the FTR.9 headroom argument still holds
+        // (*"a thing cannot visibly shoot up if it is already near the ceiling"*). 0.50 matched
+        // span exactly and pushed the maximum to 0.75, past that ceiling, for the last 10 %.
+        // A shift/stretch to widen the span instead was measured TWICE and rejected both times:
+        // it floor-clipped 33–44 % of frames on the other captures, which is the same dead-region
+        // failure. Density is an ABSOLUTE fraction, so any fixed subtraction breaks on the next
+        // track whose overall density is lower.
+        float trunkLen = 0.27f + reach * 0.13f + surge * 0.45f;
 
         // Kept for the canopy's finer response; the surge carries the arrival.
         float lift = saturate((fHeld.spectral_density / max(fHeld.spectral_density_slow, 1e-4f) - 1.0f) * 1.1f);
