@@ -34,7 +34,8 @@ public enum ParticleGeometryRegistry {
         "Ricercar",
         "Cymatic Resonance",
         "Witchlight",
-        "Meniscus"
+        "Meniscus",
+        "Stave"
     ]
 }
 

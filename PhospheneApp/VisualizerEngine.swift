@@ -297,6 +297,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// — Stam stable-fluids `ParticleGeometry` (D-097, RICERCAR-FL.5).
     var ricercarGeometry: (any ParticleGeometry)?
 
+    /// Two beaded band-driven traces on a beat-ruled field for the Stave preset — CPU-side
+    /// history rings drawn as beads on a thread, plus the D-216 stem tint wash (D-097, CHR.3).
+    var staveGeometry: (any ParticleGeometry)?
+
     /// Serpentine projected line-strip water surface for the Meniscus preset — a
     /// CPU wave field serialized into one continuous path (D-097, MEN.2a).
     var meniscusGeometry: (any ParticleGeometry)?
@@ -938,6 +942,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.ricercarGeometry = Self.makeRicercarGeometry(context: ctx, library: lib)
         self.cymaticSandGeometry = Self.makeCymaticSandGeometry(context: ctx, library: lib)
         self.witchlightGeometry = Self.makeWitchlightGeometry(context: ctx, library: lib)
+        self.staveGeometry = Self.makeStaveGeometry(context: ctx, library: lib)
         self.meniscusGeometry = Self.makeMeniscusGeometry(
             context: ctx, library: lib, spectrum: fft.magnitudeBuffer)
         self.moodClassifier = classifier
@@ -1312,6 +1317,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         case "Cymatic Resonance": return cymaticSandGeometry
         case "Witchlight":  return witchlightGeometry
         case "Meniscus":    return meniscusGeometry
+        case "Stave":       return staveGeometry
         default:            return nil
         }
     }
@@ -1358,6 +1364,25 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         }
         logger.info("Witchlight created: \(WitchlightConfiguration().beadCapacity)-bead harmonic stroke")
         return stroke
+    }
+
+    /// Build the two beaded band-driven traces for the Stave preset (`StaveTrace` +
+    /// `Renderer/Shaders/StaveTrace.metal`, CHR.3). Returns `any ParticleGeometry`
+    /// (D-097, siblings not subclasses).
+    private static func makeStaveGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary
+    ) -> (any ParticleGeometry)? {
+        guard let trace = try? StaveTrace(
+            device: context.device,
+            library: library.library,
+            configuration: StaveConfiguration(),
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        logger.info("Stave created: \(StaveConfiguration().window) s beaded trace window")
+        return trace
     }
 
     /// Build the vibrating-sand Chladni simulation for the Cymatic Resonance preset

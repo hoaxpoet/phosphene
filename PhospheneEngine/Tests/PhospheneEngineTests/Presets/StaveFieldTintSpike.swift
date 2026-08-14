@@ -326,7 +326,7 @@ struct StaveFieldTintSpike {
         return s[min(s.count - 1, max(0, p * (s.count - 1) / 100))]
     }
 
-    fileprivate static func writePNG(bgra: [UInt8], width: Int, height: Int, to url: URL) throws {
+    static func writePNG(bgra: [UInt8], width: Int, height: Int, to url: URL) throws {
         guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return }
         let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
                                 | CGBitmapInfo.byteOrder32Little.rawValue)

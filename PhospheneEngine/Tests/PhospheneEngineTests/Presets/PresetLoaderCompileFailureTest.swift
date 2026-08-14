@@ -97,7 +97,7 @@ struct PresetLoaderCompileFailureTest {
     /// 27 → 26 at FDYRETIRE.1 (Faraday RETIRED after 3 live M7s — the simulation and the
     /// beat lock were measurably correct, but the resulting IMAGE stayed low-energy and
     /// read as cheap and unsynced. See docs/DECISIONS.md D-204.)
-    static let expectedProductionPresetCount = 28
+    static let expectedProductionPresetCount = 29
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {

@@ -1,0 +1,121 @@
+{
+  "name": "Stave",
+  "family": "waveform",
+  "duration": 40,
+  "description": "Low against high, ruled by the beat, in a room the stems tint. Two beaded traces scroll right-to-left across a ruled field, plotting the last eight seconds of the music as a time series. The lower trace is the low end (subBass+lowBass, each EMA-centred separately so a loud band cannot drag its partner's pivot); the upper is the top end (midHigh+highMid+high). They are near-independent on real music (r -0.27..+0.27 on 13 of 15 corpus tracks), so they read as two voices going their own way and crossing often rather than as two copies. Each trace is drawn as discrete beads on a faint thread, never a solid line — bead size rides the trace's own local slope, a derived geometric quantity rather than a fifth audio route, so the beads swell where the line is moving fast and shrink where it is flat. Per-trace gain is a precondition, not a knob: melodic energy runs 4.4-17.5x below rhythm across the corpus, so a shared gain would draw the top end as a flat line. Fixed gains with soft saturation tuned against p99, so a loud passage still LOOKS louder and only the extremes compress. The vertical rules are the actual beat, from the cached BeatGrid — median trace-to-beat offset measured at 0 ms on four captures, with the derived gridline rate matching grid_bpm exactly. Above roughly 150 bpm those rules stop reading as a pulse and start reading as graph paper, so their opacity fades with measured on-screen density — meter-free, needing no beatsPerBar, which the corpus says is unreliable within a single track. The horizontal rules are the stave itself and are static. The stems never touch a trace: they tint the whole field, slowly, via the drums+bass share of raw stem energy on an 8 s envelope, so a listener reads it as the room being warmer through a chorus and never as that mark is a snare. Behind it all: a horizon of haze, a five-octave cloud texture, and 4-point star sparkles scattered (not nodal) through the frame, all audio-independent so the field persists and drifts at silence while the traces flatline — a quiet passage flatlining IS the design. Milkdrop-inspired (D-113); diverges from its source on the primary feature stack (the source's rules are decoration, Stave's verticals are a real beat grid the source structurally cannot have), on compositional structure (4-8 undifferentiated traces there, 2 semantically assigned here), and on the dominant motion model (per-frame waveform geometry there, a scrolling 8 s history ring here).",
+  "author": "Matt",
+  "inspired_by": {
+    "milkdrop_filename": "Martin - charisma",
+    "original_artist": "Martin",
+    "pack": "butterchurn-presets (npm), curated legends set 1 of 100",
+    "source_form": "butterchurn_builtin",
+    "sha256": "c8d00412887028bb4b4a6ae79c818c89634a270625aced9584cb1cd04a11c30e"
+  },
+  "passes": [
+    "feedback",
+    "particles"
+  ],
+  "fragment_function": "stave_field_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "feedback_pixel_format": "bgra8Unorm",
+  "beat_source": "bass",
+  "beat_zoom": 0.0,
+  "beat_rot": 0.0,
+  "base_zoom": 0.0,
+  "base_rot": 0.0,
+  "decay": 0.1,
+  "beat_sensitivity": 1.0,
+  "visual_density": 0.3,
+  "motion_intensity": 0.35,
+  "color_temperature_range": [
+    0.1,
+    0.75
+  ],
+  "fatigue_risk": "low",
+  "transition_affordances": [
+    "crossfade"
+  ],
+  "section_suitability": [
+    "ambient",
+    "bridge",
+    "comedown"
+  ],
+  "complexity_cost": {
+    "tier1": 0.9,
+    "tier2": 0.5
+  },
+  "rubric_profile": "lightweight",
+  "audio_routes": [
+    {
+      "route": "rhythm_trace_height",
+      "primitive": "subBass",
+      "kind": "continuous",
+      "response": {
+        "metric": "rhythmTraceExcursion",
+        "min": 0.08
+      }
+    },
+    {
+      "route": "rhythm_trace_height",
+      "primitive": "lowBass",
+      "kind": "continuous",
+      "response": {
+        "metric": "rhythmTraceExcursion",
+        "min": 0.08
+      }
+    },
+    {
+      "route": "melodic_trace_height",
+      "primitive": "midHigh",
+      "kind": "continuous",
+      "response": {
+        "metric": "melodicTraceExcursion",
+        "min": 0.05
+      }
+    },
+    {
+      "route": "melodic_trace_height",
+      "primitive": "highMid",
+      "kind": "continuous",
+      "response": {
+        "metric": "melodicTraceExcursion",
+        "min": 0.05
+      }
+    },
+    {
+      "route": "melodic_trace_height",
+      "primitive": "high",
+      "kind": "continuous",
+      "response": {
+        "metric": "melodicTraceExcursion",
+        "min": 0.05
+      }
+    },
+    {
+      "route": "beat_vertical_rules",
+      "primitive": "beatPhase01",
+      "kind": "accent"
+    },
+    {
+      "route": "field_tint",
+      "primitive": "drumsEnergy",
+      "kind": "continuous"
+    },
+    {
+      "route": "field_tint",
+      "primitive": "bassEnergy",
+      "kind": "continuous"
+    },
+    {
+      "route": "field_tint",
+      "primitive": "vocalsEnergy",
+      "kind": "continuous"
+    },
+    {
+      "route": "field_tint",
+      "primitive": "otherEnergy",
+      "kind": "continuous"
+    }
+  ],
+  "certified": false
+}
