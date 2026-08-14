@@ -163,3 +163,60 @@ span; the per-track rank matches the span but barely moves), `max()` blending (t
 deviation-against-`density_slow` (blind for the first 15 s). The remaining untried directions are
 a faster density baseline (new field) or a correction bounded so it cannot compress count span.
 Neither has been measured.
+
+### 7.5 Candidate C — the ARRANGEMENT (how many stems are playing): six formulations, all worse
+
+Matt, when told the next step was a faster density baseline: *"why is the fast density baseline the
+next most important work? I don't understand how this fixes the preset in alignment with my
+feedback."* He was right — that plan was four inferences deep, each fixing the previous fix's
+problem. Level and density are both **physics**; his words were about **music**. So: the size
+should follow the arrangement — how much is playing — which is the stems.
+
+That is the most literal reading of his complaint and it was worth trying. It does not work, and
+the reason is now measured rather than guessed.
+
+**Two implementation facts learned, both worth keeping:**
+
+1. **★ Order matters: map each stem FIRST, then smooth.** `*EnergyDev` is a D-026 deviation whose
+   median is ~0 by construction. Smoothing it and *then* thresholding yields a small number that
+   any threshold maps to zero, so the term comes out **constant**. Caught because the burstiness
+   figure was byte-identical across two different thresholds. The per-stem mapping therefore
+   cannot live in the shader downstream of a glide — it has to be a CPU scalar.
+2. **The signal saturates.** "All four stems above their own average" happens ~25 % of the time, so
+   the scalar hits 1.0 at p95 on both captures.
+
+**Every formulation trades something material away from the approved build:**
+
+| size driver | trunk span | max height | count span | pin |
+|---|---|---|---|---|
+| **level (APPROVED)** | **0.252 / 0.361** | **0.61 / 0.72** | **27.6 / 22.6** | 2–5 % |
+| arrangement, raw | 0.130 / 0.111 | 0.53 | 25.5 / 28.6 | 0 |
+| arrangement, rescaled 0.05–0.55 | 0.272 / 0.263 | 0.72 | — | **22–26 %** |
+| arrangement, soft knee (best) | 0.216 / 0.216 | 0.53 | 17.6 / 17.6 | 0 |
+
+Raw loses the trunk's height range; rescaling recovers it and **flat-tops a quarter of the time**
+(the failure the reference README names explicitly); a soft knee cannot pin but caps both span and
+maximum height well below the approved build.
+
+**And it is not even consistently better on the coupling it was chosen for:** on *Carry The Zero*
+the arrangement flips `r` against density from −0.46 to +0.62, but on *Seven Nation Army* it goes
+the other way, +0.55 → −0.17. It fixes the reviewed track and inverts another.
+
+### 7.6 The characterisation this program now has, and the one job that comes next
+
+Six formulations across FTR.16–FTR.17, all measured, all worse than the approved build on at least
+one axis Matt has already objected about. The pattern is consistent enough to be a finding:
+
+> **Level rank has the dynamic range but the wrong sign on a limited master. Every
+> deviation-derived alternative has the right meaning but too little range — deviations sit at
+> zero most of the time and saturate when everything fires at once. No field Phosphene currently
+> computes has both.**
+
+That is why five shader-level attempts failed: it is not a mapping problem.
+
+**The next job is NOT another driver.** It is to explain the one unresolved contradiction, because
+everything else is downstream of it: under candidate A the rendered agreement window looked
+visibly fuller while the branch count measured **45.0 in both** builds. Either the render window
+and the measured window differ, or a consumer other than trunk/count carries the difference. Until
+that is explained there is no trustworthy instrument for judging the next candidate — and an
+unexplained render/metric gap is exactly how FTR.16 shipped a regression.
