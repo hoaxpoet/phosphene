@@ -2381,6 +2381,45 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.18 — the size correction, bounded to the limiter inversion. ✅ M7: Matt's "ok overall" —
+the FTR.9→FTR.18 motion-and-size arc LANDS HERE.** (2026-08-14, capture
+`2026-08-14T15-21-09Z`, *Carry The Zero*, from the worktree build) Matt: *"It's better than the
+previous, but ok overall. This is probably as good as we're gonna get right now."*
+
+**Not certified.** FTR.5 is a separate call and he has not given it. "Ok overall" closes the
+iteration; it does not open certification.
+
+**Shipped form.** Level rank remains the size driver; its one defect — the limiter dipping level as
+the band arrives — is corrected and nothing else is touched:
+`size = saturate(level + max(0, density − level) · (1 − smoothstep(0.15, 0.40, level)))`, with
+density from the ~2 s section glide at buffer(6). Both conditions must hold, so it fires only on
+the inversion signature. Verified on the render, like-for-like: band entry 1.738 → **3.400** mean
+luma (+96 %), quiet passage **5.36295 → 5.36295, byte-identical**.
+
+**What this arc cost and what it bought.** Ten increments from Matt's *"the trunk is moving too
+much"* (FTR.9) to here. Four M7 rejections along the way — *"robotic and stuttering"*,
+*"dancing the robot"*, *"both robotic and sluggish… you fed the preset ambien"*, *"feels random,
+completely divorced from what's going on in the music"* — and **two of those were rejections of a
+build shipped on my own recommendation**, not on his pick.
+
+**★★★ THE PROGRAM-LEVEL LESSON: every one of those four rejections was preceded by a green
+measurement, and in each case the measurement was modelling the wrong thing.** The list, because
+the pattern is the finding:
+
+| what I measured | why it was wrong |
+|---|---|
+| turn RATE | a freeze has a low turn rate — it is what a hold BUYS |
+| step SIZE | a freeze has small steps too |
+| per-frame float inequality | measured the interpolated value, not arrivals |
+| per-frame PIXEL identity | slow smooth motion is sub-pixel per frame; a 5 s pan fails it |
+| trunk length | the branch COUNT carries the same term at 26× the coefficient |
+| glide-as-EMA | the glide chases a BEAT-LATCHED target, not the live value |
+| a subsampled render | `advanceBeatHold` left both glides on their frame-0 seed |
+
+Six formulations of the size driver were measured and rejected on evidence (FTR.16/17); the
+diagnostics doc carries each with numbers so none is re-attempted. Full detail:
+`docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §7.
+
 **FTR.14 — the beat sets the destination, never the stillness.** ✅ code-complete, **pending
 live M7** (2026-08-13) Matt's M7 on `2026-08-13T12-58-08Z` (*Carry The Zero*): *"I still prefer the
 more continuous movement that happens at the very beginning of playback before the beat grid is
