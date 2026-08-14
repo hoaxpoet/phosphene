@@ -2,8 +2,8 @@
 
 **Increment:** written at **CHR.1.3** (2026-08-14), the design-doc half of CHR.1 that its
 task-4 hard stop correctly withheld until the driver was settled and gated.
-**Status:** authoritative input for **CHR.3**. Not yet reviewed by Matt — §10 is the list
-of things he has to answer before CHR.3 should start.
+**Status:** authoritative input for **CHR.3**. Every open item is decided in §10; nothing
+here is waiting on Matt. What comes to him is a render, not a document (§11).
 **Preset count:** 28. Nothing registered yet.
 
 **Inputs this doc rests on, in order of authority:**
@@ -55,7 +55,7 @@ instrument a trace is carrying. That claim was tested at CHR.2 and failed on a m
 
 | # | Decision | Source |
 |---|---|---|
-| L1 | **Two traces**, rhythm vs melodic. Not four. | CHR.1 measurement, Matt |
+| L1 | **Two driven traces**, rhythm vs melodic. Not four. Optional non-semantic ghost companions for density (D2). | CHR.1 measurement, Matt |
 | L2 | **Position from bands** (~0.3 s), EMA-centred, never absolute AGC values (FA #31) | Matt 2026-08-13 |
 | L3 | **Stems tint the field only.** Never a trace's hue, weight or brightness. | **D-216** |
 | L4 | **No per-mark instrument identity.** The concept sentence is §1. | **D-216** |
@@ -116,9 +116,9 @@ out, none costed yet:
 - **(c)** Fade rule opacity as a function of measured on-screen density, independent of
   meter. Meter-free, so no new inference needed; purely cosmetic.
 
-**Recommendation: (c)**, because it needs no bar-position knowledge and the beat-sync
-program has repeatedly shown bar inference to be the expensive part. (a) and (b) both
-depend on a quantity the corpus says is unreliable.
+**Decided: (c).** It needs no bar-position knowledge, and the beat-sync program has
+repeatedly shown bar inference to be the expensive part. (a) and (b) both depend on
+`beatsPerBar`, which the corpus says is unreliable within a single track.
 
 ## 6. Audio routing — one primitive per layer (D-026, FA #67)
 
@@ -128,7 +128,8 @@ depend on a quantity the corpus says is unreliable.
 | Melodic trace height | `midHigh + highMid + high`, EMA-centred | ~0.3 s | measured; **needs per-trace gain** |
 | Vertical rules | cached `BeatGrid` beat times | in-time | measured, 0 ms median |
 | Field tint | `drums+bass` vs `vocals+other` (stems) | ~3.0 s | **D-216** |
-| Bead size / sparkle | *unassigned* — see §10 Q3 | — | open |
+| Bead size | trace's own local slope — *derived geometry, not an audio primitive* | — | D3 |
+| Sparkle | **non-reactive** texture, slow drift | — | D3 |
 
 No layer shares a primitive with another, and no two share a timescale.
 
@@ -141,9 +142,9 @@ not (Dance Yrself Clean clips off frame). CHR.3 must choose:
   passages look the same, so the plot stops reporting absolute level; or
 - **fixed gain + soft saturation** — level survives, extremes compress rather than clip.
 
-**Recommendation: fixed gain + soft saturation**, tuned against p99 not 1.0 (deviation
-primitives spike to ~3× on real music). It keeps "the music got louder" readable, which is
-half of what a plot is for.
+**Decided: fixed gain + soft saturation**, tuned against p99 not 1.0 (deviation primitives
+spike to ~3× on real music). It keeps "the music got louder" readable, which is half of what
+a plot is for; a running normaliser would make loud and quiet passages look identical.
 
 ## 7. Design grounding (descending preference, per the checklist)
 
@@ -157,11 +158,10 @@ half of what a plot is for.
 
 ⚠ **Surfaced per the checklist rather than resolved:** the field tint is the one
 load-bearing mechanism at grounding level 3. It is also the mechanism D-216 just moved the
-whole stem story onto. **The cheapest way to de-risk it is to render the tint alone against
-a capture before building the rest of CHR.3** — a half-day, and it answers "can a viewer
-read the stem balance at all when it is this slow and this diffuse?" If the answer is no,
-option A from D-216 (drop stems entirely) becomes live again and CHR.3 should know that
-before it builds a field pass around them.
+whole stem story onto. **Decided (D4): CHR.3 opens by rendering the tint alone** against a capture, before
+anything else is built — it answers "can a viewer read the stem balance at all when it is
+this slow and this diffuse?" If the answer is no, option A from D-216 (drop stems entirely)
+becomes live again, and that is far cheaper to learn before a field pass exists than after.
 
 ## 8. Phased plan for CHR.3
 
@@ -191,23 +191,47 @@ The rendered output must differ measurably on at least one axis. Stave differs o
 Palette character is the axis Stave does **not** currently diverge on, and it should not be
 relied upon.
 
-## 10. Open decisions for Matt
+## 10. Decisions taken here
 
-**Q1 — Is the curated reference set right?** `docs/VISUAL_REFERENCES/stave/README.md` is my
-reading of the source render, unconfirmed. Every trait CHR.3 builds to comes from it.
+These were briefly written up as questions for Matt. That was wrong — each one needs
+implementation knowledge to answer, which per CLAUDE.md makes it mine. Recorded with
+rationale so CHR.3 does not reopen them.
 
-**Q2 — Trace count.** Two is what CHR.1's measurement supports as separable. The source
-runs 4–8, which is denser and more source-like but reintroduces the collapse CHR.1
-measured. Two is the recommendation; it is also a thinner picture than the source.
+**D1 — The reference set stands as curated.** Five annotated images from a fresh render of
+the source, each trait checked against the image it cites (one reading was corrected in the
+process: the sparkles are scattered, not nodal). Matt's input on this preset is the
+qualitative read of a *render*, at M7 — not validation of my annotations.
 
-**Q3 — What drives bead size and sparkle?** §6 leaves them unassigned deliberately, because
-every fast primitive is already spoken for and FA #67 forbids doubling up. Options: leave
-them non-reactive (texture only), or spend the one remaining fast primitive
-(`spectralFlux` / `beatComposite`) on sparkle density.
+**D2 — Two driven traces, plus non-semantic density.** CHR.1 measured that more than two
+collapse (65–93 % common mode). But the source's 4–8 traces are not voices either — they
+are an undifferentiated cyan *texture*. So: **two semantically driven traces** (rhythm,
+melodic) **plus optional ghost companions** that are offset/delayed copies of those same
+two, carrying no independent signal. That buys the source's density without asserting
+voices the data says do not separate. Ghosts are dimmer and thinner; if they read as extra
+voices in review, they come out.
 
-**Q4 — Should CHR.3 open with the field-tint spike (§7)?** It is the only grounding-level-3
-mechanism and it carries the entire post-D-216 stem story. Recommendation: yes.
+**D3 — Bead size rides the trace's own slope; sparkles are non-reactive.** Bead size from
+local trace velocity is a *derived geometric* quantity, not a new audio primitive — it
+costs nothing against FA #67 and reads as "the line is moving fast here." Sparkles stay
+**non-reactive** texture (constant density, slow drift). The preset already carries four
+well-separated audio layers; a fifth route on a diffuse field element is where the
+"fighting itself" failure starts, and the remaining fast primitives (`spectralFlux`,
+`trebDev`) overlap the melodic trace's own band content.
 
-**Q5 — The source-JSON commit question** in the reference README's §Provenance — Nacre
-commits its butterchurn source JSON, this set does not. Ambiguous under D-116 bullet 4,
-which names `.milk` specifically.
+**D4 — CHR.3 opens with the field-tint spike.** It is the only grounding-level-3 mechanism
+(§7) and it carries the whole post-D-216 stem story. If the stem balance cannot be read at
+3.0 s on a diffuse surface, that is worth knowing before a field pass is built around it.
+
+**D5 — Commit the source JSON, following the Nacre precedent.** D-116 bullet 4 names
+`.milk` files and the pack at its source URL; a butterchurn built-in is MIT-licensed npm
+package content, and D-215 requires the sha256 *of the artifact actually read*, which
+presumes the artifact is identifiable. `docs/VISUAL_REFERENCES/nacre/` commits
+`source_preset.json` and six other shipped inspired-by presets set the same practice.
+Consistency across reference sets beats my private conservatism, and a set that diverges
+from precedent for unstated reasons is its own hazard.
+
+## 11. What actually comes to Matt
+
+Nothing in this doc. The next thing for him is a **render** — the field-tint spike from D4,
+then the CHR.3 look — where the question is the one he is the authority on: *does it read,
+and does it feel like the music?*

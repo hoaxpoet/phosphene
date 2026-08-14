@@ -7,7 +7,8 @@ stack, so the full rubric's ≥3-distinct-materials gate is unreachable by const
 Same reclassification and reasoning as Fractal Tree (D-212 / FTR.1) and the
 Waveform / Plasma / Spectral Cartograph precedent.
 **Last curated:** 2026-08-14 (CHR.1.3, rendered by Claude Code from the butterchurn
-built-in against real music; **not yet confirmed by Matt** — see §Open for him)
+built-in against real music). Matt's read comes at M7, on a render — not on these
+annotations.
 
 **Target:** a Phosphene uplift inspired by the Milkdrop preset **`Martin - charisma`**
 (butterchurn built-in, 1 of 100 in the curated legends set). MD.6 inspired-by uplift #8.
@@ -29,8 +30,8 @@ Clean from the `beat-match-test-session` tap).
 ## Reference images
 
 Numbered in priority order. See `../_NAMING_CONVENTION.md`. Images are **gitignored
-repo-wide** (0 tracked under `docs/VISUAL_REFERENCES/`) — regenerate with the §Provenance
-commands.
+repo-wide** (0 tracked under `docs/VISUAL_REFERENCES/`), so a fresh checkout has the
+annotations but not the pictures — regenerate them with the §Provenance commands.
 
 | File | Annotation (what to learn from this image) |
 |---|---|
@@ -104,13 +105,12 @@ package, 1 of 100 in the curated legends set). `source_form: butterchurn_builtin
 `c8d00412887028bb4b4a6ae79c818c89634a270625aced9584cb1cd04a11c30e`
 (SHA-256 of the extracted `{"preset": …}` JSON, 9 073 bytes.)
 
-The source JSON is **not committed**. It is loadable from the npm package on demand, and
-D-116 bullet 4's no-redistribution posture is read conservatively here.
-⚠ **Inconsistent with existing practice — for Matt:** `docs/VISUAL_REFERENCES/nacre/`
-*does* commit `source_preset.json` + `source_shaders.txt`. Bullet 4 names `.milk` files
-specifically, so whether a butterchurn built-in JSON falls under it is genuinely ambiguous.
-Left uncommitted pending Matt's call; if the Nacre precedent is the intended one, adding it
-here is one commit.
+The source JSON is committed as `source_preset.json`, **following the Nacre precedent**
+(`docs/VISUAL_REFERENCES/nacre/` commits its own, as do the other shipped inspired-by sets).
+D-116 bullet 4 names `.milk` files and the pack at its source URL; a butterchurn built-in is
+MIT-licensed npm package content, and D-215 requires the sha256 *of the artifact actually
+read*, which presumes the artifact stays identifiable. Consistency across reference sets
+beats a one-off conservative reading.
 
 **Regenerate the reference renders:**
 
@@ -128,12 +128,12 @@ Frames used: `01` = n28, `02` = n24 cropped `210:110:20:150`, `03` = n5/22/40/57
 `04` = n30 cropped `190:150:120:20`. `05` is our own CHR.2 spike
 (`StaveLookSpike`, `STAVE_COLOUR=0`), not source-derived.
 
-## Open for Matt
+## Curation notes
 
-1. **This set is uncurated by you.** Every annotation above is my reading of the render.
-   The trait list is what CHR.3 will build to, so a disagreement here is cheap now and
-   expensive later.
-2. **Trace count.** The source runs 4–8 overlapping traces; CHR.1's measurement re-scoped
-   Stave to 2. Two is what the data supports as *separable*; more would be denser and more
-   source-like but would reintroduce the collapse CHR.1 measured.
-3. **The source JSON commit question** above.
+- **Trace count.** The source runs 4–8 overlapping traces, but they are one undifferentiated
+  cyan mass — a *texture*, not voices. Stave draws **two driven traces** (the most CHR.1
+  measured as separable) plus optional non-semantic ghost companions for density. See
+  `STAVE_DESIGN.md` D2.
+- **One reading corrected during curation** — the `04` annotation. Recorded rather than
+  silently fixed, because the macro frame really does suggest nodal sparkles and the next
+  reader will make the same mistake.
