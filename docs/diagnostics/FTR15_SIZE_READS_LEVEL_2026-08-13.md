@@ -220,3 +220,59 @@ visibly fuller while the branch count measured **45.0 in both** builds. Either t
 and the measured window differ, or a consumer other than trunk/count carries the difference. Until
 that is explained there is no trustworthy instrument for judging the next candidate — and an
 unexplained render/metric gap is exactly how FTR.16 shipped a regression.
+
+### 7.7 The render/metric contradiction, resolved: the METRIC was wrong
+
+§7.6 named this as the blocking job. It is answered, and the answer reverses the assumption the
+whole investigation rested on.
+
+**The pixel difference is real.** Mean luma of the rendered strip at playback ≈35 s:
+**3.68 (approved) → 5.29 (candidate A)**, +44 %. Not a perception artifact.
+
+**It is caused only by the shader's `max()` term.** Two bisections, each rendering the same window:
+
+| build | mean luma |
+|---|---|
+| approved | **3.67966** |
+| Swift side only — slot 6 bound, shader unchanged | **3.67966** (byte-identical) |
+| shader structural change, size term arithmetically identical | **3.67966** (byte-identical) |
+| full candidate A | **5.28972** |
+
+So neither the extra binding nor the shader edit perturbs anything; the value of `max()` does.
+
+**And the metric that said "45.0 in both" was computed from a wrong model of the build.** Probing
+the harness at the same rows:
+
+| quantity at playback 35.0 | my python model | actual |
+|---|---|---|
+| beat-glided `spectral_surge` (the "level" term) | 0.613 – 0.646 | **0.515 – 0.530** |
+
+**The error: I modelled the glide as an EMA of the LIVE signal. It is a chase toward a target
+LATCHED AT THE LAST BEAT.** Those differ by up to a beat of lag plus the glide's own τ, and the
+gap was ~0.1 — enough to flip every level-vs-density comparison toward "level is larger, so
+`max()` is a no-op." That model has been behind every level figure quoted since FTR.14.
+
+**Two further modelling errors found in passing, both the same species:**
+- Two of my ad-hoc scripts used *different* branch-count formulas (one included `reach·18` and the
+  density lift, the other did not), which is why the same window was reported as both "29" and
+  "45.0". Neither included `amp` or the tips.
+- `applyRecomputedDensity` indexes its table with `Int(time · 10)` where `time` carries the
+  13 s app-startup offset, so on any capture where that path is active it reads the recomputed
+  density/surge ~13 s late. Not active in these renders (the table is empty when `FT_RECOMPUTE`
+  is unset) but a live trap for the next session that enables it.
+
+### 7.8 ★★★ The transferable rule: when a render and a metric disagree, the RENDER is right
+
+The render is the actual pipeline. A metric is a MODEL of the pipeline, and every model in this
+program has now been wrong at least once — turn rate, step size, float-vs-pixel identity,
+analysis-vs-render rate, trunk-vs-count sensitivity, and now glide-as-EMA. §7.6 recorded this
+contradiction as "an unexplained gap that blocks the next candidate"; that framing had it exactly
+backwards, treating the render as the suspect party.
+
+**Consequence for candidate A: Matt's *"too active"* was a judgement on a real, correctly-rendered
+difference. It was not confounded, and it stands.** What was wrong was my claim that the candidate
+would be a no-op in quiet passages — the build genuinely was fuller there, and the metric that said
+otherwise was modelling a glide it did not understand.
+
+**Consequence for anything next:** a candidate is judged from a render, and a metric is only
+admissible after it has reproduced that render's verdict on a known-good and a known-bad build.
