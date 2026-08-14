@@ -89,7 +89,12 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 > > **shifted track labels**: worst is Bohemian Rhapsody 93.4 %, and **Take Five 82.9 % is
 > > among the easiest**, so "jazz was the worst case" is false.
 >
-> **4. What CHR.1 did NOT produce.** No `STAVE_DESIGN.md`, no `docs/VISUAL_REFERENCES/stave/`,
+> **4. What CHR.1 did NOT produce.** ✅ **DONE at CHR.1.3 (2026-08-14)** — both
+> [`STAVE_DESIGN.md`](STAVE_DESIGN.md) and
+> [`docs/VISUAL_REFERENCES/stave/`](../VISUAL_REFERENCES/stave/README.md) now exist, written
+> to the post-D-216 concept, and `DECISIONS.md` carries D-216. The design doc is CHR.3's
+> authoritative input and its §10 holds five questions for Matt. *Original text, for the
+> record:* No `STAVE_DESIGN.md`, no `docs/VISUAL_REFERENCES/stave/`,
 > no `DECISIONS.md` entry — all correctly withheld under task 4's hard stop rather than
 > written around a failed premise. CHR.1's measurement output is
 > [`docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md`](../diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md),
