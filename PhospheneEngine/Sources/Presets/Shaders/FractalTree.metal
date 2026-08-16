@@ -828,7 +828,39 @@ fragment float4 fractal_tree_fragment(
     // Pushed up with the palette. A per-level hue spread only reads as distinct levels
     // if the levels are actually saturated — at 0.55 the inner tiers wash toward each
     // other and the spread is wasted. Trunk stays muted so it still reads as bark.
-    float sat = mix(0.42f, 0.96f, depth_norm);
+    // ── ENERGY ← bass_dev: the LAYER-1 ROUTE THIS PRESET NEVER HAD (FTR.20) ──────────
+    //
+    // Matt's M7, 2026-08-16: *"Does not carry the energy of the music, feel blunted."*
+    //
+    // He is describing a missing layer, not a mistuned one. Before this the preset read
+    // `arousal`, `spectral_surge`, `spectral_density`, `spectral_flux`, `section_ratio`,
+    // `tonal_phase_fifths`, `beat_mid`, `pulse_amp01`, `melodic_tips` — slow spectral
+    // statistics, a mood estimate and beat clocks. **Not one continuous energy band, and not one
+    // deviation primitive.** CLAUDE.md's audio hierarchy calls continuous energy *the default
+    // primary driver* and says visuals built on it "feel locked to the music"; this one had none.
+    // Measured on his capture, the only tonal route (arousal) crosses its own median **0.11
+    // times a second** and moves brightness by a 0.90…1.24 multiplier, while `bass_dev` crosses
+    // **3.75 times a second** — 34x livelier — and was unused.
+    //
+    // SOFT-SATURATED AGAINST THE REAL DISTRIBUTION, not against 1.0. `bass_dev` reads p50 ~0.00,
+    // p95 0.19, p99 0.63-0.78 and peaks at 1.5-1.7 on real music, so a linear read would clip
+    // constantly (FA #73 / the deviation-range note). `d/(d+0.12)` gives p50 0.07, p95 0.61 and
+    // never pins on any capture measured.
+    //
+    // WEIGHTED ONTO SATURATION, NOT BRIGHTNESS, and that is deliberate on two counts: saturation
+    // had ZERO audio coupling (it was a pure function of depth), and a large luminance swing at
+    // 3.75 crossings/s is the flash risk D-157 guards — and adjacent to the global `beat_bass`
+    // flash Matt rejected twice and FTR.3 removed. Colour INTENSITY carries energy without
+    // strobing; brightness takes only a small share.
+    float energy = saturate(f.bass_dev / (f.bass_dev + 0.12f));
+
+    // THE RESTING BASE COMES DOWN TO MAKE ROOM, and that is a deliberate look change rather
+    // than a free win. At the old 0.96 leaf base the energy term had 0.04 of headroom and
+    // clipped on 47 % of frames — inert, the DYN.1e "band Matt could not see" failure, caught by
+    // measuring before shipping. Dropping the base to 0.74 buys a 0.196 span at the leaf tier
+    // with 1.2 % clipping. The tree therefore rests slightly less vivid and DEEPENS with the
+    // music, which is the whole point of the route.
+    float sat = saturate(mix(0.33f, 0.74f, depth_norm) + energy * 0.32f);
 
     // ── Brightness envelope ← arousal ────────────────────────────────────
     //
@@ -859,7 +891,10 @@ fragment float4 fractal_tree_fragment(
     // silence frame at mean luma 0.0034 against D-037's 0.004 — dimming it a further 28 %
     // at silence made a smaller tree invisible. The FLOOR is raised rather than the gate
     // lowered: D-037 is a legibility requirement, not a number to tune past.
-    float val      = val_base * (0.90f + arousal * 0.34f);
+    // FTR.20 — a small share of the energy reaches brightness too, so an accent reads as the
+    // tree lifting rather than only deepening in colour. Kept to 0.12 so the luminance swing
+    // stays well inside the flash budget: +8.6 % of luminance at p95, +11.3 % at the peak.
+    float val      = val_base * (0.90f + arousal * 0.34f + energy * 0.20f);
 
     // ── Per-branch melodic lift ──────────────────────────────────────────
     //
