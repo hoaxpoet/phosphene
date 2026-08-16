@@ -135,6 +135,14 @@ public final class MeshGenerator: @unchecked Sendable {
     /// new data — only the same data on a slower clock.
     var sectionHold = BeatHold(glideSeconds: 2.0)
 
+    /// FTR.19 — the D-209 circular smoother for `tonalPhaseFifths`, applied to the vector this
+    /// generator binds. `TonalAnalyzer` emits the phase RAW; every other consumer smooths it
+    /// itself, and Fractal Tree did not — its hue moved 144° at p95 and up to 180° per analysis
+    /// update on Matt's 2026-08-16 capture, which is his *"colour changes feel glitchy, not
+    /// intentional."* Applied here rather than in the engine so the other consumers, which
+    /// already smooth, are not double-smoothed.
+    private var fifthsSmoother = CircularPhaseSmoother()
+
     /// FTR.14 — render-clock state. The delta arithmetic that reads these lives in
     /// `MeshGenerator+RenderClock.swift`; see that file for why the clock is separate from
     /// `BeatHold`'s math.
@@ -257,6 +265,8 @@ public final class MeshGenerator: @unchecked Sendable {
                      stems: StemFeatures = .zero) {
         encoder.setRenderPipelineState(pipelineState)
         var feat = features
+        // FTR.19 — smooth the circular hue driver before ANY stage sees it (D-209).
+        feat.tonalPhaseFifths = fifthsSmoother.smooth(features.tonalPhaseFifths)
         var stemFeat = stems
         // FTR.10 — advance the beat hold on EVERY frame, drawn or not, so the snapshot at
         // buffer(4) reflects the real beat boundaries and not the draw cadence.

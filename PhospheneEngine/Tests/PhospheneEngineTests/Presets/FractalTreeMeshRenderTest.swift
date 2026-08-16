@@ -1286,22 +1286,21 @@ struct FractalTreeMeshRenderTest {
     /// Vector-domain EMA mirroring `TonalAnalyzer.smoothPhaseFifths`. A recorded capture
     /// holds the RAW phase, so replaying it straight would still show the pre-fix flashing
     /// no matter what the engine now does. Kept in lockstep with the analyzer's alpha.
+    /// ⚠ FTR.19 — THIS NO LONGER SMOOTHS, AND THAT IS THE FIX.
+    ///
+    /// Until FTR.19 this applied a circular EMA to `tonal_phase_fifths` while PRODUCTION read the
+    /// field raw, so every offline render and contact sheet showed a smooth hue drift (p95 2.8° per
+    /// analysis update) while the shipping build jumped up to 180° roughly 1.5 times a second —
+    /// Matt's *"colour changes feel glitchy, not intentional."* A harness that quietly repairs an
+    /// input is not replaying the production path.
+    ///
+    /// The smoothing now lives in `MeshGenerator` (`CircularPhaseSmoother`, D-209), which is where
+    /// production does it, so this must pass the value through untouched or renders would be
+    /// double-smoothed and once again disagree with the app.
     private struct FifthsSmoother {
-        private var re: Float = 0
-        private var im: Float = 0
-        private var seeded = false
-        mutating func callAsFunction(_ raw: Float) -> Float {
-            let alpha: Float = 0.065
-            let (rawRe, rawIm) = (cos(raw), sin(raw))
-            if !seeded {
-                re = rawRe; im = rawIm; seeded = true
-            } else {
-                re = alpha * rawRe + (1 - alpha) * re
-                im = alpha * rawIm + (1 - alpha) * im
-            }
-            return atan2(im, re)
-        }
+        mutating func callAsFunction(_ raw: Float) -> Float { raw }
     }
+
 
     private static func featuresFromSession(_ row: [String: Double],
                                             fifths: inout FifthsSmoother) -> FeatureVector {
