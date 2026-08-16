@@ -33,9 +33,14 @@ REF_DIR="$REPO_ROOT/docs/VISUAL_REFERENCES/$PRESET"
 [ -d "$REF_DIR" ] || die "no reference dir: docs/VISUAL_REFERENCES/$PRESET"
 
 # References: every image in the folder (README lives alongside; skip non-images).
+# `-type f -o -type l` — reference imagery is gitignored repo-wide, so in a WORKTREE the
+# images are SYMLINKS into the primary checkout (Scripts/link_fixtures.sh, WTFIX.1). A
+# bare `-type f` finds none of them and the script dies with "no reference images",
+# which reads as an un-curated reference set rather than as a worktree artefact (CHR.3).
 REFS=()
 while IFS= read -r f; do REFS+=("$f"); done < <(
-  find "$REF_DIR" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) | sort
+  find "$REF_DIR" -maxdepth 1 \( -type f -o -type l \) \
+       \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) | sort
 )
 [ ${#REFS[@]} -gt 0 ] || die "no reference images in $REF_DIR"
 
