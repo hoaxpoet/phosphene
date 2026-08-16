@@ -97,6 +97,13 @@ enum WitchlightFixtureDrive {
         // same quantity for a replay that starts at track start.
         let trackElapsed = column("time")
         let beatPhase = column("beatPhase01")
+        // Stave's five band columns (CHR.3). This drive is shared with the QG.5 gate, and
+        // `SessionReplayHarness` maps NONE of these — replaying Stave without them would feed
+        // both traces ZERO and the response band would fail for a harness reason rather than a
+        // preset one. Same rule as the header states for Witchlight's routes: a new route in a
+        // consuming sidecar adds its column here in the same commit.
+        let subBass = column("subBass"), lowBass = column("lowBass")
+        let midHigh = column("midHigh"), highMid = column("highMid"), high = column("high")
         let fifths = column("tonal_phase_fifths"), thirds = column("tonal_phase_thirds")
         let consonance = column("tonal_consonance"), tension = column("tonal_tension")
         let flow = column("harmonic_flux")
@@ -120,6 +127,8 @@ enum WitchlightFixtureDrive {
             f.barPhase01 = barPermille[i] * 0.001
             f.trackElapsedS = trackElapsed[i]
             f.beatPhase01 = beatPhase[i]
+            f.subBass = subBass[i]; f.lowBass = lowBass[i]
+            f.midHigh = midHigh[i]; f.highMid = highMid[i]; f.high = high[i]
             f.tonalPhaseFifths = fifths[i]; f.tonalPhaseThirds = thirds[i]
             f.tonalConsonance = consonance[i]; f.tonalTension = tension[i]
             f.harmonicFlux = flow[i]

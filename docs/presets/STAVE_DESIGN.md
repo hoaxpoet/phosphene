@@ -127,7 +127,7 @@ repeatedly shown bar inference to be the expensive part. (a) and (b) both depend
 | Rhythm trace height | `subBass + lowBass`, EMA-centred | ~0.3 s | measured live at CHR.2 |
 | Melodic trace height | `midHigh + highMid + high`, EMA-centred | ~0.3 s | measured; **needs per-trace gain** |
 | Vertical rules | cached `BeatGrid` beat times | in-time | measured, 0 ms median |
-| Field tint | `drums+bass` vs `vocals+other` (stems) | ~3.0 s | **D-216** |
+| Field tint | `drums+bass` **raw-energy share** of all four stems, 8 s EMA | ~3.0 s pipeline + 8 s field | **D-216**; drive corrected at CHR.3 |
 | Bead size | trace's own local slope — *derived geometry, not an audio primitive* | — | D3 |
 | Sparkle | **non-reactive** texture, slow drift | — | D3 |
 
@@ -154,14 +154,33 @@ a plot is for; a running normaliser would make loud and quiet passages look iden
 | CPU history ring → `ParticleGeometry` | `WitchlightStroke` / `WitchlightPath`, shipped and certified | **1** |
 | Band-driven position, EMA-centred | `BandDeviationTracker` (D-146), and CHR.2's live renders | **1** |
 | Beat-ruled verticals from `BeatGrid` | CHR.2 measured against `grid_bpm` on four captures | **1** |
-| Stem-driven field tint | **3 — no empirical grounding.** D-216 reasons that a 3.0 s lag is invisible on a slow surface. That is an argument, not a measurement; nothing has rendered it. | **3** ⚠ |
+| Stem-driven field tint | **Level 1 as of CHR.3** — rendered and measured, [`CHR3_FIELD_TINT_GATE_2026-08-14.md`](../diagnostics/CHR3_FIELD_TINT_GATE_2026-08-14.md) | **1** ✅ |
 
-⚠ **Surfaced per the checklist rather than resolved:** the field tint is the one
-load-bearing mechanism at grounding level 3. It is also the mechanism D-216 just moved the
-whole stem story onto. **Decided (D4): CHR.3 opens by rendering the tint alone** against a capture, before
-anything else is built — it answers "can a viewer read the stem balance at all when it is
-this slow and this diffuse?" If the answer is no, option A from D-216 (drop stems entirely)
-becomes live again, and that is far cheaper to learn before a field pass exists than after.
+✅ **D4 gate answered at CHR.3: the tint is readable, decisively**, on all six captures
+tested including two at the actual post-BUG086.1 3.0 s latency. The extreme-section pair is
+a deep slate-teal frame against a warm amber one — no ambiguity. D-216 option A does not
+become live. **Three corrections the gate forced**, all now reflected above:
+
+1. **The drive is a raw-energy SHARE, not `energyRel`.** `energyRel` is centred on a
+   *per-stem* 10 s EMA, so a sustained section self-cancels. Between-section variance
+   share (eta²) of the smoothed drive: RATIO **0.26–0.76** vs REL 0.11–0.20, RATIO winning
+   on every capture. A share is scale-invariant, so it is not the FA #31 failure — AGC
+   drift cancels between numerator and denominator. Mapped through a fixed corpus window
+   (centre 0.485, tanh scale 0.035); section means span 0.447–0.526 across three sessions.
+2. **The field's own time constant is 8 s.** D-216's 3.0 s is the *stem pipeline's
+   latency*, not a prescription for how fast the field moves; the two were conflated. At
+   τ = 3 s the field churns inside a single section (within-section sd 0.168); at τ = 8 s
+   that halves to 0.092 while the between-section gap only falls 0.59 → 0.55.
+3. **The palette follows a hue path, not a linear RGB lerp.** Complementary hues mixed in
+   RGB pass through desaturated grey at the midpoint — which is where the tint sits most of
+   the time. Reference `03_palette_field_hue_drift.png` drifts around a hue circle
+   (teal → violet → orange → green), saturated throughout.
+
+⚠ **Carried forward, not resolved:** on material where the named stems do not exist the
+share still moves and still tints (Clair De Lune, solo piano, reads "rhythm-led"). This is
+the D-216 false-label mechanism reappearing on the field — but materially weaker, and that
+is precisely why D-216 works: the tint makes no per-mark claim, so the viewer reads "the
+room changed" (true) rather than "that mark is a snare" (false). L4 still holds.
 
 ## 8. Phased plan for CHR.3
 

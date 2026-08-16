@@ -63,6 +63,70 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment CHR.3 — Stave: authoring to code-complete ✅ (2026-08-14)
+
+**Preset count 28 → 29. `certified: false` — certification is CHR.4 and needs Matt's live M7.**
+Stave registers as the 29th production preset: `Presets/Shaders/Stave.metal` (the
+audio-independent ruled field) + `Stave.json`, `Renderer/Geometry/StaveTrace.swift` +
+`+Drivers.swift` (the `ParticleGeometry` conformer, D-097 sibling) +
+`Renderer/Shaders/StaveTrace.metal` (tint wash, beat verticals, thread, beads), the
+`ParticleGeometryRegistry` entry and the app-layer factory/resolve pair.
+
+**Task 1, the D4 gate, is the session's load-bearing finding — and it changed the drive.**
+The field tint was STAVE_DESIGN §7's one grounding-level-3 mechanism and D-216 had moved the
+entire stem story onto it. Rendered alone across six captures the answer is **yes, readable,
+decisively** — the extreme-section pair is deep slate-teal against warm amber on every
+multi-section capture, including two at the actual post-BUG086.1 3.0 s latency. D-216 option A
+stays retired. But the gate forced three corrections, all written back into `STAVE_DESIGN.md`
+§6/§7 and detailed in `docs/diagnostics/CHR3_FIELD_TINT_GATE_2026-08-14.md`:
+**(1)** the drive is the `drums+bass` **raw-energy SHARE**, not `energyRel` — `energyRel` is
+centred on a per-stem 10 s EMA so a sustained section self-cancels on exactly the timescale a
+field tint lives at; between-section variance share (eta²) measures 0.26–0.76 for the share
+against 0.11–0.20 for the deviation difference, the share winning on all seven captures, and a
+share is scale-invariant so FA #31 does not apply. **(2)** the field's own time constant is
+**8 s**, not D-216's 3.0 s — that figure is the stem *pipeline's* latency and the two were
+being conflated; τ=3 churns inside a section (within-section sd 0.168), τ=8 halves it (0.092)
+for 7 % of the between-section gap. **(3)** the palette follows a **hue path**, because a
+linear RGB lerp between complementary hues greys out at the midpoint, which is where the tint
+spends most of its time.
+
+**Three defects found by rendering, not by reasoning.** The field rendered **upside down** —
+`fullscreen_vertex` emits texture-space uv (`uv.y = 1 − uv.y`), so the horizon pointed at the
+floor; measured band luma ran 0.112 (top) → 0.286 (bottom) against the reference's
+0.175 → 0.103, and nothing else showed it because a haze gradient is plausible either way. The
+field was a **pale tan wash** — mean luma 0.30 with **0.0 %** dark pixels and 33.8 % pale,
+failing the SHADER_CRAFT ≤30 % pale-tone floor, against the reference's 0.156–0.179 mean with
+15–28 % dark; now 0.18–0.22 mean, 0.0–0.2 % pale. And both traces now carry the **same** cyan:
+different hues would have re-introduced the frequency-band colour label D-216 retired, and
+CHR.2's flat-white control already read as two voices with no colour difference at all.
+
+**Both CHR.2 qualifications are closed.** Per-trace fixed gain + `limit·tanh(x/limit)` soft
+saturation tuned against p99 (decided over a running normaliser, §6) means Dance Yrself Clean
+no longer clips off frame; the meter-free density fade (§5 decision (c)) means Bleed at 172 bpm
+/ 22.9 rules per window no longer reads as graph paper while its rules stay visible. Bleed's
+two traces still collapse (r +0.695) — that is what the material does, measured before the
+render, and it was not chased.
+
+**Gates.** 10 `audio_routes` rows (4 visual behaviours × contributing primitives) all firing on
+all three canonical fixtures; `RouteCoverageTests` green. D-157 flash gate wired at **authoring**
+time per the Meniscus lesson: **MEASURED, 0.00 flashes/s, SAFE**. Getting there needed two real
+fixes the `responded` guard caught by refusing to call a static render safe — the tiled drive
+train repeats `features.time` and Stave is the one preset that plots on absolute time; and
+whole-frame mean cannot see traces covering ~2 % of the frame, so the gate now drives the one
+route that CAN change the whole frame (the tint, slammed between extremes every ~0.3 s, ~10×
+faster than real music) and measures whether the 8 s envelope holds it safe. It does.
+`compare_render.sh` per-trait table and `motion_gate.sh` verdict (0 spikes / 0 frozen on three
+captures, read as a sequence) are in the closeout.
+
+**Also fixed, not Stave-specific:** `compare_render.sh` now finds SYMLINKED reference images.
+Reference imagery is gitignored repo-wide, so in a worktree it is symlinks into the primary
+checkout (`link_fixtures.sh` / WTFIX.1) and a bare `find -type f` found none — dying with "no
+reference images", which reads as an un-curated reference set rather than a worktree artefact.
+That would mis-fire for every preset session run in a worktree.
+
+**Next:** CHR.4 — Matt's live M7, then certification. Nothing in this increment claims the
+preset is certified.
+
 ### Increment CHR.1.3 — Stave: the design-doc half CHR.1 withheld ✅ (2026-08-14)
 
 **Docs + reference curation only. No shader, no sidecar, preset count stays 28.** Unblocks
