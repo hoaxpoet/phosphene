@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-090 | P2 · **evidence-only, filed 2026-08-17; no fix attempted** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
 | BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
@@ -63,6 +64,88 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-091 — A single local file selected: preparation succeeds, playback never starts, every audio field is exactly zero (2026-08-17)
+
+**Status: instrumentation increment landed. Root cause NOT asserted — one reproduction with the
+new breadcrumbs will name the branch.**
+
+**Expected.** Selecting one local file plays it: `LocalFilePlaybackProvider` starts via
+`audioRouter.start(mode: .localFilePlayback(url))`, the AVAudioEngine node tap feeds the chain
+(BUG-087: ~10–16 Hz on this path), `playback_time_s` advances, and no Core Audio **process** tap
+is installed.
+
+**Actual** (`2026-08-17T17-19-19Z`, *03- Carry The Zero.flac*): 1262 frames / 84 s of render
+clock, and every audio-derived field holds **exactly one distinct value, 0.0**:
+
+| field | distinct values | value |
+|---|---|---|
+| `playback_time_s`, `track_elapsed_s`, `accumulatedAudioTime` | 1 | 0.0 |
+| `bass`, `mid`, `treble`, `pulse_amp01`, `beatPhase01`, `spectral_level_rise` | 1 | 0.0 |
+| `time` (render clock) | 1262 | advances normally |
+
+So this is not a frozen playback clock with audio flowing, nor a stalled renderer: **no audio
+samples ever reached the analysis chain.**
+
+**The discriminator — a working session 1.5 h earlier, same file, same OS build (26.5.1 / 25F80).**
+
+| | `16-19-13Z` (works) | `17-19-19Z` (fails) |
+|---|---|---|
+| preparation, BeatGrid, plan | identical | identical |
+| `WIRING: provider.start INSTANCE` | **present** | **ABSENT** |
+| `TAP_BUFFER: requested=1024 delivered=4410 (10 Hz)` — AVAudioEngine node tap | present | absent |
+| `TAP: startCapture → createProcessTap` — system-audio path | **absent** | **present, twice** |
+| gap between preparation and `→ready` | none (same second) | **8 s** |
+| `playback_time_s` span | 0.1 → 34.1 s | 0.0 → 0.0 |
+
+**What that pins down.** `resetStemPipeline(caller: .other)` has exactly ONE call site —
+`handleLocalFileReady()` — and it appears in the failed log. So that function ran, cleared all
+three of its guards (LF source, URL present, not a duplicate `.ready`), reached `buildPlan()`, and
+then never got to the router start.
+
+**Candidate mechanism, deliberately NOT asserted as root cause** (BUG-061: do not infer a cause
+from "the path requires X, so X held"): the `catch` around
+`audioRouter.start(mode: .localFilePlayback(url))` logs via `lfLogger.error` only, then calls
+`sessionManager.endSession()`, which sets `currentSource = nil`. With no local-file source,
+`startAudio()`'s LF.4 guard — whose own comment warns that `start(.systemAudio)` would
+`stopInternal()` the provider — no longer fires, so the process tap is installed and any provider
+is torn down. That chain reproduces every observation, including the two tap installs and the
+silence, but the first link is unverified.
+
+**Why it could not be verified from the capture, which is a defect in its own right.** Every
+branch in `handleLocalFileReady()` that can end in silence returns without writing to
+`session.log`, and its failure path logs only to `os_log` — which is not retained here: a
+`log show --last 4h --predicate 'subsystem BEGINSWITH "com.phosphene"'` over the failure window
+returns **zero lines**. An 84-second silent session left no evidence of its own cause.
+
+**Instrumentation added (this increment, no fix):**
+- every early return in `handleLocalFileReady()` names itself in `session.log`, with the actual
+  `currentSource`, `isLocalFile` and URL;
+- the `router as? AudioInputRouter` cast — which silently gated the *entire* start — is now a
+  logged `guard`;
+- the LF start failure writes the error text and the `→ endSession` consequence to `session.log`;
+- `startAudio()` logs which path it took **and what `currentSource` was** when it chose the tap;
+
+**⚠ A sixth breadcrumb was attempted in `AudioInputRouter.start(mode:)` and ABANDONED — twice
+over, for two independent reasons worth recording.** (1) It first read `activeMode` to report
+"replacing=<previous mode>". `activeMode` takes the router's `NSLock`, `start()` is reachable from
+the file-ended completion path that already holds it, and NSLock is not recursive — **all three
+`SessionLifecycleChurnTests` watchdogs timed out at 5 s. A LOG LINE caused a hang-class failure,
+and the churn suite is the only reason it did not ship.** Never take a lock in `start()`.
+(2) The lock-free version was then dropped as well: `AudioInputRouter.swift` sits at **exactly**
+its 400-line lint cap, so any addition needs a file split, and the line was redundant anyway —
+`startAudio()`'s new breadcrumb plus the existing `TAP: startCapture` lines already identify the
+mode. If a future increment does need it there, split the file rather than trimming a comment.
+
+**Verification criteria (written before any fix):**
+1. Automated: a regression test that drives `handleLocalFileReady()` with a local-file source and
+   asserts the router ends in `.localFilePlayback` mode — and that a subsequent `startAudio()`
+   does NOT replace it with `.systemAudio`.
+2. Manual (required — this is a UX-flow and audio-path defect): select a single local file, confirm
+   audible playback, and confirm the capture shows `provider.start INSTANCE`, a `TAP_BUFFER` node-tap
+   line, no `createProcessTap`, and `playback_time_s` advancing.
 
 ---
 
