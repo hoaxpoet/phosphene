@@ -5373,3 +5373,47 @@ Confidence fusion + FeatureVector plumbing (D-D), D-154 binary gate → graded s
 Beat This! final0 offline A/B on all suites; adopt only if deltas justify weight/prep cost (D-E). 1–2 sessions, any time after GT.3. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
 
 - **MDL.1 — final0 offline A/B ✅ (2026-07-31). ❌ NOT ADOPTED — D-E resolved as D-208 (Matt 2026-07-31).** Done-when met: A/B table committed at [`docs/diagnostics/MDL1_FINAL0_AB_2026-07-31.md`](diagnostics/MDL1_FINAL0_AB_2026-07-31.md). final0 converted (161 tensors, **20,253,104 params / 81 MB**, matching the plan) and run through the **real MPSGraph path** — D-E asks about prep latency, which the PyTorch reference cannot measure. Weights deliberately **not vendored**; `BeatThisModel(device:variant:weightsDirectory:)` loads them externally. **Result: meter correct 2/6 for BOTH** (final0 gains bohemian_rhapsody, loses bleed — a trade), mean downbeat:beat ratio 0.494 → 0.475 (4 %, and inconsistent: money improves 0.90 → 0.59 while solsbury_hill 0.69 → 0.87 and take_five 0.41 → 0.58 get worse), at ~10× the weight size and ~1.3× steady-state inference. **`bleed` — the suite-4 case the plan expected final0 to fix — regresses** (BPM doubles 115.00 → 259.43, meter 4 ✓ → 2 ✗). **Corollary, which matters more than the decision: the evidence ceiling DBN.2 hit is NOT a capacity problem.** Scaling the same model family does not produce a cleaner downbeat stream, so categories 2 and 4 need a changed premise rather than a bigger checkpoint. Caveat recorded in the doc: no final0 layer-match fixture exists, so the port is unverified — build one before adopting against this recommendation.
+
+### Increment CHR.3j — BUG-092: a source EMA outlived its reason, and Witchlight's hero driver returns ✅ code-complete ⚠ awaiting M7 (2026-08-17)
+
+**One line of behaviour changed: `TonalAnalyzer` now emits `phaseFifths` RAW.** `FTR.3g`
+(2026-08-04) added a vector EMA there because Fractal Tree read the field straight into hue;
+`FTR.19`/D-209 (2026-08-16) gave Fractal Tree its own `CircularPhaseSmoother`, superseding that
+reason, but the source EMA stayed. All four consumers (Witchlight 1.5 s, Nacre ~0.9 s, Cymatic
+`hueTau`, Fractal Tree D-209) were therefore smoothing an already-smoothed angle. Witchlight's
+phase travel returns to **2.09 / 1.80 / 15.10** circles against a design of 2.1 / 1.7 / 15.4,
+from a double-smoothed 0.72 / 1.00 / 3.77. Suite **1862/1862**, lint 0.
+
+**BUG-090 is resolved as a side effect, and its recorded conclusion was inverted.** CHR.3h had
+split the two failing gates into "Witchlight = stale baseline, Meniscus = real bug". Both were
+real bugs. The regenerated fixtures are now committed, `columnsPostdatingFixtures` is empty, and
+route coverage reads 199 routes / 20 presets, 0 red.
+
+**The transferable failure, and it is a reasoning failure rather than a coding one: a mechanism
+that predicts the DIRECTION of a change was accepted as an explanation for its MAGNITUDE.**
+FTR.3g does predict less phase travel, so "the constant predates the change" fitted — and
+nothing asked whether **4×** was the size one extra smoothing stage should produce. The check
+that settled it was one command (regenerate with the source EMA disabled, read the number) and
+it inverted the conclusion. Re-deriving the target instead would have written a regression into
+the design doc as the new truth, on a certified preset, with the gate built to catch exactly
+this failure reporting green.
+
+**A second-order catch worth keeping: the fixture generator runs the analyzer at 43.07 Hz while
+live analysis runs at 10.0–16.4 Hz (BUG-087).** A fixed per-frame α therefore means a different
+time constant offline than in production (0.36 s vs ~0.94–1.54 s), so the first draft of this
+increment's write-up wrongly called the source comment "stale, off by 4×" from fixture-rate
+numbers. It was accurate for production. This is why the fix belongs at the consumers, which
+smooth on `deltaTime`: their behaviour is identical at any analysis rate, and that rate is
+actively moving.
+
+**Still open, and NOT unblocked by this.** Stave's `waveformOccupancy` route was recorded as
+blocked by BUG-090; it is not. The regenerated fixtures carry `waveform_occupancy` but it is
+0.0000 with zero variance on all three tracks, because the model is ticked in the render path
+while the generator runs only the MIR pipeline — the QG.1.1 limitation. Stave stays
+`certified: false`; the fix is a generator change, not a preset or fixture change.
+
+⚠ **Witchlight is CERTIFIED and this changes its motion — an M7 is required.** Note the order:
+FTR.3g 08-04 → Witchlight certified 08-07 → FTR.19 08-16. Matt's certification M7 was on the
+double-smoothed build, so this moves the preset *away* from what he signed off and *toward* its
+design doc. Nacre is the opposite case (certified 2026-06-26, before FTR.3g), so for Nacre this
+restores the behaviour it was certified with.
