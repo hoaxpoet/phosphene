@@ -1,139 +1,144 @@
 # Visual References — Stave
 
-**Family:** waveform — beat-ruled plotting register
-**Render pipeline:** particles (CPU history rings → line/ribbon strips) + feedback
-**Rubric:** lightweight — a flat 2D plot with no lighting, no G-buffer and no material
-stack, so the full rubric's ≥3-distinct-materials gate is unreachable by construction.
-Same reclassification and reasoning as Fractal Tree (D-212 / FTR.1) and the
-Waveform / Plasma / Spectral Cartograph precedent.
-**Last curated:** 2026-08-14 (CHR.1.3, rendered by Claude Code from the butterchurn
-built-in against real music). Matt's read comes at M7, on a render — not on these
-annotations.
+**Family:** waveform — spectral dispersion of the live signal
+**Render pipeline:** particles (CPU band split → one fullscreen dispersion pass) + feedback
+**Rubric:** lightweight — a 2D luminous plot with no lighting, no G-buffer and no material
+stack, so the full rubric's ≥3-distinct-materials gate is unreachable by construction. Same
+reclassification as Fractal Tree (D-212 / FTR.1) and the Waveform / Plasma precedent.
+**Last curated:** 2026-08-17 (CHR.3f) — **fully recurated after the CHR.3b rebuild.**
 
-**Target:** a Phosphene uplift inspired by the Milkdrop preset **`Martin - charisma`**
-(butterchurn built-in, 1 of 100 in the curated legends set). MD.6 inspired-by uplift #8.
+> ## ⚠ This set replaces the one curated at CHR.1.3, which described a different preset
+>
+> The original set was five renders of the Milkdrop source `Martin - charisma` — beaded cyan
+> traces on a ruled field — and it was the target for a Stave that scrolled an 8 s history
+> plot. Matt's M7 rejected that preset outright (*"deeply boring"*), and the rebuild replaced
+> its subject entirely. Comparing the current preset against those images produced FAILs by
+> design, which makes the gate useless rather than strict.
+>
+> **Every image here is now an in-engine capture of the shipped build** (D-065 permits real
+> photography or in-engine capture), and **every anti-reference is a real measured failure**
+> from CHR.3b–e with the exact config that reproduces it. None is hypothetical.
 
 ## Target read
 
-A **beat-ruled plotting field**. Dotted luminous traces wander across a field ruled in both
-axes, under a hazy atmosphere, with star sparkles scattered through it and the whole field's
-colour drifting slowly. The traces are the fast, literal channel — they plot the music now.
-Everything behind them is slow.
+**The visible light spectrum aligned to the frequency spectrum.** The live waveform is split
+into eight bands and each is drawn in the colour of its own frequency — 82 Hz at 662 nm deep
+red, through amber, green and cyan, to ~11 kHz at 404 nm violet. One pass across the visible
+band, compressed rather than octave-wrapped. The colour is never a label: a red curve **is**
+low frequency, instantaneously and by construction.
 
-**The concept sentence, post-D-216:** *low against high, ruled by the beat, in a room the
-stems tint.* Two traces — rhythm (`subBass+lowBass`) against melodic
-(`midHigh+highMid+high`) — plot band energy in time on a grid whose vertical rules are the
-actual beat. The stems do **not** touch the traces; they tint the field. See
-`target_animated.gif` for the source's motion (real-music-driven, 12 s of Dance Yrself
-Clean from the `beat-match-test-session` tap).
+Bands are offset by wavelength so the spectrum separates the way a prism separates light — red
+deviating least, violet most — and **that separation is driven by how much signal is on
+screen**, so the spectrum opens and closes with the music.
+
+Concept in Matt's words, 2026-08-16: *"align the visible light spectrum to the frequency
+spectrum for this preset."*
 
 ## Reference images
 
-Numbered in priority order. See `../_NAMING_CONVENTION.md`. Images are **gitignored
-repo-wide** (0 tracked under `docs/VISUAL_REFERENCES/`), so a fresh checkout has the
-annotations but not the pictures — regenerate them with the §Provenance commands.
+Numbered in priority order. See `../_NAMING_CONVENTION.md`. Images are **gitignored repo-wide**
+(0 tracked under `docs/VISUAL_REFERENCES/`), so a fresh checkout has the annotations but not
+the pictures — regenerate with the §Provenance commands.
 
 | File | Annotation (what to learn from this image) |
 |---|---|
-| `01_macro_dotted_traces_on_grid.png` | The composition. A **horizon**: hazy atmosphere in the upper half, traces inhabiting a band across the lower-middle, near-black beneath. The field is ruled in **both axes** — warm/orange horizontals, violet verticals — and star sparkles are scattered through the whole frame. Note the traces are **many** in the source (4–8 overlapping); Stave draws **two** (CHR.1 re-scope). ⚠ Trust this for *composition and layering*, not for trace count. |
-| `02_meso_bead_spacing.png` | The hero detail: traces are **discrete beads, not solid lines**. Both bead **size** and **spacing** vary along a single trace, beads carry soft glow halos, and several traces overlap and cross freely. This is the single trait that most separates the target from a plain line plot — see the anti-reference. |
-| `03_palette_field_hue_drift.png` | Four frames across the clip. The **field** hue drifts (teal → violet/magenta → warm orange → green) while the **traces stay cyan** throughout. Colour lives in the field and the sparkles, not in the traces. ⚠ This is why D-216 lands *closer* to the source, not further: the source has no per-trace colour identity either. |
-| `04_specular_star_sparkle_field.png` | Sparkle detail — 4-point star flares with soft halos, in **both warm and cool** hues, over the ruled field, plus soft out-of-focus blobs and a faint cloud texture behind. ⚠ **Corrected during curation:** the sparkles are **scattered**, NOT locked to grid intersections. An earlier reading of the macro frame claimed they sat on grid crossings; the crop refutes it. Do not build a preset that places sparkles at grid nodes. |
-| `05_anti_solid_line_plot.png` | **NOT this.** Our own CHR.2 spike flat control: two thin solid polylines on a bare dark ground with pale verticals. Legible, correctly beat-aligned, and completely lifeless — no beads, no atmosphere, no sparkle, no depth, no colour. This is the accidental output of building the geometry and stopping, and it is the exact gap CHR.3 exists to close. |
+| `01_macro_dispersed_wave.png` | The composition, and the agreed look — this frame is from the build Matt signed off. A near-black ground; a heavy red bass gesture low in the frame; an amber/yellow body through the middle; a fine cyan-violet crest on top. The wave fills most of the vertical area and **touches but never crosses** the frame edge. ⚠ Trust this for overall weight distribution and framing. |
+| `02_meso_band_separation.png` | The hero detail: the bands are **individually legible** and stacked in wavelength order, red lowest through violet highest, each carrying its own copy of the wave. Where they overlap, colour **adds toward white** — that is mixed light, not a blend mode chosen for looks. This separation is what distinguishes the preset from a coloured oscilloscope. |
+| `03_palette_frequency_to_wavelength.png` | Four materials, same mapping: M7 session (guitar rock) / Clair De Lune (solo piano) / Bleed (metal) / Take Five (jazz). ⚠ **The spectrum is weighted, not even.** Reds and ambers dominate every frame because that is where music's energy is; violet arrives as occasional glints. An evenly-lit rainbow means the tilt compensation is wrong — see `06_anti`. Note Clair De Lune's near-flat red band: solo piano genuinely has little below 100 Hz, and the image saying so is correct. |
+| `04_atmosphere_converged_vs_open.png` | The driven dispersion. **Top: Take Five** — quiet, smooth, no transients; the bands converge to a tight bright ribbon. **Bottom: Bleed** — dense; the spectrum opens to full spread. Same code, same settings; only the music differs. If both look alike the spread has stopped responding, which is the `05_anti` failure. |
+| `05_anti_rainbow_layer_cake.png` | **NOT this.** A *fixed* band spacing on quiet material: evenly spaced parallel stripes with barely any wave in them. On smooth quiet audio the wave excursions go small next to the gaps and the dispersion stops being an effect of the music and becomes permanent decoration. Reproduce with `STAVE_RENDER_FANMIN=0.34 STAVE_RENDER_FANMAX=0.34` on Take Five. |
+| `06_anti_equalised_fringe_comb.png` | **NOT this.** Full spectral-tilt compensation (exponent 1.0): every band equalised to the same level, so the top bands arrive as a dense spiky comb and the frame reads as cheap rainbow hair. Reproduce with `STAVE_RENDER_TILT=1.0`. |
+| `07_anti_clipped_off_frame.png` | **NOT this.** No frame knee: peaks run past the viewport and are cut off. Measured 1.42 NDC peak with 27/180 frames overflowing on this clip alone, and 1.53–1.98 across the corpus. Matt's M7 called this out directly. Reproduce with `STAVE_RENDER_KNEE=0`. |
+| `08_anti_no_dispersion.png` | **NOT this.** Zero spread — every band on one axis. It still reads as a coloured waveform, and it is genuinely pretty, but the spectrum no longer separates and the preset loses the thing that makes it what it is. Kept because it is a *tempting* failure, not an ugly one. Reproduce with `STAVE_RENDER_FANMIN=0 STAVE_RENDER_FANMAX=0`. |
+
+`target_animated.gif` — 4 s of the shipped build on the M7 session audio. **Motion is the
+point**: the wave reforms every frame at audio rate. A still cannot show that, and the preset
+this replaced passed still-review while being rejected in motion.
 
 ## Stylization contract
 
 What DOES matter for this preset (substitute for the full rubric):
 
-- [ ] **Beaded traces, never solid lines.** Bead size and spacing both vary along the trace;
-      beads carry a soft halo. A solid polyline fails this preset (`05_anti`).
-- [ ] **Layered depth.** Atmosphere/haze above, ruled field behind, traces in front,
-      sparkles distributed through. A single flat plane fails.
-- [ ] **Colour lives in the field, not the traces.** Traces hold a near-constant cool hue;
-      the field tint drifts. Per **D-216** the field tint is the **stem** channel
-      (`drums+bass` vs `vocals+other`, ~3.0 s latency — invisible at this timescale).
-- [ ] **The grid is the beat.** Vertical rules land on cached `BeatGrid` beats (CHR.2
-      measured median trace-to-beat offset **0 ms** on the band driver). Horizontal rules
-      are the *stave* and are static. This is Stave's divergence from the source, whose
-      grid is decorative — and it is the D-121 axis the source structurally cannot have.
-- [ ] **Readability at silence (D-037).** Field, haze, grid and sparkles persist and drift;
-      the traces flatten toward the centreline but the frame is never black and never frozen.
-      **No autonomous trace motion** — a quiet passage flatlining IS the design.
-- [ ] **Readability at peak energy.** Traces excurse without leaving the frame — CHR.2
-      measured a fixed gain clipping on Dance Yrself Clean, so per-trace normalisation is
-      required — and the field must not white out.
+- [ ] **Colour is frequency, always.** Red is low, violet is high, by construction and with no
+      lag. Nothing else may drive hue — a second colour channel would corrupt the one rule that
+      makes the image readable. (This is why the stem tint was removed, not merely cut.)
+- [ ] **The bands separate, and the separation breathes.** Quiet converges, dense opens. A
+      fixed spread is `05_anti`.
+- [ ] **The spectrum is weighted toward the red end.** Bass-dominant core, top end present but
+      subordinate. An even rainbow is `06_anti`.
+- [ ] **The wave fills the frame without leaving it.** Peaks reach the edge and fold; the body
+      keeps its size. Both halves matter — shrinking the image to fit is as wrong as clipping.
+- [ ] **It is the actual signal.** Drawn from the live waveform buffer every frame, not a
+      smoothed envelope. The preset's own history is the warning: it was `family: waveform` and
+      read no waveform at all.
+- [ ] **Readability at silence (D-037).** The ground persists; the wave flattens to a line and
+      the spread returns to rest. Silence is flat *and* not black — no autonomous motion.
 
 ## Anti-references
 
 What this preset must NOT look like:
 
-- **A solid-line oscilloscope or graph** (`05_anti_solid_line_plot.png`). The failure mode
-  a shader session produces by default. Beads and atmosphere are the difference.
-- **Graph paper.** CHR.2 measured Bleed at 22.9 gridlines per 8 s window (172 bpm) — above
-  roughly 150 bpm the beat rules stop reading as a pulse and start reading as ruling.
-  Needs a density treatment, decided in CHR.3.
-- **Sparkles pinned to grid intersections** — see the `04` annotation. Scattered, not nodal.
-- **Per-trace instrument colour-coding.** Retired by **D-216**: the colour is ~3 s behind
-  the mark it would be labelling, and hue assigned by frequency band asserts instrument
-  identity even on material where those instruments do not exist. The source does not do
-  this either.
-- **A moving/drifting field that animates on its own.** The traces' motion is the signal.
-  Adding ambient motion "so it isn't boring" is the failure this source was chosen to avoid.
+- **A static rainbow layer cake** (`05_anti`) — the dispersion stops responding.
+- **An equalised fringe comb** (`06_anti`) — cheap rainbow, the failure mode a naive
+  frequency→hue mapping produces by default.
+- **Clipped, running off-frame** (`07_anti`) — rejected at M7.
+- **Flat, undispersed** (`08_anti`) — pretty, and still wrong.
+- **A scrolling plot on a ruled field.** The retired preset: an 8 s history window, beat
+  verticals, static horizontals, star sparkles, a stem-tinted field. Rejected at M7 on
+  2026-08-16 (*"deeply boring"*, *"what is the purpose of the horizontal and vertical grid
+  lines?"*, *"why the starry background"*). No image is kept — the code is deleted and it is not
+  worth resurrecting to photograph — but nothing here should ever scroll, rule the field, or
+  decorate it.
 
 ## Audio routing notes
 
-Per **D-216**, one primitive per visual layer (FA #67), split by timescale:
+| Visual layer | Driver | Timescale |
+|---|---|---|
+| The wave itself, all eight bands | the raw waveform buffer (slot 2), band-split on the CPU | per frame |
+| Band spread (the dispersion) | `waveformOccupancy` (CHR.3c) | ~0.12 s smoothing over a 20 s per-band envelope |
+| Band colour | **not audio-driven** — fixed by physics, `centreHz → nm` | constant |
 
-| Visual layer | Driver | Timescale | Evidence |
-|---|---|---|---|
-| Rhythm trace position | `subBass + lowBass`, each EMA-centred (FA #31) | ~0.3 s | CHR.2: median trace-to-beat offset 0 ms |
-| Melodic trace position | `midHigh + highMid + high`, each EMA-centred | ~0.3 s | as above; needs **per-trace gain**, std is 4.4–17.5× below rhythm |
-| Vertical rules | cached `BeatGrid` beat times | in-time | CHR.2: derived rate matches `grid_bpm` exactly (71/71, 97/98, 172/174.6) |
-| Field tint | stems — `drums+bass` vs `vocals+other` | ~3.0 s | D-216; latency-invisible on a slow surface, fatal on a mark |
-
-**Never on a trace:** any per-stem quantity. CHR.2 measured `r(position, colour)` at
-**−0.15…+0.25** at the moment a mark is drawn.
-
-**Known unfixable:** Bleed collapses the two traces into one band (`r +0.695`). It is what
-the material does; do not spend rounds on it.
+⚠ **`audio_routes` is empty and that is deliberate.** The preset's driver is the waveform
+buffer, and `waveformOccupancy` — created for exactly this — cannot yet be asserted because the
+committed `route_coverage` fixtures predate the column. See **BUG-090**. Declaring routes the
+gate cannot prove would be worse than declaring none, and this blocks certification.
 
 ## Provenance
 
-**Source:** `Martin - charisma`, a **butterchurn built-in** (`butterchurn-presets` npm
-package, 1 of 100 in the curated legends set). `source_form: butterchurn_builtin`.
-**sha256 of the artifact actually read:**
-`c8d00412887028bb4b4a6ae79c818c89634a270625aced9584cb1cd04a11c30e`
-(SHA-256 of the extracted `{"preset": …}` JSON, 9 073 bytes.)
+**Source lineage:** `Martin - charisma`, a butterchurn built-in (`butterchurn-presets` npm,
+1 of 100 in the curated legends set). `source_form: butterchurn_builtin`, sha256
+`c8d00412887028bb4b4a6ae79c818c89634a270625aced9584cb1cd04a11c30e`, committed as
+`source_preset.json` following the Nacre precedent.
 
-The source JSON is committed as `source_preset.json`, **following the Nacre precedent**
-(`docs/VISUAL_REFERENCES/nacre/` commits its own, as do the other shipped inspired-by sets).
-D-116 bullet 4 names `.milk` files and the pack at its source URL; a butterchurn built-in is
-MIT-licensed npm package content, and D-215 requires the sha256 *of the artifact actually
-read*, which presumes the artifact stays identifiable. Consistency across reference sets
-beats a one-off conservative reading.
+**Divergence (D-121).** The rebuild moved *toward* the source on one axis and far away on
+another. The source's traces are waveform-driven per-frame geometry, and so are Stave's now —
+the first Stave's scrolling history ring was the anomaly. Stave diverges on **palette
+character** (frequency mapped to physical wavelength, which the source does not do) and on
+**primary feature stack** (the amplitude-driven dispersion). Both are measurable side by side.
 
-**Regenerate the reference renders:**
+**Regenerate every image in this set** — all are in-engine captures of the shipped build:
 
 ```sh
-cd tools/milkdrop-render
-npm install butterchurn butterchurn-presets milkdrop-preset-converter puppeteer
-# real music — 12 s of Dance Yrself Clean from the corpus tap (render clock t = tap t + 231.5)
-ffmpeg -ss 3150 -t 12 -i ~/Documents/phosphene_sessions/beat-match-test-session/raw_tap.wav \
-  -ac 1 -ar 22050 -y music.wav
-# extract the built-in to a scratch file (do NOT write it into the repo), then:
-node render-gif.js /tmp/stave_refs "<scratch>/Martin - charisma.json"
+STAVE_RENDER_WAV=~/Documents/phosphene_sessions/2026-08-17T16-19-13Z/raw_tap.wav \
+STAVE_RENDER_OUT=/tmp/ref/m7 STAVE_RENDER_START=12 STAVE_RENDER_SECONDS=4 \
+STAVE_RENDER_W=1280 STAVE_RENDER_H=720 \
+  swift test --package-path PhospheneEngine --filter renderStaveSequence
 ```
 
-Frames used: `01` = n28, `02` = n24 cropped `210:110:20:150`, `03` = n5/22/40/57 tiled 2×2,
-`04` = n30 cropped `190:150:120:20`. `05` is our own CHR.2 spike
-(`StaveLookSpike`, `STAVE_COLOUR=0`), not source-derived.
+`03` tiles frame 0150 from four clips (M7 session t=12, Clair De Lune t=150, Bleed t=200, Take
+Five t=120); the corpus clips are cut from `beat-match-test-session/raw_tap.wav` at offsets
+5011 / 3703 / 1283 s. `04` stacks Take Five over Bleed. Anti-references use the same command
+plus the one override named in each row above.
 
 ## Curation notes
 
-- **Trace count.** The source runs 4–8 overlapping traces, but they are one undifferentiated
-  cyan mass — a *texture*, not voices. Stave draws **two driven traces** (the most CHR.1
-  measured as separable) plus optional non-semantic ghost companions for density. See
-  `STAVE_DESIGN.md` D2.
-- **One reading corrected during curation** — the `04` annotation. Recorded rather than
-  silently fixed, because the macro frame really does suggest nodal sparkles and the next
-  reader will make the same mistake.
+- **The whole set is in-engine, and that is a deliberate choice.** The concept is a physical
+  mapping rather than an imitation of an artwork, so the honest target is the agreed render.
+  Matt's M7 sign-off on 2026-08-17 is what makes `01`/`02` authoritative rather than
+  self-referential.
+- **Anti-references are reproducible failures, not sketches.** Each is a state this preset
+  actually passed through and was measured in, and the harness keeps env overrides
+  (`STAVE_RENDER_TILT` / `_FANMIN` / `_FANMAX` / `_KNEE`) specifically so they can be
+  regenerated rather than remembered.
+- **One image was deliberately not made:** the retired scrolling plot. Its code is deleted, and
+  rebuilding it to photograph a preset nobody should imitate is not worth the increment.

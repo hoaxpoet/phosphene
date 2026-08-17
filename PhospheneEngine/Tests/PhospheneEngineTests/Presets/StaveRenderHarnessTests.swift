@@ -51,7 +51,10 @@ struct StaveRenderHarnessTests {
     private static func makeSubject(_ ctx: MetalContext, sampleCount: Int = 1024,
                                     sampleRate: Float = 48_000,
                                     zoom: Float? = nil,
-                                    frameKnee: Float? = nil) throws -> Subject {
+                                    frameKnee: Float? = nil,
+                                    tilt: Float? = nil,
+                                    fanMin: Float? = nil,
+                                    fanMax: Float? = nil) throws -> Subject {
         // Fall back to the PRODUCTION defaults, never to hardcoded numbers — a harness that
         // supplies its own defaults silently tests something the app does not ship.
         let shipped = StaveConfiguration(sampleRate: sampleRate)
@@ -70,6 +73,9 @@ struct StaveRenderHarnessTests {
         let geometry = try StaveTrace(device: ctx.device, library: lib.library,
                                       waveform: waveform,
                                       configuration: StaveConfiguration(sampleCount: sampleCount,
+                                                                      tilt: tilt ?? shipped.tilt,
+                                                                      fanMin: fanMin ?? shipped.fanMin,
+                                                                      fanMax: fanMax ?? shipped.fanMax,
                                                                       zoom: zoom ?? shipped.zoom,
                                                                       frameKnee: frameKnee ?? shipped.frameKnee,
                                                                       sampleRate: sampleRate),
@@ -184,7 +190,13 @@ struct StaveRenderHarnessTests {
             ctx,
             sampleRate: audio.sampleRate,
             zoom: env["STAVE_RENDER_ZOOM"].flatMap(Float.init),
-            frameKnee: env["STAVE_RENDER_KNEE"].flatMap(Float.init))
+            frameKnee: env["STAVE_RENDER_KNEE"].flatMap(Float.init),
+            // Overrides exist so the reference set's ANTI-references stay reproducible: each
+            // one is a real measured failure from CHR.3b–e, not a hypothetical, and the
+            // README records the exact settings that regenerate it.
+            tilt: env["STAVE_RENDER_TILT"].flatMap(Float.init),
+            fanMin: env["STAVE_RENDER_FANMIN"].flatMap(Float.init),
+            fanMax: env["STAVE_RENDER_FANMAX"].flatMap(Float.init))
         let texture = try HarnessTemplateCore.makeCaptureTexture(ctx, width: width, height: height)
         let sampleCount = subject.geometry.configuration.sampleCount
         let wavePtr = subject.waveform.contents().bindMemory(to: Float.self, capacity: sampleCount * 2)
