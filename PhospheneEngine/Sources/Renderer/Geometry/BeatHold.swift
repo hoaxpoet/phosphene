@@ -114,6 +114,26 @@ public struct BeatHold: Sendable {
     /// stillness **46.5 % → 20.9 %**, against an 18.8 % floor set by the analysis rate itself,
     /// with the value's span unchanged (0.528 → 0.519).
     ///
+    /// ── FTR.23: THE FIRST τ WAS 3.5× TOO SLOW, AND MY METRIC HID IT ─────────────────────
+    /// FTR.22 shipped 0.35 beat with boost 3, i.e. an effective mean τ of 567 ms against
+    /// FTR.18's 162 ms. Matt: *"Now it barely moves."* The stillness figure had improved
+    /// (46.5 % → 14.8 %) because it was expressed as a fraction of frames below 2 % of **its own
+    /// PEAK velocity** — and the peak had collapsed 44 % (0.500 → 0.281). A metric normalised by
+    /// its own peak cannot detect the whole signal getting slower. Absolute travel is the bar:
+    ///
+    ///     build                        total travel   peak |v|   stillness
+    ///     FTR.18 (rejected: robotic)       3.09         0.500       40.2 %
+    ///     FTR.22 (rejected: barely moves)  2.78         0.281       14.8 %
+    ///     FTR.23 (0.12 beat, boost 1.0)    3.27         0.455       22.1 %
+    ///
+    /// So the shipped constants give MORE total motion than the build Matt called robotic, a peak
+    /// within 9 % of it, and roughly half its stillness.
+    ///
+    /// **τ HAS A FLOOR: the analysis tick.** The source updates ~15.8 times a second on this
+    /// capture (63 ms), so τ below that converges inside one tick and the value becomes a
+    /// staircase again — the FTR.13 trap. 0.12 beat is 78 ms, comfortably above it; 0.08 beat
+    /// (52 ms) is not, which is why the faster candidates were rejected despite better numbers.
+    ///
     /// Note the earlier burstiness check (FTR.14) passed this build at 0.101 empty windows: it
     /// measured DISPLACEMENT per 100 ms window, not velocity, and on the trunk rather than the
     /// branch count that carries 26× the coefficient. Wrong quantity twice — see
