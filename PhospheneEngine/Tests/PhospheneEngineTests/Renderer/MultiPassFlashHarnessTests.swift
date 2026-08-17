@@ -129,72 +129,18 @@ struct MultiPassFlashHarnessTests {
                         luma: try flashLuma("Witchlight", frames: 1800, harmonicMotion: true))
     }
 
-    @Test("Stave is flash-safe (beaded traces + slow tint wash, real headless render)")
+    @Test("Stave is flash-safe (spectral dispersion of the waveform, real headless render)")
     func stave_isFlashSafe() throws {
         // Wired at AUTHORING time, not at certification — the Meniscus lesson. Stave is
-        // `certified: false` and this gate runs anyway, so a flash regression is caught while
-        // the preset is still being shaped rather than at the certification gate.
+        // `certified: false` and this runs anyway.
         //
-        // Settled past the 8 s history window (and the tint's 8 s EMA) so what is measured is
-        // the steady scrolling plot, not the window filling from empty. Structurally Stave is
-        // a low-flash design: the traces translate continuously rather than stepping, the
-        // sparkle twinkle is sub-Hz and per-cell phase-offset so the field never pulses in
-        // unison, and the field tint moves on an 8 s envelope. The beat rules are the only
-        // per-beat element and they are thin, dim, and density-faded.
-        // ⚠ NOT the tiled train. `tile()` repeats the drive array verbatim, so `features.time`
-        // resets to 0 on every repeat — and Stave is the one preset here that plots on
-        // ABSOLUTE time (a time-series needs a uniform axis). Under the tiled train its ring
-        // was pruned on every wrap and the render came out static at Δ0.001, which the
-        // `responded` guard correctly refused to call safe. A single long monotonic train is
-        // the fix; the per-frame drive is byte-identical to the shared one, only longer.
-        //
-        // ⚠ The stem train is Stave-specific, and this is the substantive half of the gate.
-        // The shared whole-frame-mean measure cannot see Stave's traces at all: the beads
-        // cover roughly 2 % of the frame, so a full-scale trace excursion moves the mean by
-        // far less than the `responsiveLumaRange` bar (measured Δ0.001). That is the harness's
-        // documented full-frame-mean blind spot, not a static render — and it is also the
-        // reason the traces are not the flash risk: an element that cannot move the frame
-        // mean cannot flash it. The one route that CAN change the whole frame is the D-216
-        // tint wash, so the worst case drives THAT: the drums+bass share is slammed between
-        // its extremes every ~0.3 s, roughly 10x faster than any real music reverses its stem
-        // balance. What this measures is whether the 8 s tint envelope holds that down to a
-        // safe rate. Accepting a whole-frame-static render here would have been the vacuous
-        // pass the `responded` guard exists to prevent.
-        let beat = FlashHarnessSupport.worstCaseBeatTrain(seconds: Self.staveDriveSeconds)
-        let stems = Self.staveWorstCaseStems(seconds: Self.staveDriveSeconds)
-        let luma = try harness.render(preset: "Stave", features: beat, stems: stems, settle: 0) {
-            FlashHarnessSupport.meanRelativeLuminance($0)
-        }
-        // Drop the first 8 s: that is the history window FILLING from empty, which is a
-        // one-off startup ramp rather than the steady plot whose flash behaviour is the
-        // question. (A `settle` pass cannot do this job — it wraps `i % drive.count` and
-        // would reset the clock the same way the tiling did.)
-        let steady = Array(luma.dropFirst(Int(8.0 * FlashHarnessSupport.fps)))
-        assertFlashSafe(name: "Stave", luma: steady)
-    }
-
-    /// Long enough that the 8 s history window and the 8 s tint EMA both settle and leave a
-    /// substantial steady stretch to measure.
-    private static let staveDriveSeconds = 30.0
-
-    /// The worst case for Stave's only whole-frame audio route: a stem balance that reverses
-    /// completely every ~0.3 s. Real music does not do this — the corpus's fastest measured
-    /// section-scale reversal is on the order of tens of seconds — so a safe result here is a
-    /// comfortable margin rather than a near miss.
-    private static func staveWorstCaseStems(seconds: Double) -> [StemFeatures] {
-        let base = FlashHarnessSupport.worstCaseStemTrain(seconds: seconds)
-        let flipPeriod = FlashHarnessSupport.fps / FlashHarnessSupport.accentHz
-        return base.enumerated().map { index, stem in
-            var s = stem
-            let rhythmLed = (Double(index) / flipPeriod).truncatingRemainder(dividingBy: 2.0) < 1.0
-            // Total energy held constant across the flip so the measurement isolates the
-            // BALANCE (what the tint reads) from overall loudness.
-            s.drumsEnergy = rhythmLed ? 0.90 : 0.10
-            s.bassEnergy = rhythmLed ? 0.90 : 0.10
-            s.vocalsEnergy = rhythmLed ? 0.10 : 0.90
-            s.otherEnergy = rhythmLed ? 0.10 : 0.90
-            return s
-        }
+        // Stave reads ONLY the waveform buffer, so the worst case lives there rather than in
+        // the shared FeatureVector train: `renderStave` gates broadband noise between full
+        // scale and silence at the accent rate, which is the largest whole-frame luminance
+        // swing the preset can make — the bands sum toward white and the fan opens together.
+        // Real music never does this; a safe result here is a wide margin, not a near miss.
+        assertFlashSafe(name: "Stave",
+                        luma: try flashLuma("Stave", settle: 420, frames: 900))
     }
 
     @Test("Meniscus is flash-safe (continuous band drive + a drop on every beat, real headless render)")
