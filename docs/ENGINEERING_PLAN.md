@@ -2486,6 +2486,66 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.24 — the size becomes TWO layers, and a new primitive to drive the fast one.** ✅
+code-complete, **pending live M7** (2026-08-17) Matt, having read FTR.23's measurement that the
+size driver scores −0.52 at audible events: *"build option 1"* — a slow base plus a small fast
+accent that marks events and decays.
+
+**Two measurement errors in FTR.23's own analysis surfaced first.** ⚠ A global z-score cannot
+see a small accent: z is against the whole signal's sd, which the base's slow swing dominates,
+and maximising a noisy signal over a ±120 ms window REWARDS VARIANCE. Re-measured with a local
+rise plus a specificity control (250 random non-event times), the field ranking inverts —
+`beatMid` **0.83×, below chance** (the `beat*` fields are pulse clocks), `beatBass` 1.02×,
+`spectralFlux` 1.50×, `bassDev` 1.75×. **So FTR.23's closing recommendation — that the only
+candidates left were the beat fields and needed Matt's call on beat-driven growth — was wrong,
+and no such call is needed.** `pulse_amp01`'s apparent 46× is a near-zero-denominator artefact.
+
+The new bar separates known-good from known-bad before being trusted (§7.8's rule): oracle
+3.08×, the seven-times-rejected build 1.53×, a random accent at matched travel 1.11×. Through
+the real composition **every existing-field accent scored WORSE than the base** — a driver that
+also fires between events dilutes specificity.
+
+**`spectral_level_rise` (FeatureVector float 53).** The oracle was one line of DSP away:
+`SpectralAnalyzer` already computes pre-AGC level every frame, but every consumer reads it
+through a **τ 0.76 s** follower, which is exactly what erases a transient. The new field is the
+rise of the UNSMOOTHED level over a 0.15 s trailing MINIMUM, 4→12 dB, instant attack, 0.20 s
+release. Validated on four tracks chosen offline: Seven Nation Army 20.5×, classical guitar
+6.8×, solo piano 4.1×, and dense limited electronica **1.2× — near chance** (the FTR.15 limiter
+mechanism at transient scale). ⚠ It is the same detector as the criterion, so it DEFINES
+"audible event" rather than being validated against one.
+
+**★★★ DUTY CYCLE, NOT GAIN, IS WHAT MAKES AN ACCENT AN ACCENT.** The first calibration (2–6 dB,
+0.35 s release) fired 1.47/s, was non-zero **75 % of the time**, and became a DC LIFT: the size
+term's floor rose 46 % and its span fell 25 % — the FTR.16 *"you fed the preset ambien"* defect
+by a new route. Headroom scaling, `×base` weighting and three gain sweeps all traded alignment
+against the floor MONOTONICALLY, because frequency lifts a floor and amplitude does not.
+Tightening the detector inverted the trade.
+
+**Shipped:** `size = saturate(base + 0.45 · spectral_level_rise · (1 − base))` — **1.53× →
+3.77× event alignment for +25 % travel and −10 % span**, accent LIVE from buffer(0) inside the
+held evaluation, and deliberately NOT on the branch count (quantised; popping it is FTR.13's
+"stuttering"). Rendered, 2.7 mean |Δpixel| between accent 0 and 1.
+
+**⚠ TWO CONFLICTS LEFT RED FOR MATT RATHER THAN TUNED.** (1) The accent breaks **FTR.10's
+trunk-hold contract** — 1.80 turns/beat against the 0.38 bar, since an accent that latches to
+the beat grid cannot mark events. His FTR.10 choice and his FTR.24 choice are mutually exclusive
+on the trunk. Gate left unchanged; changing a metric in the increment it goes red is the FTR.6
+move. **The committed suite is green only because the captures predate the column — that green
+is not evidence.** (2) **`spectral_flux` is still on branch spread against his instruction**:
+removing it drops drive-range response from **1.067 to 0.119** mean |Δpixel| (the spread carries
+**89 %** of this preset's measured energy response) and fails the FTR.2 dead-route gate. The
+instruction was given to free flux for size, which measurement ruled out, so the trade no longer
+exists — and a static canopy makes "no clear connection" worse.
+
+**Also fixed, both found by wiring the route through:** the Swift growth mirror declared a
+`section` parameter and NEVER READ IT, so from FTR.18 to FTR.23 every trunk figure in the report
+modelled a size term the shader had stopped using; and the harness's `BeatHold(glideBeats: 0.25)`
+was FTR.14's latched glide, two increments after production moved to the continuous one. Same
+class as the FTR.19 FifthsSmoother divergence — a harness that repairs or lags an input is not
+replaying production.
+
+**Not certified.** FTR.5 remains Matt's call.
+
 **FTR.23 — retune the continuous glide; FTR.22 shipped 3.5× too slow.** ✅ code-complete,
 **pending live M7** (2026-08-17, merged in [#101](https://github.com/hoaxpoet/phosphene/pull/101))
 Matt on the FTR.22 build (`2026-08-17T12-47-58Z`, *Carry The Zero*): *"Now it barely moves AND the

@@ -170,7 +170,7 @@ Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnaps
 
 | Index | Content | Notes |
 |-------|---------|-------|
-| 0 | `FeatureVector` (192 bytes) | All fragment encoders |
+| 0 | `FeatureVector` (224 bytes — 53 live floats + 3 alignment pads as of FTR.24; the "192" this row carried was stale from before DYN.1/D-178) | All fragment encoders |
 | 1 | FFT magnitudes (512 Float32) | All fragment encoders |
 | 2 | Waveform (2048 Float32) | All fragment encoders |
 | 3 | `StemFeatures` (256 bytes) | All fragment encoders |
@@ -528,6 +528,8 @@ PhospheneEngine/
     DSP.swift               → Module marker (imports only)
     SpectralAnalyzer        → Spectral centroid, rolloff, flux via vDSP
     SpectralAnalyzer+Density → **DYN.1 / DYN.1b.** `spectral_density` (energy fraction above 1.5 kHz, from RAW magnitudes — upstream of the total-energy AGC and the per-band EMA, both of which flatten absolute level AND the ratios between bands) and `spectral_surge` (pre-AGC level through an asymmetric follower: attack ≈ 0.25 s, release τ ≈ 10 s). The surge exists because an arrival is a STEP that persists, and every other field in `FeatureVector` is instantaneous or averaged — a preset can only scale those, and scaling cannot produce a step. Calibration history, including three ways it was got wrong, in `docs/ENGINE/DYN1_CALIBRATION.md`
+    SpectralAnalyzer+Result → the per-frame output type and, more to the point, the measured rationale for each field a preset routes against. Split from `SpectralAnalyzer.swift` at FTR.24 (that file sits against the 400-line budget and the field docs are what grow). Read the `surge` vs `levelRise` pair together before adding a level-derived route: they are the same physical quantity at two timescales, and picking the wrong one has cost this project seven live reviews.
+    SpectralAnalyzer+Density (FTR.24 addition) → **`spectral_level_rise`**, float 53: rise of the UNSMOOTHED pre-AGC level over a 0.15 s trailing MINIMUM, through a 4→12 dB smoothstep, instant attack / 0.20 s release. The TRANSIENT sibling of `spectral_surge` — surge answers "how loud is this passage for this track", this answers "did something just LAND". **Nothing else in `FeatureVector` marks an audible event**, measured against 49 audible events (event-versus-random specificity): `spectral_surge` 0.25× (it moves DOWN when the ear notices — it ranks a 0.76 s follower and a limited master dips in rank as a band arrives), `beatMid` 0.83× *below chance* (the `beat*` fields are pulse CLOCKS), `spectralFlux` 1.50×, `bassDev` 1.75×. ★★★ **Duty cycle, not gain, is what makes an accent an accent**: the first calibration (2–6 dB, 0.35 s) was non-zero 75 % of the time and read as a DC LIFT, raising a consumer's floor 46 % and costing 25 % of its span — the FTR.16 "ambien" defect by a new route — and no consumer-side gain or weighting could repair it, because they all trade alignment against the floor monotonically. Fails on dense limited electronica (1.2×, near chance). Evidence: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §9
     BandEnergyProcessor     → 3-band + 6-band energy, AGC, FPS-independent smoothing
     BandDeviationTracker    → Holds per-band running averages and derives the FeatureVector deviation primitives (bassRel/bassDev/…) against them — the D-026 / MV-1 "drive from deviation, never absolute thresholds" surface.
     ChromaExtractor         → 12-bin chroma (≥500 Hz floor), Krumhansl-Schmuckler key estimation, bin-count normalized

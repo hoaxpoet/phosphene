@@ -413,3 +413,140 @@ Matt sees, so neither was shipped on inference.
 The only fields that mark events cleanly (`beatBass`/`beatMid`, z ≈ +1.00) are beat-locked: they
 carry the Layer-4 accent-only constraints **and** Matt's twice-stated rejection of beat-driven
 growth at FTR.3. That route needs his explicit call, not my recommendation.
+
+---
+
+## 9. Addendum 2026-08-17 (FTR.24) — the size gets a second layer, and the metric that made §8 look impossible
+
+§8 concluded that one term on one visual layer cannot be both event-aligned and low-travel,
+and offered Matt two ways out. He chose **option 1: split size into a slow base plus a small
+fast accent.** Building it turned up two measurement errors in §8 itself.
+
+### 9.1 ⚠ A GLOBAL z-SCORE CANNOT SEE A SMALL ACCENT — §8's flux verdict was measured wrong
+
+§8 ranked candidates by mean z-score at event times, where z is against the WHOLE signal's
+standard deviation. That statistic is structurally blind to the design it was being used to
+evaluate: the base's slow section swing dominates the standard deviation, so a deliberately
+small accent moves z by almost nothing no matter how well aligned it is. Worse, maximising a
+noisy signal over a ±120 ms window **rewards variance**, so §8's ranking put the highest
+scores on the fastest, noisiest fields.
+
+Both §8 tables should be read with that in mind. The corrected criterion is a **local rise
+with a specificity control**: the value at the event minus its own value 100–300 ms earlier,
+divided by the same statistic at 250 random NON-event times (≥ 0.6 s from any event). Ratio
+> 1 means the visual moves more when a sound lands than when one does not.
+
+That bar is admissible because it separates known-good from known-bad, which is the test §7.8
+says a new metric must pass before it is trusted:
+
+| build | evt/rand |
+|---|---|
+| ORACLE — a perfect event detector as the accent | **3.08×** |
+| FTR.23 shipped — the build Matt rejected 7× | 1.53× |
+| a RANDOM accent at matched travel (specificity control) | 1.11× |
+
+### 9.2 The §8 field ranking, re-measured with the control
+
+The order changes completely, and the fields §8 nominated turn out to be the worst of them:
+
+| field | §8 rank (z) | corrected (evt/rand) |
+|---|---|---|
+| `spectral_section_ratio` | +0.71 | 1.80× *(but rise/sd 0.016 — negligible amplitude)* |
+| `bassDev` | +0.91 | **1.75×** |
+| `spectralFlux` | +0.94 | 1.50× |
+| `arousal` | +0.05 | 1.31× |
+| `beatBass` | **+0.99** | 1.02× |
+| `beatMid` | **+1.00** | **0.83× — BELOW CHANCE** |
+| `spectral_density` | −0.41 | 0.32× |
+| `spectral_surge` *(the driver)* | −0.52 | 0.25× |
+
+**★★ The beat fields are not event markers at all.** They scored top on z purely because they
+are high-variance saturating pulses — which this project's own notes already said (`beat_mid`
+is *"a CLOCK, not music"*). §8's closing recommendation — that the only remaining candidates
+were `beatBass`/`beatMid` and needed Matt's call on beat-driven growth — was therefore wrong,
+and no such call is needed. `pulse_amp01` appeared to score 46× and is a near-zero-denominator
+artefact: its mean rise at random times is ~0 because it is periodic, so the ratio explodes.
+Always read the numerator before believing a ratio.
+
+Through the full composition, **every existing-field accent scored WORSE than the base it was
+added to** (`bassDev` 1.14–1.22×, flux 1.26–1.40×, the mix 1.18–1.24×, against 1.53×): a driver
+that also fires between events dilutes specificity rather than adding it. §8's structural
+conclusion survives its own broken metric — no existing field can drive this layer.
+
+### 9.3 What the accent needed was a new primitive, and it was one line of DSP away
+
+The oracle is not exotic: it is a fast rise in pre-AGC level. `SpectralAnalyzer` already
+computes that level every frame (`LoudnessProfile.levelDB`, Parseval, pre-AGC) — it was simply
+never exposed unsmoothed. Every existing consumer reads `smoothedLevelDB`, **τ 0.76 s**, and
+that follower is precisely what erases a transient; `spectral_surge` ranks it, which is the
+whole mechanism behind its 0.25×.
+
+`spectral_level_rise` (FeatureVector float 53): rise of the UNSMOOTHED level over a 0.15 s
+trailing MINIMUM, mapped through a 4→12 dB smoothstep, instant attack, 0.20 s release.
+
+Validated on four tracks chosen offline for different production, plus two captures:
+
+| material | evt/rand | detector fires |
+|---|---|---|
+| Seven Nation Army (sparse rock) | 20.5× | 1.32/s |
+| Brouwer — solo classical guitar | 6.8× | 1.04/s |
+| Beethoven Op. 13 Rondo — solo piano | 4.1× | 1.17/s |
+| Autechre *13x0 step* — dense limited electronica | **1.2× — near chance** | 0.64/s |
+
+⚠ Two honest caveats. The detector and the criterion are the same quantity, so this is a
+DEFINITION of "audible event", not a proxy validated against one. And it fails on dense limited
+electronica — the FTR.15 limiter mechanism at transient scale — which is a real coverage hole,
+not a tuning gap.
+
+### 9.4 ★★★ DUTY CYCLE, NOT GAIN, IS WHAT MAKES AN ACCENT AN ACCENT
+
+The first calibration (2–6 dB band, 0.35 s release) fired 1.47/s and was non-zero **75 % of the
+time**, so it stopped being an accent and became a DC LIFT: the size term's p05 floor rose 46 %
+(0.281 → 0.409) and its span fell 25 %. That is the FTR.16 defect Matt rejected as *"you fed
+the preset ambien"*, arriving by a new route.
+
+Every attempt to fix it at the consumer failed in the same shape — headroom scaling, `×base`
+weighting, `×(0.4+0.6·base)`, and gain sweeps all traded event alignment against the floor
+**monotonically**, because what lifts a floor is how OFTEN the accent is non-zero, not how big
+it is. Tightening the detector inverted the trade at a stroke:
+
+| calibration | duty | evt/rand | span |
+|---|---|---|---|
+| 2–6 dB, 0.35 s release | 75 % | 4.16× | 0.292 (−38 %) |
+| 3–9 dB, 0.20 s | 64 % | 5.19× | 0.392 (−17 %) |
+| **4–12 dB, 0.20 s (shipped)** | **48 %** | see below | **0.425 (−10 %)** |
+
+### 9.5 The shipped build
+
+`size = saturate(base + 0.45 · spectral_level_rise · (1 − base))`, accent read LIVE from
+buffer(0) inside the held evaluation (an accent that latches to the beat grid is not an accent),
+applied to the trunk and canopy scale but **not** to the branch count, which is quantised and
+whose popping is the "stuttering" FTR.13 was spent on.
+
+| | evt/rand | total travel | span |
+|---|---|---|---|
+| FTR.23 shipped | 1.53× | 8.04 | 0.472 |
+| + accent 0.30 | 2.72× | 8.99 (+12 %) | 0.437 (−7 %) |
+| **+ accent 0.45 (shipped)** | **3.77×** | 10.06 (+25 %) | 0.425 (−10 %) |
+| + accent 0.55 | 4.57× | 10.88 (+35 %) | 0.418 (−11 %) |
+
+**2.5× the event alignment for 25 % more motion and 10 % less span**, and the extra motion is
+spent ON events rather than between them. Rendered, the accent moves 2.7 mean |Δpixel| between
+`spectral_level_rise` 0 and 1 on an otherwise identical frame (canopy width 0.173 → 0.339),
+which is a sustained accent — an upper bound no real 0.20 s event reaches.
+
+### 9.6 ⚠ TWO OPEN CONFLICTS FOR MATT, both left red rather than tuned
+
+1. **The accent breaks FTR.10's trunk-hold contract.** Fed on Matt's own capture, the trunk's
+   held turn rate is **1.80 turns/beat against the gate's 0.38 bar**. An event accent cannot be
+   beat-latched and still mark events, so the FTR.10 contract ("the trunk holds between beats
+   and steps on them", his choice, twice) and the FTR.24 accent (his choice) are mutually
+   exclusive on the trunk. The gate is LEFT UNCHANGED and red under `FT_ACCENT_FROM_TAP=1` —
+   changing a metric in the increment it goes red is the FTR.6 move. **Note the committed suite
+   is GREEN only because the captures predate the column**; that green is not evidence.
+2. **`spectral_flux` is still on branch spread**, against Matt's instruction, pending his call.
+   Removing it was measured: drive-range response falls from **1.067 to 0.119** mean |Δpixel|
+   p05→p95 — the spread carries **89 % of this preset's measured response across its own energy
+   range** — and the preset's own dead-route gate fails. His instruction was given to free flux
+   for the size term, which measurement then ruled out, so the trade it was making no longer
+   exists. A static canopy makes "no clear connection to the music" worse, not better.

@@ -90,6 +90,16 @@ struct FeatureVector {
     // ratio against _slow drives trunk size. ORDER IS THE CONTRACT — it must match
     // AudioFeatures+Analyzed.swift field-for-field, not just in count.
     float spectral_surge, spectral_section_ratio;   // 51 DYN.1b, 52 DYN.2
+    // FTR.24 (float 53): LEVEL RISE, 0…1 — pre-AGC level against its own 0.15 s trailing
+    // floor, instant attack, 0.35 s release. The TRANSIENT sibling of spectral_surge: use
+    // surge for "how loud is this passage for this track", use this for "something just
+    // LANDED". Nothing else here marks an audible event — the beat_* fields are pulse
+    // CLOCKS (beat_mid scores BELOW chance against real events), spectral_flux is fast but
+    // fires as often between events as on them, and surge itself ranks a 0.76 s follower
+    // and so moves DOWN when the ear notices. Add it as a small accent on top of a slow
+    // base; it needs no silence gate, since silence produces no rise.
+    // Floats 54–56 — PADDING, mirroring Swift, for the same 16-byte alignment reason.
+    float spectral_level_rise, _pad54, _pad55, _pad56;   // 53 FTR.24, 54-56 padding
 };
 
 // MARK: - FeedbackParams
