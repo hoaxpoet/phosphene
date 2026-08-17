@@ -959,6 +959,62 @@ fragment float4 fractal_tree_fragment(
     // flash lifts every pixel, so no individual branch can read against it (D-157);
     // and Matt has now twice asked for less beat-driven activity, not more.
     val += tap * (0.06f + 0.40f * depth_norm * depth_norm);
+
+    // ── FTR.25: THE EVENT ACCENT, ON LIGHT ONLY ──────────────────────────
+    //
+    // Matt, after FTR.24a reverted the same accent from the tree's SIZE: *"Try the colour/tip
+    // flicker approach."* The measurement that sent it here is worth restating, because it is
+    // what makes this a different mechanism rather than another pass at the same one:
+    //
+    //   FTR.24 put `spectral_level_rise` on SIZE. Marking 0.8–1.5 events/s multiplied the
+    //   tree's peak velocity 10.7× (*"herky-jerky … looks defective"*), and every calmer
+    //   setting scored BELOW CHANCE on event alignment. On a scale property the two goals are
+    //   anti-correlated, because scale is what every other element is drawn relative to.
+    //
+    // Brightness has no such coupling: nothing is positioned relative to it, so an 80 ms lift
+    // costs exactly ZERO peak velocity. That is not an argument, it is a property of the
+    // pipeline — this term is in the fragment stage, downstream of every vertex, and
+    // `FractalTreeMeshRenderTest` asserts the canopy WIDTH is unchanged between accent 0 and 1
+    // while the luma moves. If that assertion ever fails, this term has leaked into geometry.
+    //
+    // WEIGHTED TO THE TIPS, `depth_norm²`, WHICH IS THE LOAD-BEARING PART. A GLOBAL flash was
+    // already tried and removed at FTR.3: it lifts every pixel, so no individual branch can
+    // read against it (D-157), and Matt has twice asked for less beat-driven activity. Squared
+    // depth leaves the trunk and inner branches untouched — the frame's mean luminance barely
+    // moves while the canopy edge flickers, which is both the safe form and the legible one.
+    //
+    // Floret is the counter-case to check this against: its drum sparkle was REMOVED because
+    // bright points camouflage into a bright field. This canopy is sparse and dark, which is
+    // the condition where points DO read — the opposite regime, and the reason the same idea
+    // is worth trying here after failing there.
+    //
+    // BRIGHTER AND WHITER TOGETHER — one gesture, which is why this does not break FA #67
+    // even though `sat` already carries `energy`. A spark is not "a brightness change plus a
+    // saturation change"; desaturating toward white IS how a small bright thing reads as a
+    // spark rather than as a slightly lighter leaf. Measured, brightness alone was not enough:
+    // on an identical frame it moved the lit pixels +5 % and the brightest tips 0.739 → 0.809,
+    // which is at the threshold of visibility, and no gain fixed it — `depth²` weighting held
+    // the whole-frame effect to +6 % even at gain 1.20. Adding the desaturation doubles the
+    // pixel delta (0.079 → 0.166 mean |Δpixel|) for the same flash budget.
+    //
+    // WEIGHTED LINEARLY IN DEPTH, not squared. Squared was the first cut and it attenuated the
+    // mid-canopy — where most lit pixels actually are — to nothing. Linear still leaves the
+    // trunk at exactly zero (`depth_norm` is 0 there), which is the property that matters: this
+    // is not a frame lift.
+    //
+    // Sized against the flash budget the FTR.20 comment above measures itself against: mean
+    // frame luminance +10.6 % at FULL accent, and full accent is a 0.20 s transient at
+    // ~0.4 events/s, so nothing sustains. The brightest tips go 0.739 → 0.903 and no pixel
+    // clips. `FractalTreeMeshRenderTest` gates all three: geometry unchanged, lit pixels
+    // visibly brighter, frame lift bounded.
+    //
+    // `spectral_level_rise` is rate-invariant as of BUG-089 — the defect that made FTR.24
+    // behave differently on Matt's playback path than on the capture it was tuned against. On
+    // both paths it now fires ~0.40 times a second, on events rather than between them.
+    float landed = saturate(f.spectral_level_rise);
+    float spark  = landed * depth_norm;
+    val += spark * 0.55f;
+    sat  = saturate(sat - spark * 0.45f);
     val  = saturate(val);
 
     float3 color = hsv2rgb(float3(fract(hue), sat, val));

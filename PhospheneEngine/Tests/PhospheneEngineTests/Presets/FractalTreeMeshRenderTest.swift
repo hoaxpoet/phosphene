@@ -113,6 +113,40 @@ struct FractalTreeMeshRenderTest {
             }
         }
 
+        // FTR.25 — THE ACCENT A/B, RENDERED FROM ONE SETTLED STATE.
+        //
+        // Deliberately NOT two entries in the drive loop. The loop advances `BeatHold` 40 frames
+        // per condition and the generator is REUSED, so consecutive conditions inherit each
+        // other's glide state: the second frame of a pair is 40 frames further along a
+        // convergence than the first, and its geometry differs slightly for that reason alone.
+        // That is exactly what happened here — the pair read width-identical on one fixture set
+        // and differed by 0.0016 on another, which would have been read as "the accent moved the
+        // geometry" when the accent cannot: it lives in the fragment stage, downstream of every
+        // vertex.
+        //
+        // So: settle ONCE, then encode twice from that same state, changing only the fragment
+        // stage's input. Any difference in the two images is then attributable to this term and
+        // nothing else — which is the whole claim FTR.25 rests on.
+        var accentPair: [(label: String, pixels: [UInt8])] = []
+        if let mid = try? Self.driveFrames().first(where: { $0.label == "p50" }) {
+            var dark = mid.features
+            dark.spectralLevelRise = 0
+            var lit = mid.features
+            lit.spectralLevelRise = 1
+            generator.renderDeltaOverride = 1.0 / 60.0
+            for _ in 0..<40 {
+                generator.advanceBeatHoldForSettling(dark, stems: mid.stems)
+            }
+            for (label, features) in [("accent-lo", dark), ("accent-hi", lit)] {
+                guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+                Self.encode(cmd, into: target, generator: generator,
+                            features: features, stems: mid.stems)
+                cmd.commit()
+                cmd.waitUntilCompleted()
+                accentPair.append((label, Self.read(target)))
+            }
+        }
+
         // Evidence, always printed — this is the measured-swing surface FTR.2 reports
         // against, standing in for the QG.5 response band Fractal Tree cannot reach.
         for (label, pixels) in frames {
@@ -139,6 +173,59 @@ struct FractalTreeMeshRenderTest {
         // Without this the harness would pass on a preset whose audio routes are all dead
         // — which is precisely the FTR.2 defect. Compares the quietest and loudest drive
         // frames; if routing works, they must not be near-identical.
+        // --- (b0) FTR.25: the event accent moves LIGHT and NOT GEOMETRY -----------------
+        //
+        // ★ THIS IS THE ASSERTION THAT DISTINGUISHES FTR.25 FROM FTR.24. The size accent was
+        // reverted because marking 0.8–1.5 events/s on a scale property multiplied the tree's
+        // peak velocity 10.7× and Matt called the result defective. Brightness cannot do that —
+        // but "cannot" is a claim about the code, and this is what checks it: canopy WIDTH must
+        // be unchanged to the pixel between accent 0 and 1, while mean luma must move visibly.
+        // A width change here means the term has leaked into geometry and the premise is void.
+        if let accentLo = accentPair.first(where: { $0.label == "accent-lo" }),
+           let accentHi = accentPair.first(where: { $0.label == "accent-hi" }) {
+            let widthLo = Self.canopyWidth(accentLo.pixels)
+            let widthHi = Self.canopyWidth(accentHi.pixels)
+            let litLo = Self.litLuma(accentLo.pixels)
+            let litHi = Self.litLuma(accentHi.pixels)
+            print(String(format:
+                "[fractal-tree] accent |Δpixel| %.3f  width %.4f → %.4f  lit-luma %.4f → %.4f (%+.0f%%)  "
+                + "p99 %.3f → %.3f  clipped %.1f%% → %.1f%%  frame-luma %.5f → %.5f (%+.1f%%)",
+                Self.meanAbsoluteDelta(accentLo.pixels, accentHi.pixels),
+                widthLo, widthHi, litLo.mean, litHi.mean,
+                100 * (litHi.mean / max(litLo.mean, 1e-9) - 1),
+                litLo.p99, litHi.p99, 100 * litLo.clipped, 100 * litHi.clipped,
+                Self.meanLuma(accentLo.pixels), Self.meanLuma(accentHi.pixels),
+                100 * (Self.meanLuma(accentHi.pixels) / max(Self.meanLuma(accentLo.pixels), 1e-9) - 1)))
+
+            #expect(abs(widthHi - widthLo) < 1e-6, """
+                the FTR.25 event accent CHANGED THE GEOMETRY (canopy width \
+                \(String(format: "%.5f", widthLo)) → \(String(format: "%.5f", widthHi))). The \
+                entire reason this accent lives on brightness is that FTR.24's identical accent \
+                on SIZE multiplied peak velocity 10.7× and was rejected as defective. A term \
+                that moves geometry is that defect again — keep it in the fragment stage.
+                """)
+            #expect(litHi.mean > litLo.mean * 1.04, """
+                the FTR.25 event accent is invisible on the pixels it is meant to light: mean \
+                luma over LIT pixels \(String(format: "%.4f", litLo.mean)) → \
+                \(String(format: "%.4f", litHi.mean)). DYN.1e: a visual band too small to see is \
+                not a feature. Check the shader term, `featuresFromSession`, and the FeatureVector \
+                copy in `PresetLoader+Preamble` (a missing field there fails the shader compile).
+                """)
+            #expect(litHi.clipped < 0.12, """
+                \(String(format: "%.0f", 100 * litHi.clipped)) % of lit pixels CLIP at full \
+                accent — a clipped lift loses its proportionality and reads as a hard flash \
+                rather than a flicker. Lower the gain rather than the bar.
+                """)
+            // The other half of the flash budget: weighted to depth², the lift must stay a
+            // CANOPY-EDGE effect. A whole-frame lift is the FTR.3 `beat_bass` flash, removed
+            // because no individual branch can read against a lifted frame (D-157).
+            let frameLift = Self.meanLuma(accentHi.pixels) / max(Self.meanLuma(accentLo.pixels), 1e-9)
+            #expect(frameLift < 1.25, """
+                the accent lifts the WHOLE FRAME \(String(format: "%+.0f", 100 * (frameLift - 1))) % \
+                — at that scale it is the global flash FTR.3 removed (D-157), not a tip flicker.
+                """)
+        }
+
         let quiet = try #require(frames.first { $0.label == "p05" })
         let loud = try #require(frames.first { $0.label == "p95" })
         let delta = Self.meanAbsoluteDelta(quiet.pixels, loud.pixels)
@@ -1886,6 +1973,28 @@ struct FractalTreeMeshRenderTest {
 
     /// Fraction of pixels the tree actually covers — the silhouette's screen footprint.
     /// Mean luma alone cannot separate "a bigger tree" from "a brighter one".
+    /// FTR.25 — mean luma over LIT pixels only, plus the bright tail and the clipped share.
+    ///
+    /// A frame mean cannot measure a tip accent and it is the wrong bar to hold it to: the
+    /// canopy edge is a small pixel fraction by design (a lift that moved the frame mean would
+    /// be the global flash FTR.3 removed under D-157). What a viewer sees is how much the LIT
+    /// pixels brighten, and whether the brightest of them clip to white — a clipped accent
+    /// loses its proportionality and reads as a hard flash rather than a flicker.
+    private static func litLuma(_ bgra: [UInt8]) -> (mean: Double, p99: Double, clipped: Double) {
+        var lumas: [Double] = []
+        for i in stride(from: 0, to: bgra.count, by: 4)
+        where Int(bgra[i]) + Int(bgra[i + 1]) + Int(bgra[i + 2]) > 24 {
+            lumas.append((0.114 * Double(bgra[i]) + 0.587 * Double(bgra[i + 1])
+                          + 0.299 * Double(bgra[i + 2])) / 255.0)
+        }
+        guard !lumas.isEmpty else { return (0, 0, 0) }
+        lumas.sort()
+        let clipped = Double(lumas.filter { $0 > 0.97 }.count) / Double(lumas.count)
+        return (lumas.reduce(0, +) / Double(lumas.count),
+                lumas[Int(0.99 * Double(lumas.count - 1))],
+                clipped)
+    }
+
     private static func inkFraction(_ bgra: [UInt8]) -> Double {
         guard !bgra.isEmpty else { return 0 }
         var lit = 0

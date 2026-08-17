@@ -623,3 +623,75 @@ Fractal Tree canopy is sparse and dark, which is precisely where brightness DOES
 ⚠ One instrument caveat for whoever picks this up: `evt/rand` is not comparable across captures.
 The FTR.23 base scores 1.53× on `2026-08-17T12-47-58Z` and 0.27× on `2026-08-17T15-23-17Z` — same
 build, same criterion, different material and analysis rate. Compare builds within one capture only.
+
+---
+
+## 11. Addendum 2026-08-17 (FTR.25) — the same driver, on LIGHT instead of SIZE
+
+Matt, after §10 retired the size accent: *"Try the colour/tip flicker approach."* This is §10.3's
+recommendation built, so what follows is only what building it measured.
+
+### 11.1 The detector got better when it got fixed, which was luck rather than design
+
+BUG-089's fix (fixed-lag difference on a pre-smoothed level) was made for rate invariance alone,
+and its event specificity was never re-checked — a gap, since a fix to a detector can easily
+destroy the thing the detector is for. Re-measured on both captures, it improved on both axes:
+
+| capture | formulation | evt/rand | fires/s | mean |
+|---|---|---|---|---|
+| `15-23-17Z` (tap, 59 Hz) | FTR.24 trailing-min | 22.9× | 0.89 | 0.184 |
+| | **FTR.24a fixed-lag** | **60.5×** | **0.41** | 0.109 |
+| `12-47-58Z` (local, 16 Hz) | FTR.24 trailing-min | 65.5× | 0.07 | 0.039 |
+| | **FTR.24a fixed-lag** | **82.2×** | **0.40** | 0.120 |
+
+The fire rate is the number that matters: **0.41/s and 0.40/s** where the old formulation ran 0.89
+against 0.07. ⚠ Do not quote those ratios as achievements — the driver is near zero at random times,
+so the denominator is tiny and the ratio inflates (§9.2's `pulse_amp01` lesson). The defensible
+claims are the consistent fire rate and that it fires on events rather than between them.
+
+### 11.2 Brightness alone was not enough, and no gain fixed it
+
+Measured on one frame, varying only `spectral_level_rise` 0 → 1:
+
+| form | mean \|Δpixel\| | lit-luma | brightest tips (p99) | frame luma |
+|---|---|---|---|---|
+| `0.30 · depth²` (first cut) | 0.041 | +2 % | 0.739 → 0.765 | +1.6 % |
+| `1.20 · depth²` | — | +6 % | 0.739 → 0.835 | — |
+| `0.35 · depth` | 0.079 | +5 % | 0.739 → 0.809 | +5.2 % |
+| **`0.55 · depth` + `−0.45 · depth` on saturation** | **0.164** | **+10 %** | **0.739 → 0.905** | +10.5 % |
+
+Two findings. **`depth²` was the wrong weighting** — it attenuated the mid-canopy, where most lit
+pixels are, to nothing; even gain 1.20 moved the frame only 6 %. Linear depth still holds the trunk
+at exactly zero, which is the property that matters (this must not be a frame lift — a global flash
+was already removed at FTR.3 because no branch can read against a lifted frame, D-157).
+
+And **brightness alone sat at the threshold of visibility**. Desaturating toward white doubles the
+pixel delta for the same flash budget, because that is what makes a small bright thing read as a
+*spark* rather than a slightly lighter leaf. It is one gesture on one primitive, so FA #67 holds
+even though `sat` also carries `energy`.
+
+### 11.3 The claim this rests on, and the gate that checks it
+
+The whole reason light succeeds where size failed is that **nothing is positioned relative to
+brightness**, so an event accent costs exactly zero peak velocity. That is a property of the
+pipeline — the term is in the fragment stage, downstream of every vertex — but "cannot move
+geometry" is a claim about code, so it is gated: `canopyWidth` must be **identical to the pixel**
+between accent 0 and 1 while lit-luma moves ≥ 4 %, with clipping < 12 % and the frame lift < 25 %.
+Measured: width `0.1672 → 0.1672`, lit-luma +10 %, no clipped pixels, frame +10.5 %.
+
+⚠ **That gate needed two attempts and the first one lied.** Rendered as two entries in the drive
+loop, the pair inherits `BeatHold` glide state — the second frame is 40 settling frames further
+along a convergence than the first — so their geometry differs for a reason that has nothing to do
+with the accent. It read width-identical on one fixture set and 0.0016 apart on another, which
+would have been reported as "the accent moved the geometry". The pair is now settled ONCE and
+encoded twice, changing only the fragment input. **Same species as FTR.18's `advanceBeatHold`
+glide-seed bug and FTR.19's harness smoother: a harness that carries state between the two halves
+of an A/B is not measuring the difference between them.**
+
+### 11.4 What is NOT established
+
+The driver fires ~0.4 times a second on events and the accent is visible on the tips at 10 % of
+lit luminance. **Whether that reads to Matt as "the tree responds to the music" is not measurable
+here** — nine rejections in this program have all been of builds with defensible numbers. This is
+code-complete pending his live M7, and the honest prior is that a tip spark at 0.4/s may simply be
+too sparse to register even though every number above is sound.
