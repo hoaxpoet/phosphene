@@ -64,13 +64,10 @@ struct FractalPayload {
     /// coupled gesture rather than three layers racing on one primitive (the FA #67
     /// collision D-212 measured).
     float reach;
-    /// BRANCH SPREAD, radians — how wide the canopy opens. STATIC as of FTR.26 (Matt asked
-    /// twice for `spectral_flux` to come off it); kept in the payload because every branch
-    /// still reads it.
+    /// BRANCH SPREAD, radians — how wide the canopy opens. From `spectral_flux`; removed at
+    /// FTR.26 on Matt's instruction and RESTORED at FTR.27 after he reviewed the alternative
+    /// live. See the spread block in the object shader for the full history.
     float spread;
-    /// CANOPY WEIGHT, 0…1 — held `spectral_flux`. How DENSE and HEAVY the canopy is: it adds
-    /// fine branches and thickens every stroke. FTR.26's replacement for the spread route.
-    float canopy_weight;
     /// SECTION SURGE, 0…1 — steps up on an arrival and holds. Elongates the trunk and
     /// carries the branch count across a tier boundary.
     float surge;
@@ -561,63 +558,33 @@ void fractal_tree_object_shader(
         // FTR.13 — FRACTIONAL, not rounded. The count is what pops, and the fractional part is
         // what lets the frontier branch grow in instead of appearing (see `branch_count_f`).
         float tipsF  = melody * 26.0f * amp * smoothstep(0.03f, 0.15f, reach);
-        // ── FTR.26: CANOPY WEIGHT ← spectral_flux (Matt's pick, 2026-08-17) ──────
-        //
-        // Flux came off the branch spread on his instruction (asked twice; the cost is recorded
-        // at the spread). Asked what should carry the tree's response to the music's energy
-        // instead, he chose the fine branches. Measured, that alone was not enough: flux on the
-        // COUNT moves the drive-range response from 0.119 to only **0.209** mean |Δpixel|,
-        // where flux on the spread had moved it to 1.067 — **adding thin tips changes few
-        // pixels; rotating every branch changes many.** I had told him the count would keep the
-        // preset's responsiveness gate green, and that was wrong.
-        //
-        // So the same primitive also drives branch THICKNESS, which is the channel that moves
-        // ink without moving positions: together they reach **0.662** and clear the 0.5 floor.
-        // The pair is deliberately ONE GESTURE — "the canopy gets denser and heavier" — which
-        // is why it is not the FA #67 collision it resembles. This preset already establishes
-        // that pattern in the opposite direction: `reach` drives count, trunk length AND
-        // thickness precisely "so they move as one coupled gesture rather than three layers
-        // racing on one primitive". Flux now does the same across two of the three.
-        //
-        // HELD (`fHeld`), like the spread route it replaces, and that is what makes it legal on
-        // continuous geometry. This preset's structural rule is that trunk length and thickness
-        // read ONLY slow signals — anything past ~1 turn/s there "reads as the tree bouncing
-        // rather than growing". Raw flux is the fastest term in the vector (5.48 turns/s at
-        // FTR.11), but through FTR.23's continuous glide it turns **0.21 times a second** at a
-        // 1-pixel epsilon, five times inside the rule. Reading `f` here instead of `fHeld`
-        // would put a 5/s signal on the tree's thickness, which is the complaint Matt has
-        // already made twice.
-        float fluxWeight = saturate((fHeld.spectral_flux - 0.10f) / 0.85f);
-        float countF = min(7.0f + base + section + tipsF + fluxWeight * 10.0f * amp, 63.0f);
+        float countF = min(7.0f + base + section + tipsF, 63.0f);
         uint  count  = min((uint)ceil(countF), 63u);
 
-        // ── BRANCH SPREAD — STATIC (Matt, 2026-08-17, asked twice) ───────────────
+        // ── BRANCH SPREAD ← spectral_flux (RESTORED at FTR.27) ───────────────────
         //
-        // It ran off `spectral_flux` from D-212 through FTR.25. Flux was the right choice for
-        // the reason recorded then: the only broadband primitive with a comparable span on
-        // every source (p05→p95 0.477…0.666), and musically apt — flux rises when the spectrum
-        // CHANGES, so the canopy opened on chord and texture changes rather than on loudness.
+        // The full history, because this route has now been removed and restored and the
+        // reasons are not obvious from the code:
         //
-        // Matt asked for it removed on 2026-08-17 to free flux for the size term. Measurement
-        // then ruled flux out for size (FTR.23) and FTR.24/25 solved event marking with a
-        // different primitive entirely, so the trade the instruction was making no longer
-        // exists — I raised exactly that, with the cost below, and he reaffirmed. His call,
-        // recorded as his call.
+        //   D-212 → FTR.25   flux drives the spread. It is the only broadband primitive with
+        //                    real span on every source (p05→p95 0.480…0.672 on the three
+        //                    fixtures; every unused alternative is dead or inconsistent).
+        //   FTR.26           Matt asked twice for flux to come OFF the spread, to free it for
+        //                    the size term. Spread became a constant; flux moved to the branch
+        //                    count and thickness as "canopy weight".
+        //   FTR.27           He reviewed that live: *"dislike the new behavior of the trunk and
+        //                    canopy. connection to the music is even less clear than before."*
+        //                    Restored.
         //
-        // ⚠ WHAT IT COSTS, MEASURED, because this is a large number and someone will wonder:
-        // the drive-range response falls from **1.067 to 0.119** mean |Δpixel| p05→p95, i.e.
-        // **the canopy spread was carrying ~89 % of everything this preset visibly does across
-        // its own energy range.** Everything else on that axis — arousal growth, the density
-        // branch count, the bass_dev tone — sums to almost nothing by comparison. That is a
-        // finding about the preset, not about flux: the angle of the canopy is its loudest
-        // visual channel by an order of magnitude.
-        //
-        // 0.44 rad ≈ 25° is the midpoint of the range flux drove (20°…34°), so the canopy keeps
-        // the shape he has been reviewing and simply stops breathing with the spectrum.
-        // Deliberately a CONSTANT and not a substitute route: the honest state of this layer is
-        // "no primitive", and inventing one to keep a number up would be the move FTR.2 killed
-        // when it deleted this preset's dead routes from the sidecar manifest.
-        float spread = 0.44f;   // ≈ 25°, the midpoint of the retired flux range
+        // ⚠ AND THE MEASUREMENT SAYS WHY, which is the part worth keeping. On his capture
+        // `2026-08-17T20-01-01Z` the canopy-weight form swung flux's full range inside EVERY
+        // 10 s window (0.24…1.00 in all six buckets) and moved every branch's thickness by
+        // 12.7 px at 1080p. On the spread the same signal changes the canopy's ANGLE, where a
+        // full-range swing reads as the tree opening; on thickness it reads as every stroke
+        // fattening and thinning continuously, which is motion without meaning. Same primitive,
+        // same span, opposite legibility — the CHANNEL decides whether a signal reads.
+        float flux   = saturate((fHeld.spectral_flux - 0.10f) / 0.85f);
+        float spread = 0.35f + flux * 0.24f;   // 20° … 34°
 
         // Only geometry terms travel in the payload. The fragment stage reads its own
         // primitives straight from `f` at buffer(0), so forwarding them here would just
@@ -627,7 +594,6 @@ void fractal_tree_object_shader(
         payload->surge        = surge;
         payload->trunk_len    = trunkLen;
         payload->spread       = spread;
-        payload->canopy_weight = fluxWeight;
         payload->branch_count   = min(count, 63u);
         payload->branch_count_f = countF;
         payload->aspect_ratio = max(f.aspect_ratio, 0.1f);
@@ -740,12 +706,7 @@ void fractal_tree_mesh_shader(
     float2 pos     = float2(0.0f, -0.90f);  // tree root (bottom-centre, clip space)
     float2 dir     = float2(0.0f,  1.0f);   // initial direction: straight up
     float  seg_len = base_len;
-    // FTR.26 — the canopy-weight half of the flux gesture. 0.026 is sized to clear the
-    // preset's own drive-range floor (0.5 mean |Δpixel| p05→p95): count-only reached 0.209,
-    // count plus this reaches 0.662. Thickness is the strong pixel channel because it changes
-    // INK without changing any position — the property that makes it safe here and the reason
-    // the branch count alone could not carry this route.
-    float  thick   = 0.038f + payload.reach * 0.020f + payload.canopy_weight * 0.026f;
+    float  thick   = 0.038f + payload.reach * 0.020f;
 
     // Replay ancestors from root toward this branch.
     for (int k = leaf_depth - 1; k >= 0; k--) {

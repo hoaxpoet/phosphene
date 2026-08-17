@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-092 | **P1** · evidence-only, filed 2026-08-17 | preset.fidelity / calibration | **Fractal Tree's primary GROWTH driver, `arousal`, is effectively a CONSTANT after the first ~12 s of a track — on all five captures checked.** After 12 s: mean **0.446…0.475**, sd **0.048…0.069**, and the same bounds every time (min 0.258…0.265, max 0.506…0.509) across different sessions and builds. The preset maps it `saturate((arousal − 0.10) / 0.58)`, so the growth term — trunk length, thickness, canopy floor and brightness — sits at ~0.63 ± 0.09 for the entire track. **This is a strong candidate explanation for the program-long complaint** (*"the tree grows and shrinks with no clear connection to the music"*, nine live rejections across FTR.15→FTR.27): the channel meant to carry "how energetic is this music" has almost no within-track range, so every other lever was being tuned around a dead primary. **Not a model defect as far as the evidence goes** — `MoodClassifier` is a valence/arousal classifier whose output is *supposed* to be stable, and its smoothing is only τ 0.7 s (ruled out as the cause: the raw MLP output is what barely moves). **The defect is the ROUTING assumption** — a track-level mood reading is used as a within-track dynamic driver. Fixing it means choosing a different growth primitive, which is a visible-behaviour decision for Matt, so no code change was made. Detail below |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-090 | P2 · **evidence-only, filed 2026-08-17; no fix attempted** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
 | BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
@@ -64,6 +65,54 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-092 — Fractal Tree's growth driver (`arousal`) has almost no within-track range; the preset's primary channel is effectively constant (2026-08-17)
+
+**Status: evidence only. No code change — the fix is a routing choice with visible consequences.**
+
+**How it surfaced.** Matt's M7 on `2026-08-17T20-01-01Z`: *"dislike the new behavior of the trunk
+and canopy. connection to the music is even less clear than before."* Measuring the preset's three
+geometry drivers per 10 s bucket on that capture turned up something that had never been checked:
+
+| t (s) | `arousal` (growth) | `spectral_surge` (size) | `spectral_flux` (weight) |
+|---|---|---|---|
+| 0–10 | −0.000 … 0.252 | 0.000 … 0.121 | 0.387 … 1.000 |
+| 10–20 | 0.244 … 0.449 | 0.121 … 0.482 | 0.247 … 1.000 |
+| 20–30 | 0.451 … 0.500 | 0.132 … 0.233 | 0.242 … 1.000 |
+| 30–40 | 0.479 … 0.506 | 0.136 … 0.724 | 0.370 … 1.000 |
+| 40–50 | 0.471 … 0.492 | 0.266 … 0.594 | 0.359 … 1.000 |
+| 50–60 | 0.474 … 0.506 | 0.240 … 0.659 | 0.387 … 1.000 |
+
+`arousal` ramps once during the intro and then sits still. **Confirmed on five captures spanning
+three builds and two audio paths** — after 12 s, every one reads mean 0.446…0.475, sd 0.048…0.069,
+min 0.258…0.265, max 0.506…0.509. Identical bounds on different music is the signature of a
+saturating output, not of musical content.
+
+**What that means for the preset.** Growth is mapped `saturate((arousal − 0.10) / 0.58)`, so the
+term that drives trunk length, thickness, the canopy floor and brightness holds ~0.63 ± 0.09 for
+the whole track. **The preset's primary geometry channel is a constant.** Nine live rejections of
+"no clear connection" (FTR.15 → FTR.27) were spent tuning the OTHER channels — size formulation,
+event accents, spread, canopy weight — around a dead one.
+
+**Ruled out.** The output EMA is not the cause: `MoodClassifier.outputTau` is **0.7 s**, far too
+short to flatten a track. The raw 4-layer MLP output (tanh, clamped to ±1) is what barely moves.
+
+**NOT asserted: that the classifier is broken.** A valence/arousal mood classifier is *designed* to
+be stable — a track's mood is not supposed to swing every bar. On the evidence the defect is the
+**routing assumption**: a track-level reading is wired as a within-track dynamic driver. Two
+different fixes follow from that, and they are not equivalent for the user:
+1. Keep `arousal` for what it is (a slow bias on the tree's resting size) and give the *dynamic*
+   growth a primitive with real within-track range — `spectral_section_ratio` and `bassDev` both
+   qualify on the fixtures, and both are already used elsewhere in this preset, so this needs a
+   layer/primitive plan rather than a one-line swap (FA #67).
+2. Investigate why the MLP output saturates at ~0.5 on this material, which is a `dsp.ml`
+   increment of its own and may be correct behaviour.
+
+**Verification criteria (before any fix):** the growth term's within-track p05→p95 span must exceed
+**0.25** on all three route-coverage fixtures (it is ~0.09 today), measured after the first 12 s;
+plus a live M7, because "does the tree now grow with the music" is not an automated question.
 
 ---
 

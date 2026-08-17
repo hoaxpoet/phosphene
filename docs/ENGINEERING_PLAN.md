@@ -2594,6 +2594,31 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.27 — FTR.26 reverted after its live review, and the finding that outranks it (BUG-092).**
+✅ (2026-08-17) Matt on `2026-08-17T20-01-01Z`: *"sound is back. dislike the new behavior of the
+trunk and canopy. connection to the music is even less clear than before."*
+
+**Reverted:** `spectral_flux` is back on the branch spread, the canopy-weight terms are off the
+count and thickness, and the sidecar route is `branch_spread` again. Drive-range response returns
+to **1.067** mean |Δpixel| from FTR.26's 0.662. The FTR.25 tip spark is untouched.
+
+**Why the substitute failed, measured on that capture:** canopy weight swung flux's FULL range
+inside every 10 s bucket (0.24…1.00 in all six) and moved every branch's thickness by **12.7 px at
+1080p**. On the spread the same signal changes the canopy's ANGLE, where a full-range swing reads
+as the tree opening; on thickness it reads as every stroke fattening and thinning continuously —
+motion without meaning. **Same primitive, same span, opposite legibility: the CHANNEL decides
+whether a signal reads.**
+
+**★★★ AND THE REAL FINDING, which reframes nine rejections: `arousal` — the preset's PRIMARY
+GROWTH DRIVER — is effectively a constant after the first ~12 s.** Filed as **BUG-092** with
+five captures spanning three builds and two audio paths: mean 0.446…0.475, sd 0.048…0.069, and the
+same bounds every time (0.258…0.265 → 0.506…0.509) on different music. Mapped through
+`saturate((arousal − 0.10) / 0.58)`, the term driving trunk length, thickness, canopy floor and
+brightness holds ~0.63 ± 0.09 for a whole track. **FTR.15 → FTR.27 tuned every other channel
+around a dead primary.** The output EMA is ruled out (τ 0.7 s); the MLP output itself barely
+moves, which for a *mood* classifier may be correct — so the defect is the routing assumption, not
+necessarily the model. Fixing it is a visible-behaviour decision and is Matt's call.
+
 **FTR.26 — flux comes off the branch spread; the canopy gains WEIGHT instead.** ✅ code-complete,
 **pending live M7** (2026-08-17) Matt, asking a second time: *"take flux off branch spread."* I had
 raised the cost and he reaffirmed, so it is his call, recorded as his call.
