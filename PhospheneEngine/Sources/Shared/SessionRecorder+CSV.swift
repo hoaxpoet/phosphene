@@ -114,7 +114,8 @@ extension SessionRecorder {
         pulse_beat_index,pulse_regional_blend01,\
         tonal_phase_fifths,tonal_phase_thirds,tonal_consonance,tonal_tension,harmonic_flux,\
         bass_att,mid_att,treble_att,mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next,\
-        spectral_density,spectral_density_slow,spectral_surge,spectral_section_ratio,spectral_level_rise,waveform_occupancy
+        spectral_density,spectral_density_slow,spectral_surge,spectral_section_ratio,\
+        spectral_level_rise,waveform_occupancy
 
         """
 
@@ -243,13 +244,11 @@ extension SessionRecorder {
         // field is flat" is checkable from a session rather than asserted. Appended at
         // the END, same positional-parser invariant as every column above.
         // FTR.24 appends `spectral_level_rise`; CHR.3c appends `waveform_occupancy` after it.
-        // Both at the END, same positional-parser invariant as every column above — the merge
-        // keeps main's column first so sessions already recorded against it still line up.
+        // Both at the END, same positional-parser invariant — main's column stays first so
+        // sessions already recorded against it still line up.
         let densityCols = String(format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",
                                  fv.spectralDensity, fv.spectralDensitySlow, fv.spectralSurge,
-                                 fv.spectralSectionRatio,
-                                 fv.spectralLevelRise,     // FTR.24
-                                 fv.waveformOccupancy)     // CHR.3c
+                                 fv.spectralSectionRatio, fv.spectralLevelRise, fv.waveformOccupancy)
         // QG.1 — the remaining FeatureVector primitives presets consume that the
         // CSV never carried (attenuated bands + mid/treb deviation family +
         // beats_until_next). Without them, RouteCoverageTests cannot replay

@@ -82,17 +82,8 @@ public struct FeatureVector: Sendable {
 
     // --- Waveform occupancy (float 23) — RECLAIMED from `_pad0` at CHR.3c ---
 
-    /// How much of the spectrum is active relative to each band's OWN ~20 s level. Roughly
-    /// 0…2, near 1 when every band sits at its typical level, → 0 at silence.
-    ///
-    /// The only primitive here derived from the TIME-DOMAIN waveform rather than the FFT
-    /// magnitudes, and the only one that measures occupancy rather than level or shape.
-    /// Written by `RenderPipeline` beside `aspectRatio` (see `WaveformOccupancy`), because
-    /// `MIRPipeline` never receives time-domain samples — a spectral reconstruction reached
-    /// only r = +0.628 against the real value, which is not close enough to substitute.
-    ///
-    /// Reclaimed from padding, so `FeatureVector` stays 208 bytes and every field keeps its
-    /// offset: the same pattern that reclaimed floats 39, 40–41 and 43.
+    /// Spectrum active vs each band's OWN ~20 s level; → 0 at silence. Time-domain derived,
+    /// written by `RenderPipeline`. Full rationale: `WaveformOccupancy`.
     public var waveformOccupancy: Float
 
     // --- Viewport (float 24) ---
