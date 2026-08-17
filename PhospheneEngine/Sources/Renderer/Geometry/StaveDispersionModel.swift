@@ -186,7 +186,8 @@ public final class StaveDispersionModel: @unchecked Sendable {
     ///   - waveform: 2 × `sampleCount` interleaved floats (the engine's `waveformBuffer`).
     ///   - frames: number of stereo frames available.
     ///   - deltaTime: seconds since the previous frame.
-    public func advance(waveform: UnsafePointer<Float>, frames: Int, deltaTime: Float) {
+    public func advance(waveform: UnsafePointer<Float>, frames: Int, deltaTime: Float,
+                        occupancy: Float) {
         let usable = min(frames, configuration.sampleCount)
         guard usable > 8 else { return }
         for i in 0..<usable {
@@ -235,11 +236,13 @@ public final class StaveDispersionModel: @unchecked Sendable {
         }
         seeded = true
 
-        // Spread on the DRAWN amplitude, so the fan reflects what is on screen rather than a
-        // raw level the gains have already reshaped.
-        let excursion = drawnEnergy / Float(StaveBandPlan.count)
+        // Spread on `FeatureVector.waveformOccupancy` (CHR.3c) — the engine primitive, not a
+        // private copy. One definition, one owner: whatever this preset would DECLARE as its
+        // route is literally the value it reads. `drawnEnergy` is still accumulated above for
+        // the harnesses' evidence, but it no longer drives anything.
+        _ = drawnEnergy
         let target = configuration.fanMin
-            + (configuration.fanMax - configuration.fanMin) * min(excursion / 0.10, 1)
+            + (configuration.fanMax - configuration.fanMin) * min(max(occupancy, 0) / 0.059, 1)
         fan += (target - fan) * (1 - exp(-dt / max(configuration.fanTau, 1e-3)))
     }
 

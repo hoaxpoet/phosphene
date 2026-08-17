@@ -190,6 +190,9 @@ struct MultiPassRenderHarness {
                                  configuration: StaveConfiguration(sampleCount: sampleCount, sampleRate: 48_000),
                                  pixelFormat: ctx.pixelFormat)
         let wavePtr = wav.contents().bindMemory(to: Float.self, capacity: sampleCount * 2)
+        // Publish the primitive the way RenderPipeline does — the harness bypasses it, and
+        // without this the fan reads zero and the flash measure would be of a flat wave.
+        var occupancy = WaveformOccupancy()
 
         // Deterministic broadband noise — a fixed LCG, so the gate measures the same signal on
         // every run. Real music is not noise, but noise is the densest possible spectrum and
@@ -221,7 +224,10 @@ struct MultiPassRenderHarness {
         for i in 0..<settle {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             fill(envelope(i))
-            geo.update(features: withAspect(i % drive.count), stemFeatures: .zero, commandBuffer: cmd)
+            var warm = withAspect(i % drive.count)
+            occupancy.advance(waveform: wavePtr, frames: sampleCount, deltaTime: warm.deltaTime)
+            warm.waveformOccupancy = occupancy.value
+            geo.update(features: warm, stemFeatures: .zero, commandBuffer: cmd)
             cmd.commit(); cmd.waitUntilCompleted()
         }
         var out: [T] = []
@@ -230,6 +236,8 @@ struct MultiPassRenderHarness {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             fill(envelope(settle + i))
             var features = withAspect(i)
+            occupancy.advance(waveform: wavePtr, frames: sampleCount, deltaTime: features.deltaTime)
+            features.waveformOccupancy = occupancy.value
             var stem = StemFeatures.zero
             geo.update(features: features, stemFeatures: stem, commandBuffer: cmd)
             let rpd = clearRPD(tex)

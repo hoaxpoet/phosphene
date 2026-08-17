@@ -29,11 +29,23 @@ struct StaveRenderHarnessTests {
 
     // MARK: - Subject
 
-    private struct Subject {
+    private final class Subject {
         let preset: PresetLoader.LoadedPreset
         let geometry: StaveTrace
         let buffers: HarnessTemplateCore.SilenceBuffers
         let waveform: MTLBuffer
+        /// ⚠ The harness bypasses `RenderPipeline`, which is where production publishes
+        /// `waveformOccupancy`. Without ticking it here Stave's fan would read a permanent
+        /// zero and the preset would render flat — a harness fault reported as a dead preset.
+        var occupancy = WaveformOccupancy()
+
+        init(preset: PresetLoader.LoadedPreset, geometry: StaveTrace,
+             buffers: HarnessTemplateCore.SilenceBuffers, waveform: MTLBuffer) {
+            self.preset = preset
+            self.geometry = geometry
+            self.buffers = buffers
+            self.waveform = waveform
+        }
     }
 
     private static func makeSubject(_ ctx: MetalContext, sampleCount: Int = 1024,
@@ -64,6 +76,10 @@ struct StaveRenderHarnessTests {
         guard let cmd = ctx.commandQueue.makeCommandBuffer() else {
             throw HarnessError.commandBufferFailed
         }
+        let frames = subject.waveform.length / (2 * MemoryLayout<Float>.stride)
+        let wave = subject.waveform.contents().bindMemory(to: Float.self, capacity: frames * 2)
+        subject.occupancy.advance(waveform: wave, frames: frames, deltaTime: features.deltaTime)
+        features.waveformOccupancy = subject.occupancy.value
         subject.geometry.update(features: features, stemFeatures: .zero, commandBuffer: cmd)
 
         let pass = MTLRenderPassDescriptor()

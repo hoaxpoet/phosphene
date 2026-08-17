@@ -66,6 +66,11 @@ public enum AudioRoutePrimitives {
         out["spectralDensitySlow"] = RoutePrimitiveColumn(.features, "spectral_density_slow")
         out["spectralSurge"] = RoutePrimitiveColumn(.features, "spectral_surge")
         out["spectralSectionRatio"] = RoutePrimitiveColumn(.features, "spectral_section_ratio")
+        // CHR.3c — the waveform-derived occupancy primitive. Routable from here, but NOT yet
+        // assertable: the committed route_coverage fixtures predate the column, so a preset
+        // declaring it fails RouteCoverageTests with "column absent — not recorded" until the
+        // fixtures are regenerated. Filed as its own increment.
+        out["waveformOccupancy"] = RoutePrimitiveColumn(.features, "waveform_occupancy")
         out["midDev"]    = RoutePrimitiveColumn(.features, "mid_dev")
         out["trebRel"]   = RoutePrimitiveColumn(.features, "treb_rel")
         out["trebDev"]   = RoutePrimitiveColumn(.features, "treb_dev")

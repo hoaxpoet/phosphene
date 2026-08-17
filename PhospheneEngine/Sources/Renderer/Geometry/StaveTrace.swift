@@ -117,7 +117,12 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
         let frames = waveform.length / (2 * MemoryLayout<Float>.stride)
         guard frames > 8 else { return }
         let base = waveform.contents().bindMemory(to: Float.self, capacity: frames * 2)
-        model.advance(waveform: base, frames: frames, deltaTime: features.deltaTime)
+        model.advance(
+            waveform: base,
+            frames: frames,
+            deltaTime: features.deltaTime,
+            occupancy: features.waveformOccupancy
+        )
         upload()
     }
 

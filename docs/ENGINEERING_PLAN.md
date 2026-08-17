@@ -63,6 +63,42 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment CHR.3c — the routable waveform-derived primitive ✅ (2026-08-17)
+
+`FeatureVector.waveformOccupancy` (float 23, **reclaimed from `_pad0`** so the struct stays
+208 bytes and no field moves offset — the pattern that reclaimed floats 39, 40–41 and 43).
+Computed by `RenderPipeline` from the same `waveformBuffer` preset fragments bind at slot 2,
+recorded to `features.csv`, and registered in `AudioRoutePrimitives`. Stave's fan now reads it
+instead of a private copy, so what the preset would declare is literally what it reads; fan
+ranges are unchanged to within rounding (Take Five 0.076–0.157, Clair De Lune 0.157–0.398).
+
+**Why a new primitive rather than an existing one.** Measured against every recorded primitive
+on Carry The Zero, the quantity correlates with none: best existing correlate `arousal`
+r = +0.395, and `spectralDensity` runs **negative** at −0.364. **Why `RenderPipeline` and not
+`MIRPipeline`:** the faithful value needs time-domain samples and the MIR path receives only
+FFT magnitudes — a spectral reconstruction reached r = +0.628, close but not substitutable
+without changing what the preset draws. **The tilt exponent is load-bearing:** defined as a pure
+ratio it normalises every track to ~1 and destroys quiet-vs-dense discrimination (measured:
+Take Five 0.076–0.158 → 0.184–0.358, the wrong direction).
+
+### Increment CHR.3d — regenerate the route-coverage fixtures ⏳ PLANNED
+
+**Blocks certification of every waveform-driven preset, Stave included.** The committed
+`Fixtures/route_coverage/` CSVs carry only `spectralCentroid` and `spectralFlux` — they predate
+`spectral_density` (routable for some time) and now `waveform_occupancy`. `RouteCoverageTests`
+fails loud on an absent column, so a preset declaring either primitive cannot be gated, and
+`FidelityRubricTests.certifiedPresetsDeclareAudioRoutes` requires a non-empty manifest to
+certify. Stave therefore ships with `audio_routes: []` rather than declaring routes it cannot
+prove.
+
+**Done when:** `FixtureSessionCaptureGenerator` is re-run over the three fixture clips, the
+refreshed `features.csv` / `stems.csv` are copied in, Stave declares
+`spectral_fan ← waveformOccupancy` (continuous), and `RouteCoverageTests` is green.
+**Blast radius, deliberately deferred (Matt, 2026-08-17):** regenerating refreshes the corpus
+every preset's route gate replays, so it re-asserts all 13+ manifests against new data. That is
+expected to be an improvement — the columns are additive — but it is not a Stave-only change
+and wants its own increment.
+
 ### Increment CHR.3b — Stave rebuilt: the visible spectrum aligned to the frequency spectrum ✅ (2026-08-16)
 
 **Preset count stays 29. `certified: false`.** CHR.3's Stave was rejected at Matt's live M7 —
