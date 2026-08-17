@@ -216,7 +216,7 @@ struct MeniscusStemDrops {
                          stems.vocalsEnergy, stems.otherEnergy].filter { $0 > 0.15 }.count
         let fullness = Float(bandCount) / 4
         arrangement += (fullness - arrangement) * (1 - exp(-dt / 3.0))
-        let lift = max(0, min(features.arousal, 1))
+        let lift = features.arousal01   // BUG-091: was max(0,·) on a −1…+1 primitive
         arcEnvelope += (lift - arcEnvelope) * (1 - exp(-dt / 6.0))
         // How much of the pattern is playing right now. A sparse intro gets downbeats only;
         // a full chorus gets every beat, the backbeat answer and the offbeat scatter. This
