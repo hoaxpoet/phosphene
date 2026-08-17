@@ -63,6 +63,114 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment CHR.3e — frame fit ✅ (2026-08-17)
+
+**Matt's first positive M7 on Stave** (*"looks good … otherwise, it works for me"*), with one
+change: the waves should not leave the frame on energetic music, while still covering most of
+the vertical area. Peak `|y|` measured at **1.53–1.98** against a frame of 1.0, so his initial
+2–5 % zoom moves almost nothing (1.83 → 1.75, 125 → 113 overflowing frames of 360) and full
+containment by zoom needs 35–50 %, which he ruled out as excessive.
+
+Shipped a **piecewise soft ceiling at 0.75 NDC with zoom left at 1.0**: untouched below the
+knee, folding only the excursion above it. Across five tracks peak lands at 0.999–1.000 with
+**zero** frames drawn outside the frame, and Take Five — which never reached the edge — is
+bit-identical at 0.510. A plain `tanh` was tried and rejected (compresses through the origin,
+−12 % at mid-amplitude, shrinking the approved look). Flash gate re-run: MEASURED, 0.00
+flashes/s, SAFE.
+
+Also confirmed from that session: **CHR.3c's `waveform_occupancy` works in production** —
+published on 2031/2032 frames, live range 0.067–0.153 against 0.073–0.124 offline.
+
+### Increment CHR.3c — the routable waveform-derived primitive ✅ (2026-08-17)
+
+`FeatureVector.waveformOccupancy` (float 23, **reclaimed from `_pad0`** so the struct stays
+208 bytes and no field moves offset — the pattern that reclaimed floats 39, 40–41 and 43).
+Computed by `RenderPipeline` from the same `waveformBuffer` preset fragments bind at slot 2,
+recorded to `features.csv`, and registered in `AudioRoutePrimitives`. Stave's fan now reads it
+instead of a private copy, so what the preset would declare is literally what it reads; fan
+ranges are unchanged to within rounding (Take Five 0.076–0.157, Clair De Lune 0.157–0.398).
+
+**Why a new primitive rather than an existing one.** Measured against every recorded primitive
+on Carry The Zero, the quantity correlates with none: best existing correlate `arousal`
+r = +0.395, and `spectralDensity` runs **negative** at −0.364. **Why `RenderPipeline` and not
+`MIRPipeline`:** the faithful value needs time-domain samples and the MIR path receives only
+FFT magnitudes — a spectral reconstruction reached r = +0.628, close but not substitutable
+without changing what the preset draws. **The tilt exponent is load-bearing:** defined as a pure
+ratio it normalises every track to ~1 and destroys quiet-vs-dense discrimination (measured:
+Take Five 0.076–0.158 → 0.184–0.358, the wrong direction).
+
+### Increment CHR.3d — regenerate the route-coverage fixtures ⏳ PLANNED
+
+**Blocks certification of every waveform-driven preset, Stave included.** The committed
+`Fixtures/route_coverage/` CSVs carry only `spectralCentroid` and `spectralFlux` — they predate
+`spectral_density` (routable for some time) and now `waveform_occupancy`. `RouteCoverageTests`
+fails loud on an absent column, so a preset declaring either primitive cannot be gated, and
+`FidelityRubricTests.certifiedPresetsDeclareAudioRoutes` requires a non-empty manifest to
+certify. Stave therefore ships with `audio_routes: []` rather than declaring routes it cannot
+prove.
+
+**Done when:** `FixtureSessionCaptureGenerator` is re-run over the three fixture clips, the
+refreshed `features.csv` / `stems.csv` are copied in, Stave declares
+`spectral_fan ← waveformOccupancy` (continuous), and `RouteCoverageTests` is green.
+**Blast radius, deliberately deferred (Matt, 2026-08-17):** regenerating refreshes the corpus
+every preset's route gate replays, so it re-asserts all 13+ manifests against new data. That is
+expected to be an improvement — the columns are additive — but it is not a Stave-only change
+and wants its own increment.
+
+### Increment CHR.3b — Stave rebuilt: the visible spectrum aligned to the frequency spectrum ✅ (2026-08-16)
+
+**Preset count stays 29. `certified: false`.** CHR.3's Stave was rejected at Matt's live M7 —
+*"deeply boring"*, *"not sure what is being plotted"*, *"what is the purpose of the horizontal
+and vertical grid lines?"*, *"why the starry background"*. Retirement was recommended and
+**declined** (*"you cannot retire the preset, you have to make it work"*), and after five
+mechanism-first pitches were rejected in turn (*"a technical demo, not a performance"*,
+*"vague"*, *"this is a waveform preset, don't build me something else"*, *"you need to build
+something EMOTIONAL, not academic"*) Matt gave the concept directly:
+**"align the visible light spectrum to the frequency spectrum for this preset."**
+
+**The diagnosis that mattered, and it was mechanical.** Stave is `family: waveform` and **never
+read the waveform** — `Stave.metal` took `waveformData` at buffer 2 and never touched a sample.
+It plotted an 8 s scrolling window of EMA-centred band energy, an envelope statistic, and every
+stage removed life: 20 Hz decimation killed everything fast, EMA-centring removed level, soft
+saturation compressed the dynamics, the window smeared the rest. Worse, every route it had was
+~0.3 s or per-beat, so it had no channel through which to know where it was in a song: the M7
+track had five sections and a 4× arousal climb and the preset read none of it. Two gates
+actively rewarded this — `motion_gate` scored the uniform scroll as "smooth, 0 spikes" (stdev
+0.05–0.14) and every QG gate was green on the exact session Matt rejected.
+
+**What Stave is now.** The live waveform, split into eight bands, each drawn in the colour of
+its own frequency (82 Hz at 662 nm deep red → ~11 kHz at 404 nm violet), one pass across the
+visible band, compressed rather than octave-wrapped, converted with Bruton's standard spectral
+fit so the colour IS the physical wavelength. Additive, so a full spectrum sums toward white
+like mixed light. Bands offset by wavelength so the spectrum separates as a prism separates
+light, red deviating least.
+
+**The dispersion is DRIVEN, and that came from a measured failure.** A fixed fan collapsed Take
+Five into a static rainbow layer cake — on smooth quiet material the wave excursions go small
+next to the gaps, so the spread stops being an effect of the music and becomes decoration, the
+original disease in a new costume. Driving it from the on-screen amplitude fixes that and
+supplies quiet-vs-loud contrast on limited masters: Carry The Zero spans only **1.4× RMS across
+the entire song**, so level alone can never carry dynamics there.
+
+**Removed on Matt's instruction:** beads, stems, star sparkles, static horizontal rules, beat
+verticals, the scroll, the haze, the cloud. The stem tint is not merely cut but **contradictory**
+— colour now means frequency, and colour cannot mean two things at once, so a stem wash would
+corrupt the one rule that makes the image legible. That is D-216's rejected option A arriving on
+its own merits.
+
+**Measured across four tracks** (guitar rock / solo piano / jazz / metal), fan range
+0.08–0.40 with Clair De Lune using the full swing on the piano's own dynamics. Motion gate mean
+**4.2–22.2** against the old build's 1.26–1.96 — roughly 10× more frame-to-frame change, 0
+spikes, 0 frozen. D-157 flash gate re-authored for the waveform driver (broadband noise gated
+on/off at the accent rate, the harshest signal the preset can be given): **MEASURED, 0.00
+flashes/s, SAFE**.
+
+**Open, carried to CHR.4:** QG.1 cannot gate this preset — its only driver is the engine's
+waveform buffer, which is not a session-recordable primitive, so `audio_routes` is empty and
+that **blocks certification**; the fan saturates on loud material (0.38–0.40 of a 0.40 ceiling
+on two of four tracks); the reference set still describes the retired beaded-trace look and
+needs recuration.
+
 ### Increment CHR.3 — Stave: authoring to code-complete ✅ (2026-08-14)
 
 **Preset count 28 → 29. `certified: false` — certification is CHR.4 and needs Matt's live M7.**

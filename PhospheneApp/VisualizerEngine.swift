@@ -297,8 +297,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// — Stam stable-fluids `ParticleGeometry` (D-097, RICERCAR-FL.5).
     var ricercarGeometry: (any ParticleGeometry)?
 
-    /// Two beaded band-driven traces on a beat-ruled field for the Stave preset — CPU-side
-    /// history rings drawn as beads on a thread, plus the D-216 stem tint wash (D-097, CHR.3).
+    /// Spectral dispersion of the live waveform for the Stave preset — the visible light
+    /// spectrum aligned to the frequency spectrum (D-097, CHR.3b).
     var staveGeometry: (any ParticleGeometry)?
 
     /// Serpentine projected line-strip water surface for the Meniscus preset — a
@@ -942,7 +942,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.ricercarGeometry = Self.makeRicercarGeometry(context: ctx, library: lib)
         self.cymaticSandGeometry = Self.makeCymaticSandGeometry(context: ctx, library: lib)
         self.witchlightGeometry = Self.makeWitchlightGeometry(context: ctx, library: lib)
-        self.staveGeometry = Self.makeStaveGeometry(context: ctx, library: lib)
+        self.staveGeometry = Self.makeStaveGeometry(
+            context: ctx,
+            library: lib,
+            waveform: buf.metalBuffer,
+            sampleRate: StemSeparator.modelSampleRate
+        )
         self.meniscusGeometry = Self.makeMeniscusGeometry(
             context: ctx, library: lib, spectrum: fft.magnitudeBuffer)
         self.moodClassifier = classifier
@@ -1366,23 +1371,30 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         return stroke
     }
 
-    /// Build the two beaded band-driven traces for the Stave preset (`StaveTrace` +
-    /// `Renderer/Shaders/StaveTrace.metal`, CHR.3). Returns `any ParticleGeometry`
-    /// (D-097, siblings not subclasses).
+    /// Build the spectral dispersion for the Stave preset (`StaveTrace` +
+    /// `StaveDispersionModel` + `Renderer/Shaders/StaveTrace.metal`, CHR.3b). Returns
+    /// `any ParticleGeometry` (D-097, siblings not subclasses).
+    ///
+    /// Takes the engine's `waveformBuffer` — the SAME `.storageModeShared` buffer the fragment
+    /// stages bind at slot 2 — so the band split can read the raw signal on the CPU. The
+    /// Meniscus precedent (MEN.2b); no copy, no protocol change.
     private static func makeStaveGeometry(
         context: MetalContext,
-        library: Renderer.ShaderLibrary
+        library: Renderer.ShaderLibrary,
+        waveform: MTLBuffer,
+        sampleRate: Float
     ) -> (any ParticleGeometry)? {
-        guard let trace = try? StaveTrace(
+        guard let dispersion = try? StaveTrace(
             device: context.device,
             library: library.library,
-            configuration: StaveConfiguration(),
+            waveform: waveform,
+            configuration: StaveConfiguration(sampleRate: sampleRate),
             pixelFormat: context.pixelFormat
         ) else {
             return nil
         }
-        logger.info("Stave created: \(StaveConfiguration().window) s beaded trace window")
-        return trace
+        logger.info("Stave created: \(StaveBandPlan.count)-band spectral dispersion")
+        return dispersion
     }
 
     /// Build the vibrating-sand Chladni simulation for the Cymatic Resonance preset

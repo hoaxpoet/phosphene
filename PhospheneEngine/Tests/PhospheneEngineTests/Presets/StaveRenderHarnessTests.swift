@@ -1,29 +1,22 @@
-// StaveRenderHarnessTests — Stave's production-path multi-frame harness (CHR.3).
+// StaveRenderHarnessTests — Stave's production-path multi-frame harness (CHR.3b).
 //
-// The checklist obligation, not an optional extra: "every preset increment that depends on
-// temporal behaviour must include a test running the same dispatch path the live app uses."
-// Stave's whole subject is an 8 s scrolling history ring, so a single `preset.pipelineState`
-// draw shows a frame with no trace in it at all — the exact class of test that let three
-// Aurora Veil increments ship green while smearing live.
+// The checklist obligation: "every preset increment that depends on temporal behaviour must
+// include a test running the same dispatch path the live app uses." Stave's whole subject is
+// the waveform read fresh every frame, so a single-frame test proves almost nothing.
 //
-// Dispatch path exercised — `RenderPipeline.drawParticleMode`, verbatim in structure:
-// ONE render encoder per frame, cleared, with the preset's own `pipelineState` drawing the
-// field triangle (features at 0, fft at 1, waveform at 2, stems at 3, spectral history at 5)
-// and then `ParticleGeometry.render` drawing into the SAME encoder. There is no feedback
-// accumulator on this path — particle mode clears every frame — which is why the trace's
-// smear is the history ring's own age-faded tail rather than an accumulator.
+// Dispatch path exercised — `RenderPipeline.drawParticleMode`, verbatim in structure: ONE
+// render encoder per frame, cleared, with the preset's `pipelineState` drawing the ground
+// triangle and then `ParticleGeometry.render` drawing the dispersion into the SAME encoder.
 //
-// Two entry points:
-//   * `staveParticlePath_silenceIsStableAndNonBlack` — default suite, silence, D-037 floor
-//     plus the L5 "quiet passages flatline" property. No env gate: it is cheap and it is the
-//     regression that matters.
-//   * `renderStaveSequence` — env-gated on a real capture, the frames a human reads:
-//       STAVE_RENDER_SESSION=<session-or-slice-dir> STAVE_RENDER_OUT=/tmp/... \
-//       swift test --package-path PhospheneEngine --filter StaveRenderHarness
+// ⚠ The harness must FILL THE WAVEFORM BUFFER, because that buffer is the preset's only
+// driver — it reads nothing else from the audio pipeline. A harness that leaves it zeroed
+// renders a flat line and would report a dead preset as working (the "harness must carry every
+// route" failure class). The env-gated test feeds real PCM from a session's `raw_tap.wav`.
 
 import Testing
 import Foundation
 import Metal
+import AVFoundation
 @testable import Renderer
 @testable import Presets
 @testable import Shared
@@ -34,27 +27,68 @@ struct StaveRenderHarnessTests {
 
     private static let presetName = "Stave"
 
-    // MARK: - Shared frame driver
+    // MARK: - Subject
 
-    /// One frame of the production particle-mode path. Returns the drawable-format pixels.
+    private final class Subject {
+        let preset: PresetLoader.LoadedPreset
+        let geometry: StaveTrace
+        let buffers: HarnessTemplateCore.SilenceBuffers
+        let waveform: MTLBuffer
+        /// ⚠ The harness bypasses `RenderPipeline`, which is where production publishes
+        /// `waveformOccupancy`. Without ticking it here Stave's fan would read a permanent
+        /// zero and the preset would render flat — a harness fault reported as a dead preset.
+        var occupancy = WaveformOccupancy()
+
+        init(preset: PresetLoader.LoadedPreset, geometry: StaveTrace,
+             buffers: HarnessTemplateCore.SilenceBuffers, waveform: MTLBuffer) {
+            self.preset = preset
+            self.geometry = geometry
+            self.buffers = buffers
+            self.waveform = waveform
+        }
+    }
+
+    private static func makeSubject(_ ctx: MetalContext, sampleCount: Int = 1024,
+                                    sampleRate: Float = 48_000,
+                                    zoom: Float? = nil,
+                                    frameKnee: Float? = nil) throws -> Subject {
+        // Fall back to the PRODUCTION defaults, never to hardcoded numbers — a harness that
+        // supplies its own defaults silently tests something the app does not ship.
+        let shipped = StaveConfiguration(sampleRate: sampleRate)
+        let lib = try ShaderLibrary(context: ctx)
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == presetName }) else {
+            throw HarnessError.presetNotFound(presetName)
+        }
+        let buffers = try HarnessTemplateCore.makeSilenceBuffers(ctx)
+        // Interleaved stereo, matching the engine's `waveformBuffer`.
+        guard let waveform = ctx.makeSharedBuffer(length: sampleCount * 2 * MemoryLayout<Float>.stride) else {
+            throw HarnessError.setupFailed("waveform buffer")
+        }
+        _ = waveform.contents().initializeMemory(
+            as: UInt8.self, repeating: 0, count: sampleCount * 2 * MemoryLayout<Float>.stride)
+        let geometry = try StaveTrace(device: ctx.device, library: lib.library,
+                                      waveform: waveform,
+                                      configuration: StaveConfiguration(sampleCount: sampleCount,
+                                                                      zoom: zoom ?? shipped.zoom,
+                                                                      frameKnee: frameKnee ?? shipped.frameKnee,
+                                                                      sampleRate: sampleRate),
+                                      pixelFormat: ctx.pixelFormat)
+        return Subject(preset: preset, geometry: geometry, buffers: buffers, waveform: waveform)
+    }
+
     private static func renderFrame(
-        ctx: MetalContext,
-        preset: PresetLoader.LoadedPreset,
-        geometry: StaveTrace,
-        buffers: HarnessTemplateCore.SilenceBuffers,
-        texture: MTLTexture,
-        features: inout FeatureVector,
-        stems: StemFeatures,
-        width: Int,
-        height: Int
+        ctx: MetalContext, subject: Subject, texture: MTLTexture,
+        features: inout FeatureVector, width: Int, height: Int
     ) throws -> [UInt8] {
         guard let cmd = ctx.commandQueue.makeCommandBuffer() else {
             throw HarnessError.commandBufferFailed
         }
-        // The CPU tick goes through the protocol's own `update` seam — the same call
-        // `RenderPipeline.renderFrame` makes — so the harness cannot drift from production
-        // by ticking some private method instead.
-        geometry.update(features: features, stemFeatures: stems, commandBuffer: cmd)
+        let frames = subject.waveform.length / (2 * MemoryLayout<Float>.stride)
+        let wave = subject.waveform.contents().bindMemory(to: Float.self, capacity: frames * 2)
+        subject.occupancy.advance(waveform: wave, frames: frames, deltaTime: features.deltaTime)
+        features.waveformOccupancy = subject.occupancy.value
+        subject.geometry.update(features: features, stemFeatures: .zero, commandBuffer: cmd)
 
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = texture
@@ -64,15 +98,15 @@ struct StaveRenderHarnessTests {
         guard let encoder = cmd.makeRenderCommandEncoder(descriptor: pass) else {
             throw HarnessError.renderFailed
         }
-        encoder.setRenderPipelineState(preset.pipelineState)
+        encoder.setRenderPipelineState(subject.preset.pipelineState)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
-        encoder.setFragmentBuffer(buffers.fft, offset: 0, index: 1)
-        encoder.setFragmentBuffer(buffers.waveform, offset: 0, index: 2)
-        var stemCopy = stems
-        encoder.setFragmentBytes(&stemCopy, length: MemoryLayout<StemFeatures>.size, index: 3)
-        encoder.setFragmentBuffer(buffers.history, offset: 0, index: 5)
+        encoder.setFragmentBuffer(subject.buffers.fft, offset: 0, index: 1)
+        encoder.setFragmentBuffer(subject.waveform, offset: 0, index: 2)
+        var stems = StemFeatures.zero
+        encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
+        encoder.setFragmentBuffer(subject.buffers.history, offset: 0, index: 5)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        geometry.render(encoder: encoder, features: features)
+        subject.geometry.render(encoder: encoder, features: features)
         encoder.endEncoding()
 
         cmd.commit()
@@ -81,113 +115,132 @@ struct StaveRenderHarnessTests {
         return HarnessTemplateCore.readBGRA(texture, width: width, height: height)
     }
 
-    private static func makeSubject(_ ctx: MetalContext) throws
-        -> (PresetLoader.LoadedPreset, StaveTrace, HarnessTemplateCore.SilenceBuffers) {
-        let lib = try ShaderLibrary(context: ctx)
-        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
-        guard let preset = loader.presets.first(where: { $0.descriptor.name == presetName }) else {
-            throw HarnessError.presetNotFound(presetName)
-        }
-        let geometry = try StaveTrace(device: ctx.device, library: lib.library,
-                                      configuration: StaveConfiguration(),
-                                      pixelFormat: ctx.pixelFormat)
-        return (preset, geometry, try HarnessTemplateCore.makeSilenceBuffers(ctx))
-    }
-
     // MARK: - Silence regression (default suite)
 
-    @Test("particle-path silence: field persists, never black, traces flatline (D-037 / L5)")
+    @Test("particle-path silence: ground persists, never black, wave flattens (D-037)")
     func staveParticlePath_silenceIsStableAndNonBlack() throws {
         let width = 256, height = 256
         let ctx = try MetalContext()
-        let (preset, geometry, buffers) = try Self.makeSubject(ctx)
+        let subject = try Self.makeSubject(ctx)
         let texture = try HarnessTemplateCore.makeCaptureTexture(ctx, width: width, height: height)
 
-        var first: [UInt8] = []
         var last: [UInt8] = []
-        for i in 0..<90 {
+        for i in 0..<60 {
             var features = HarnessTemplateCore.silenceFeature(frame: i)
             features.aspectRatio = Float(width) / Float(height)
-            let pixels = try Self.renderFrame(
-                ctx: ctx, preset: preset, geometry: geometry, buffers: buffers,
-                texture: texture, features: &features, stems: .zero,
-                width: width, height: height)
-            if i == 0 { first = pixels }
-            if i == 89 { last = pixels }
+            last = try Self.renderFrame(ctx: ctx, subject: subject, texture: texture,
+                                        features: &features, width: width, height: height)
         }
 
-        // D-037: silence renders the field, not black. The floor in `stave_field_fragment`
-        // is (0.012, 0.014, 0.022) linear, so every pixel must clear a small non-zero bar.
-        let darkest = stride(from: 0, to: last.count, by: 4).map { max(last[$0], max(last[$0 + 1], last[$0 + 2])) }.min() ?? 0
+        // D-037: silence renders the ground, not black.
+        var darkest: UInt8 = 255
+        for i in stride(from: 0, to: last.count, by: 4) {
+            let b: UInt8 = last[i], g: UInt8 = last[i + 1], r: UInt8 = last[i + 2]
+            let peak: UInt8 = max(b, max(g, r))
+            if peak < darkest { darkest = peak }
+        }
         #expect(darkest > 2, "silence frame has a fully black pixel — D-037 floor breached")
 
-        // The field is structured, not a flat plate (haze, cloud, rules, sparkles).
-        #expect(HarnessTemplateCore.isNonConstant(last), "silence frame is a constant colour")
-
-        // L5 — no autonomous TRACE motion. The atmosphere drifts very slowly, so the frame is
-        // not frozen, but it must not be churning either: a quiet passage flatlining IS the
-        // design, and this is what would catch someone adding ambient motion "so it isn't
-        // boring" (the failure this source was chosen to avoid).
-        var diff = 0
-        for i in stride(from: 0, to: min(first.count, last.count), by: 4) where
-            abs(Int(first[i]) - Int(last[i])) > 12 { diff += 1 }
-        let churn = Float(diff) / Float(width * height)
-        #expect(churn < 0.35, "silence churn \(churn) — the field is animating on its own (L5)")
+        // At silence the fan must be at rest: nothing on screen, nothing to disperse.
+        #expect(subject.geometry.fan <= subject.geometry.configuration.fanMin + 1e-3,
+                "fan did not settle to rest at silence (\(subject.geometry.fan))")
     }
 
-    // MARK: - Real-capture sequence (env-gated)
+    @Test("a zeroed waveform buffer produces a flat wave — the harness's own guard")
+    func silentWaveformIsFlat() throws {
+        let ctx = try MetalContext()
+        let subject = try Self.makeSubject(ctx)
+        var features = HarnessTemplateCore.silenceFeature(frame: 1)
+        guard let cmd = ctx.commandQueue.makeCommandBuffer() else { return }
+        subject.geometry.update(features: features, stemFeatures: .zero, commandBuffer: cmd)
+        _ = features
+        // Every curve sample must be zero. This is the guard on the guard: if a future change
+        // makes the model synthesise motion from nothing, the silence test above would still
+        // pass while the preset animated at silence, which L5 forbids.
+        let peak = subject.geometry.model.curves.map(abs).max() ?? 0
+        #expect(peak < 1e-6, "model produced \(peak) from a silent buffer")
+    }
 
-    @Test("render a Stave sequence from a recorded session (STAVE_RENDER_SESSION=…)")
+    // MARK: - Real-audio sequence (env-gated)
+
+    @Test("render a Stave sequence from real audio (STAVE_RENDER_WAV=…)")
     func renderStaveSequence() throws {
         let env = ProcessInfo.processInfo.environment
-        guard let sessionPath = env["STAVE_RENDER_SESSION"] else {
-            print("[stave] STAVE_RENDER_SESSION not set — skipping")
+        guard let wavPath = env["STAVE_RENDER_WAV"] else {
+            print("[stave] STAVE_RENDER_WAV not set — skipping")
             return
         }
         let width = Int(env["STAVE_RENDER_W"] ?? "") ?? 1067
-        let height = Int(env["STAVE_RENDER_H"] ?? "") ?? 750
-        let stride = Int(env["STAVE_RENDER_STRIDE"] ?? "") ?? 3
-        let count = Int(env["STAVE_RENDER_COUNT"] ?? "") ?? 180
-        let warmup = Int(env["STAVE_RENDER_WARMUP"] ?? "") ?? 1200
+        let height = Int(env["STAVE_RENDER_H"] ?? "") ?? 600
+        let startAt = Float(env["STAVE_RENDER_START"] ?? "") ?? 40
+        let seconds = Float(env["STAVE_RENDER_SECONDS"] ?? "") ?? 5
         let outDir = URL(fileURLWithPath: env["STAVE_RENDER_OUT"]
                          ?? NSTemporaryDirectory().appending("stave_render"))
-
-        let aspect = Float(width) / Float(height)
-        let frames = StaveReplay.load(session: URL(fileURLWithPath: sessionPath), aspect: aspect)
-        guard frames.count > warmup else {
-            Issue.record("only \(frames.count) frames parsed from \(sessionPath), need > \(warmup)")
-            return
-        }
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
+        let audio = try StaveHarnessAudio(url: URL(fileURLWithPath: (wavPath as NSString).expandingTildeInPath))
         let ctx = try MetalContext()
-        let (preset, geometry, buffers) = try Self.makeSubject(ctx)
+        let subject = try Self.makeSubject(
+            ctx,
+            sampleRate: audio.sampleRate,
+            zoom: env["STAVE_RENDER_ZOOM"].flatMap(Float.init),
+            frameKnee: env["STAVE_RENDER_KNEE"].flatMap(Float.init))
         let texture = try HarnessTemplateCore.makeCaptureTexture(ctx, width: width, height: height)
+        let sampleCount = subject.geometry.configuration.sampleCount
+        let wavePtr = subject.waveform.contents().bindMemory(to: Float.self, capacity: sampleCount * 2)
 
+        let fps: Float = 60
+        let frameCount = Int(seconds * fps)
+        // Warm the per-band level envelope before capturing — it is a 20 s tracker, so the
+        // first frames are it settling rather than the preset's steady behaviour.
+        let warmup = Int(6 * fps)
         var written = 0
-        var tintTrack: [Float] = []
-        for (i, frame) in frames.enumerated() {
-            var features = frame.features
-            // Warm the band EMAs and fill the 8 s window before capturing, then capture every
-            // `stride`-th frame so the sequence covers real musical time.
-            guard i >= warmup, (i - warmup) % stride == 0, written < count else {
-                geometry.advance(features: features, stems: frame.stems)
-                continue
+        var fanMin = Float.greatestFiniteMagnitude, fanMax: Float = 0
+        // Frame fit: the largest |y| any band reaches, in NDC half-heights. > 1 means the
+        // wave is drawn outside the frame and is being clipped by the viewport.
+        var peakY: Float = 0
+        var overflowFrames = 0
+
+        for f in -warmup..<frameCount {
+            let t = startAt + Float(f) / fps
+            audio.fill(wavePtr, frames: sampleCount, at: max(t, 0))
+            var features = FeatureVector(time: t, deltaTime: 1 / fps)
+            features.aspectRatio = Float(width) / Float(height)
+            let pixels = try Self.renderFrame(ctx: ctx, subject: subject, texture: texture,
+                                              features: &features, width: width, height: height)
+            guard f >= 0 else { continue }
+            fanMin = min(fanMin, subject.geometry.fan)
+            fanMax = max(fanMax, subject.geometry.fan)
+            let model = subject.geometry.model
+            let bands = StaveBandPlan.count
+            var framePeak: Float = 0
+            for band in 0..<bands {
+                let ratio = Float(band) / Float(bands - 1)
+                let dev = 2 * pow(ratio, model.configuration.spacing) - 1
+                let offset = model.fan * dev
+                let base = band * model.configuration.sampleCount
+                for i in 0..<model.configuration.sampleCount {
+                    let y = (model.curves[base + i] + offset) * model.configuration.zoom
+                    let knee = model.configuration.frameKnee
+                    var mag = abs(y)
+                    if knee > 0 && mag > knee {
+                        let head = 1 - knee
+                        mag = knee + head * tanhf((mag - knee) / head)
+                    }
+                    framePeak = max(framePeak, mag)
+                }
             }
-            let pixels = try Self.renderFrame(
-                ctx: ctx, preset: preset, geometry: geometry, buffers: buffers,
-                texture: texture, features: &features, stems: frame.stems,
-                width: width, height: height)
-            try StaveFieldTintSpike.writePNG(
+            peakY = max(peakY, framePeak)
+            if framePeak > 1 { overflowFrames += 1 }
+            try StaveHarnessAudio.writePNG(
                 bgra: pixels, width: width, height: height,
                 to: outDir.appendingPathComponent(String(format: "stave_seq_%04d.png", written)))
-            tintTrack.append(geometry.fieldTint)
             written += 1
         }
-        let minTint = tintTrack.min() ?? 0
-        let maxTint = tintTrack.max() ?? 0
         print("[stave] wrote \(written) frames to \(outDir.path)")
-        print("[stave] field tint over the sequence: \(String(format: "%.2f..%.2f", minTint, maxTint))")
-        print("[stave] rules on screen at the end: \(Int(geometry.ruleDensity))")
+        print("[stave] fan over the sequence: \(String(format: "%.3f..%.3f", fanMin, fanMax))")
+        print("[stave] peak |y| \(String(format: "%.3f", peakY)) NDC"
+              + "  (frames drawn outside the frame: \(overflowFrames)/\(written))"
+              + "  → fits at zoom \(String(format: "%.1f", 100 * (1 - 1 / max(peakY, 1)))) %")
     }
 }

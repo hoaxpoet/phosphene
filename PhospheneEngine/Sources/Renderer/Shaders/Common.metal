@@ -22,7 +22,10 @@ struct FeatureVector {
     float spectral_centroid, spectral_flux;
     float valence, arousal;
     float time, delta_time;
-    float _pad0, aspect_ratio;
+    // Float 23 — reclaimed from `_pad0` at CHR.3c: waveform occupancy, how much of the
+    // spectrum is active vs each band's own ~20 s level. Time-domain derived, written by
+    // RenderPipeline beside aspect_ratio. ORDER IS THE CONTRACT.
+    float waveform_occupancy, aspect_ratio;
     float accumulated_audio_time;
     // MV-1 deviation: xRel=(x-0.5)*2 (±0.5), xDev=max(0,xRel) (D-026).
     float bass_rel, bass_dev;

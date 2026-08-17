@@ -26,6 +26,9 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     let fftMagnitudeBuffer: MTLBuffer   // 512 floats from FFTProcessor
     let waveformBuffer: MTLBuffer       // 2048 interleaved floats from AudioBuffer
 
+    /// CHR.3c — publishes `FeatureVector.waveformOccupancy` each frame. See `WaveformOccupancy`.
+    private var waveformOccupancy = WaveformOccupancy()
+
     // MARK: - Particle System
 
     /// Optional particle geometry — compute update + point-sprite rendering.
@@ -742,6 +745,18 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         features.deltaTime = deltaTime
         let size = view.drawableSize
         features.aspectRatio = size.height > 0 ? Float(size.width / size.height) : 1.777
+
+        // CHR.3c — waveform occupancy (float 23). Computed HERE rather than in `MIRPipeline`
+        // because it needs the time-domain signal and the MIR path only ever sees FFT
+        // magnitudes; the spectral reconstruction reached r = +0.628 against the real value,
+        // which is not close enough to substitute. Same buffer the preset fragments bind at
+        // slot 2, so a consumer reads exactly the signal it draws.
+        let waveFrames = waveformBuffer.length / (2 * MemoryLayout<Float>.stride)
+        if waveFrames > 8 {
+            let base = waveformBuffer.contents().bindMemory(to: Float.self, capacity: waveFrames * 2)
+            waveformOccupancy.advance(waveform: base, frames: waveFrames, deltaTime: deltaTime)
+            features.waveformOccupancy = waveformOccupancy.value
+        }
 
         let energy = (features.bass + features.mid + features.treble) / 3.0
         stepAccumulatedTime(energy: energy, deltaTime: deltaTime)

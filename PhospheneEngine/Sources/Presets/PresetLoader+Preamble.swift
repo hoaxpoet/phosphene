@@ -42,7 +42,8 @@ extension PresetLoader {
             float spectral_centroid, spectral_flux;
             float valence, arousal;
             float time, delta_time;
-            float _pad0, aspect_ratio;
+            // Float 23 — reclaimed from `_pad0` (CHR.3c): waveform occupancy.
+            float waveform_occupancy, aspect_ratio;
             float accumulated_audio_time;
             // MV-1 deviation: xRel=(x-0.5)*2 (±0.5), xDev=max(0,xRel) (D-026).
             float bass_rel, bass_dev;

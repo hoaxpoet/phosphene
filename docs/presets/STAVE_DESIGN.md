@@ -1,5 +1,113 @@
 # Stave — design doc
 
+> ## ⚠ SUPERSEDED BELOW THE LINE — read this banner first (CHR.3b, 2026-08-16)
+>
+> **Everything in §§1–11 describes the FIRST Stave: two band-driven traces plotting an 8 s
+> scrolling window on a beat-ruled field, with the stems tinting the room.** Matt's live M7 on
+> 2026-08-16 rejected it — *"deeply boring"*, *"not sure what is being plotted"*, *"what is the
+> purpose of the horizontal and vertical grid lines?"*, *"why the starry background — I don't
+> think it's necessary"*. He then declined retirement (*"you have to make it work"*) and gave
+> the concept it has now:
+>
+> > **"align the visible light spectrum to the frequency spectrum for this preset."**
+>
+> ## What Stave is now
+>
+> The live waveform, split into eight bands, each drawn in the colour of its own frequency —
+> 82 Hz at 662 nm deep red through to ~11 kHz at 404 nm violet, one pass across the visible
+> band, compressed rather than octave-wrapped. Additive, so a full spectrum sums toward white
+> like mixed light. Bands are offset by wavelength so the spectrum separates as a prism
+> separates light, and **that separation is driven by how much signal is on screen** — quiet
+> converges to a tight ribbon, loud opens to full spectrum.
+>
+> ## Why the old design failed, mechanically
+>
+> The preset is `family: waveform` and **never read the waveform**. It plotted EMA-centred band
+> energy — an envelope statistic — and every stage removed life: 20 Hz decimation killed
+> everything fast, EMA-centring removed level, soft saturation compressed the dynamics, the 8 s
+> window smeared what was left. It also had no channel slower than ~0.3 s except the stem tint,
+> so it could not tell one part of a song from another: the M7 track had five sections and a
+> 4× arousal climb and the preset read none of it.
+>
+> ## What is gone, and why
+>
+> | Removed | Reason |
+> |---|---|
+> | Star sparkles | Matt: not necessary. Non-reactive; existed only because the source render had them. |
+> | Static horizontal rules | They existed because the preset is called Stave. A pun is not a design reason. |
+> | Beat vertical rules | They scrolled away with the plot, so they never read as a beat. |
+> | Beads | Matt: *"beads are not necessary."* |
+> | Stem field tint (D-216) | Matt: *"probably unnecessary"* — and **contradictory**: colour now means frequency, and colour cannot mean two things at once. This is D-216's rejected option A arriving on its own merits. |
+> | The scrolling 8 s window, time axis, haze, cloud | Went with the plot. |
+>
+> ## Locked decisions that SURVIVE
+>
+> L1 (two voices, low against high) survives generalised — the spectrum has eight bands and low
+> against high is its two ends. L2 (band-driven, in-time) survives and is now literal: the raw
+> signal, every frame. L5's "no autonomous motion" survives as a property rather than a rule —
+> a silent buffer draws a flat wave, gated by `silentWaveformIsFlat`. **L3/L4/L6/L7 are retired**
+> along with the stems, the rules and the beads.
+>
+> ## Settled parameters, all from rendered sweeps on real audio (not taste)
+>
+> | Parameter | Value | Why |
+> |---|---|---|
+> | band widths | 320, 224, 160, 112, 72, 40, 16, 4 | Not one per octave: even spacing clumped three bands above 3 kHz into a purple mass. Five bands cover 69–550 Hz where the energy is. |
+> | `scale` | 1.7 | 0.85 left a thin strip in the middle; 2.8 overflowed into wall-to-wall fringe. |
+> | `tilt` | 0.45 | Full compensation made the top bands a dense spiky comb; this leaves the spectrum bass-weighted the way music is. |
+> | `spacing` | 0.5 | Weights the spread toward the reds so the bass has room to be a gesture. |
+> | `fanMin`/`fanMax` | 0.02 / 0.40 | Driven, not fixed — a fixed fan collapsed Take Five into a static rainbow layer cake. |
+> | `levelTau` | 20 s | Long enough that a quiet passage still draws quieter; short enough to settle a track change. The spike used whole-track gains, which production cannot have. |
+>
+> ## Frame fit (CHR.3e, Matt's M7 2026-08-17 — *"looks good … otherwise, it works for me"*)
+>
+> First positive M7. One change asked for: *"the camera should zoom out 2-5% so that when there
+> is highly energetic music, the waves do not fall outside of the frame"*, then clarified —
+> *"I want the waves to cover most of the vertical area of the frame, as they do now. I think a
+> zoom of 35-50% is likely excessive."*
+>
+> **Measured before choosing, and the two halves of the first instruction conflicted.** Peak
+> `|y|` across the corpus was **1.53–1.98** against a frame of 1.0, so containing the peaks by
+> zoom alone needs 35–50 % — the amount he then ruled out. A literal 4 % zoom moved peak
+> 1.83 → 1.75 and overflowing frames 125 → 113 out of 360: essentially nothing.
+>
+> **Shipped instead: a piecewise soft ceiling at 0.75 NDC, zoom left at 1.0.** Below the knee
+> the value passes through untouched; above it the excursion folds into the remaining headroom.
+> A plain `tanh` was tried and rejected — it compresses through the origin and shrank
+> mid-amplitude by 12 %, quietly reducing the approved look.
+>
+> | | peak before | after | frames outside frame |
+> |---|---|---|---|
+> | M7 session | 1.83 | 1.000 | 125/360 → **0** |
+> | Carry, loudest | 1.66 | 1.000 | 231/360 → **0** |
+> | Bleed | 1.53 | 0.999 | 48/360 → **0** |
+> | Clair De Lune | 1.98 | 1.000 | 8/360 → **0** |
+> | Take Five | 0.51 | 0.510 | 0 → 0, **unchanged** |
+>
+> Take Five is the control: it never approached the edge and comes through bit-identical, so
+> nothing quiet is touched.
+>
+> **Also confirmed by that session:** `waveform_occupancy` published live on 2031/2032 frames,
+> live range 0.067–0.153 against 0.073–0.124 measured offline — the CHR.3c primitive behaves
+> identically in production. It also confirms the fan saturation item below: on Carry The Zero
+> the fan sits at 0.377–0.400 of a 0.400 ceiling throughout.
+>
+> ## Open items carried into CHR.4
+>
+> 1. **QG.1 cannot gate this preset.** Its only driver is the engine's waveform buffer, which is
+>    not a session-recordable primitive, so `audio_routes` is empty and `RouteCoverageTests`
+>    has nothing to assert. Declaring routes the code does not read would be worse than
+>    declaring none. **This blocks certification** (`certifiedPresetsDeclareAudioRoutes`) and
+>    the fix is a routable waveform-derived primitive, which is engine work.
+> 2. **The fan saturates on loud material** — Carry The Zero and Bleed both sit at 0.38–0.40 of
+>    a 0.40 ceiling, so the spread has no headroom left on dense tracks. Clair De Lune, with
+>    real dynamics, swings 0.16–0.40 and uses the range properly.
+> 3. **Dispersion is expressive, not optical.** A real prism's separation is fixed by its
+>    material and does not breathe with level. Accepted deliberately.
+>
+> ---
+
+
 **Increment:** written at **CHR.1.3** (2026-08-14), the design-doc half of CHR.1 that its
 task-4 hard stop correctly withheld until the driver was settled and gated.
 **Status:** authoritative input for **CHR.3**. Every open item is decided in §10; nothing
