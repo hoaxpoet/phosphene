@@ -315,6 +315,7 @@ struct BeatHoldTests {
     /// continuous-target mode must keep moving where the latched mode stalls.
     @Test("FTR.22: a continuous target keeps the value moving; a latched target stalls")
     func continuousTargetDoesNotStall() {
+        var totalTravel: Double = 0
         func stillFraction(_ hold: BeatHold) -> Double {
             var hold = hold
             var values: [Float] = []
@@ -332,11 +333,25 @@ struct BeatHoldTests {
             }
             let settled = Array(values.dropFirst(values.count / 2))
             let velocity = zip(settled, settled.dropFirst()).map { abs($1 - $0) }
+            // FTR.23 — report ABSOLUTE travel alongside the self-normalised stillness. A
+            // fraction of "frames below 2 % of PEAK" cannot detect the whole signal slowing
+            // down: FTR.22 improved that figure to 14.8 % while peak velocity fell 44 % and
+            // Matt's verdict was "now it barely moves".
             let peak = velocity.sorted()[Int(0.99 * Double(velocity.count - 1))]
-            return Double(velocity.filter { $0 < peak * 0.02 }.count) / Double(velocity.count)
+            let still = Double(velocity.filter { $0 < peak * 0.02 }.count) / Double(velocity.count)
+            totalTravel = Double(velocity.reduce(0, +))
+            return still
         }
         let latched = stillFraction(BeatHold(glideBeats: 0.25))
-        let continuous = stillFraction(BeatHold(continuousGlideBeats: 0.35, beatSpeedBoost: 3.0))
+        let latchedTravel = totalTravel
+        let continuous = stillFraction(BeatHold(continuousGlideBeats: 0.12, beatSpeedBoost: 1.0))
+        let continuousTravel = totalTravel
+        // FTR.23 — the no-stall property is worthless if it is bought by slowing everything down.
+        #expect(continuousTravel >= latchedTravel * 0.95, """
+            continuous-target mode travelled \(continuousTravel) against the latched mode's \
+            \(latchedTravel). FTR.22 halved the stillness figure by collapsing peak velocity 44 % \
+            and Matt's verdict was "now it barely moves" — absolute travel must not regress.
+            """)
         #expect(continuous < latched * 0.6, """
             continuous-target mode is still on \(continuous) of frames against the latched \
             mode's \(latched). The whole point is that a target which never stops moving cannot \
