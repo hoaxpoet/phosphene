@@ -62,7 +62,7 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
         device: MTLDevice,
         library: MTLLibrary,
         waveform: MTLBuffer,
-        configuration: StaveConfiguration = .init(),
+        configuration: StaveConfiguration,
         pixelFormat: MTLPixelFormat? = nil
     ) throws {
         self.configuration = configuration

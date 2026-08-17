@@ -187,7 +187,7 @@ struct MultiPassRenderHarness {
             throw HarnessError.setupFailed("audio buffers")
         }
         let geo = try StaveTrace(device: ctx.device, library: lib.library, waveform: wav,
-                                 configuration: StaveConfiguration(sampleCount: sampleCount),
+                                 configuration: StaveConfiguration(sampleCount: sampleCount, sampleRate: 48_000),
                                  pixelFormat: ctx.pixelFormat)
         let wavePtr = wav.contents().bindMemory(to: Float.self, capacity: sampleCount * 2)
 

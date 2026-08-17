@@ -101,6 +101,12 @@ public struct StaveConfiguration: Sendable {
     public var fanTau: Float
     /// Seconds. Per-band level tracking. Long by design — see `gains`.
     public var levelTau: Float
+    /// The LIVE TAP rate, threaded in — never assumed (D-079 / QR.1 / FA #52). It is
+    /// load-bearing here in a way it is not for most presets: every band's centre frequency is
+    /// `fs / 2W`, so the whole frequency→colour mapping scales with it. Assuming 44.1 kHz on a
+    /// 48 kHz chain — which is what the sessions in this repo actually run — shifts every band
+    /// 8.8 % up and mis-colours the entire image.
+    public var sampleRate: Float
 
     public init(
         sampleCount: Int = 1024,
@@ -110,7 +116,8 @@ public struct StaveConfiguration: Sendable {
         fanMin: Float = 0.02,
         fanMax: Float = 0.40,
         fanTau: Float = 0.12,
-        levelTau: Float = 20.0
+        levelTau: Float = 20.0,
+        sampleRate: Float
     ) {
         self.sampleCount = sampleCount
         self.scale = scale
@@ -120,6 +127,7 @@ public struct StaveConfiguration: Sendable {
         self.fanMax = fanMax
         self.fanTau = fanTau
         self.levelTau = levelTau
+        self.sampleRate = sampleRate
     }
 }
 
@@ -154,7 +162,7 @@ public final class StaveDispersionModel: @unchecked Sendable {
     private var lowpass: [[Float]]
     private var prefix: [Float]
 
-    public init(configuration: StaveConfiguration = .init()) {
+    public init(configuration: StaveConfiguration) {
         self.configuration = configuration
         let samples = configuration.sampleCount
         self.curves = [Float](repeating: 0, count: StaveBandPlan.count * samples)
@@ -165,10 +173,8 @@ public final class StaveDispersionModel: @unchecked Sendable {
                              count: StaveBandPlan.count)
         self.prefix = [Float](repeating: 0, count: samples + 1)
         self.colours = (0..<StaveBandPlan.count).map { index in
-            // 44.1 kHz is the tap's rate; the mapping is fixed at build so the colours are a
-            // property of the preset rather than something that shifts with the input device.
             StaveBandPlan.spectralRGB(nm: StaveBandPlan.wavelengthNm(
-                StaveBandPlan.centreHz(index, sampleRate: 44_100)))
+                StaveBandPlan.centreHz(index, sampleRate: configuration.sampleRate)))
         }
     }
 

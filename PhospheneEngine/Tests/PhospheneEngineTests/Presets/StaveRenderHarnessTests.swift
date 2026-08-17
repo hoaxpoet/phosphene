@@ -36,7 +36,8 @@ struct StaveRenderHarnessTests {
         let waveform: MTLBuffer
     }
 
-    private static func makeSubject(_ ctx: MetalContext, sampleCount: Int = 1024) throws -> Subject {
+    private static func makeSubject(_ ctx: MetalContext, sampleCount: Int = 1024,
+                                    sampleRate: Float = 48_000) throws -> Subject {
         let lib = try ShaderLibrary(context: ctx)
         let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
         guard let preset = loader.presets.first(where: { $0.descriptor.name == presetName }) else {
@@ -51,7 +52,7 @@ struct StaveRenderHarnessTests {
             as: UInt8.self, repeating: 0, count: sampleCount * 2 * MemoryLayout<Float>.stride)
         let geometry = try StaveTrace(device: ctx.device, library: lib.library,
                                       waveform: waveform,
-                                      configuration: StaveConfiguration(sampleCount: sampleCount),
+                                      configuration: StaveConfiguration(sampleCount: sampleCount, sampleRate: sampleRate),
                                       pixelFormat: ctx.pixelFormat)
         return Subject(preset: preset, geometry: geometry, buffers: buffers, waveform: waveform)
     }
@@ -117,7 +118,7 @@ struct StaveRenderHarnessTests {
         #expect(darkest > 2, "silence frame has a fully black pixel — D-037 floor breached")
 
         // At silence the fan must be at rest: nothing on screen, nothing to disperse.
-        #expect(subject.geometry.fan <= StaveConfiguration().fanMin + 1e-3,
+        #expect(subject.geometry.fan <= subject.geometry.configuration.fanMin + 1e-3,
                 "fan did not settle to rest at silence (\(subject.geometry.fan))")
     }
 
@@ -155,7 +156,7 @@ struct StaveRenderHarnessTests {
 
         let audio = try StaveHarnessAudio(url: URL(fileURLWithPath: (wavPath as NSString).expandingTildeInPath))
         let ctx = try MetalContext()
-        let subject = try Self.makeSubject(ctx)
+        let subject = try Self.makeSubject(ctx, sampleRate: audio.sampleRate)
         let texture = try HarnessTemplateCore.makeCaptureTexture(ctx, width: width, height: height)
         let sampleCount = subject.geometry.configuration.sampleCount
         let wavePtr = subject.waveform.contents().bindMemory(to: Float.self, capacity: sampleCount * 2)

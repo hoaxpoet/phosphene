@@ -943,7 +943,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.cymaticSandGeometry = Self.makeCymaticSandGeometry(context: ctx, library: lib)
         self.witchlightGeometry = Self.makeWitchlightGeometry(context: ctx, library: lib)
         self.staveGeometry = Self.makeStaveGeometry(
-            context: ctx, library: lib, waveform: buf.metalBuffer)
+            context: ctx,
+            library: lib,
+            waveform: buf.metalBuffer,
+            sampleRate: StemSeparator.modelSampleRate
+        )
         self.meniscusGeometry = Self.makeMeniscusGeometry(
             context: ctx, library: lib, spectrum: fft.magnitudeBuffer)
         self.moodClassifier = classifier
@@ -1377,13 +1381,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     private static func makeStaveGeometry(
         context: MetalContext,
         library: Renderer.ShaderLibrary,
-        waveform: MTLBuffer
+        waveform: MTLBuffer,
+        sampleRate: Float
     ) -> (any ParticleGeometry)? {
         guard let dispersion = try? StaveTrace(
             device: context.device,
             library: library.library,
             waveform: waveform,
-            configuration: StaveConfiguration(),
+            configuration: StaveConfiguration(sampleRate: sampleRate),
             pixelFormat: context.pixelFormat
         ) else {
             return nil
