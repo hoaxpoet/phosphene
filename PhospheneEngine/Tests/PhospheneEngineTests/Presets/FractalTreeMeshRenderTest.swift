@@ -139,26 +139,6 @@ struct FractalTreeMeshRenderTest {
         // Without this the harness would pass on a preset whose audio routes are all dead
         // — which is precisely the FTR.2 defect. Compares the quietest and loudest drive
         // frames; if routing works, they must not be near-identical.
-        // --- (b0) FTR.24: the size accent reaches pixels -------------------------------
-        // Its own assertion rather than a line in the p05→p95 delta, because the accent is
-        // deliberately SMALL (0.45 into the base's remaining headroom) and would be lost
-        // inside a whole-range comparison. This is the gate that fails if a future refactor
-        // drops the field, the preamble, the harness mapping, or the shader term.
-        if let accentLo = frames.first(where: { $0.label == "accent-lo" }),
-           let accentHi = frames.first(where: { $0.label == "accent-hi" }) {
-            let accentDelta = Self.meanAbsoluteDelta(accentLo.pixels, accentHi.pixels)
-            print(String(format: "[fractal-tree] accent off→on mean |Δpixel| = %.3f (0–255)",
-                         accentDelta))
-            #expect(accentDelta > 0.05,
-                    """
-                    the FTR.24 size accent does not reach pixels (mean |Δpixel| \
-                    \(String(format: "%.3f", accentDelta)) of 255 between \
-                    spectral_level_rise 0 and 1 on an otherwise identical frame). Check, in \
-                    this order: the field in `PresetLoader+Preamble`'s FeatureVector copy (a \
-                    missing field there fails the shader COMPILE and drops the whole preset), \
-                    `featuresFromSession`, and the shader's `sizeAccent` term.
-                    """)
-        }
         let quiet = try #require(frames.first { $0.label == "p05" })
         let loud = try #require(frames.first { $0.label == "p95" })
         let delta = Self.meanAbsoluteDelta(quiet.pixels, loud.pixels)
@@ -658,8 +638,7 @@ struct FractalTreeMeshRenderTest {
             reachTerm.append(growth.reach * 0.13)
             surgeTerm.append(growth.surge * 0.32)
             continuous.append(Self.trunkLength(fv))
-            stepped.append(Self.trunkLength(held, section: section,
-                                            accent: fv.spectralLevelRise))   // FTR.24, LIVE
+            stepped.append(Self.trunkLength(held, section: section))
             // FTR.13 — FRACTIONAL counts. The shader scales the frontier branch's length by the
             // fraction, so the visible canopy is the fractional value; an integer mirror would
             // report a pop the shader no longer draws.
@@ -1113,8 +1092,9 @@ struct FractalTreeMeshRenderTest {
         //    term the shader had stopped using, and every trunk figure in the report was of
         //    the uncorrected build. When `section` is nil the correction is simply absent,
         //    which is the honest answer for a caller that has no section vector to give.
-        // 2. The FTR.24 accent, read from the LIVE vector (`accent`) rather than from `f`,
-        //    because the accent is the one term that must not be beat-latched.
+        // 2. FTR.24's accent term was here for one day and is gone with its consumer (Matt:
+        //    *"herky-jerky … looks defective"*); the `accent` parameter is kept because the
+        //    FT_ACCENT_FROM_TAP probe still measures what a future consumer WOULD see.
         let level = saturate(f.spectralSurge)
         let corrected: Float
         if let section {
@@ -1124,8 +1104,7 @@ struct FractalTreeMeshRenderTest {
         } else {
             corrected = level
         }
-        let sized = saturate(corrected + 0.45 * saturate(accent) * (1 - corrected))
-        return (saturate(Swift.max(0.10 * arousalReach, fullness) * gate), sized)
+        return (saturate(Swift.max(0.10 * arousalReach, fullness) * gate), corrected)
     }
 
     /// The shader's `trunk_len` (FractalTree.metal), mirrored — see ``growth(_:)``.
@@ -1740,22 +1719,6 @@ struct FractalTreeMeshRenderTest {
             let row = ranked[min(Int(Double(ranked.count - 1) * p), ranked.count - 1)]
             out.append(Drive(label: label, features: Self.features(series, row: row),
                              stems: Self.stems(series, row: row)))
-        }
-
-        // FTR.24 — TWO FRAMES THAT VARY ONLY THE SIZE ACCENT. The route-coverage fixtures were
-        // recorded before `spectral_level_rise` existed, so every frame above carries 0 for it
-        // and the accent is INVISIBLE to this sheet by construction — the same
-        // harness-does-not-carry-the-route hole that hid the FTR.19 hue defect for 17
-        // increments and made FTR.16's A/B meaningless. A synthesised pair is the honest
-        // instrument here: it makes no claim about how the accent behaves on music (that is
-        // measured offline on real captures), only that the route is ALIVE and reaches pixels.
-        if let mid = warm.dropFirst(warm.count / 2).first {
-            var quiet = Self.features(series, row: mid)
-            quiet.spectralLevelRise = 0
-            var landed = quiet
-            landed.spectralLevelRise = 1
-            out.append(Drive(label: "accent-lo", features: quiet, stems: Self.stems(series, row: mid)))
-            out.append(Drive(label: "accent-hi", features: landed, stems: Self.stems(series, row: mid)))
         }
 
         // Two frames ranked by HARMONY instead of energy. Without these the sheet cannot

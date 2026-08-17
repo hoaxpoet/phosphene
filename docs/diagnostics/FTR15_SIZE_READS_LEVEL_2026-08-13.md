@@ -550,3 +550,76 @@ which is a sustained accent — an upper bound no real 0.20 s event reaches.
    range** — and the preset's own dead-route gate fails. His instruction was given to free flux
    for the size term, which measurement then ruled out, so the trade it was making no longer
    exists. A static canopy makes "no clear connection to the music" worse, not better.
+
+---
+
+## 10. Addendum 2026-08-17 (FTR.24a) — the accent is RETIRED, and §8's structural finding is now proven rather than argued
+
+Matt's M7 on the FTR.24 build (`2026-08-17T15-23-17Z`): *"Much worse now as the motion is
+herky-jerky. Looks defective. Considerable regression."* He was right, and by a wide margin.
+
+### 10.1 What was actually shipped, measured on his capture
+
+| | evt/rand | travel | peak \|v\| | jerk p99 |
+|---|---|---|---|---|
+| FTR.23 base only | 0.27× | 8.72 | 1.62 | 23 |
+| **FTR.24 with the accent** | 2.37× | **31.88** | **17.37** | **589** |
+
+**3.7× the travel, 10.7× the peak velocity, 25× the jerk.** Two independent defects compounded.
+
+**Defect 1 — the accent was the only driver in the preset with no render-rate smoothing.** The
+shader computes `surge = heldGrowth.y + accent`, i.e. the accent is added AFTER the beat-held
+glide, so nothing smooths it. FTR.14 exists because a driver arriving at the geometry unsmoothed
+reads as robotic; I made the accent live so it would not LATCH to the beat grid and mistook
+"not latched" for "not smoothed". ⚠ And §9's own numbers understated it 5× because my offline
+model glided the SUM — **the model and the shader disagreed about where the smoothing sat**, which
+is the ninth instance of this program's recurring error and the first that shipped a defect to
+Matt. When modelling a composition, model the ORDER of operations, not just the terms.
+
+**Defect 2 — BUG-089, a 22× analysis-rate dependence.** `spectral_level_rise` measured its rise
+against a trailing MINIMUM, which is not rate-invariant. Calibrated at 15.8 Hz (local files),
+played back at 59.4 Hz (the tap): 0.04 → 0.89 fires/s on identical audio. Filed, root-caused and
+fixed as BUG-089 (fixed-lag difference on a pre-smoothed level; the two real paths now agree
+within 12 %). Its transferable half is a test-adequacy lesson, in the KNOWN_ISSUES entry.
+
+### 10.2 ★★★ Why this is a DELETION and not a third tuning pass
+
+Both defects are fixable, and fixing them **removes the benefit along with the defect**:
+
+| build | evt/rand | travel | peak \|v\| | jerk p99 |
+|---|---|---|---|---|
+| FTR.23 base only | 0.27× | 8.72 | 1.62 | 23 |
+| FTR.24 shipped (rejected) | 2.37× | 31.88 | 17.37 | 589 |
+| fixed detector + 70 ms render envelope, gain 0.30 | 0.54× | 11.22 | 2.67 | 35 |
+| …gain 0.45 | **0.81×** | 13.36 | 3.95 | 45 |
+| …gain 0.60 | 1.11× | 15.71 | 5.24 | 58 |
+
+Every setting that marks events multiplies peak velocity; every setting that does not, marks
+nothing — **0.81× is below chance while still costing 2.4× the base's peak velocity.** So §8's
+structural claim is no longer an argument, it is a measurement across five builds:
+
+> **On this preset's SIZE, event alignment and calm motion are not merely hard to combine —
+> they are anti-correlated. A term fast enough to mark 0.8–1.5 events/s is, by construction, a
+> term that multiplies the tree's peak velocity, because size is the whole skeleton's scale and
+> everything else is drawn relative to it.**
+
+The accent is therefore removed from `FractalTree.metal` and its route deleted from the sidecar.
+`spectral_level_rise` survives as a corrected engine field with **no consumer** — kept because the
+measurement was the expensive part and it is now rate-invariant, and explicitly NOT as
+"infrastructure waiting for a concept" (D-097). If nothing routes it by the next audit, delete it.
+
+### 10.3 What the evidence says to try next, and what it rules out
+
+**Ruled out by measurement, not opinion:** any event-marking term on the tree's size or trunk
+length, at any gain, with or without smoothing.
+
+**Still open — the option Matt was offered and did not take yet:** put event marking on a visual
+property where a fast change does NOT displace geometry. Colour value, tip brightness, or canopy
+tip flicker can change in 80 ms without anything moving, so the "punch" costs zero peak velocity.
+This is the same conclusion Nacre reached from the other direction (`project_nacre_preset`:
+*transient-vs-envelope is the axis, and brightness is the wrong medium in a BRIGHT field* — the
+Fractal Tree canopy is sparse and dark, which is precisely where brightness DOES read).
+
+⚠ One instrument caveat for whoever picks this up: `evt/rand` is not comparable across captures.
+The FTR.23 base scores 1.53× on `2026-08-17T12-47-58Z` and 0.27× on `2026-08-17T15-23-17Z` — same
+build, same criterion, different material and analysis rate. Compare builds within one capture only.

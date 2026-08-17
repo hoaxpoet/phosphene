@@ -20,32 +20,36 @@ extension SpectralAnalyzer {
     static let surgeAttackTau: Float = LoudnessProfile.tau(legacyAlpha: 0.35)    // ≈ 0.054 s
     static let surgeReleaseTau: Float = LoudnessProfile.tau(legacyAlpha: 0.010)  // ≈ 2.31 s
 
-    /// FTR.24 — the level-rise accent's three constants.
+    /// FTR.24a — the level-rise constants, RECALIBRATED after the field shipped with a
+    /// 22× rate dependence that its first test suite could not see.
     ///
-    /// `levelFloorSpan` is the trailing window the rise is measured against: long enough
-    /// that a note's own attack does not become its own floor, short enough that the floor
-    /// is the passage rather than the section.
+    /// ★★★ THE DEFECT, because it generalises past this field. The first version measured the
+    /// rise against a trailing MINIMUM over 0.15 s. A minimum over a time window is NOT a
+    /// rate-invariant statistic: the higher the analysis rate, the more frames that window
+    /// spans, the noisier each frame's level is (a shorter hop is a shorter RMS window), and so
+    /// the deeper the minimum digs. On identical audio the field fired **0.04/s at 15.8 Hz and
+    /// 0.89/s at 59.4 Hz** — 22× — which means near-dead on local files (BUG-087: ~10–16 Hz)
+    /// and hyperactive on the tap (~51–59 Hz). The consumer that shipped with it doubled its
+    /// travel and Matt rejected it on sight: *"herky-jerky … looks defective."*
     ///
-    /// ★ THE BAND AND THE RELEASE ARE ONE CALIBRATION, AND DUTY CYCLE IS WHAT THEY CONTROL.
-    /// The first pass used 2–6 dB with a 0.35 s release, on the reasoning that the offline
-    /// criterion uses a 3 dB threshold and a slow release is easier to see. Measured through
-    /// the real consumer on `2026-08-17T12-47-58Z`, that fires **1.47 times a second and is
-    /// non-zero 75 % of the time** — so it stops being an accent and becomes a DC LIFT. The
-    /// visible cost was precise: the size term's p05 floor rose 46 % (0.281 → 0.409) and its
-    /// span fell 25 %, which is the FTR.16 defect Matt rejected as *"you fed the preset
-    /// ambien"* arriving by a different route.
+    /// `LevelRiseTests` had a rate-invariance test and it PASSED, because it asked only whether
+    /// a synthetic +12 dB step still fires at 10 Hz and 51 Hz. A step that large saturates the
+    /// band at any rate. **A rate-invariance test must compare a DISTRIBUTION on real material
+    /// (fire rate, duty cycle, mean), not whether one enormous input survives.**
     ///
-    /// Chasing it with the consumer's gain could not fix it — every weighting traded event
-    /// alignment against the floor monotonically, because the accent's DUTY CYCLE, not its
-    /// amplitude, is what lifts the floor. 4–12 dB with a 0.20 s release cuts the duty cycle
-    /// to 48 % and inverts the trade: event-versus-random specificity goes **1.53× → 3.77×**
-    /// (the shipped consumer's numbers) while the span holds within 10 % of untouched.
+    /// The fix is a statistic with no sample-count term: a FIXED-LAG difference — level now
+    /// minus level `levelRiseLagSeconds` ago — on a level pre-smoothed with a short fixed τ so
+    /// per-frame noise stops scaling with the hop. Measured on the same audio, that holds the
+    /// two real paths to within 12 % (15.8 Hz 0.35/s vs 59.4 Hz 0.41/s, mean 0.098 vs 0.109).
     ///
-    /// A 4 dB floor is also the honest reading of the criterion. A 3 dB rise is where an
-    /// event becomes *detectable*; it is not where one becomes worth moving the picture for.
-    static let levelFloorSpan: Float = 0.15
-    static let levelRiseLowDB: Float = 4.0
-    static let levelRiseHighDB: Float = 12.0
+    /// `levelPreSmoothTau` is deliberately 40 ms — long enough to normalise across rates, and
+    /// ~19× shorter than the `levelSmoothingTau` (0.76 s) whose transient-erasing is the entire
+    /// reason this field exists. The band widened to 2–7 dB because the lag difference is a
+    /// smaller number than a rise off a minimum.
+    static let levelPreSmoothTau: Float = 0.040
+    static let levelRiseLagSeconds: Float = 0.15
+    static let levelRiseLowDB: Float = 2.0
+    static let levelRiseHighDB: Float = 7.0
     static let levelRiseReleaseTau: Float = 0.20
 
     /// FALLBACK band in dB of TOTAL SPECTRAL ENERGY — note the scale, it is NOT RMS dBFS.
@@ -167,30 +171,34 @@ extension SpectralAnalyzer {
         densityNormal = ema(densityNormal, tau: Self.densityNormalTau)
     }
 
-    /// FTR.24 — advance the level-rise accent for one frame.
+    /// FTR.24a — advance the level-rise accent for one frame.
     ///
-    /// Measured on the RAW `levelDB` deliberately. Every existing level consumer reads
-    /// `smoothedLevelDB` (τ 0.76 s), and that follower is exactly what erases a transient:
-    /// `spectral_surge` is built on it and scores 0.25× event specificity, i.e. worse than
-    /// chance. A 0.15 s trailing floor on the unsmoothed value recovers the 3 dB rises a
-    /// listener hears as "something landed".
-    ///
-    /// The floor is a MINIMUM, not a mean — a mean is dragged up by the very rise being
-    /// detected, which halves the measured height of every accent after the first.
+    /// Measured on the raw `levelDB` through a SHORT fixed pre-smoothing, never on
+    /// `smoothedLevelDB` (τ 0.76 s), which is the follower that erases the transient this field
+    /// exists to catch. The rise is a FIXED-LAG difference; see the constants above for why a
+    /// trailing minimum was wrong and what it cost.
     func advanceLevelRise(deltaTime: Float, levelDB: Float) {
-        let floorDB = recentLevelDB.min() ?? levelDB
-        let riseDB = levelDB - floorDB
-
-        // The ring is bounded by TIME, not by frame count: the analysis rate varies by a
-        // factor of five between paths (BUG-087 — local files ~10–16 Hz, streaming ~51 Hz),
-        // so a fixed sample count would be a 0.04 s window on one path and 0.2 s on the
-        // other. Same reason every other constant here is in seconds (DYN.4).
-        let span = max(2, Int((Self.levelFloorSpan / max(deltaTime, 1e-4)).rounded()))
-        recentLevelDB.append(levelDB)
-        if recentLevelDB.count > span {
-            recentLevelDB.removeFirst(recentLevelDB.count - span)
+        // Pre-smooth first: per-frame level noise scales with the hop, and every statistic
+        // taken downstream of it inherits that scaling unless it is damped in TIME.
+        let preAlpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: Self.levelPreSmoothTau)
+        if preSmoothedLevelDB <= -119 {
+            preSmoothedLevelDB = levelDB          // exact seed, no ramp from -120
+        } else {
+            preSmoothedLevelDB += (levelDB - preSmoothedLevelDB) * preAlpha
         }
 
+        // The ring holds the pre-smoothed level so the lag lookup is a fixed DURATION, not a
+        // fixed number of samples — the analysis rate varies ~4× between paths (BUG-087).
+        let lagFrames = max(1, Int((Self.levelRiseLagSeconds / max(deltaTime, 1e-4)).rounded()))
+        let laggedDB = recentLevelDB.count > lagFrames
+            ? recentLevelDB[recentLevelDB.count - lagFrames - 1]
+            : (recentLevelDB.first ?? preSmoothedLevelDB)
+        recentLevelDB.append(preSmoothedLevelDB)
+        if recentLevelDB.count > lagFrames + 2 {
+            recentLevelDB.removeFirst(recentLevelDB.count - (lagFrames + 2))
+        }
+
+        let riseDB = preSmoothedLevelDB - laggedDB
         let target = Self.smoothstepf(Self.levelRiseLowDB, Self.levelRiseHighDB, riseDB)
         if target > levelRise {
             levelRise = target          // instantaneous attack — a rise is news at once
@@ -201,7 +209,7 @@ extension SpectralAnalyzer {
         }
     }
 
-    /// DYN.2c — section density against the track's normal.
+        /// DYN.2c — section density against the track's normal.
     ///
     /// Prefers the profile's OFFLINE normal (measured over the full decode at preparation)
     /// and falls back to the live τ45 s EMA only when there is no profile — i.e. streaming,

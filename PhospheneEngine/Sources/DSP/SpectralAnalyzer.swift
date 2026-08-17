@@ -104,10 +104,12 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     var densityNormal: Float = 0
     var smoothedLevelDB: Float = -120
     var surge: Float = 0
-    /// FTR.24 — the level-rise accent and the trailing floor it measures against. The ring
-    /// holds the last `levelFloorSpan` seconds of UNSMOOTHED level; `smoothedLevelDB` is a
-    /// 0.76 s follower and cannot see a transient at all.
+    /// FTR.24a — the level-rise accent, its short pre-smoothing, and the ring the fixed-lag
+    /// difference reads. `smoothedLevelDB` (τ 0.76 s) cannot see a transient at all; a trailing
+    /// MINIMUM of the raw level, which this first used, is not rate-invariant (22× across the
+    /// two real analysis rates — see `SpectralAnalyzer+Density`).
     var levelRise: Float = 0
+    var preSmoothedLevelDB: Float = -120
     var recentLevelDB: [Float] = []
     var smoothedDensity: Float = 0
     /// False until the first non-silent frame seeds both density legs.
@@ -273,6 +275,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         smoothedLevelDB = -120
         surge = 0
         levelRise = 0
+        preSmoothedLevelDB = -120
         recentLevelDB.removeAll(keepingCapacity: true)
         // `loudnessProfile` intentionally NOT cleared — see `setLoudnessProfile(_:)`.
     }
