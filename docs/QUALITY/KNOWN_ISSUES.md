@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
 | BUG-088 | P3 | preset.fidelity / documentation-drift | **Aurora Veil's `audio_routes` manifest does not describe the preset, and it is CERTIFIED.** It declares 5 routes; `pulseAmp01` is declared `kind: continuous` but the shader uses it as a **silence gate** (`aurora_stars(rd, f.bar_phase01, f.pulse_amp01)`, "fades the twinkle to zero at silence") — measured pinned at 1.000 with **zero p5–p95 range**, which is correct gate behaviour and useless as a driver. And it **omits three routes the code actually reads**: `drumsEnergyDev` (ALIVE, 61 % nonzero — the only live stem input, so QG.1 route coverage is blind to it) and `vocalsPitchHz` / `vocalsPitchConfidence` (**0.1 % nonzero**). Net: the manifest overstates coupling. Surfaced by Matt's M7 2026-08-12 — *"I don't really see how the preset responds to music beyond the flickering of the stars once per bar. The veil is just aurora-ing."* Measurement explains it exactly: of everything Aurora Veil reads, only `barPhase01` has large dynamic range. Tool: `Scripts/check_route_liveness.py`. Detail below |
@@ -61,6 +62,59 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-089 — `spectral_level_rise` shipped with a 22× analysis-rate dependence; its rate-invariance test passed (2026-08-17)
+
+**Status: root-caused and fixed the same day, in the increment that shipped it (FTR.24a). The
+consumer that exposed it was reverted separately.**
+
+**How it surfaced.** Matt's live M7 on `2026-08-17T15-23-17Z`: *"Much worse now as the motion is
+herky-jerky. Looks defective. Considerable regression."* Measured on that capture, the shipped
+Fractal Tree size term against the build it replaced:
+
+| | evt/rand | travel | peak \|v\| | jerk p99 |
+|---|---|---|---|---|
+| FTR.23 base only | 0.27× | 8.72 | 1.62 | 23 |
+| FTR.24 with the accent | 2.37× | **31.88** | **17.37** | **589** |
+
+**Root cause (read, not inferred).** `advanceLevelRise` measured the rise as
+`levelDB − min(levelDB over the last 0.15 s)`. A minimum over a time window is not
+rate-invariant: raise the analysis rate and (a) the window spans more frames, (b) each frame's
+level is noisier because the hop — and therefore the RMS window — is shorter. Both push the
+floor down, so the same music produces a larger rise at a higher rate. Measured on one capture's
+`raw_tap.wav`, decoded once and analysed at four rates with the shipped constants:
+
+| analysis rate | fires/s | non-zero | mean | floor window |
+|---|---|---|---|---|
+| 10.0 Hz | 0.03 | 16 % | 0.012 | 2 frames |
+| 15.8 Hz (local files) | 0.04 | 37 % | 0.031 | 2 frames |
+| 30.0 Hz | 0.26 | 61 % | 0.086 | 4 frames |
+| 59.4 Hz (the tap) | **0.89** | 85 % | 0.184 | 9 frames |
+
+FTR.24 calibrated against the 15.8 Hz column and Matt played back through the 59.4 Hz one.
+
+**★★★ The test-adequacy finding, which is the part that generalises.** The suite HAD a
+rate-invariance test and it was green. It asked whether a synthetic **+12 dB** step still fires at
+10 Hz and 51 Hz — and a step that large saturates the band at every rate, so no rate dependence of
+any magnitude could have failed it. **A rate-invariance test must compare a DISTRIBUTION on
+realistic material — fire rate, duty cycle, mean — not whether one enormous input survives.** The
+replacement (`levelRise_distributionMatchesAcrossAnalysisRates`) drives a repeating multi-size
+amplitude pattern for 24 s of wall time at both real rates and asserts duty cycle and mean within
+1.6×. It fails on the old formulation by a factor of 22.
+
+**Fix.** A statistic with no sample-count term: a FIXED-LAG difference,
+`preSmoothedLevelDB(t) − preSmoothedLevelDB(t − 0.15 s)`, where the level carries a short 40 ms
+pre-smoothing so per-frame noise stops scaling with the hop (and ~19× shorter than the 0.76 s
+`levelSmoothingTau` whose transient-erasing is why this field exists at all). Band re-derived to
+2–7 dB, because a lag difference is a smaller number than a rise off a minimum — **swapping the
+statistic without re-deriving the band is how the first version shipped.** The two real paths now
+sit within 12 % (0.35 vs 0.41 fires/s; mean 0.098 vs 0.109).
+
+**Residual.** The 10 Hz end is still ~2× off the others. It is the pre-BUG-087-partial-fix rate
+and no current path runs there; if one ever does, the level needs a fixed-DURATION RMS window
+rather than a per-hop one.
 
 ---
 

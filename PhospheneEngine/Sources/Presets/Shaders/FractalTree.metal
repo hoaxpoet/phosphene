@@ -313,75 +313,45 @@ void fractal_tree_object_shader(
         // separates the pre-guitar passage from the arrival 20.4× (0.048 → 0.981) while
         // turning only 0.58 times a second — a step the trunk can safely read, which the
         // restless `density` ratio never was.
-        // ── FTR.24: THE SIZE IS TWO LAYERS — A SLOW BASE AND A FAST ACCENT ───────
+        // ── FTR.24, RETIRED THE DAY IT SHIPPED: the size accent is GONE ──────────
         //
-        // Matt, seven times across FTR.15→FTR.23, the complaint that outlived every other:
-        // *"the tree grows and shrinks with no clear connection to the music."* FTR.23
-        // finally measured it instead of re-tuning it. Against 49 audible events on
-        // `2026-08-17T12-47-58Z` (a > 3 dB rise in the 50 ms RMS envelope of the tap), the
-        // event-versus-random specificity of the size driver was **0.25×** — `spectral_surge`
-        // moves DOWN when the ear notices something, because it ranks a 0.76 s follower and
-        // a limited master dips in rank exactly as a band arrives.
+        // FTR.24 split the size into a slow base plus a fast `spectral_level_rise` accent, on
+        // Matt's instruction ("build option 1") after FTR.23 measured the size driver at
+        // −0.52 at audible events. He rejected the live build immediately: *"Much worse now as
+        // the motion is herky-jerky. Looks defective. Considerable regression."* He was right,
+        // and the measurement on his capture `2026-08-17T15-23-17Z` is not close:
         //
-        // ★ THE STRUCTURAL FINDING, and the reason six rounds of re-tuning could not have
-        // worked: EVENT ALIGNMENT NEEDS A FAST RESPONSE, LOW TRAVEL NEEDS SMOOTHING, AND ONE
-        // TERM ON ONE LAYER CANNOT DO BOTH. Every single-term candidate was measured through
-        // this exact composition and each traded one of Matt's complaints for the other —
-        // flux alone reached 1.40× specificity only by tripling total travel ("the trunk is
-        // moving too much", FTR.9), and `max(base, flux)` cost 6.5× travel. The motion
-        // problem WAS solvable at FTR.22 because motion had two layers to separate, a target
-        // and a glide speed. Size had one. This gives it two.
+        //                             evt/rand   travel   peak|v|   jerk p99
+        //   FTR.23 base only            0.27×      8.72     1.62        23
+        //   FTR.24 accent (shipped)     2.37×     31.88    17.37       589
         //
-        // The base is unchanged — level rank with FTR.18's bounded limiter correction, which
-        // Matt accepted ("ok overall") and which carries the section arc. The accent is
-        // `spectral_level_rise` (FTR.24), the transient sibling of surge, scaled INTO THE
-        // REMAINING HEADROOM so a loud passage cannot be pushed into the ceiling: at
-        // base 0.9 the accent can still add 0.028, and pinning measured 0 % of frames where
-        // the additive formulations pinned 11–15 %.
+        // **10.7× the peak velocity and 25× the jerk.** Two defects of my own compounded:
         //
-        // Read LIVE (`f`, buffer 0) inside the held evaluation, deliberately — the whole
-        // point of an accent is that it lands when the sound does, so latching it to the
-        // beat grid would defeat it. It is the one term in the preset that must not step.
+        // 1. The accent was added AFTER the beat-held glide (`heldGrowth.y + accent`), so it
+        //    was the ONE driver in this preset with no render-rate smoothing at all — the very
+        //    mechanism FTR.14 added to cure "robotic". I made it live so it would not latch to
+        //    the beat grid, and mistook "not latched" for "not smoothed". My offline model
+        //    glided the SUM and so understated peak velocity by 5×: the model disagreed with
+        //    the shader about WHERE the smoothing sat.
+        // 2. `spectral_level_rise` was calibrated on a 15.8 Hz local-file capture and shipped
+        //    to a 59.4 Hz tap path, where it fired **22× more often on identical audio** (see
+        //    `SpectralAnalyzer+Density`, since fixed).
         //
-        // Gain 0.45, measured through this exact composition on Matt's own capture
-        // (`2026-08-17T12-47-58Z`, 49 audible events), against the FTR.23 build:
+        // ★ AND THE REASON THIS IS A DELETION AND NOT A THIRD TUNING PASS: fixing both defects
+        // removes the benefit with the defect. Lag-differenced detector + a 70 ms render-rate
+        // envelope scores **0.81× event alignment at gain 0.45** — below chance — while still
+        // costing 2.4× the base's peak velocity. Every setting that marks 0.8–1.5 events/s
+        // multiplies peak velocity; every setting that does not, marks nothing. FTR15 §8's
+        // structural finding held, and the answer it implies is the OTHER option Matt was
+        // given: event marking belongs on a visual property where a fast change does not read
+        // as the whole tree lurching. It does not belong on size.
         //
-        //                        event/random   total travel      span
-        //   FTR.23 shipped          1.53×          8.04          0.472
-        //   + accent 0.30           2.72×          8.99  (+12 %) 0.437  (−7 %)
-        //   + accent 0.45           3.77×         10.06  (+25 %) 0.425  (−10 %)
-        //   + accent 0.55           4.57×         10.88  (+35 %) 0.418  (−11 %)
-        //
-        // 0.45 takes 2.5× the event alignment for 25 % more motion and 10 % less span. The
-        // motion is spent in the right place — Matt's complaint on the FTR.23 build was
-        // *"now it barely moves"* — and it is spent ON events rather than between them,
-        // which is the difference between this and every candidate FTR.23 measured.
-        //
-        // The gain could not have fixed this alone: the FIRST calibration of the detector
-        // fired 1.47 times a second and read as a DC lift, and no gain repaired that (see
-        // `SpectralAnalyzer+Density`'s band comment). Consumer gain sizes an accent; the
-        // detector's duty cycle decides whether it IS one.
-        //
-        // NOT applied to the branch count. The count is quantised and popping it is exactly
-        // the "stuttering" defect FTR.13 was spent on; the trunk and canopy scale are
-        // continuous, so the accent lands there and only there.
-        //
-        // FA #67 (one primitive per visual layer) — this is two primitives reaching one
-        // layer, so it needs its justification stated rather than assumed. The rule exists
-        // to stop two primitives AT THE SAME TIMESCALE fighting over one channel
-        // (Ferrofluid's per-beat spike against per-beat swell). These are two orders of
-        // magnitude apart: the base is a τ≈20 s section follower, the accent decays in
-        // 0.35 s. They cannot compete for the same information, which is the whole design —
-        // and the accent is bounded into the base's headroom, so the base always wins the
-        // argument about how big the tree is.
-        //
-        // FA #31 — the accent's dB thresholds are NOT absolute thresholds on AGC-normalised
-        // energy. `spectral_level_rise` is measured pre-AGC (`LoudnessProfile.levelDB`, the
-        // same scale DYN.1c's offline profile uses) and the threshold is a RELATIVE rise
-        // against the signal's own 0.15 s trailing floor, so no mix-density denominator
-        // moves underneath it.
-        float sizeAccent = 0.45f * saturate(f.spectral_level_rise);
-        float surge = saturate(heldGrowth.y + sizeAccent * (1.0f - heldGrowth.y));
+        // `spectral_level_rise` survives as an engine capability with no consumer — a measured
+        // field, now rate-invariant, kept because the measurement was the expensive part
+        // (D-097's rule: siblings, not subclasses — this is NOT infrastructure waiting for a
+        // concept, it is a corrected instrument, and if nothing routes it by the next audit it
+        // should be deleted).
+        float surge = heldGrowth.y;   // FTR.11 — held, like every other frame term
 
         // ── FTR.10: THE TRUNK STEPS ON THE BEAT ──────────────────────────────────
         //

@@ -2486,6 +2486,46 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.24a — the size accent is RETIRED the day it shipped, and BUG-089 with it.** ✅
+(2026-08-17) Matt's M7 on `2026-08-17T15-23-17Z`: *"Much worse now as the motion is herky-jerky.
+Looks defective. Considerable regression."*
+
+**Measured on that capture: 3.7× the travel, 10.7× the peak velocity, 25× the jerk** of the build
+it replaced. Two of my own defects compounded:
+
+1. **The accent was the only driver in the preset with no render-rate smoothing.** The shader adds
+   it AFTER the beat-held glide, so nothing smooths it — and FTR.14 exists precisely because an
+   unsmoothed driver reads as robotic. I made it live so it would not LATCH to the grid and
+   mistook "not latched" for "not smoothed". ⚠ **My offline model understated peak velocity 5×
+   because it glided the SUM: the model and the shader disagreed about WHERE the smoothing sat.**
+   Ninth instance of this program's recurring metric error, and the first to ship a defect.
+2. **BUG-089 — a 22× analysis-rate dependence** in `spectral_level_rise`: the rise was measured
+   against a trailing MINIMUM, which has a hidden sample-count term. Same audio, 0.04 fires/s at
+   15.8 Hz vs 0.89/s at 59.4 Hz — calibrated on local files, played back through the tap. **Its
+   own rate-invariance test passed, because it only asked whether a synthetic +12 dB step fires;
+   a step that large saturates the band at any rate.** Fixed with a fixed-LAG difference on a
+   40 ms pre-smoothed level (the two real paths now agree within 12 %) and gated on a
+   DISTRIBUTION — duty cycle and mean within 1.6×. Full entry in KNOWN_ISSUES.
+
+**★★★ Why this is a deletion and not a third tuning pass.** Fixing both defects removes the
+benefit with the defect: the repaired accent scores **0.81× event alignment — below chance — while
+still costing 2.4× the base's peak velocity**. Across five measured builds, every setting that
+marks events multiplies peak velocity and every setting that does not marks nothing. FTR15 §8's
+structural claim is now a measurement rather than an argument: **on this preset's size, event
+alignment and calm motion are anti-correlated**, because size is the whole skeleton's scale.
+
+**Reverted:** the accent term, its sidecar route, the harness's accent frames and gate, and the
+QG.1 fixture-gap allowance (a hole with a comment over it, once nothing routes the column).
+**Kept:** `spectral_level_rise` as a corrected engine field with **no consumer** — explicitly not
+"infrastructure waiting for a concept" (D-097); delete it if nothing routes it by the next audit.
+Also kept, because they were real fixes found on the way: the Swift growth mirror now reads the
+`section` parameter it had declared and ignored since FTR.18, and the harness hold matches
+production.
+
+**What the evidence now rules out for this preset:** any event-marking term on size or trunk
+length, at any gain, smoothed or not. **What it points at:** a property where a fast change
+displaces no geometry — colour value or tip flicker in a sparse dark canopy. Matt's call.
+
 **FTR.24 — the size becomes TWO layers, and a new primitive to drive the fast one.** ✅
 code-complete, **pending live M7** (2026-08-17) Matt, having read FTR.23's measurement that the
 size driver scores −0.52 at audible events: *"build option 1"* — a slow base plus a small fast

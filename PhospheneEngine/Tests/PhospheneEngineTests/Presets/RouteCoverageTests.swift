@@ -60,20 +60,6 @@ struct RouteCoverageTests {
     /// gap (QG.1.1), reported distinctly from a genuine dead route.
     static let structuralMinDistinctValues = 2
 
-    /// FTR.24 — columns that POSTDATE the committed fixtures.
-    ///
-    /// The fixtures are recorded CSVs with no audio alongside them, so a column added to
-    /// `FeatureVector` after they were captured cannot be back-filled: there is nothing to
-    /// recompute it from. Such a route is reported as a fixture gap rather than failing the
-    /// gate, which is the policy QG.1.1 already applies to the `structural` kind.
-    ///
-    /// ⚠ THIS SET MUST SHRINK, NEVER GROW QUIETLY. Each entry is a route the gate is NOT
-    /// checking, so an entry that outlives its fixture regeneration is a hole with a comment
-    /// over it. `spectral_level_rise` is here because FTR.24 added it the same day; it comes
-    /// out the moment the corpus is re-captured. An entry added to make a red gate green is
-    /// the floor-tuning move QG.1 exists to prevent — the gate stays red instead.
-    static let columnsPostdatingFixtures: Set<String> = ["spectral_level_rise"]
-
     // MARK: - Fixtures
 
     private static let fixtureTracks = ["love_rehab", "so_what", "there_there"]
@@ -139,13 +125,6 @@ struct RouteCoverageTests {
         var perFixture: [(name: String, values: [Float])] = []
         for (name, cols) in series {
             guard let raw = cols.floatSeries(mapping.column) else {
-                if columnsPostdatingFixtures.contains(mapping.column) {
-                    // FIXTURE GAP, not a dead route — see `columnsPostdatingFixtures`. Printed
-                    // every run so it cannot become invisible.
-                    print("[route-coverage] FIXTURE GAP \(preset)/\(route.route): "
-                          + "'\(mapping.column)' postdates \(name); route UNVERIFIED here")
-                    return nil
-                }
                 return "\(preset)/\(route.route): column '\(mapping.column)' absent from \(name) — not recorded"
             }
             perFixture.append((name, raw.compactMap { $0 }.map { $0 * mapping.scale }))
