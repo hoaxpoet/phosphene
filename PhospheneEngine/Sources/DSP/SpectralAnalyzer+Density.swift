@@ -20,6 +20,34 @@ extension SpectralAnalyzer {
     static let surgeAttackTau: Float = LoudnessProfile.tau(legacyAlpha: 0.35)    // ≈ 0.054 s
     static let surgeReleaseTau: Float = LoudnessProfile.tau(legacyAlpha: 0.010)  // ≈ 2.31 s
 
+    /// FTR.24 — the level-rise accent's three constants.
+    ///
+    /// `levelFloorSpan` is the trailing window the rise is measured against: long enough
+    /// that a note's own attack does not become its own floor, short enough that the floor
+    /// is the passage rather than the section.
+    ///
+    /// ★ THE BAND AND THE RELEASE ARE ONE CALIBRATION, AND DUTY CYCLE IS WHAT THEY CONTROL.
+    /// The first pass used 2–6 dB with a 0.35 s release, on the reasoning that the offline
+    /// criterion uses a 3 dB threshold and a slow release is easier to see. Measured through
+    /// the real consumer on `2026-08-17T12-47-58Z`, that fires **1.47 times a second and is
+    /// non-zero 75 % of the time** — so it stops being an accent and becomes a DC LIFT. The
+    /// visible cost was precise: the size term's p05 floor rose 46 % (0.281 → 0.409) and its
+    /// span fell 25 %, which is the FTR.16 defect Matt rejected as *"you fed the preset
+    /// ambien"* arriving by a different route.
+    ///
+    /// Chasing it with the consumer's gain could not fix it — every weighting traded event
+    /// alignment against the floor monotonically, because the accent's DUTY CYCLE, not its
+    /// amplitude, is what lifts the floor. 4–12 dB with a 0.20 s release cuts the duty cycle
+    /// to 48 % and inverts the trade: event-versus-random specificity goes **1.53× → 3.77×**
+    /// (the shipped consumer's numbers) while the span holds within 10 % of untouched.
+    ///
+    /// A 4 dB floor is also the honest reading of the criterion. A 3 dB rise is where an
+    /// event becomes *detectable*; it is not where one becomes worth moving the picture for.
+    static let levelFloorSpan: Float = 0.15
+    static let levelRiseLowDB: Float = 4.0
+    static let levelRiseHighDB: Float = 12.0
+    static let levelRiseReleaseTau: Float = 0.20
+
     /// FALLBACK band in dB of TOTAL SPECTRAL ENERGY — note the scale, it is NOT RMS dBFS.
     /// The first calibration confused the two and the surge saturated 14 s before the
     /// event. Measured: ≈ −37 dB in an intro, −28…−19 before a guitar arrival, −17…−10
@@ -86,6 +114,8 @@ extension SpectralAnalyzer {
                                             tau: LoudnessProfile.levelSmoothingTau)
         smoothedLevelDB = alpha * levelDB + (1 - alpha) * smoothedLevelDB
 
+        advanceLevelRise(deltaTime: deltaTime, levelDB: levelDB)
+
         // DYN.1c: this moment's rank in the track's own loudness distribution when a
         // profile is installed, the fixed band's smoothstep otherwise. Asymmetric follower:
         // arrive fast, leave slowly — a symmetric one pumps between phrases.
@@ -135,6 +165,40 @@ extension SpectralAnalyzer {
         smoothedDensity = ema(smoothedDensity, tau: Self.densitySlowTau)
         sectionDensity = ema(sectionDensity, tau: Self.densitySectionTau)
         densityNormal = ema(densityNormal, tau: Self.densityNormalTau)
+    }
+
+    /// FTR.24 — advance the level-rise accent for one frame.
+    ///
+    /// Measured on the RAW `levelDB` deliberately. Every existing level consumer reads
+    /// `smoothedLevelDB` (τ 0.76 s), and that follower is exactly what erases a transient:
+    /// `spectral_surge` is built on it and scores 0.25× event specificity, i.e. worse than
+    /// chance. A 0.15 s trailing floor on the unsmoothed value recovers the 3 dB rises a
+    /// listener hears as "something landed".
+    ///
+    /// The floor is a MINIMUM, not a mean — a mean is dragged up by the very rise being
+    /// detected, which halves the measured height of every accent after the first.
+    func advanceLevelRise(deltaTime: Float, levelDB: Float) {
+        let floorDB = recentLevelDB.min() ?? levelDB
+        let riseDB = levelDB - floorDB
+
+        // The ring is bounded by TIME, not by frame count: the analysis rate varies by a
+        // factor of five between paths (BUG-087 — local files ~10–16 Hz, streaming ~51 Hz),
+        // so a fixed sample count would be a 0.04 s window on one path and 0.2 s on the
+        // other. Same reason every other constant here is in seconds (DYN.4).
+        let span = max(2, Int((Self.levelFloorSpan / max(deltaTime, 1e-4)).rounded()))
+        recentLevelDB.append(levelDB)
+        if recentLevelDB.count > span {
+            recentLevelDB.removeFirst(recentLevelDB.count - span)
+        }
+
+        let target = Self.smoothstepf(Self.levelRiseLowDB, Self.levelRiseHighDB, riseDB)
+        if target > levelRise {
+            levelRise = target          // instantaneous attack — a rise is news at once
+        } else {
+            let releaseAlpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime,
+                                                       tau: Self.levelRiseReleaseTau)
+            levelRise += (target - levelRise) * releaseAlpha
+        }
     }
 
     /// DYN.2c — section density against the track's normal.

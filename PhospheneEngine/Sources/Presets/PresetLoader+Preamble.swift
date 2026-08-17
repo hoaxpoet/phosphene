@@ -98,6 +98,16 @@ extension PresetLoader {
             // pre-AGC LEVEL, not shape — a bright quiet intro must not read as an arrival.
             // 52 was _pad52, now DYN.2's section density leg. ORDER IS THE CONTRACT.
             float spectral_surge, spectral_section_ratio;
+            // FTR.24 (float 53): LEVEL RISE, 0…1 — pre-AGC level against its own 0.15 s
+            // trailing floor, instant attack, 0.35 s release. The TRANSIENT sibling of
+            // spectral_surge: surge answers "how loud is this passage for this track", this
+            // answers "something just LANDED". Nothing else here marks an audible event —
+            // the beat_* fields are pulse CLOCKS (beat_mid scores BELOW chance against real
+            // events), spectral_flux fires as often between events as on them, and surge
+            // itself ranks a 0.76 s follower so it moves DOWN when the ear notices. Add it
+            // as a small accent over a slow base; silence produces no rise, so no gate.
+            // Floats 54–56 — PADDING, for the 16-byte GPU-constant alignment.
+            float spectral_level_rise, _pad54, _pad55, _pad56;
         };
 
         struct VertexOut {
