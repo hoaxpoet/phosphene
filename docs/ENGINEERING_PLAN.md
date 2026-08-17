@@ -2628,15 +2628,32 @@ as the tree opening; on thickness it reads as every stroke fattening and thinnin
 motion without meaning. **Same primitive, same span, opposite legibility: the CHANNEL decides
 whether a signal reads.**
 
-**★★★ AND THE REAL FINDING, which reframes nine rejections: `arousal` — the preset's PRIMARY
-GROWTH DRIVER — is effectively a constant after the first ~12 s.** Filed as **BUG-092** with
-five captures spanning three builds and two audio paths: mean 0.446…0.475, sd 0.048…0.069, and the
-same bounds every time (0.258…0.265 → 0.506…0.509) on different music. Mapped through
-`saturate((arousal − 0.10) / 0.58)`, the term driving trunk length, thickness, canopy floor and
-brightness holds ~0.63 ± 0.09 for a whole track. **FTR.15 → FTR.27 tuned every other channel
-around a dead primary.** The output EMA is ruled out (τ 0.7 s); the MLP output itself barely
-moves, which for a *mood* classifier may be correct — so the defect is the routing assumption, not
-necessarily the model. Fixing it is a visible-behaviour decision and is Matt's call.
+**★★★ AND A FINDING I FILED WRONG THE SAME DAY — the correction matters more than the finding.**
+I measured that `arousal` is near-constant within a track (true: mean 0.446…0.475, sd 0.048…0.069,
+same 0.26…0.51 bounds on five captures) and filed BUG-092 claiming it was the preset's primary
+growth driver and that its flatness explained nine live rejections. **Matt authorised a growth-driver
+replacement on that basis, and it was false.** The shader computes
+`reach = max(0.10 · arousalReach, fullness) · musicGate` — arousal's term spans **0.032** against
+`fullness`'s **0.646** and **wins that `max()` on 0.0 % of frames.**
+
+**★ I measured the primitive's range and never checked its COEFFICIENT.** Same species as FTR.24's
+model/shader mismatch three days earlier: a term's span tells you nothing about whether it reaches
+the picture.
+
+What is actually true: growth's real driver is `spectral_section_ratio` (span 0.646), `reach` spans
+**0.680**, and the visible trunk length spans **0.151 clip space ≈ 164 px of 1080** after 12 s. The
+tree traverses two thirds of its geometric range. BUG-092 is re-scoped to P3 — the declared
+`growth ← arousal` route is INERT, an FTR.2 false-manifest entry that QG.1 cannot catch because the
+gate asks whether a primitive varies, not whether it survives the arithmetic it feeds.
+
+**So the connection complaint is still unexplained, and is now filed as BUG-093 (P1) with two
+explanations ruled out by measurement:** "not moving enough" (164 px of trunk travel) and "a dead
+channel" (the inert term changes nothing). What remains is that all three geometry channels track
+quantities a listener does not attend to — size on `spectral_surge`, which scores **0.25×** event
+specificity and moves DOWN at events; growth on a τ20 s density rank; the spread on broadband change
+at 1.50×. **BUG-093 explicitly forbids another tuning increment:** six size formulations, two accent
+placements, three spread routes and a detector rewrite have been spent. The next move needs a changed
+premise about which musical quantity the tree should follow — a product decision.
 
 **FTR.26 — flux comes off the branch spread; the canopy gains WEIGHT instead.** ✅ code-complete,
 **pending live M7** (2026-08-17) Matt, asking a second time: *"take flux off branch spread."* I had
