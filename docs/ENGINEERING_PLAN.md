@@ -2594,6 +2594,221 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.25 — the event accent moves to LIGHT: a tip spark, not a size punch.** ✅ code-complete,
+**pending live M7** (2026-08-17) Matt, after FTR.24a: *"Try the colour/tip flicker approach."*
+
+**Same driver, different property, and the difference is structural rather than a matter of
+degree.** FTR.24 failed because marking 0.8–1.5 events/s on the tree's SIZE multiplied its peak
+velocity 10.7× — size is what every other element is drawn relative to. **Nothing is positioned
+relative to brightness**, so the same accent on light costs exactly zero peak velocity. Shipped as
+`val += spark · 0.55`, `sat −= spark · 0.45` where `spark = spectral_level_rise · depth_norm`.
+
+**Gated on the claim, not on taste:** `canopyWidth` must be identical **to the pixel** between
+accent 0 and 1 while lit-pixel luma moves ≥ 4 %, clipping stays < 12 % and the frame lift < 25 %.
+Measured `0.1672 → 0.1672`, lit-luma +10 %, brightest tips 0.739 → 0.905, no clipped pixels,
+frame +10.5 %.
+
+**Two calibration findings.** `depth²` weighting (the first cut) was wrong — it attenuated the
+mid-canopy, where most lit pixels are, so even gain 1.20 moved the frame 6 %; linear depth still
+holds the trunk at exactly zero, which is the property that matters, since a whole-frame lift is
+the global flash FTR.3 removed under D-157. And **brightness alone sat at the threshold of
+visibility** (+5 % lit luma); desaturating toward white doubles the pixel delta for the same flash
+budget, because that is what makes a small bright thing read as a spark. One gesture, one
+primitive — FA #67 holds.
+
+**BUG-089's fix improved the driver's event specificity, which was luck and had not been
+checked.** The fix was made for rate invariance alone; re-measured, it fires **0.41/s on the tap
+and 0.40/s on local files** where the old formulation ran 0.89 against 0.07.
+
+**⚠ The gate needed two attempts and the first one lied.** Rendered as two entries in the drive
+loop, the A/B pair inherits `BeatHold` glide state, so the two frames' geometry differs for reasons
+unrelated to the accent — it read width-identical on one fixture set and 0.0016 apart on another,
+which would have been reported as "the accent moved the geometry". Now settled once, encoded twice.
+Same species as FTR.18's glide-seed bug and FTR.19's harness smoother.
+
+**⚠ BUG-090 filed, and it blocked the honest fix for route coverage.** The new column postdates the
+QG.1 fixtures, so `FixtureSessionCaptureGenerator` was run as its own header instructs.
+It works — the column is live on all three clips and the gate reads 209 routes / 21 presets, 0 red —
+but every regenerated row differs from the committed copy and that reds `MeniscusStemDropsTests`
+and `WitchlightPathTests` (**Witchlight is CERTIFIED**). Either the pipeline moved since QG.1.3 or
+the generator is non-deterministic; the discriminator is one command (run it twice, diff its own
+outputs). **Fixtures left as committed and the finding filed, because "my change went green after I
+regenerated a shared fixture" is how a real regression gets laundered.** The route is tracked as an
+explicit, printed fixture gap meanwhile.
+
+**Not established, and stated plainly:** whether ~0.4 sparks per second reads to Matt as the tree
+responding. Nine rejections in this program have all been of builds with defensible numbers.
+
+**FTR.24a — the size accent is RETIRED the day it shipped, and BUG-089 with it.** ✅
+(2026-08-17) Matt's M7 on `2026-08-17T15-23-17Z`: *"Much worse now as the motion is herky-jerky.
+Looks defective. Considerable regression."*
+
+**Measured on that capture: 3.7× the travel, 10.7× the peak velocity, 25× the jerk** of the build
+it replaced. Two of my own defects compounded:
+
+1. **The accent was the only driver in the preset with no render-rate smoothing.** The shader adds
+   it AFTER the beat-held glide, so nothing smooths it — and FTR.14 exists precisely because an
+   unsmoothed driver reads as robotic. I made it live so it would not LATCH to the grid and
+   mistook "not latched" for "not smoothed". ⚠ **My offline model understated peak velocity 5×
+   because it glided the SUM: the model and the shader disagreed about WHERE the smoothing sat.**
+   Ninth instance of this program's recurring metric error, and the first to ship a defect.
+2. **BUG-089 — a 22× analysis-rate dependence** in `spectral_level_rise`: the rise was measured
+   against a trailing MINIMUM, which has a hidden sample-count term. Same audio, 0.04 fires/s at
+   15.8 Hz vs 0.89/s at 59.4 Hz — calibrated on local files, played back through the tap. **Its
+   own rate-invariance test passed, because it only asked whether a synthetic +12 dB step fires;
+   a step that large saturates the band at any rate.** Fixed with a fixed-LAG difference on a
+   40 ms pre-smoothed level (the two real paths now agree within 12 %) and gated on a
+   DISTRIBUTION — duty cycle and mean within 1.6×. Full entry in KNOWN_ISSUES.
+
+**★★★ Why this is a deletion and not a third tuning pass.** Fixing both defects removes the
+benefit with the defect: the repaired accent scores **0.81× event alignment — below chance — while
+still costing 2.4× the base's peak velocity**. Across five measured builds, every setting that
+marks events multiplies peak velocity and every setting that does not marks nothing. FTR15 §8's
+structural claim is now a measurement rather than an argument: **on this preset's size, event
+alignment and calm motion are anti-correlated**, because size is the whole skeleton's scale.
+
+**Reverted:** the accent term, its sidecar route, the harness's accent frames and gate, and the
+QG.1 fixture-gap allowance (a hole with a comment over it, once nothing routes the column).
+**Kept:** `spectral_level_rise` as a corrected engine field with **no consumer** — explicitly not
+"infrastructure waiting for a concept" (D-097); delete it if nothing routes it by the next audit.
+Also kept, because they were real fixes found on the way: the Swift growth mirror now reads the
+`section` parameter it had declared and ignored since FTR.18, and the harness hold matches
+production.
+
+**What the evidence now rules out for this preset:** any event-marking term on size or trunk
+length, at any gain, smoothed or not. **What it points at:** a property where a fast change
+displaces no geometry — colour value or tip flicker in a sparse dark canopy. Matt's call.
+
+**FTR.24 — the size becomes TWO layers, and a new primitive to drive the fast one.** ✅
+code-complete, **pending live M7** (2026-08-17) Matt, having read FTR.23's measurement that the
+size driver scores −0.52 at audible events: *"build option 1"* — a slow base plus a small fast
+accent that marks events and decays.
+
+**Two measurement errors in FTR.23's own analysis surfaced first.** ⚠ A global z-score cannot
+see a small accent: z is against the whole signal's sd, which the base's slow swing dominates,
+and maximising a noisy signal over a ±120 ms window REWARDS VARIANCE. Re-measured with a local
+rise plus a specificity control (250 random non-event times), the field ranking inverts —
+`beatMid` **0.83×, below chance** (the `beat*` fields are pulse clocks), `beatBass` 1.02×,
+`spectralFlux` 1.50×, `bassDev` 1.75×. **So FTR.23's closing recommendation — that the only
+candidates left were the beat fields and needed Matt's call on beat-driven growth — was wrong,
+and no such call is needed.** `pulse_amp01`'s apparent 46× is a near-zero-denominator artefact.
+
+The new bar separates known-good from known-bad before being trusted (§7.8's rule): oracle
+3.08×, the seven-times-rejected build 1.53×, a random accent at matched travel 1.11×. Through
+the real composition **every existing-field accent scored WORSE than the base** — a driver that
+also fires between events dilutes specificity.
+
+**`spectral_level_rise` (FeatureVector float 53).** The oracle was one line of DSP away:
+`SpectralAnalyzer` already computes pre-AGC level every frame, but every consumer reads it
+through a **τ 0.76 s** follower, which is exactly what erases a transient. The new field is the
+rise of the UNSMOOTHED level over a 0.15 s trailing MINIMUM, 4→12 dB, instant attack, 0.20 s
+release. Validated on four tracks chosen offline: Seven Nation Army 20.5×, classical guitar
+6.8×, solo piano 4.1×, and dense limited electronica **1.2× — near chance** (the FTR.15 limiter
+mechanism at transient scale). ⚠ It is the same detector as the criterion, so it DEFINES
+"audible event" rather than being validated against one.
+
+**★★★ DUTY CYCLE, NOT GAIN, IS WHAT MAKES AN ACCENT AN ACCENT.** The first calibration (2–6 dB,
+0.35 s release) fired 1.47/s, was non-zero **75 % of the time**, and became a DC LIFT: the size
+term's floor rose 46 % and its span fell 25 % — the FTR.16 *"you fed the preset ambien"* defect
+by a new route. Headroom scaling, `×base` weighting and three gain sweeps all traded alignment
+against the floor MONOTONICALLY, because frequency lifts a floor and amplitude does not.
+Tightening the detector inverted the trade.
+
+**Shipped:** `size = saturate(base + 0.45 · spectral_level_rise · (1 − base))` — **1.53× →
+3.77× event alignment for +25 % travel and −10 % span**, accent LIVE from buffer(0) inside the
+held evaluation, and deliberately NOT on the branch count (quantised; popping it is FTR.13's
+"stuttering"). Rendered, 2.7 mean |Δpixel| between accent 0 and 1.
+
+**⚠ TWO CONFLICTS LEFT RED FOR MATT RATHER THAN TUNED.** (1) The accent breaks **FTR.10's
+trunk-hold contract** — 1.80 turns/beat against the 0.38 bar, since an accent that latches to
+the beat grid cannot mark events. His FTR.10 choice and his FTR.24 choice are mutually exclusive
+on the trunk. Gate left unchanged; changing a metric in the increment it goes red is the FTR.6
+move. **The committed suite is green only because the captures predate the column — that green
+is not evidence.** (2) **`spectral_flux` is still on branch spread against his instruction**:
+removing it drops drive-range response from **1.067 to 0.119** mean |Δpixel| (the spread carries
+**89 %** of this preset's measured energy response) and fails the FTR.2 dead-route gate. The
+instruction was given to free flux for size, which measurement ruled out, so the trade no longer
+exists — and a static canopy makes "no clear connection" worse.
+
+**Also fixed, both found by wiring the route through:** the Swift growth mirror declared a
+`section` parameter and NEVER READ IT, so from FTR.18 to FTR.23 every trunk figure in the report
+modelled a size term the shader had stopped using; and the harness's `BeatHold(glideBeats: 0.25)`
+was FTR.14's latched glide, two increments after production moved to the continuous one. Same
+class as the FTR.19 FifthsSmoother divergence — a harness that repairs or lags an input is not
+replaying production.
+
+**Not certified.** FTR.5 remains Matt's call.
+
+**FTR.23 — retune the continuous glide; FTR.22 shipped 3.5× too slow.** ✅ code-complete,
+**pending live M7** (2026-08-17, merged in [#101](https://github.com/hoaxpoet/phosphene/pull/101))
+Matt on the FTR.22 build (`2026-08-17T12-47-58Z`, *Carry The Zero*): *"Now it barely moves AND the
+tree still grows and shrinks with no clear connection to the music."*
+
+**★ The worst instance of this program's recurring error: the stillness metric was normalised by its
+own peak.** A fraction of *frames below 2 % of **peak** velocity* cannot detect the whole signal
+getting slower. FTR.22 shipped τ 0.35 beat / boost 3 — mean effective τ **567 ms** against FTR.18's
+162 ms — and stillness *improved* 46.5 % → 14.8 % **because peak velocity collapsed 44 %**.
+
+Re-measured on **absolute** travel: FTR.18 (rejected, "robotic") 3.09 travel / 0.500 peak |v| /
+40.2 % still; FTR.22 (rejected, "barely moves") 2.78 / 0.281 / 14.8 %; **shipped FTR.23
+(`continuousGlideBeats: 0.12`, `beatSpeedBoost: 1.0`) 3.27 / 0.455 / 22.1 %** — more total motion
+than the build called robotic, peak within 9 % of it, roughly half its stillness.
+
+**τ has a floor and it is the analysis tick.** The source updates ~15.8/s on this capture (63 ms),
+so τ below that converges inside one tick and the value is a staircase again — the FTR.13 trap.
+0.12 beat is 78 ms, above it. 0.08 beat (52 ms) scored *better* on travel and peak and was rejected
+for being under the floor. `BeatHoldTests` now asserts absolute travel (continuous mode must cover
+≥ 95 % of latched-mode distance on identical input), which is the bar that would have caught FTR.22.
+
+**The size complaint was measured, not fixed.** At the 49 audible loudness events in the capture
+(> 3 dB rise off `raw_tap.wav`, 1.63/s), mean z-score: **`spectral_surge` — the size driver —
+−0.52**; `spectral_density` −0.41; `arousal` +0.05; `spectral_section_ratio` +0.71; `bassDev` +0.91;
+`spectralFlux` +0.94; `beatBass`/`beatMid` +0.99/+1.00. **The size is driven by a signal inversely
+correlated with audible events** — FTR.15's limiter mechanism at transient rather than section scale.
+
+**❌ Moving `spectralFlux` onto size was measured and NOT shipped** (Matt's *"take flux off branch
+spread"*, 2026-08-17). Additive at weight 0.15–0.50: z@events stays negative (−0.49 → −0.40) while
+pinning at the ceiling climbs to 11–15 % and span collapses above 0.25. Flux *alone* flips the sign
+but only to +0.15…+0.19, with span 0.12–0.15 — the DYN.1e band too small to see. `max(base, flux)`
+reaches +0.17 at span 0.427 but **6.5× the total travel** (52.4 vs 8.0), i.e. the "too much motion"
+that opened this arc at FTR.9. **Event alignment wants a fast response and low travel wants
+smoothing; one term on one layer cannot do both.** Reported to Matt rather than shipped on my own
+recommendation. The only fields that mark events cleanly are `beatBass`/`beatMid`, which carry the
+Layer-4 accent-only policy and Matt's twice-stated rejection of beat-driven growth at FTR.3 — so
+that substitution needs his explicit call.
+
+**FTR.22 — the beat sets the SPEED, not the destination.** ✅ superseded by FTR.23 (2026-08-16,
+capture `2026-08-16T20-30-10Z`) Matt: *"Still robotic, the tree still grows and shrinks with no
+clear connection to the music."*
+
+**★ "Robotic" is a VELOCITY property, not a FORM property.** I first diagnosed it as the tree's
+perfect fractal symmetry and began implementing per-branch hash jitter; Matt interrupted:
+*"robotic means it moves in a precise, start-and-stop pattern, like the robot dance. It looks
+MECHANICAL, rather than organic."* The jitter was reverted rather than shipped on a wrong reading —
+the second time this arc that a plausible diagnosis was disproved by one sentence from Matt.
+
+Shipped as a fourth `BeatHold` mode, `init(continuousGlideBeats:beatSpeedBoost:)`: the target is
+**never latched** (it is the live frame every tick), and the beat modulates only the glide τ, so the
+value is always in motion and merely accelerates through the beat. Start-and-stop was the defect;
+the destination was never the problem.
+
+**FTR.20 — the continuous-energy layer the preset never had.** ✅ (2026-08-16) Matt: *"Does not
+carry the energy of the music, feels blunted."* Correct, and structurally: every tone route ran off
+`arousal` and `depth_norm`, so the Layer-1 primary driver of CLAUDE.md's Audio Data Hierarchy was
+absent from colour entirely. Added `energy = bass_dev/(bass_dev + 0.12)` to saturation (+0.32) and
+value (+0.20) — soft-saturated per FA #73, no absolute threshold per FA #31.
+
+**FTR.19 — the "glitchy colour" is a real defect, not a taste call.** ✅ (2026-08-16) Matt:
+*"Color changes feel glitchy, not intentional."* `tonalPhaseFifths` is a circular ±π primitive fed
+**raw** to the hue, so every wrap is a 360° hue jump and p95 frame-to-frame motion was **144°**.
+Fixed with `CircularPhaseSmoother` (D-209: EMA the sin/cos pair, recombine via `atan2` — never EMA
+the raw angle), α = 0.065, exactly-seeded first sample.
+
+**★ The harness hid this for 17 increments.** `FractalTreeMeshRenderTest`'s `FifthsSmoother` was
+smoothing the driver *in the test only*, so every rendered A/B in this program saw a hue the
+production path never produced. It is now a documented no-op pass-through: the harness renders what
+ships.
+
 **FTR.18 — the size correction, bounded to the limiter inversion. ✅ M7: Matt's "ok overall" —
 the FTR.9→FTR.18 motion-and-size arc LANDS HERE.** (2026-08-14, capture
 `2026-08-14T15-21-09Z`, *Carry The Zero*, from the worktree build) Matt: *"It's better than the

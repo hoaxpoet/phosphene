@@ -18,68 +18,6 @@ private let logger = Logger(subsystem: "com.phosphene.dsp", category: "SpectralA
 /// - **Flux**: Half-wave rectified difference from previous frame — measures timbral change rate.
 public final class SpectralAnalyzer: @unchecked Sendable {
 
-    // MARK: - Result
-
-    /// Spectral analysis output for a single frame.
-    public struct Result: Sendable {
-        /// Weighted mean frequency in Hz. 0 for silence.
-        public var centroid: Float
-        /// Frequency below which 85% of spectral energy lies, in Hz. 0 for silence.
-        public var rolloff: Float
-        /// Half-wave rectified spectral difference from previous frame. 0 on first frame.
-        public var flux: Float
-        /// EMA-smoothed centroid in Hz.
-        public var smoothedCentroid: Float
-        /// EMA-smoothed rolloff in Hz.
-        public var smoothedRolloff: Float
-        /// EMA-smoothed flux.
-        public var smoothedFlux: Float
-        /// DYN.1 — fraction of spectral energy above `densitySplitHz`, 0…1, EMA-smoothed
-        /// to τ ≈ 6 s. Deliberately NOT the raw per-frame value, which turns 5.59 times a
-        /// second and reads on screen as jitter.
-        ///
-        /// The ONE quantity in the pipeline that survives normalisation, because it is
-        /// computed here from the raw magnitudes — before `MIRPipeline`'s total-energy
-        /// AGC and before `BandDeviationTracker`'s per-band EMA. A scalar gain anywhere
-        /// upstream scales every bin equally and cancels in the ratio.
-        ///
-        /// WHY THIS AND NOT A LEVEL. Measured on session `2026-08-04T14-58-10Z`
-        /// (Cherub Rock): RMS is flat at −14 dBFS from 24 s to the end of the track —
-        /// the master is limited, so there is no level change to detect. What moves when
-        /// the distorted guitar enters is spectral density: this fraction runs 0.084–0.10
-        /// through the verse and rises to 0.14–0.22 from ~75 s. Distortion adds harmonics,
-        /// not amplitude, and that is what a listener hears as "it got louder".
-        public var density: Float
-        /// Slow EMA of `density` (τ ≈ 8 s). Lets a consumer read "denser than this
-        /// track's normal" rather than an absolute, without rolling its own state.
-        public var smoothedDensity: Float
-        /// DYN.2b — SECTION RATIO: τ20 s density over the track's true τ45 s normal.
-        /// A ratio, not a density: ~1.0 means "as dense as this track usually is".
-        public var sectionRatio: Float
-        /// DYN.1b — SECTION SURGE, 0…1. Rises fast when the mix arrives, and HOLDS.
-        ///
-        /// The field for "the tree shoots up when the distorted guitar enters" — which
-        /// Matt defines concretely as the trunk elongating and the next level of branches
-        /// appearing. Both are STEPS that persist, and nothing else here can express one:
-        /// every other field is instantaneous or averaged, so a preset can only scale it.
-        /// An asymmetric follower turns an arrival into something a visual can sit on.
-        ///
-        /// Driven by pre-AGC LEVEL, not spectral shape. Measured on `2026-08-04T19-20-32Z`
-        /// at the guitar entry, a level surge separates the pre-guitar passage from the
-        /// arrival **20.4×** (0.048 → 0.981) while turning only 0.58 times a second. Shape
-        /// cannot: the clean intro is BRIGHTER (HF 0.22) than the pre-guitar passage
-        /// (HF 0.03), so it confuses a bright quiet intro with a loud arrival.
-        ///
-        /// The reasoning that earlier ruled level out was wrong in a specific way: the
-        /// BODY of a limited master is flat, so level looked useless — but the intro→body
-        /// transition is 26 dB. Limiting flattens the body, not the arrival.
-        ///
-        /// DYN.1c — with a per-track `LoudnessProfile` installed (local files only) the
-        /// target is this moment's RANK in that track's own loudness distribution, not a
-        /// fixed absolute band that saturates and can never rise again. See LoudnessProfile.
-        public var surge: Float
-    }
-
     // MARK: - Configuration
 
     /// Number of magnitude bins.
@@ -166,6 +104,13 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     var densityNormal: Float = 0
     var smoothedLevelDB: Float = -120
     var surge: Float = 0
+    /// FTR.24a — the level-rise accent, its short pre-smoothing, and the ring the fixed-lag
+    /// difference reads. `smoothedLevelDB` (τ 0.76 s) cannot see a transient at all; a trailing
+    /// MINIMUM of the raw level, which this first used, is not rate-invariant (22× across the
+    /// two real analysis rates — see `SpectralAnalyzer+Density`).
+    var levelRise: Float = 0
+    var preSmoothedLevelDB: Float = -120
+    var recentLevelDB: [Float] = []
     var smoothedDensity: Float = 0
     /// False until the first non-silent frame seeds both density legs.
     private var densitySeeded = false
@@ -247,7 +192,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
                 density: 0,
                 smoothedDensity: 0,
                 sectionRatio: 1,
-                surge: 0
+                surge: 0,
+                levelRise: 0
             )
         }
 
@@ -302,7 +248,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             // right from frame 1. The live τ45 s EMA remains the streaming fallback, where
             // no full decode exists; there it still needs ~90 s to mean anything.
             sectionRatio: smoothedSectionRatio,
-            surge: surge
+            surge: surge,
+            levelRise: levelRise
         )
     }
 
@@ -327,6 +274,9 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         densitySeeded = false
         smoothedLevelDB = -120
         surge = 0
+        levelRise = 0
+        preSmoothedLevelDB = -120
+        recentLevelDB.removeAll(keepingCapacity: true)
         // `loudnessProfile` intentionally NOT cleared — see `setLoudnessProfile(_:)`.
     }
 

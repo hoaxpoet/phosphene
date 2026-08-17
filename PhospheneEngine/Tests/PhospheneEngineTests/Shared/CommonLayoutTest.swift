@@ -1,6 +1,6 @@
 // CommonLayoutTest — D-099 layout invariant for buffer(0) / buffer(3) bindings.
 //
-// Swift `FeatureVector` (208 bytes / 52 floats) and `StemFeatures`
+// Swift `FeatureVector` (224 bytes / 56 floats) and `StemFeatures`
 // (256 bytes / 64 floats) are bound directly to MSL preset preambles
 // (PresetLoader+Preamble.swift) and to the engine library Common.metal.
 // If either Swift struct ever shrinks, every shader that reads past the
@@ -24,7 +24,7 @@ struct CommonLayoutTest {
     /// test is the canary that the buffer(2) / buffer(3) layout contract
     /// has drifted between Swift and MSL.
     @Test func featureVector_stemFeatures_layouts_locked() {
-        #expect(MemoryLayout<FeatureVector>.size == 208 /* 52 floats = 208 bytes. DYN.1 added spectral_density/_slow (floats 49-50) taking it to 200, which is NOT 16-byte aligned; floats 51-52 are padding that restores the GPU-constant alignment every preset depends on at buffer(0). */)
+        #expect(MemoryLayout<FeatureVector>.size == 224 /* 56 floats = 224 bytes. DYN.1 added spectral_density/_slow (floats 49-50) taking it to 200, which is NOT 16-byte aligned; floats 51-52 were padding that restored it and were then claimed by DYN.1b/DYN.2. FTR.24 adds spectral_level_rise (float 53) and floats 54-56 are the padding that restores the alignment every preset depends on at buffer(0). */)
         #expect(MemoryLayout<StemFeatures>.size == 256)
     }
 

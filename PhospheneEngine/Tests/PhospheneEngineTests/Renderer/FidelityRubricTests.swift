@@ -113,24 +113,24 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // via PhysConfig, so the MSL-source heuristic can't see it
                                      // (Skein/Lumen precedent). Certified via Matt's M7 sign-off as a
                                      // loose energy-accompaniment (PHYS.5; not beat-synced by design).
-    "Fractal Tree":         false,   // lightweight (D-212). L2 went GREEN at FTR.2 and RED
-                                     // again at FTR.3d — honestly, not by regression. The
-                                     // heuristic matches D-026 deviation field names in
-                                     // source (`bass_dev`, `mid_rel`, …). FTR.3d removed the
-                                     // last of them because MEASUREMENT said they were the
-                                     // wrong tools for this preset's jobs: `bass_rel`
-                                     // correlates −0.199 with the section-scale growth Matt
-                                     // asked for (it is a deviation from a running EMA, so it
+    "Fractal Tree":         true,    // lightweight (D-212). L2 GREEN at FTR.2 → RED at FTR.3d →
+                                     // GREEN again at FTR.20, and the round trip is the point.
+                                     // FTR.3d removed the last deviation primitive on
+                                     // MEASUREMENT: `bass_rel` correlates −0.199 with the
+                                     // section-scale GROWTH Matt asked for (a deviation
                                      // oscillates around zero by construction and cannot
-                                     // express "this section is bigger"), and `mid_rel` scored
-                                     // +0.038 against the music moment-to-moment. The drivers
-                                     // that DO work — `arousal`, `beat_mid` — are not
-                                     // AGC-normalised bands, so D-026's actual hazard (an
-                                     // absolute threshold on a moving AGC denominator) does
-                                     // not apply to them. NOT gamed: adding an unused
-                                     // `f.bass_dev` to satisfy the grep would be exactly the
-                                     // floor-tuning QG.1/D-179 forbids. This is a gate-FIT
-                                     // question for Matt, recorded rather than worked around.
+                                     // express "this section is bigger") and `mid_rel` scored
+                                     // +0.038. That finding stands and must not be re-litigated
+                                     // for growth. FTR.20 adds `bass_dev` for a DIFFERENT job —
+                                     // moment-to-moment tonal energy (colour saturation, a small
+                                     // share of brightness) — which is precisely what a
+                                     // deviation IS for, and which the preset had NO route for:
+                                     // before FTR.20 it read no continuous energy band at all,
+                                     // against CLAUDE.md's "continuous energy is the default
+                                     // primary driver". Matt's M7 2026-08-16: "does not carry
+                                     // the energy of the music, feel blunted". L4 remains
+                                     // `manual`, so this flag is NOT certification — the sidecar
+                                     // `certified` stays false pending Matt's FTR.5.
     "Gossamer":             false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails
     "Cytokinesis":          false,   // lightweight; coupling (energyEnv→pace / centroidEnv→palette /

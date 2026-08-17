@@ -20,6 +20,38 @@ extension SpectralAnalyzer {
     static let surgeAttackTau: Float = LoudnessProfile.tau(legacyAlpha: 0.35)    // ≈ 0.054 s
     static let surgeReleaseTau: Float = LoudnessProfile.tau(legacyAlpha: 0.010)  // ≈ 2.31 s
 
+    /// FTR.24a — the level-rise constants, RECALIBRATED after the field shipped with a
+    /// 22× rate dependence that its first test suite could not see.
+    ///
+    /// ★★★ THE DEFECT, because it generalises past this field. The first version measured the
+    /// rise against a trailing MINIMUM over 0.15 s. A minimum over a time window is NOT a
+    /// rate-invariant statistic: the higher the analysis rate, the more frames that window
+    /// spans, the noisier each frame's level is (a shorter hop is a shorter RMS window), and so
+    /// the deeper the minimum digs. On identical audio the field fired **0.04/s at 15.8 Hz and
+    /// 0.89/s at 59.4 Hz** — 22× — which means near-dead on local files (BUG-087: ~10–16 Hz)
+    /// and hyperactive on the tap (~51–59 Hz). The consumer that shipped with it doubled its
+    /// travel and Matt rejected it on sight: *"herky-jerky … looks defective."*
+    ///
+    /// `LevelRiseTests` had a rate-invariance test and it PASSED, because it asked only whether
+    /// a synthetic +12 dB step still fires at 10 Hz and 51 Hz. A step that large saturates the
+    /// band at any rate. **A rate-invariance test must compare a DISTRIBUTION on real material
+    /// (fire rate, duty cycle, mean), not whether one enormous input survives.**
+    ///
+    /// The fix is a statistic with no sample-count term: a FIXED-LAG difference — level now
+    /// minus level `levelRiseLagSeconds` ago — on a level pre-smoothed with a short fixed τ so
+    /// per-frame noise stops scaling with the hop. Measured on the same audio, that holds the
+    /// two real paths to within 12 % (15.8 Hz 0.35/s vs 59.4 Hz 0.41/s, mean 0.098 vs 0.109).
+    ///
+    /// `levelPreSmoothTau` is deliberately 40 ms — long enough to normalise across rates, and
+    /// ~19× shorter than the `levelSmoothingTau` (0.76 s) whose transient-erasing is the entire
+    /// reason this field exists. The band widened to 2–7 dB because the lag difference is a
+    /// smaller number than a rise off a minimum.
+    static let levelPreSmoothTau: Float = 0.040
+    static let levelRiseLagSeconds: Float = 0.15
+    static let levelRiseLowDB: Float = 2.0
+    static let levelRiseHighDB: Float = 7.0
+    static let levelRiseReleaseTau: Float = 0.20
+
     /// FALLBACK band in dB of TOTAL SPECTRAL ENERGY — note the scale, it is NOT RMS dBFS.
     /// The first calibration confused the two and the surge saturated 14 s before the
     /// event. Measured: ≈ −37 dB in an intro, −28…−19 before a guitar arrival, −17…−10
@@ -86,6 +118,8 @@ extension SpectralAnalyzer {
                                             tau: LoudnessProfile.levelSmoothingTau)
         smoothedLevelDB = alpha * levelDB + (1 - alpha) * smoothedLevelDB
 
+        advanceLevelRise(deltaTime: deltaTime, levelDB: levelDB)
+
         // DYN.1c: this moment's rank in the track's own loudness distribution when a
         // profile is installed, the fixed band's smoothstep otherwise. Asymmetric follower:
         // arrive fast, leave slowly — a symmetric one pumps between phrases.
@@ -137,7 +171,45 @@ extension SpectralAnalyzer {
         densityNormal = ema(densityNormal, tau: Self.densityNormalTau)
     }
 
-    /// DYN.2c — section density against the track's normal.
+    /// FTR.24a — advance the level-rise accent for one frame.
+    ///
+    /// Measured on the raw `levelDB` through a SHORT fixed pre-smoothing, never on
+    /// `smoothedLevelDB` (τ 0.76 s), which is the follower that erases the transient this field
+    /// exists to catch. The rise is a FIXED-LAG difference; see the constants above for why a
+    /// trailing minimum was wrong and what it cost.
+    func advanceLevelRise(deltaTime: Float, levelDB: Float) {
+        // Pre-smooth first: per-frame level noise scales with the hop, and every statistic
+        // taken downstream of it inherits that scaling unless it is damped in TIME.
+        let preAlpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: Self.levelPreSmoothTau)
+        if preSmoothedLevelDB <= -119 {
+            preSmoothedLevelDB = levelDB          // exact seed, no ramp from -120
+        } else {
+            preSmoothedLevelDB += (levelDB - preSmoothedLevelDB) * preAlpha
+        }
+
+        // The ring holds the pre-smoothed level so the lag lookup is a fixed DURATION, not a
+        // fixed number of samples — the analysis rate varies ~4× between paths (BUG-087).
+        let lagFrames = max(1, Int((Self.levelRiseLagSeconds / max(deltaTime, 1e-4)).rounded()))
+        let laggedDB = recentLevelDB.count > lagFrames
+            ? recentLevelDB[recentLevelDB.count - lagFrames - 1]
+            : (recentLevelDB.first ?? preSmoothedLevelDB)
+        recentLevelDB.append(preSmoothedLevelDB)
+        if recentLevelDB.count > lagFrames + 2 {
+            recentLevelDB.removeFirst(recentLevelDB.count - (lagFrames + 2))
+        }
+
+        let riseDB = preSmoothedLevelDB - laggedDB
+        let target = Self.smoothstepf(Self.levelRiseLowDB, Self.levelRiseHighDB, riseDB)
+        if target > levelRise {
+            levelRise = target          // instantaneous attack — a rise is news at once
+        } else {
+            let releaseAlpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime,
+                                                       tau: Self.levelRiseReleaseTau)
+            levelRise += (target - levelRise) * releaseAlpha
+        }
+    }
+
+        /// DYN.2c — section density against the track's normal.
     ///
     /// Prefers the profile's OFFLINE normal (measured over the full decode at preparation)
     /// and falls back to the live τ45 s EMA only when there is no profile — i.e. streaming,

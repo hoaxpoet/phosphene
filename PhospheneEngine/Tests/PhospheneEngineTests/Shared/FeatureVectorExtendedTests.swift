@@ -15,18 +15,18 @@ final class FeatureVectorExtendedTests: XCTestCase {
     // MARK: - Test 1: FeatureVector size + GPU stride alignment
     //
     // The name and the message both carried "192 bytes / 48 floats" long after the value
-    // moved to 208 — renamed to a number-free name so the next increment updates one
+    // moved to 208, then 224 at FTR.24 — renamed to a number-free name so the next increment updates one
     // literal instead of three strings. (FTR.6 took it to 224 and FTR.7 took it back.)
 
     func test_featureVector_sizeAndStrideMatchTheGPUContract() {
         XCTAssertEqual(
-            MemoryLayout<FeatureVector>.size, 208,
-            "FeatureVector must be 208 bytes (52 × Float) — "
+            MemoryLayout<FeatureVector>.size, 224,
+            "FeatureVector must be 224 bytes (56 × Float) — "
             + "got \(MemoryLayout<FeatureVector>.size)"
         )
         XCTAssertEqual(
-            MemoryLayout<FeatureVector>.stride, 208,
-            "FeatureVector stride must be 208 bytes — got \(MemoryLayout<FeatureVector>.stride)"
+            MemoryLayout<FeatureVector>.stride, 224,
+            "FeatureVector stride must be 224 bytes — got \(MemoryLayout<FeatureVector>.stride)"
         )
         XCTAssertEqual(
             MemoryLayout<FeatureVector>.stride % 16, 0,

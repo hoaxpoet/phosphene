@@ -313,6 +313,44 @@ void fractal_tree_object_shader(
         // separates the pre-guitar passage from the arrival 20.4× (0.048 → 0.981) while
         // turning only 0.58 times a second — a step the trunk can safely read, which the
         // restless `density` ratio never was.
+        // ── FTR.24, RETIRED THE DAY IT SHIPPED: the size accent is GONE ──────────
+        //
+        // FTR.24 split the size into a slow base plus a fast `spectral_level_rise` accent, on
+        // Matt's instruction ("build option 1") after FTR.23 measured the size driver at
+        // −0.52 at audible events. He rejected the live build immediately: *"Much worse now as
+        // the motion is herky-jerky. Looks defective. Considerable regression."* He was right,
+        // and the measurement on his capture `2026-08-17T15-23-17Z` is not close:
+        //
+        //                             evt/rand   travel   peak|v|   jerk p99
+        //   FTR.23 base only            0.27×      8.72     1.62        23
+        //   FTR.24 accent (shipped)     2.37×     31.88    17.37       589
+        //
+        // **10.7× the peak velocity and 25× the jerk.** Two defects of my own compounded:
+        //
+        // 1. The accent was added AFTER the beat-held glide (`heldGrowth.y + accent`), so it
+        //    was the ONE driver in this preset with no render-rate smoothing at all — the very
+        //    mechanism FTR.14 added to cure "robotic". I made it live so it would not latch to
+        //    the beat grid, and mistook "not latched" for "not smoothed". My offline model
+        //    glided the SUM and so understated peak velocity by 5×: the model disagreed with
+        //    the shader about WHERE the smoothing sat.
+        // 2. `spectral_level_rise` was calibrated on a 15.8 Hz local-file capture and shipped
+        //    to a 59.4 Hz tap path, where it fired **22× more often on identical audio** (see
+        //    `SpectralAnalyzer+Density`, since fixed).
+        //
+        // ★ AND THE REASON THIS IS A DELETION AND NOT A THIRD TUNING PASS: fixing both defects
+        // removes the benefit with the defect. Lag-differenced detector + a 70 ms render-rate
+        // envelope scores **0.81× event alignment at gain 0.45** — below chance — while still
+        // costing 2.4× the base's peak velocity. Every setting that marks 0.8–1.5 events/s
+        // multiplies peak velocity; every setting that does not, marks nothing. FTR15 §8's
+        // structural finding held, and the answer it implies is the OTHER option Matt was
+        // given: event marking belongs on a visual property where a fast change does not read
+        // as the whole tree lurching. It does not belong on size.
+        //
+        // `spectral_level_rise` survives as an engine capability with no consumer — a measured
+        // field, now rate-invariant, kept because the measurement was the expensive part
+        // (D-097's rule: siblings, not subclasses — this is NOT infrastructure waiting for a
+        // concept, it is a corrected instrument, and if nothing routes it by the next audit it
+        // should be deleted).
         float surge = heldGrowth.y;   // FTR.11 — held, like every other frame term
 
         // ── FTR.10: THE TRUNK STEPS ON THE BEAT ──────────────────────────────────
@@ -523,21 +561,35 @@ void fractal_tree_object_shader(
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
         //
-        // Replaces `mid_att`, which delivered 0.42° of a promised 7° (D-212). The
-        // cause was a coefficient written as if the band swings 0→1: `mid_att` means
-        // 0.056 post-AGC on this material and spans 0.007 on love_rehab.
+        // Replaces `mid_att`, which delivered 0.42° of a promised 7° (D-212). The cause was a
+        // coefficient written as if the band swings 0→1: `mid_att` means 0.056 post-AGC on
+        // this material and spans 0.007 on love_rehab.
         //
-        // `spectral_flux` is the only broadband primitive measured with a comparable
-        // span on every source — p05→p95 of 0.555 (Hummer), 0.666, 0.539, 0.477. It
-        // is also the right MUSICAL choice: flux rises when the spectrum CHANGES, so
-        // the canopy opens on chord and texture changes rather than on loudness, which
-        // the canopy-reach route already carries.
+        // `spectral_flux` is the only broadband primitive measured with a comparable span on
+        // every source — p05→p95 of 0.555 (Hummer), 0.666, 0.539, 0.477. It is also the right
+        // MUSICAL choice: flux rises when the spectrum CHANGES, so the canopy opens on chord
+        // and texture changes rather than on loudness, which the canopy-reach route already
+        // carries.
         //
-        // Sized against the measured p05 floor, not against 0: flux never approaches
-        // zero on real music (p05 0.070–0.378), so mapping [0.10, 0.95] onto the full
-        // spread range uses the range the music actually occupies. 20°→34° is double
-        // the shipped 22°→29° nominal, and ~33× the swing actually delivered.
+        // Sized against the measured p05 floor, not against 0: flux never approaches zero on
+        // real music (p05 0.070–0.378), so mapping [0.10, 0.95] onto the full spread range
+        // uses the range the music actually occupies. 20°→34° is double the shipped 22°→29°
+        // nominal, and ~33× the swing actually delivered.
         // FTR.11 — `fHeld`: at 5.48 turns/s this was the fastest-moving term in the preset.
+        //
+        // ⚠ FTR.24 — MATT ASKED FOR THIS ROUTE TO BE REMOVED AND IT IS STILL HERE, PENDING HIS
+        // CALL. His instruction on 2026-08-17 was *"take flux off branch spread"*, given to
+        // free flux for the size term. Two measurements then changed the premise underneath it:
+        // flux cannot fix size (FTR.23 — never event-positive additively, and span collapse or
+        // 6.5× travel otherwise), and FTR.24 fixed size with a new primitive that has nothing
+        // to do with flux. So the trade the instruction was making no longer exists.
+        //
+        // Removing it anyway was measured, and it is expensive: the drive-range response falls
+        // from **1.067 to 0.119** mean |Δpixel| p05→p95, i.e. THE SPREAD CARRIES 89 % OF THIS
+        // PRESET'S MEASURED RESPONSE ACROSS ITS OWN ENERGY RANGE, and `FractalTreeMeshRenderTest`
+        // fails its own 0.5 floor — the FTR.2 dead-route gate, firing correctly. A static canopy
+        // makes the "no clear connection to the music" complaint worse, not better, which is why
+        // this is Matt's call and not a silent one either way.
         float flux   = saturate((fHeld.spectral_flux - 0.10f) / 0.85f);
         float spread = 0.35f + flux * 0.24f;   // 20° … 34°
 
@@ -828,7 +880,39 @@ fragment float4 fractal_tree_fragment(
     // Pushed up with the palette. A per-level hue spread only reads as distinct levels
     // if the levels are actually saturated — at 0.55 the inner tiers wash toward each
     // other and the spread is wasted. Trunk stays muted so it still reads as bark.
-    float sat = mix(0.42f, 0.96f, depth_norm);
+    // ── ENERGY ← bass_dev: the LAYER-1 ROUTE THIS PRESET NEVER HAD (FTR.20) ──────────
+    //
+    // Matt's M7, 2026-08-16: *"Does not carry the energy of the music, feel blunted."*
+    //
+    // He is describing a missing layer, not a mistuned one. Before this the preset read
+    // `arousal`, `spectral_surge`, `spectral_density`, `spectral_flux`, `section_ratio`,
+    // `tonal_phase_fifths`, `beat_mid`, `pulse_amp01`, `melodic_tips` — slow spectral
+    // statistics, a mood estimate and beat clocks. **Not one continuous energy band, and not one
+    // deviation primitive.** CLAUDE.md's audio hierarchy calls continuous energy *the default
+    // primary driver* and says visuals built on it "feel locked to the music"; this one had none.
+    // Measured on his capture, the only tonal route (arousal) crosses its own median **0.11
+    // times a second** and moves brightness by a 0.90…1.24 multiplier, while `bass_dev` crosses
+    // **3.75 times a second** — 34x livelier — and was unused.
+    //
+    // SOFT-SATURATED AGAINST THE REAL DISTRIBUTION, not against 1.0. `bass_dev` reads p50 ~0.00,
+    // p95 0.19, p99 0.63-0.78 and peaks at 1.5-1.7 on real music, so a linear read would clip
+    // constantly (FA #73 / the deviation-range note). `d/(d+0.12)` gives p50 0.07, p95 0.61 and
+    // never pins on any capture measured.
+    //
+    // WEIGHTED ONTO SATURATION, NOT BRIGHTNESS, and that is deliberate on two counts: saturation
+    // had ZERO audio coupling (it was a pure function of depth), and a large luminance swing at
+    // 3.75 crossings/s is the flash risk D-157 guards — and adjacent to the global `beat_bass`
+    // flash Matt rejected twice and FTR.3 removed. Colour INTENSITY carries energy without
+    // strobing; brightness takes only a small share.
+    float energy = saturate(f.bass_dev / (f.bass_dev + 0.12f));
+
+    // THE RESTING BASE COMES DOWN TO MAKE ROOM, and that is a deliberate look change rather
+    // than a free win. At the old 0.96 leaf base the energy term had 0.04 of headroom and
+    // clipped on 47 % of frames — inert, the DYN.1e "band Matt could not see" failure, caught by
+    // measuring before shipping. Dropping the base to 0.74 buys a 0.196 span at the leaf tier
+    // with 1.2 % clipping. The tree therefore rests slightly less vivid and DEEPENS with the
+    // music, which is the whole point of the route.
+    float sat = saturate(mix(0.33f, 0.74f, depth_norm) + energy * 0.32f);
 
     // ── Brightness envelope ← arousal ────────────────────────────────────
     //
@@ -859,7 +943,10 @@ fragment float4 fractal_tree_fragment(
     // silence frame at mean luma 0.0034 against D-037's 0.004 — dimming it a further 28 %
     // at silence made a smaller tree invisible. The FLOOR is raised rather than the gate
     // lowered: D-037 is a legibility requirement, not a number to tune past.
-    float val      = val_base * (0.90f + arousal * 0.34f);
+    // FTR.20 — a small share of the energy reaches brightness too, so an accent reads as the
+    // tree lifting rather than only deepening in colour. Kept to 0.12 so the luminance swing
+    // stays well inside the flash budget: +8.6 % of luminance at p95, +11.3 % at the peak.
+    float val      = val_base * (0.90f + arousal * 0.34f + energy * 0.20f);
 
     // ── Per-branch melodic lift ──────────────────────────────────────────
     //
@@ -872,6 +959,62 @@ fragment float4 fractal_tree_fragment(
     // flash lifts every pixel, so no individual branch can read against it (D-157);
     // and Matt has now twice asked for less beat-driven activity, not more.
     val += tap * (0.06f + 0.40f * depth_norm * depth_norm);
+
+    // ── FTR.25: THE EVENT ACCENT, ON LIGHT ONLY ──────────────────────────
+    //
+    // Matt, after FTR.24a reverted the same accent from the tree's SIZE: *"Try the colour/tip
+    // flicker approach."* The measurement that sent it here is worth restating, because it is
+    // what makes this a different mechanism rather than another pass at the same one:
+    //
+    //   FTR.24 put `spectral_level_rise` on SIZE. Marking 0.8–1.5 events/s multiplied the
+    //   tree's peak velocity 10.7× (*"herky-jerky … looks defective"*), and every calmer
+    //   setting scored BELOW CHANCE on event alignment. On a scale property the two goals are
+    //   anti-correlated, because scale is what every other element is drawn relative to.
+    //
+    // Brightness has no such coupling: nothing is positioned relative to it, so an 80 ms lift
+    // costs exactly ZERO peak velocity. That is not an argument, it is a property of the
+    // pipeline — this term is in the fragment stage, downstream of every vertex, and
+    // `FractalTreeMeshRenderTest` asserts the canopy WIDTH is unchanged between accent 0 and 1
+    // while the luma moves. If that assertion ever fails, this term has leaked into geometry.
+    //
+    // WEIGHTED TO THE TIPS, `depth_norm²`, WHICH IS THE LOAD-BEARING PART. A GLOBAL flash was
+    // already tried and removed at FTR.3: it lifts every pixel, so no individual branch can
+    // read against it (D-157), and Matt has twice asked for less beat-driven activity. Squared
+    // depth leaves the trunk and inner branches untouched — the frame's mean luminance barely
+    // moves while the canopy edge flickers, which is both the safe form and the legible one.
+    //
+    // Floret is the counter-case to check this against: its drum sparkle was REMOVED because
+    // bright points camouflage into a bright field. This canopy is sparse and dark, which is
+    // the condition where points DO read — the opposite regime, and the reason the same idea
+    // is worth trying here after failing there.
+    //
+    // BRIGHTER AND WHITER TOGETHER — one gesture, which is why this does not break FA #67
+    // even though `sat` already carries `energy`. A spark is not "a brightness change plus a
+    // saturation change"; desaturating toward white IS how a small bright thing reads as a
+    // spark rather than as a slightly lighter leaf. Measured, brightness alone was not enough:
+    // on an identical frame it moved the lit pixels +5 % and the brightest tips 0.739 → 0.809,
+    // which is at the threshold of visibility, and no gain fixed it — `depth²` weighting held
+    // the whole-frame effect to +6 % even at gain 1.20. Adding the desaturation doubles the
+    // pixel delta (0.079 → 0.166 mean |Δpixel|) for the same flash budget.
+    //
+    // WEIGHTED LINEARLY IN DEPTH, not squared. Squared was the first cut and it attenuated the
+    // mid-canopy — where most lit pixels actually are — to nothing. Linear still leaves the
+    // trunk at exactly zero (`depth_norm` is 0 there), which is the property that matters: this
+    // is not a frame lift.
+    //
+    // Sized against the flash budget the FTR.20 comment above measures itself against: mean
+    // frame luminance +10.6 % at FULL accent, and full accent is a 0.20 s transient at
+    // ~0.4 events/s, so nothing sustains. The brightest tips go 0.739 → 0.903 and no pixel
+    // clips. `FractalTreeMeshRenderTest` gates all three: geometry unchanged, lit pixels
+    // visibly brighter, frame lift bounded.
+    //
+    // `spectral_level_rise` is rate-invariant as of BUG-089 — the defect that made FTR.24
+    // behave differently on Matt's playback path than on the capture it was tuned against. On
+    // both paths it now fires ~0.40 times a second, on events rather than between them.
+    float landed = saturate(f.spectral_level_rise);
+    float spark  = landed * depth_norm;
+    val += spark * 0.55f;
+    sat  = saturate(sat - spark * 0.45f);
     val  = saturate(val);
 
     float3 color = hsv2rgb(float3(fract(hue), sat, val));

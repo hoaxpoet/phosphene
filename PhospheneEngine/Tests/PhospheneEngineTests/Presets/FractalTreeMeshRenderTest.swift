@@ -113,6 +113,40 @@ struct FractalTreeMeshRenderTest {
             }
         }
 
+        // FTR.25 — THE ACCENT A/B, RENDERED FROM ONE SETTLED STATE.
+        //
+        // Deliberately NOT two entries in the drive loop. The loop advances `BeatHold` 40 frames
+        // per condition and the generator is REUSED, so consecutive conditions inherit each
+        // other's glide state: the second frame of a pair is 40 frames further along a
+        // convergence than the first, and its geometry differs slightly for that reason alone.
+        // That is exactly what happened here — the pair read width-identical on one fixture set
+        // and differed by 0.0016 on another, which would have been read as "the accent moved the
+        // geometry" when the accent cannot: it lives in the fragment stage, downstream of every
+        // vertex.
+        //
+        // So: settle ONCE, then encode twice from that same state, changing only the fragment
+        // stage's input. Any difference in the two images is then attributable to this term and
+        // nothing else — which is the whole claim FTR.25 rests on.
+        var accentPair: [(label: String, pixels: [UInt8])] = []
+        if let mid = try? Self.driveFrames().first(where: { $0.label == "p50" }) {
+            var dark = mid.features
+            dark.spectralLevelRise = 0
+            var lit = mid.features
+            lit.spectralLevelRise = 1
+            generator.renderDeltaOverride = 1.0 / 60.0
+            for _ in 0..<40 {
+                generator.advanceBeatHoldForSettling(dark, stems: mid.stems)
+            }
+            for (label, features) in [("accent-lo", dark), ("accent-hi", lit)] {
+                guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+                Self.encode(cmd, into: target, generator: generator,
+                            features: features, stems: mid.stems)
+                cmd.commit()
+                cmd.waitUntilCompleted()
+                accentPair.append((label, Self.read(target)))
+            }
+        }
+
         // Evidence, always printed — this is the measured-swing surface FTR.2 reports
         // against, standing in for the QG.5 response band Fractal Tree cannot reach.
         for (label, pixels) in frames {
@@ -139,6 +173,59 @@ struct FractalTreeMeshRenderTest {
         // Without this the harness would pass on a preset whose audio routes are all dead
         // — which is precisely the FTR.2 defect. Compares the quietest and loudest drive
         // frames; if routing works, they must not be near-identical.
+        // --- (b0) FTR.25: the event accent moves LIGHT and NOT GEOMETRY -----------------
+        //
+        // ★ THIS IS THE ASSERTION THAT DISTINGUISHES FTR.25 FROM FTR.24. The size accent was
+        // reverted because marking 0.8–1.5 events/s on a scale property multiplied the tree's
+        // peak velocity 10.7× and Matt called the result defective. Brightness cannot do that —
+        // but "cannot" is a claim about the code, and this is what checks it: canopy WIDTH must
+        // be unchanged to the pixel between accent 0 and 1, while mean luma must move visibly.
+        // A width change here means the term has leaked into geometry and the premise is void.
+        if let accentLo = accentPair.first(where: { $0.label == "accent-lo" }),
+           let accentHi = accentPair.first(where: { $0.label == "accent-hi" }) {
+            let widthLo = Self.canopyWidth(accentLo.pixels)
+            let widthHi = Self.canopyWidth(accentHi.pixels)
+            let litLo = Self.litLuma(accentLo.pixels)
+            let litHi = Self.litLuma(accentHi.pixels)
+            print(String(format:
+                "[fractal-tree] accent |Δpixel| %.3f  width %.4f → %.4f  lit-luma %.4f → %.4f (%+.0f%%)  "
+                + "p99 %.3f → %.3f  clipped %.1f%% → %.1f%%  frame-luma %.5f → %.5f (%+.1f%%)",
+                Self.meanAbsoluteDelta(accentLo.pixels, accentHi.pixels),
+                widthLo, widthHi, litLo.mean, litHi.mean,
+                100 * (litHi.mean / max(litLo.mean, 1e-9) - 1),
+                litLo.p99, litHi.p99, 100 * litLo.clipped, 100 * litHi.clipped,
+                Self.meanLuma(accentLo.pixels), Self.meanLuma(accentHi.pixels),
+                100 * (Self.meanLuma(accentHi.pixels) / max(Self.meanLuma(accentLo.pixels), 1e-9) - 1)))
+
+            #expect(abs(widthHi - widthLo) < 1e-6, """
+                the FTR.25 event accent CHANGED THE GEOMETRY (canopy width \
+                \(String(format: "%.5f", widthLo)) → \(String(format: "%.5f", widthHi))). The \
+                entire reason this accent lives on brightness is that FTR.24's identical accent \
+                on SIZE multiplied peak velocity 10.7× and was rejected as defective. A term \
+                that moves geometry is that defect again — keep it in the fragment stage.
+                """)
+            #expect(litHi.mean > litLo.mean * 1.04, """
+                the FTR.25 event accent is invisible on the pixels it is meant to light: mean \
+                luma over LIT pixels \(String(format: "%.4f", litLo.mean)) → \
+                \(String(format: "%.4f", litHi.mean)). DYN.1e: a visual band too small to see is \
+                not a feature. Check the shader term, `featuresFromSession`, and the FeatureVector \
+                copy in `PresetLoader+Preamble` (a missing field there fails the shader compile).
+                """)
+            #expect(litHi.clipped < 0.12, """
+                \(String(format: "%.0f", 100 * litHi.clipped)) % of lit pixels CLIP at full \
+                accent — a clipped lift loses its proportionality and reads as a hard flash \
+                rather than a flicker. Lower the gain rather than the bar.
+                """)
+            // The other half of the flash budget: weighted to depth², the lift must stay a
+            // CANOPY-EDGE effect. A whole-frame lift is the FTR.3 `beat_bass` flash, removed
+            // because no individual branch can read against a lifted frame (D-157).
+            let frameLift = Self.meanLuma(accentHi.pixels) / max(Self.meanLuma(accentLo.pixels), 1e-9)
+            #expect(frameLift < 1.25, """
+                the accent lifts the WHOLE FRAME \(String(format: "%+.0f", 100 * (frameLift - 1))) % \
+                — at that scale it is the global flash FTR.3 removed (D-157), not a tip flicker.
+                """)
+        }
+
         let quiet = try #require(frames.first { $0.label == "p05" })
         let loud = try #require(frames.first { $0.label == "p95" })
         let delta = Self.meanAbsoluteDelta(quiet.pixels, loud.pixels)
@@ -535,12 +622,23 @@ struct FractalTreeMeshRenderTest {
         // The recording here postdates FTR.9, so its columns ARE the current engine's — the
         // condition `recomputeDensity` was written to protect against does not hold.
         // `FT_RECOMPUTE=1` forces the other path when the capture is genuinely old.
+        // FTR.24 — FT_ACCENT_FROM_TAP=1: recompute ONLY `spectral_level_rise` and replay every
+        // other column. Neither existing path can measure the accent on Matt's own capture:
+        // a REPLAY feeds 0 for a column recorded before the field existed, and a full
+        // RECOMPUTE measures the LoudnessProfile from the tap instead of the file, which pins
+        // this capture's surge at 0.073 against the recording's 0.802 and flattens the base
+        // the accent sits on. So take the one field the recording cannot carry from the tap,
+        // and take the rest from the recording, which is the current engine's own output.
+        let accentFromTap = ProcessInfo.processInfo.environment["FT_ACCENT_FROM_TAP"] == "1"
         let recompute = ProcessInfo.processInfo.environment["FT_RECOMPUTE"] == "1"
-        let densityByTime = recompute
+        let densityByTime = (recompute || accentFromTap)
             ? ((try? Self.recomputeDensity(
                 wav: session.appendingPathComponent("raw_tap.wav"))) ?? [])
             : []
-        print("[fractal-tree/inputs] drivers \(recompute ? "RECOMPUTED from raw_tap.wav" : "replayed from features.csv")")
+        let inputMode = recompute ? "RECOMPUTED from raw_tap.wav"
+            : accentFromTap ? "replayed from features.csv, spectral_level_rise FROM THE TAP (FTR.24)"
+            : "replayed from features.csv"
+        print("[fractal-tree/inputs] drivers \(inputMode)")
 
         let stemRows = (try? Self.loadSessionRows(
             session.appendingPathComponent("stems.csv"), dropBeforeSeconds: nil)) ?? []
@@ -552,7 +650,11 @@ struct FractalTreeMeshRenderTest {
         var fifths = FifthsSmoother()
         // FTR.14 — the same GLIDING hold `MeshGenerator` installs in production. A hard
         // `BeatHold()` here would measure a build that no longer ships.
-        var hold = BeatHold(glideBeats: 0.25)
+        // FTR.24 — the CONTINUOUS-target hold FTR.23 tuned, matching `MeshGenerator` exactly.
+        // This line read `glideBeats: 0.25` (FTR.14's latched glide) for two increments after
+        // production moved on, so every trunk figure printed here described a build that had
+        // already been replaced. Same class as the FifthsSmoother divergence FTR.19 found.
+        var hold = BeatHold(continuousGlideBeats: 0.12, beatSpeedBoost: 1.0)
         var sectionHold = BeatHold(glideSeconds: 2.0)
         var reachTerm: [Float] = []
         var surgeTerm: [Float] = []
@@ -595,8 +697,12 @@ struct FractalTreeMeshRenderTest {
         var frameOnlyBar: [Float] = []
         for (index, row) in rows.enumerated() {
             var fv = Self.featuresFromSession(row, fifths: &fifths)
-            Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
-                                        includeSectionRatio: true)
+            if accentFromTap {
+                Self.applyRecomputedLevelRise(densityByTime, at: row["time"] ?? 0, to: &fv)
+            } else {
+                Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
+                                            includeSectionRatio: true)
+            }
             let stems = Self.sessionStems(stemRows, index: index + stemOffset)
             hold.offerStems(stems)
             // FTR.14 — REAL RENDER DELTAS, and this is the correction that matters most in this
@@ -1054,7 +1160,8 @@ struct FractalTreeMeshRenderTest {
     /// ONLY copy in this file, and `objectStageReadsTheBeatHeldVector` proves through the
     /// real pipeline that the GPU is reading the held vector this report models.
     private static func growth(_ f: FeatureVector,
-                               section: FeatureVector? = nil) -> (reach: Float, surge: Float) {
+                               section: FeatureVector? = nil,
+                               accent: Float = 0) -> (reach: Float, surge: Float) {
         func saturate(_ v: Float) -> Float { Swift.min(Swift.max(v, 0), 1) }
         func smoothstep(_ e0: Float, _ e1: Float, _ v: Float) -> Float {
             let t = saturate((v - e0) / (e1 - e0))
@@ -1063,14 +1170,35 @@ struct FractalTreeMeshRenderTest {
         let arousalReach = saturate((f.arousal - 0.10) / 0.58)
         let fullness = saturate(f.spectralSectionRatio * 0.5)
         let gate = smoothstep(0.05, 0.30, saturate(f.spectralSurge))
-        return (saturate(Swift.max(0.10 * arousalReach, fullness) * gate),
-                saturate(f.spectralSurge))
+
+        // FTR.24 — TWO DIVERGENCES FIXED HERE, both found while wiring the size accent.
+        //
+        // 1. `section` was declared and NEVER READ. FTR.18's whole shipped change is the
+        //    bounded limiter correction `level + max(0, density - level) * inverted`, taken
+        //    from the section glide — so from FTR.18 to FTR.23 this mirror modelled a size
+        //    term the shader had stopped using, and every trunk figure in the report was of
+        //    the uncorrected build. When `section` is nil the correction is simply absent,
+        //    which is the honest answer for a caller that has no section vector to give.
+        // 2. FTR.24's accent term was here for one day and is gone with its consumer (Matt:
+        //    *"herky-jerky … looks defective"*); the `accent` parameter is kept because the
+        //    FT_ACCENT_FROM_TAP probe still measures what a future consumer WOULD see.
+        let level = saturate(f.spectralSurge)
+        let corrected: Float
+        if let section {
+            let density = saturate(section.spectralDensity / (section.spectralDensity + 0.22))
+            let inverted = 1 - smoothstep(0.15, 0.40, level)
+            corrected = saturate(level + Swift.max(0, density - level) * inverted)
+        } else {
+            corrected = level
+        }
+        return (saturate(Swift.max(0.10 * arousalReach, fullness) * gate), corrected)
     }
 
     /// The shader's `trunk_len` (FractalTree.metal), mirrored — see ``growth(_:)``.
     private static func trunkLength(_ f: FeatureVector,
-                                    section: FeatureVector? = nil) -> Float {
-        let g = growth(f, section: section)
+                                    section: FeatureVector? = nil,
+                                    accent: Float = 0) -> Float {
+        let g = growth(f, section: section, accent: accent)
         return 0.27 + g.reach * 0.13 + g.surge * 0.32
     }
 
@@ -1286,22 +1414,21 @@ struct FractalTreeMeshRenderTest {
     /// Vector-domain EMA mirroring `TonalAnalyzer.smoothPhaseFifths`. A recorded capture
     /// holds the RAW phase, so replaying it straight would still show the pre-fix flashing
     /// no matter what the engine now does. Kept in lockstep with the analyzer's alpha.
+    /// ⚠ FTR.19 — THIS NO LONGER SMOOTHS, AND THAT IS THE FIX.
+    ///
+    /// Until FTR.19 this applied a circular EMA to `tonal_phase_fifths` while PRODUCTION read the
+    /// field raw, so every offline render and contact sheet showed a smooth hue drift (p95 2.8° per
+    /// analysis update) while the shipping build jumped up to 180° roughly 1.5 times a second —
+    /// Matt's *"colour changes feel glitchy, not intentional."* A harness that quietly repairs an
+    /// input is not replaying the production path.
+    ///
+    /// The smoothing now lives in `MeshGenerator` (`CircularPhaseSmoother`, D-209), which is where
+    /// production does it, so this must pass the value through untouched or renders would be
+    /// double-smoothed and once again disagree with the app.
     private struct FifthsSmoother {
-        private var re: Float = 0
-        private var im: Float = 0
-        private var seeded = false
-        mutating func callAsFunction(_ raw: Float) -> Float {
-            let alpha: Float = 0.065
-            let (rawRe, rawIm) = (cos(raw), sin(raw))
-            if !seeded {
-                re = rawRe; im = rawIm; seeded = true
-            } else {
-                re = alpha * rawRe + (1 - alpha) * re
-                im = alpha * rawIm + (1 - alpha) * im
-            }
-            return atan2(im, re)
-        }
+        mutating func callAsFunction(_ raw: Float) -> Float { raw }
     }
+
 
     private static func featuresFromSession(_ row: [String: Double],
                                             fifths: inout FifthsSmoother) -> FeatureVector {
@@ -1326,6 +1453,7 @@ struct FractalTreeMeshRenderTest {
         // at its silence floor and called the route dead.
         f.spectralSurge = value("spectral_surge")
         f.spectralSectionRatio = value("spectral_section_ratio")
+        f.spectralLevelRise = value("spectral_level_rise")   // FTR.24; 0 on older captures
         f.time = value("time")
         return f
     }
@@ -1340,28 +1468,32 @@ struct FractalTreeMeshRenderTest {
     /// `LoudnessProfile` is measured from the capture itself so the ratio takes its RANKED
     /// branch; without one it silently falls back to the DYN.2b live EMA and the whole
     /// canopy reads wrong.
-    private static func recomputeDensity(wav: URL) throws -> [(Double, Float, Float, Float, Float)] {
+    private static func recomputeDensity(wav: URL) throws -> [(Double, Float, Float, Float, Float, Float)] {
         let samples = try SpectralDensityRealAudioTests.loadFloatWavMonoShared(wav)
         guard !samples.isEmpty else { return [] }
         let analyzer = SpectralAnalyzer(binCount: 512, sampleRate: 48000, fftSize: 1024)
         analyzer.setLoudnessProfile(LoudnessProfile.measure(samples: samples, sampleRate: 48000))
         let hop = 4800
-        var out: [(Double, Float, Float, Float, Float)] = []
+        var out: [(Double, Float, Float, Float, Float, Float)] = []
         var start = 0
         while start + 1024 <= samples.count {
             let frame = Array(samples[start..<(start + 1024)])
             let result = analyzer.process(
                 magnitudes: try SpectralDensityRealAudioTests.magnitudesShared(of: frame),
                 deltaTime: Float(hop) / 48000)
+            // FTR.24 — `levelRise` rides along. A capture recorded before the field existed
+            // has no column for it, so a REPLAYED run feeds ZERO and the accent is invisible:
+            // exactly the harness-carries-every-route trap that hid the FTR.19 hue defect for
+            // 17 increments. FT_RECOMPUTE=1 is the only way to see the accent on an old capture.
             out.append((Double(start) / 48000, result.density, result.smoothedDensity,
-                        result.surge, result.sectionRatio))
+                        result.surge, result.sectionRatio, result.levelRise))
             start += hop
         }
         return out
     }
 
     /// The capture's `time` column and the audio share an origin at recording start.
-    private static func applyRecomputedDensity(_ table: [(Double, Float, Float, Float, Float)],
+    private static func applyRecomputedDensity(_ table: [(Double, Float, Float, Float, Float, Float)],
                                                at time: Double,
                                                to fv: inout FeatureVector,
                                                includeSectionRatio: Bool) {
@@ -1372,6 +1504,20 @@ struct FractalTreeMeshRenderTest {
         fv.spectralSurge = table[index].3
         // FTR.9 — the canopy's own driver, but only where a single-track profile is valid.
         if includeSectionRatio { fv.spectralSectionRatio = table[index].4 }
+        fv.spectralLevelRise = table[index].5   // FTR.24
+    }
+
+    /// FTR.24 — the accent field ALONE, for `FT_ACCENT_FROM_TAP=1`. Same table, same lookup,
+    /// deliberately touching nothing else: the point is to leave the recording's own base
+    /// untouched while giving the one column it predates.
+    private static func applyRecomputedLevelRise(
+        _ table: [(Double, Float, Float, Float, Float, Float)],
+        at time: Double,
+        to fv: inout FeatureVector
+    ) {
+        guard !table.isEmpty else { return }
+        let index = Swift.min(Swift.max(Int(time * 10), 0), table.count - 1)
+        fv.spectralLevelRise = table[index].5
     }
 
     /// Distinct tracks in a recorded session, from its log. Zero when the log is absent —
@@ -1827,6 +1973,28 @@ struct FractalTreeMeshRenderTest {
 
     /// Fraction of pixels the tree actually covers — the silhouette's screen footprint.
     /// Mean luma alone cannot separate "a bigger tree" from "a brighter one".
+    /// FTR.25 — mean luma over LIT pixels only, plus the bright tail and the clipped share.
+    ///
+    /// A frame mean cannot measure a tip accent and it is the wrong bar to hold it to: the
+    /// canopy edge is a small pixel fraction by design (a lift that moved the frame mean would
+    /// be the global flash FTR.3 removed under D-157). What a viewer sees is how much the LIT
+    /// pixels brighten, and whether the brightest of them clip to white — a clipped accent
+    /// loses its proportionality and reads as a hard flash rather than a flicker.
+    private static func litLuma(_ bgra: [UInt8]) -> (mean: Double, p99: Double, clipped: Double) {
+        var lumas: [Double] = []
+        for i in stride(from: 0, to: bgra.count, by: 4)
+        where Int(bgra[i]) + Int(bgra[i + 1]) + Int(bgra[i + 2]) > 24 {
+            lumas.append((0.114 * Double(bgra[i]) + 0.587 * Double(bgra[i + 1])
+                          + 0.299 * Double(bgra[i + 2])) / 255.0)
+        }
+        guard !lumas.isEmpty else { return (0, 0, 0) }
+        lumas.sort()
+        let clipped = Double(lumas.filter { $0 > 0.97 }.count) / Double(lumas.count)
+        return (lumas.reduce(0, +) / Double(lumas.count),
+                lumas[Int(0.99 * Double(lumas.count - 1))],
+                clipped)
+    }
+
     private static func inkFraction(_ bgra: [UInt8]) -> Double {
         guard !bgra.isEmpty else { return 0 }
         var lit = 0

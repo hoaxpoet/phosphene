@@ -590,6 +590,7 @@ extension MIRPipeline {
         fv.spectralDensitySlow = spectral.smoothedDensity
         fv.spectralSurge = spectral.surge
         fv.spectralSectionRatio = spectral.sectionRatio   // DYN.2b
+        fv.spectralLevelRise = spectral.levelRise         // FTR.24
     }
 
     /// TONAL (D-178): write the Tonal Interval Vector signals onto floats 44–48.

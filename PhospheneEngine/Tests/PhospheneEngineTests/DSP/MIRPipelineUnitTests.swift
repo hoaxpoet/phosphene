@@ -75,9 +75,10 @@ func mirPipeline_structuralPrediction_liveCallerShape_timestampsNonNegative() {
 // MARK: - SIMD Alignment
 
 @Test func mirPipeline_featureVector_simdAligned() {
-    // FeatureVector is 192 bytes (48 × 4) after MV-1, 16-byte aligned.
-    #expect(MemoryLayout<FeatureVector>.size == 208 /* 52 floats = 208 bytes. DYN.1 added spectral_density/_slow (floats 49-50) taking it to 200, which is NOT 16-byte aligned; floats 51-52 are padding that restores the GPU-constant alignment every preset depends on at buffer(0). */,
-            "FeatureVector should be 208 bytes, got \(MemoryLayout<FeatureVector>.size)")
+    // FeatureVector is 224 bytes (56 × 4) as of FTR.24, 16-byte aligned. The "192 after
+    // MV-1" this line carried was stale through DYN.1, D-178 and FTR.24.
+    #expect(MemoryLayout<FeatureVector>.size == 224 /* 56 floats = 224 bytes. DYN.1 added spectral_density/_slow (floats 49-50) taking it to 200, which is NOT 16-byte aligned; floats 51-52 were the padding that restored it and were then claimed by DYN.1b/DYN.2. FTR.24 adds spectral_level_rise (float 53) with floats 54-56 as the padding that restores the GPU-constant alignment every preset depends on at buffer(0). */,
+            "FeatureVector should be 224 bytes, got \(MemoryLayout<FeatureVector>.size)")
     #expect(MemoryLayout<FeatureVector>.alignment <= 16,
             "FeatureVector alignment (\(MemoryLayout<FeatureVector>.alignment)) should be ≤ 16 for GPU upload")
 }
