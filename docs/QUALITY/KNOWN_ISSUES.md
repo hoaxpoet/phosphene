@@ -36,6 +36,8 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-093 | **P1** · open, evidence-only | preset.fidelity | **Fractal Tree's geometry DOES move with the music by every measure available, and Matt still reports no clear connection — after nine live rejections.** Measured after 12 s on `2026-08-17T20-01-01Z`: `reach` spans 0.680, the size term 0.360, visible **trunk length 0.151 clip space ≈ 164 px of 1080**, branch spread 20°→34°, and the FTR.25 tip spark fires 0.37/s on events. So this is NOT a dead-channel or dead-route problem, and BUG-092 (which briefly claimed it was) is retracted on that point. **What IS established about the signals it tracks:** `spectral_surge`, which drives size, scores **0.25× event-versus-random specificity — it moves DOWN when the ear notices something** (FTR15 §9); `spectral_section_ratio`, which drives growth, is a slow density RANK, not a loudness or arrangement reading; `spectral_flux`, which drives the spread, is broadband change that fires as often between events as on them (1.50×). **The tree therefore moves a great deal while tracking three quantities that do not correspond to what a listener notices** — that is the standing hypothesis and it is consistent with every rejection in FTR.15→FTR.27, including the two where a more event-aligned driver was tried and rejected for its motion cost (FTR.24: 10.7× peak velocity). ⚠ **Do not open another tuning increment against this.** The next move needs a changed premise about WHICH quantity the tree should follow, and that is a product decision. Detail: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §§8–11 |
+| BUG-092 | P3 · **RE-SCOPED 2026-08-17, hours after filing — the original headline was WRONG** | preset.fidelity / documentation-drift | **Fractal Tree's declared `growth` route reads `arousal`, and `arousal` is INERT: it loses its own `max()` on 100 % of frames.** The shader computes `reach = max(0.10 · arousalReach, fullness) · musicGate`; measured after 12 s on `2026-08-17T20-01-01Z`, `0.10 · arousalReach` spans **0.032** against `fullness`'s **0.646** and never wins. So the sidecar's `growth ← arousal` is a manifest entry with no visible effect — the FTR.2 false-route class, which QG.1 cannot catch because `arousal` does *vary* (just at 3 % of the competing term's amplitude). `arousal` is separately near-constant within a track (mean 0.446…0.475, sd 0.048…0.069, same 0.26…0.51 bounds on five captures across three builds), which is fine for a MOOD classifier and is why nobody noticed. ⚠ **WHAT THIS ENTRY ORIGINALLY CLAIMED AND GOT WRONG:** that arousal was the preset's primary growth driver and that its flatness explained nine live rejections of "no clear connection". False. I measured the primitive's flatness and never checked its COEFFICIENT. Growth's real driver is `spectral_section_ratio` (span 0.646) and the visible trunk length swings **0.151 clip space ≈ 164 px of 1080** after 12 s — the geometry moves across two thirds of its range. **The connection complaint remains UNEXPLAINED**; see BUG-093. Fix here is small and cosmetic: either delete the inert arousal term and the route, or give it a coefficient that can compete — Matt's call, since one of those changes what he sees. Detail below |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-090 | P2 · **evidence-only, filed 2026-08-17; no fix attempted** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
 | BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
@@ -64,6 +66,95 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-093 — The tree moves plenty and still reads as disconnected; the drivers track the wrong quantities (2026-08-17)
+
+**Status: P1, evidence only, and deliberately NOT a tuning ticket.**
+
+**Why this exists.** After nine live rejections of one complaint across FTR.15 → FTR.27, two
+explanations have now been ruled out by measurement rather than argument:
+
+1. **"The visual is not moving enough."** Ruled out. After 12 s on `2026-08-17T20-01-01Z`: `reach`
+   span 0.680, size span 0.360, **visible trunk length span 0.151 clip space ≈ 164 px at 1080p**,
+   spread 20°→34°, tip spark firing 0.37/s. The tree traverses two thirds of its geometric range.
+2. **"A primary channel is dead."** Ruled out (BUG-092, retracted on that point): the inert term is
+   `arousal`, whose coefficient is 0.10 inside a `max()` it never wins — removing or fixing it
+   changes nothing about how much the tree moves.
+
+**What remains, and it is a routing-semantics problem rather than a calibration one.** Every
+quantity the geometry follows has been measured against what a listener notices, and none of them
+correspond:
+
+| channel | driver | what it actually measures | event specificity |
+|---|---|---|---|
+| size | `spectral_surge` | this moment's rank in the track's loudness distribution, off a τ 0.76 s follower | **0.25× — moves DOWN at events** |
+| growth | `spectral_section_ratio` | a slow τ20 s density rank against the track's normal | not event-scaled at all |
+| canopy angle | `spectral_flux` | broadband spectral change | 1.50× — fires as often between events as on them |
+| tip light | `spectral_level_rise` | pre-AGC level rise (FTR.25) | event-aligned, but only 0.37/s |
+
+**So the standing hypothesis is: the tree moves a lot while tracking three quantities that are not
+what a listener attends to.** That is consistent with every rejection in the arc, including the two
+where a genuinely event-aligned driver WAS tried and rejected for its motion cost — FTR.24 put one
+on size and multiplied peak velocity 10.7× (*"herky-jerky… looks defective"*).
+
+**⚠ Do not open another tuning increment against this.** Six size formulations, two accent
+placements, three spread routes and a detector rewrite have all been tried. The next move needs a
+changed premise about WHICH musical quantity the tree should follow — arrangement? section
+boundaries? a beat-grid-derived structure? — and that is a product decision for Matt, not a
+coefficient.
+
+**Verification criteria for any future attempt:** a driver whose event specificity exceeds 2× AND
+whose total travel stays within 25 % of the FTR.23 baseline, measured on one capture, before any
+live review is requested.
+
+---
+
+### BUG-092 — Fractal Tree's declared `growth` route is inert: `arousal` loses its own `max()` on every frame (2026-08-17, RE-SCOPED same day)
+
+**Status: P3, evidence only. This entry was filed with a WRONG headline and corrected hours later;
+the correction is the more useful half.**
+
+**⚠ WHAT I FILED FIRST, AND WHY IT WAS WRONG.** The original entry claimed `arousal` was the
+preset's primary growth driver, that it flatlines after 12 s, and that this explained nine live
+rejections of *"the tree grows and shrinks with no clear connection to the music"*. The flatness is
+real. **The rest was false, because I measured the primitive and never checked its COEFFICIENT.**
+
+The shader computes:
+
+```metal
+reach = saturate(max(0.10f * arousalReach, fullness) * musicGate)
+```
+
+Measured after 12 s on `2026-08-17T20-01-01Z`:
+
+| term | p05 | p95 | span |
+|---|---|---|---|
+| `0.10 × arousalReach` | 0.038 | 0.070 | **0.032** |
+| `fullness` (= `spectral_section_ratio × 0.5`) | 0.316 | 0.961 | **0.646** |
+| `musicGate` (from `spectral_surge`) | 0.294 | 1.000 | 0.707 |
+| resulting `reach` | 0.270 | 0.950 | **0.680** |
+
+**`arousal` wins that `max()` on 0.0 % of frames.** It is not a dead driver; it is an inert term.
+And the growth channel is not dead at all — `reach` spans 0.680, and the visible trunk length spans
+**0.151 clip space ≈ 164 px of 1080**.
+
+**The actual defect, which is small.** The sidecar declares `growth ← arousal`, and that route has
+no visible effect. This is the FTR.2 false-manifest class, and QG.1 route coverage cannot catch it:
+the gate asks whether a declared primitive VARIES (it does, faintly), not whether it survives the
+arithmetic it feeds. `arousal`'s within-track flatness — mean 0.446…0.475, sd 0.048…0.069, the same
+0.258…0.509 bounds on five captures across three builds and two audio paths — is unremarkable for a
+*mood* classifier and is why it went unnoticed for the whole FTR program.
+
+**Two fixes, both Matt's call because one changes what he sees:** delete the inert term and its
+route (honest, no visual change), or raise its coefficient so a track's mood biases the tree's
+resting size (a visible change, and the thing the route was presumably *meant* to do).
+
+**★ The transferable lesson, which is why this entry is kept rather than quietly deleted: measuring
+a PRIMITIVE's range says nothing about whether it reaches the picture.** Check the coefficient and
+the surrounding arithmetic — a term inside a `max()` against something ten times larger is decor.
+This is the same species as FTR.24's model/shader mismatch (glide order) three days earlier.
 
 ---
 
