@@ -117,7 +117,7 @@ public final class MeshGenerator: @unchecked Sendable {
     /// local-file path (BUG-087) — 2.1 samples of ease then 4.3 samples of stillness per beat.
     /// τ = 1/4 beat: at 94–124 BPM that is 160–120 ms, so ~86 % of the travel happens inside
     /// one beat while the value never actually arrives, which is what removes the freeze.
-    var beatHold = BeatHold(glideBeats: 0.25)
+    var beatHold = BeatHold(continuousGlideBeats: 0.35, beatSpeedBoost: 3.0)
 
     /// FTR.16 — SECTION-SCALE glide of the same vector, bound at object/mesh buffer(6).
     ///

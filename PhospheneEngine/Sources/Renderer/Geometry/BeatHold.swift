@@ -89,6 +89,36 @@ public struct BeatHold: Sendable {
     private let glideBeats: Float
     /// FTR.16 — absolute-τ variant of the glide; see ``init(glideSeconds:)``.
     private let glideSeconds: Float
+
+    /// FTR.22 — CONTINUOUS-TARGET mode: how much the beat slows the chase late in the bar.
+    /// `0` keeps the beat-LATCHED target of FTR.14. Non-zero switches to a target that tracks
+    /// the live frame every update, with the beat modulating the chase SPEED instead.
+    ///
+    /// ── WHY THE LATCH HAD TO GO ──────────────────────────────────────────────────────────
+    /// Matt, clarifying "robotic" after six M7s: *"it moves in a precise, start-and-stop pattern,
+    /// like the robot dance. It looks MECHANICAL, rather than organic."* That is a VELOCITY
+    /// description, and it is structural rather than a tuning value: a target that only changes
+    /// on beats means the value converges before the next target exists, so it arrives and then
+    /// waits. Measured on his capture — 647 ms beat, τ 162 ms, so it arrives in ~485 ms and has
+    /// nothing to move toward for the remaining 162 ms:
+    ///
+    ///     frames below  2 % of peak velocity   46.5 %
+    ///     frames below  5 %                    64.8 %
+    ///     frames below 10 %                    78.5 %
+    ///
+    /// **A value that arrives has to stop.** Continuous velocity requires a continuously-moving
+    /// target, so the latch is gone and the beat now modulates the chase RATE:
+    /// `τ = glideBeats · beatPeriod · (1 + beatSpeedBoost · beatPhase01)` — fastest immediately
+    /// after a beat, slowest just before the next. The beat stays legible as a 4× swing in speed
+    /// while position is never quantised. Simulated on the same capture at 0.35 beat / boost 3:
+    /// stillness **46.5 % → 20.9 %**, against an 18.8 % floor set by the analysis rate itself,
+    /// with the value's span unchanged (0.528 → 0.519).
+    ///
+    /// Note the earlier burstiness check (FTR.14) passed this build at 0.101 empty windows: it
+    /// measured DISPLACEMENT per 100 ms window, not velocity, and on the trunk rather than the
+    /// branch count that carries 26× the coefficient. Wrong quantity twice — see
+    /// `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §7.
+    private let beatSpeedBoost: Float
     /// The value actually on screen — always in motion toward `held` (FTR.14).
     private var visible = FeatureVector()
     private var visibleStems = StemFeatures()
@@ -104,7 +134,7 @@ public struct BeatHold: Sendable {
     private var pendingStems = StemFeatures()
 
     /// Hard sample-and-hold: the snapshot snaps on the beat (FTR.10 behaviour, unchanged).
-    public init() { glideBeats = 0; glideSeconds = 0 }
+    public init() { glideBeats = 0; glideSeconds = 0; beatSpeedBoost = 0 }
 
     /// Gliding hold: the visible value chases the beat-latched target continuously on the
     /// render clock and never holds still. Deliberately a separate initialiser rather than a
@@ -117,6 +147,21 @@ public struct BeatHold: Sendable {
     public init(glideBeats: Float) {
         self.glideBeats = min(max(glideBeats, 0), 1)
         glideSeconds = 0
+        beatSpeedBoost = 0
+    }
+
+    /// CONTINUOUS-TARGET glide (FTR.22, Matt 2026-08-16). The target tracks the live frame every
+    /// update — it is never latched — and the beat modulates how fast the visible value chases
+    /// it. The result never arrives, so it never stops. See ``beatSpeedBoost``.
+    ///
+    /// - Parameters:
+    ///   - continuousGlideBeats: base time constant as a fraction of a beat.
+    ///   - beatSpeedBoost: how much slower the chase gets by the end of the beat. 3 gives a 4×
+    ///     speed swing, which keeps the beat legible without quantising position.
+    public init(continuousGlideBeats: Float, beatSpeedBoost: Float) {
+        glideBeats = min(max(continuousGlideBeats, 0), 1)
+        glideSeconds = 0
+        self.beatSpeedBoost = max(beatSpeedBoost, 0)
     }
 
     /// SECTION-SCALE glide with an absolute time constant, for quantities that answer to song
@@ -135,6 +180,7 @@ public struct BeatHold: Sendable {
     public init(glideSeconds: Float) {
         glideBeats = 0
         self.glideSeconds = max(glideSeconds, 0)
+        beatSpeedBoost = 0
     }
 
     /// `true` while the snapshot is frozen between beats — i.e. all three trust conditions
@@ -192,7 +238,8 @@ public struct BeatHold: Sendable {
 
         // THE TARGET. Latched on the beat while the grid is trusted, otherwise the live frame.
         // Section mode never latches: `glideSeconds` answers to structure, not to beats.
-        if wrapped || !isStepping || glideSeconds > 0 {
+        // FTR.22 — continuous-target mode never latches: the target IS the live frame.
+        if wrapped || !isStepping || glideSeconds > 0 || beatSpeedBoost > 0 {
             held = frame
             heldStems = pendingStems
         }
@@ -211,13 +258,26 @@ public struct BeatHold: Sendable {
         // Passing 0 leaves the visible value untouched, which is what `advanceBeatHold` wants
         // when it is only feeding the beat clock for rows it does not draw.
         // Section-scale mode ignores the beat period entirely — see `init(glideSeconds:)`.
-        let tau = glideSeconds > 0
-            ? glideSeconds
-            : Self.glideTau(glideBeats: glideBeats, beatPeriod: Self.mean(intervals))
+        let tau = currentTau(beatPhase01: frame.beatPhase01)
         let alpha = Self.glideAlpha(deltaTime: renderDeltaTime, tau: tau)
         visible = Self.lerp(visible, held, alpha, clocksFrom: frame)
         visibleStems = Self.lerpStems(visibleStems, heldStems, alpha)
         return visible
+    }
+
+    /// The chase time constant for this frame.
+    ///
+    /// FTR.22 — in continuous-target mode the beat modulates SPEED, not position: τ is smallest
+    /// immediately after a beat and largest just before the next, so the value is always moving
+    /// and the beat reads as a change of pace. Gated on `isStepping`, because on an untrusted
+    /// grid `beatPhase01` is `BeatPredictor`'s raw-onset estimate — banned as a motion driver —
+    /// and the chase must fall back to its base rate rather than be steered by it.
+    private func currentTau(beatPhase01: Float) -> Float {
+        let base = glideSeconds > 0
+            ? glideSeconds
+            : Self.glideTau(glideBeats: glideBeats, beatPeriod: Self.mean(intervals))
+        guard beatSpeedBoost > 0, isStepping else { return base }
+        return base * (1 + beatSpeedBoost * min(max(beatPhase01, 0), 1))
     }
 
     /// Exponential time constant in seconds. Tempo-relative while a beat period is known;
@@ -252,74 +312,6 @@ public struct BeatHold: Sendable {
     }
 
     // MARK: - Glide
-
-    /// Element-wise lerp of two snapshots.
-    ///
-    /// `FeatureVector` is 47 stored properties and every one is a `Float` (verified by
-    /// `BeatHoldTests.everyFeatureVectorFieldIsFloat`, which fails if a non-`Float` field is
-    /// ever added), so the blend runs over the raw float storage instead of 47 hand-written
-    /// lines that a new field would silently escape.
-    ///
-    /// CLOCKS ARE NOT BLENDED. `time`, `beatPhase01`, `barPhase01` and `pulseBeatIndex` are
-    /// copied from the live frame: a phase lerped across its 1 → 0 wrap runs BACKWARDS, and a
-    /// consumer reading a clock wants the real one. (The pre-FTR.13 hard hold froze these too,
-    /// so this is strictly better, not a new obligation.)
-    static func lerp(
-        _ from: FeatureVector, _ to: FeatureVector, _ weight: Float,
-        clocksFrom live: FeatureVector
-    ) -> FeatureVector {
-        // t == 0 is the beat frame itself and must return the PREVIOUS value — the ease starts
-        // from where the eye already was. Returning `b` there put a one-frame snap on every
-        // beat, i.e. precisely the artifact FTR.13 exists to remove; caught by
-        // `BeatHoldTests.blendedStructsAreFloatOnly`.
-        var out = weight <= 0 ? from : to
-        if weight > 0 && weight < 1 {
-            let count = MemoryLayout<FeatureVector>.size / MemoryLayout<Float>.size
-            withUnsafeMutableBytes(of: &out) { destination in
-                withUnsafeBytes(of: from) { nearBytes in
-                    withUnsafeBytes(of: to) { farBytes in
-                        let output = destination.bindMemory(to: Float.self)
-                        let near = nearBytes.bindMemory(to: Float.self)
-                        let far = farBytes.bindMemory(to: Float.self)
-                        for i in 0..<count {
-                            output[i] = near[i] + (far[i] - near[i]) * weight
-                        }
-                    }
-                }
-            }
-        }
-        out.time = live.time
-        out.beatPhase01 = live.beatPhase01
-        out.barPhase01 = live.barPhase01
-        out.pulseBeatIndex = live.pulseBeatIndex
-        return out
-    }
-
-    /// `lerp` for the stem side. `StemFeatures` is 58 stored properties and every one is a
-    /// `Float` (gated by `BeatHoldTests.everyStemFeaturesFieldIsFloat`); it carries no clocks,
-    /// so nothing needs restoring from a live frame.
-    static func lerpStems(
-        _ from: StemFeatures, _ to: StemFeatures, _ weight: Float
-    ) -> StemFeatures {
-        guard weight > 0, weight < 1 else { return weight <= 0 ? from : to }
-        var out = to
-        let count = MemoryLayout<StemFeatures>.size / MemoryLayout<Float>.size
-        withUnsafeMutableBytes(of: &out) { destination in
-            withUnsafeBytes(of: from) { nearBytes in
-                withUnsafeBytes(of: to) { farBytes in
-                    let output = destination.bindMemory(to: Float.self)
-                    let near = nearBytes.bindMemory(to: Float.self)
-                    let far = farBytes.bindMemory(to: Float.self)
-                    for i in 0..<count {
-                        output[i] = near[i] + (far[i] - near[i]) * weight
-                    }
-                }
-            }
-        }
-        return out
-    }
-
-    // MARK: - Private
 
     private mutating func reset(_ frame: FeatureVector) {
         // FTR.14 — the glide is NOT reset across a track change: `visible` keeps chasing, so a

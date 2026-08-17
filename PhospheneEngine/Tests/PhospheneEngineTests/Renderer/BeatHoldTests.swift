@@ -303,4 +303,68 @@ struct BeatHoldTests {
             has silently inherited the glide and FTR.10's behaviour is gone.
             """)
     }
+
+    // MARK: - FTR.22 — continuous target
+
+    /// THE DEFECT THIS MODE EXISTS FOR: a value that ARRIVES has to stop. With a beat-latched
+    /// target the chase converges before the next target exists, so the geometry moves, arrives,
+    /// and waits — Matt's *"precise, start-and-stop pattern, like the robot dance."* Measured on
+    /// his capture the shipped build was below 2 % of peak velocity on 46.5 % of frames.
+    ///
+    /// This asserts the property directly: feed a CONTINUOUSLY changing signal and the
+    /// continuous-target mode must keep moving where the latched mode stalls.
+    @Test("FTR.22: a continuous target keeps the value moving; a latched target stalls")
+    func continuousTargetDoesNotStall() {
+        func stillFraction(_ hold: BeatHold) -> Double {
+            var hold = hold
+            var values: [Float] = []
+            let dt: Float = 1.0 / 60.0
+            var time: Float = 0
+            while time < 12 {
+                var frame = FeatureVector()
+                frame.time = time
+                // 120 BPM grid, and a target that never stops moving.
+                frame.beatPhase01 = (time / 0.5).truncatingRemainder(dividingBy: 1)
+                frame.barPhase01 = 0.5
+                frame.spectralSurge = 0.5 + 0.4 * sin(time * 0.9)
+                values.append(hold.update(frame, renderDeltaTime: dt).spectralSurge)
+                time += dt
+            }
+            let settled = Array(values.dropFirst(values.count / 2))
+            let velocity = zip(settled, settled.dropFirst()).map { abs($1 - $0) }
+            let peak = velocity.sorted()[Int(0.99 * Double(velocity.count - 1))]
+            return Double(velocity.filter { $0 < peak * 0.02 }.count) / Double(velocity.count)
+        }
+        let latched = stillFraction(BeatHold(glideBeats: 0.25))
+        let continuous = stillFraction(BeatHold(continuousGlideBeats: 0.35, beatSpeedBoost: 3.0))
+        #expect(continuous < latched * 0.6, """
+            continuous-target mode is still on \(continuous) of frames against the latched \
+            mode's \(latched). The whole point is that a target which never stops moving cannot \
+            arrive, so the geometry cannot stall — that is Matt's "start-and-stop" complaint.
+            """)
+    }
+
+    /// The beat must still be legible — it modulates SPEED. And it must only do so on a trusted
+    /// grid: on an untrusted one `beatPhase01` is BeatPredictor's raw-onset estimate, banned as a
+    /// motion driver, so the chase has to stay at its base rate.
+    @Test("FTR.22: the beat modulates chase speed, and only on a trusted grid")
+    func beatModulatesSpeedOnlyWhenTrusted() {
+        var reactive = BeatHold(continuousGlideBeats: 0.35, beatSpeedBoost: 3.0)
+        var values: [Float] = []
+        var time: Float = 0
+        while time < 6 {
+            var frame = FeatureVector()
+            frame.time = time
+            frame.beatPhase01 = (time / 0.5).truncatingRemainder(dividingBy: 1)
+            frame.barPhase01 = 0                      // no bar clock => never trusted
+            frame.spectralSurge = 0.5 + 0.4 * sin(time * 0.9)
+            values.append(reactive.update(frame, renderDeltaTime: 1.0 / 60.0).spectralSurge)
+            time += 1.0 / 60.0
+        }
+        #expect(!reactive.isStepping, "the grid must not be trusted with no bar clock")
+        #expect(values.contains { $0 != values[0] }, """
+            with an untrusted grid the value never moved — the continuous glide must still run, \
+            it just must not let an untrusted phase steer its speed.
+            """)
+    }
 }
