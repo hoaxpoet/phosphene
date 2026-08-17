@@ -37,6 +37,7 @@ read the crash reports already on disk.**)*
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | BUG-090 | P2 · **evidence-only, filed 2026-08-17; no fix attempted** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
+| BUG-091 | P2 · **root-caused + probe-verified 2026-08-17; FIX NOT APPLIED — changes a certified preset's look, Matt's call** | preset.meniscus / primitive-contract | **Meniscus reads `arousal` as if it were 0…1 when its contract is −1…+1, discarding the entire calm half of the primitive.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as `max(0, min(features.arousal, 1))`, which clamps rather than maps — and `MeniscusCamera.swift:106` repeats it for the camera envelope, so the preset discards the calm half twice. On calm material that zeroes the lift for a large fraction of the track — measured **35 % of frames on `so_what`** (arousal −0.393…+0.519) — collapsing `arcEnvelope`, then `density`, until the backbeat-gated **vocals region places 0 drops across the whole track**. Masked until now because MEN.4a was calibrated on one capture where arousal never went negative (its own code comment records the range as *0.19 → 0.52 → 0.27*), and because the committed QG.1 fixtures happen to bottom out at −0.077. It surfaced only when BUG-090's regenerated fixtures carried today's mood output. **Probe-verified:** replacing the clamp with a map (`(clamp(arousal,−1,1)+1)/2`) takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green (14 tests / 9 suites). Probe reverted, not committed. **Not applied because it changes what a CERTIFIED preset looks like** — more drops on calm material — which is a product call, not a test fix. Needs Matt's pick and an M7. ⚠ **Transferable:** any consumer of a bipolar primitive that writes `max(0, x)` is silently discarding half its range. Worth grepping the other presets |
 | BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
@@ -63,6 +64,79 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-091 — Meniscus clamps `arousal` to 0…1 when its contract is −1…+1, and a beat-locked region goes dead on calm material (2026-08-17)
+
+**Status: root-caused and probe-verified. Fix NOT applied — it changes what a certified preset
+looks like, which is Matt's call.**
+
+**The defect.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as:
+
+```swift
+let lift = max(0, min(features.arousal, 1))
+```
+
+`arousal`'s declared contract is **−1 (calm) to +1 (energetic)** (`AudioFeatures+Analyzed.swift`).
+This clamps rather than maps, so the entire calm half of the primitive is discarded — every
+negative frame reads as identical to "not calm at all".
+
+**What it costs.** On `so_what` (Miles Davis, quiet modal jazz) today's mood output runs
+−0.393…+0.519 with **35 % of frames negative**. Those all collapse to zero, `arcEnvelope`
+(τ 6 s) sits low, `density = 0.35·arcEnvelope + 0.65·arrangement` never rises, and the
+backbeat-gated **vocals region places 0 drops across the entire track** — which
+`MeniscusStemDropsTests` correctly calls a dead route, since those three regions are beat-locked
+and absolute.
+
+**Why it stayed hidden.** MEN.4a was calibrated on a single capture where arousal never went
+negative — its own comment records the range as *"arousal 0.19 → 0.52 → 0.27"* — so the clamp
+never engaged. And the committed QG.1 fixtures bottom out at −0.077, roughly 0 % negative. The
+defect only surfaced when BUG-090's regenerated fixtures carried today's mood output, after
+DYN.6.2/DYN.7 refit the classifier.
+
+**Probe (reverted, not committed).** Replacing the clamp with a map:
+
+```swift
+let lift = (max(-1, min(features.arousal, 1)) + 1) * 0.5
+```
+
+takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green
+(14 tests / 9 suites), with the other two tracks unaffected in kind.
+
+**Why the fix is not applied here.** It makes a **certified** preset place more drops on calm
+material — a visible change to what Matt sees, and therefore a product call plus an M7, not a
+test fix. Applying it as a side effect of a fixture investigation is exactly the laundering
+BUG-090 was filed to prevent.
+
+**The sweep found a SECOND site, in the same preset.** `MeniscusCamera.swift:106` does the
+identical thing to its own envelope:
+
+```swift
+arousalEnvelope += (max(0, min(features.arousal, 1)) - arousalEnvelope) * …
+```
+
+So Meniscus discards the calm half of `arousal` twice — once for drop density, once for camera
+motion. Both need the same correction, and both change what a certified preset looks like.
+
+**The codebase already has the correct idiom, two files away.** The orchestrator maps the same
+primitive properly:
+
+```swift
+SessionPlanner.swift:327    let energy       = max(0, min(1, 0.5 + 0.4 * profile.mood.arousal))
+PresetScorer.swift:277-279  let targetTemp   = max(0, min(1, 0.5 + 0.4 * valence))
+                            let targetDensity = max(0, min(1, 0.5 + 0.4 * arousal))
+```
+
+`0.5 + 0.4 · x` centres the bipolar range on 0.5 and keeps both halves. That is the shape the
+Meniscus sites should have used.
+
+⚠ **Also checked and NOT affected.** `RayMarchPipeline+MetalFX.swift:183–184` writes
+`max(0, valence)` / `max(0, -valence)` — that is a deliberate split of a bipolar signal into two
+unipolar channels (warm and cool), which loses nothing. And the deviation family (`*Dev`) is
+`max(0, *Rel)` **by definition**, not by accident. No MSL-side instances. The rule is not
+"`max(0, …)` is wrong" — it is "clamping a bipolar primitive to one side of zero throws away
+half of it".
 
 ---
 
@@ -161,6 +235,21 @@ measure today's pipeline"* — which is a claim about Witchlight's certification
 fixture chore. **Recommended:** re-capture the fixtures, re-derive the two gates' targets from
 the current pipeline, and have Matt re-confirm Witchlight's phase-travel figure against a live
 render rather than accepting a recomputed constant.
+
+**FOLLOW-UP (CHR.3h, same day): the two failures are NOT the same kind of thing, and only one
+is a re-baseline.** Investigated separately rather than treated as one fixture chore:
+
+- **Witchlight — stale baseline, re-baseline candidate.** Its gate asserts how far the smoothed
+  harmonic phase travels, and `circles` now falls *below* 0.7 × target on all three tracks. That
+  is the direction FTR.3g predicts (it deliberately smoothed that phase; smoothing reduces
+  travel). The preset is not broken; the constant predates the change. Re-deriving it still needs
+  Matt's live confirmation — a recomputed constant proves only that today's code produces
+  today's number.
+- **Meniscus — a REAL DEFECT, now filed as BUG-091.** Not a stale target at all: it clamps
+  `arousal` to 0…1 when the contract is −1…+1, so on calm material the arc lift dies and a
+  beat-locked region goes silent. The gate was right to fail. **Re-baselining it would have
+  laundered a genuine bug in a certified preset** — which is precisely the outcome this defect
+  was originally filed to avoid, arrived at from the opposite direction.
 
 ---
 
