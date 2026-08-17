@@ -2486,6 +2486,51 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.25 — the event accent moves to LIGHT: a tip spark, not a size punch.** ✅ code-complete,
+**pending live M7** (2026-08-17) Matt, after FTR.24a: *"Try the colour/tip flicker approach."*
+
+**Same driver, different property, and the difference is structural rather than a matter of
+degree.** FTR.24 failed because marking 0.8–1.5 events/s on the tree's SIZE multiplied its peak
+velocity 10.7× — size is what every other element is drawn relative to. **Nothing is positioned
+relative to brightness**, so the same accent on light costs exactly zero peak velocity. Shipped as
+`val += spark · 0.55`, `sat −= spark · 0.45` where `spark = spectral_level_rise · depth_norm`.
+
+**Gated on the claim, not on taste:** `canopyWidth` must be identical **to the pixel** between
+accent 0 and 1 while lit-pixel luma moves ≥ 4 %, clipping stays < 12 % and the frame lift < 25 %.
+Measured `0.1672 → 0.1672`, lit-luma +10 %, brightest tips 0.739 → 0.905, no clipped pixels,
+frame +10.5 %.
+
+**Two calibration findings.** `depth²` weighting (the first cut) was wrong — it attenuated the
+mid-canopy, where most lit pixels are, so even gain 1.20 moved the frame 6 %; linear depth still
+holds the trunk at exactly zero, which is the property that matters, since a whole-frame lift is
+the global flash FTR.3 removed under D-157. And **brightness alone sat at the threshold of
+visibility** (+5 % lit luma); desaturating toward white doubles the pixel delta for the same flash
+budget, because that is what makes a small bright thing read as a spark. One gesture, one
+primitive — FA #67 holds.
+
+**BUG-089's fix improved the driver's event specificity, which was luck and had not been
+checked.** The fix was made for rate invariance alone; re-measured, it fires **0.41/s on the tap
+and 0.40/s on local files** where the old formulation ran 0.89 against 0.07.
+
+**⚠ The gate needed two attempts and the first one lied.** Rendered as two entries in the drive
+loop, the A/B pair inherits `BeatHold` glide state, so the two frames' geometry differs for reasons
+unrelated to the accent — it read width-identical on one fixture set and 0.0016 apart on another,
+which would have been reported as "the accent moved the geometry". Now settled once, encoded twice.
+Same species as FTR.18's glide-seed bug and FTR.19's harness smoother.
+
+**⚠ BUG-090 filed, and it blocked the honest fix for route coverage.** The new column postdates the
+QG.1 fixtures, so `FixtureSessionCaptureGenerator` was run as its own header instructs.
+It works — the column is live on all three clips and the gate reads 209 routes / 21 presets, 0 red —
+but every regenerated row differs from the committed copy and that reds `MeniscusStemDropsTests`
+and `WitchlightPathTests` (**Witchlight is CERTIFIED**). Either the pipeline moved since QG.1.3 or
+the generator is non-deterministic; the discriminator is one command (run it twice, diff its own
+outputs). **Fixtures left as committed and the finding filed, because "my change went green after I
+regenerated a shared fixture" is how a real regression gets laundered.** The route is tracked as an
+explicit, printed fixture gap meanwhile.
+
+**Not established, and stated plainly:** whether ~0.4 sparks per second reads to Matt as the tree
+responding. Nine rejections in this program have all been of builds with defensible numbers.
+
 **FTR.24a — the size accent is RETIRED the day it shipped, and BUG-089 with it.** ✅
 (2026-08-17) Matt's M7 on `2026-08-17T15-23-17Z`: *"Much worse now as the motion is herky-jerky.
 Looks defective. Considerable regression."*

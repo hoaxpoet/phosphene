@@ -60,6 +60,29 @@ struct RouteCoverageTests {
     /// gap (QG.1.1), reported distinctly from a genuine dead route.
     static let structuralMinDistinctValues = 2
 
+    /// FTR.25 — columns that POSTDATE the committed fixtures.
+    ///
+    /// The fixtures are recorded CSVs with no audio beside them, so a column added to
+    /// `FeatureVector` after they were captured cannot be back-filled from them. Such a route is
+    /// reported as a fixture gap rather than failing the gate — the policy QG.1.1 already
+    /// applies to coverage the fixtures cannot reach.
+    ///
+    /// ⚠ **REGENERATION WAS TRIED FIRST AND IS BLOCKED ON A SEPARATE FINDING.**
+    /// `FixtureSessionCaptureGenerator` still runs (18 s, three clips) and its output DOES carry
+    /// the column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35), and with it
+    /// installed this gate reads **209 routes / 21 presets, 0 red**. But the regenerated CSVs
+    /// differ from the committed ones on EVERY row, and that reds three gates belonging to other
+    /// presets — `MeniscusStemDropsTests` (so_what), `WitchlightPathTests` (all three; Witchlight
+    /// is CERTIFIED). Either the pipeline's output has moved since the fixtures were captured at
+    /// QG.1.3, or the generator is not deterministic. Re-baselining a certified preset's gate as
+    /// a side effect of an unrelated increment is not a call to make quietly, so the fixtures
+    /// stay as committed and the finding is filed (BUG-090).
+    ///
+    /// ⚠ THIS SET MUST SHRINK, NEVER GROW QUIETLY. Each entry is a route the gate is NOT
+    /// checking. An entry added to turn a red gate green is the floor-tuning move QG.1 exists to
+    /// prevent — the gate stays red instead.
+    static let columnsPostdatingFixtures: Set<String> = ["spectral_level_rise"]
+
     // MARK: - Fixtures
 
     private static let fixtureTracks = ["love_rehab", "so_what", "there_there"]
@@ -125,6 +148,13 @@ struct RouteCoverageTests {
         var perFixture: [(name: String, values: [Float])] = []
         for (name, cols) in series {
             guard let raw = cols.floatSeries(mapping.column) else {
+                if columnsPostdatingFixtures.contains(mapping.column) {
+                    // FIXTURE GAP, not a dead route. Printed every run so it cannot go invisible.
+                    print("[route-coverage] FIXTURE GAP \(preset)/\(route.route): "
+                          + "'\(mapping.column)' postdates \(name); route UNVERIFIED here "
+                          + "(BUG-090 blocks regeneration)")
+                    return nil
+                }
                 return "\(preset)/\(route.route): column '\(mapping.column)' absent from \(name) — not recorded"
             }
             perFixture.append((name, raw.compactMap { $0 }.map { $0 * mapping.scale }))

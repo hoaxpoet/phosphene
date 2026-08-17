@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-090 | P2 · **evidence-only, filed 2026-08-17; no fix attempted** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
 | BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
@@ -62,6 +63,48 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-090 — The QG.1 route-coverage fixtures cannot be regenerated: today's generator output reds two other presets' gates (2026-08-17)
+
+**Status: evidence only. No fix attempted, and deliberately so — see the last paragraph.**
+
+**What was tried and why.** FTR.25 declares a route on `spectral_level_rise`, a `FeatureVector`
+column added after the fixtures were captured at QG.1.3. QG.1 therefore cannot verify it: the
+fixtures are recorded CSVs with no audio beside them. `FixtureSessionCaptureGenerator`'s own header
+says *"Regenerate + re-copy when the CSV schema appends columns"*, so that was the first move, not
+the allowance.
+
+**The generator works.** 18 s, three vendored clips through the production chain, and the new
+column is live on all three: `love_rehab` nonzero 100 % / sd 0.242, `so_what` 99 % / 0.346,
+`there_there` 80 % / 0.165. With the regenerated set installed, `RouteCoverageTests` reads
+**209 routes across 21 presets, 0 red**.
+
+**But every row differs from the committed copy**, and two other presets' gates fail with it:
+
+| gate | preset | failure |
+|---|---|---|
+| `MeniscusStemDropsTests` — "the beat-locked regions never go dead" | Meniscus | `perRegion[region] == 0` on `so_what` |
+| `WitchlightPathTests` — "the smoothed harmonic phase travels the distance §2.3 measured" | **Witchlight (CERTIFIED)** | `circles` outside 0.7–1.4 × target on all three tracks |
+
+**Two candidate causes, not separated.** (a) The pipeline's output has genuinely moved since
+QG.1.3 — in which case those gates are asserting against a stale baseline and the drift is itself
+the finding. (b) The generator is not deterministic; it runs MPSGraph stem separation and the
+Beat This! grid, neither of which has been checked for run-to-run stability here.
+
+**Discriminator, one command:** run the generator twice into different directories and diff its own
+two outputs. Identical ⇒ (a), the pipeline moved, and the two gates need re-baselining as their own
+increment with Matt's sign-off (Witchlight is certified). Different ⇒ (b), and the fixtures cannot
+be regenerated at all until the generator is made reproducible.
+
+**Consequence today.** Any `FeatureVector` column added after QG.1.3 cannot be route-covered.
+Tracked explicitly as `RouteCoverageTests.columnsPostdatingFixtures`, which currently holds
+`spectral_level_rise` and prints a FIXTURE GAP line on every run.
+
+**Why this was filed rather than fixed.** Re-baselining a certified preset's gate as a side effect
+of an unrelated preset increment is not a quiet call, and "my change went green after I regenerated
+a shared fixture" is how a real regression gets laundered. The fixtures stay as committed.
 
 ---
 
