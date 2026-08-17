@@ -106,6 +106,62 @@ Tracked explicitly as `RouteCoverageTests.columnsPostdatingFixtures`, which curr
 of an unrelated preset increment is not a quiet call, and "my change went green after I regenerated
 a shared fixture" is how a real regression gets laundered. The fixtures stay as committed.
 
+**UPDATE — discriminator run, and the drift fully localised (CHR.3g, 2026-08-17).**
+
+**The discriminator answers (a): the generator IS deterministic.** Run twice into separate
+directories, all six outputs are **byte-identical** (`cmp` clean on features.csv and stems.csv
+for all three tracks). So the fixtures CAN be regenerated reproducibly, and the two failing
+gates are asserting against a stale baseline rather than against noise.
+
+**The drift is not broad — it is five columns in two analyzers.** Comparing the committed
+fixtures against the regenerated set, per column, as mean |delta| over the shared rows:
+
+| column | love_rehab | so_what | there_there |
+|---|---|---|---|
+| `tonal_tension` | 63 % of range | 38 % | 50 % |
+| `harmonic_flux` | 55 % | 36 % | 58 % |
+| `valence` | 24 % | 25 % | 46 % |
+| `tonal_phase_fifths` | 20 % | 9 % | 9 % |
+| `arousal` | 17 % | 18 % | 43 % |
+
+**Everything else is stable.** 67 of 72 shared feature columns moved < 1 % of range, and
+**stems.csv is completely unchanged — 0 of 52 columns on all three tracks.** Bands, deviation
+primitives, beat, pulse, section and every per-stem field are identical.
+
+**The causes are named in git, and all are intentional.** The fixtures were captured at
+`cc1dfcd1` (QG.1.3). Since then: `2861140e [FTR.3g] Seed the density baseline, **smooth the
+harmonic phase**`, `c5b491ba [TONAL.2b] calibrate TonalAnalyzer gate from the 1000-track pilot`,
+`86169538 [DYN.6]` / `21651962 [DYN.6.2] MoodClassifier: refit the flux scaler on corpus
+statistics`, `a91a7915 [DYN.7] Mood: the prepared mood and the live mood become one
+measurement`. Each landed with its own increment. **This is not a regression.**
+
+**Both failures trace to exactly those columns**, confirmed by reproducing them with the
+regenerated set installed:
+
+- **Witchlight** — its hero driver IS `tonalPhaseFifths`, and the gate asserts how far the
+  smoothed harmonic phase travels. `circles` now falls **below** 0.7 × target on all three
+  tracks, which is the expected direction: FTR.3g deliberately *smoothed* that phase, and
+  smoothing reduces travel. The gate encodes a pre-FTR.3g target.
+- **Meniscus** — `MeniscusStemDrops` gates drop placement on `features.arousal`
+  (`MeniscusStemDrops.swift:219`, the MEN.4a musical-arc lift). Arousal moved 17–43 % of range,
+  so a beat-locked region that used to fire on `so_what` no longer does. Its stems are
+  identical, which is why the stem-side explanation never fitted.
+
+**Also found:** the committed fixtures predate more than `spectral_level_rise`. The regenerated
+set adds **six** columns — the whole DYN block (`spectral_density`, `_slow`, `spectral_surge`,
+`spectral_section_ratio`) plus `spectral_level_rise` (FTR.24) and `waveform_occupancy`
+(CHR.3c). So the fixture gap currently blocks route coverage for three separate increments'
+primitives, not one.
+
+**What remains, and it is a judgement call rather than a measurement.** Regenerating is now
+known to be safe and reproducible, but it re-baselines two gates — one of them on a **certified**
+preset. That needs Matt's sign-off and its own increment, because the honest framing is *"these
+two gates have been measuring a stale baseline since FTR.3g/DYN.6, and re-capturing makes them
+measure today's pipeline"* — which is a claim about Witchlight's certification evidence, not a
+fixture chore. **Recommended:** re-capture the fixtures, re-derive the two gates' targets from
+the current pipeline, and have Matt re-confirm Witchlight's phase-travel figure against a live
+render rather than accepting a recomputed constant.
+
 ---
 
 ### BUG-089 — `spectral_level_rise` shipped with a 22× analysis-rate dependence; its rate-invariance test passed (2026-08-17)
