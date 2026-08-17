@@ -313,7 +313,75 @@ void fractal_tree_object_shader(
         // separates the pre-guitar passage from the arrival 20.4× (0.048 → 0.981) while
         // turning only 0.58 times a second — a step the trunk can safely read, which the
         // restless `density` ratio never was.
-        float surge = heldGrowth.y;   // FTR.11 — held, like every other frame term
+        // ── FTR.24: THE SIZE IS TWO LAYERS — A SLOW BASE AND A FAST ACCENT ───────
+        //
+        // Matt, seven times across FTR.15→FTR.23, the complaint that outlived every other:
+        // *"the tree grows and shrinks with no clear connection to the music."* FTR.23
+        // finally measured it instead of re-tuning it. Against 49 audible events on
+        // `2026-08-17T12-47-58Z` (a > 3 dB rise in the 50 ms RMS envelope of the tap), the
+        // event-versus-random specificity of the size driver was **0.25×** — `spectral_surge`
+        // moves DOWN when the ear notices something, because it ranks a 0.76 s follower and
+        // a limited master dips in rank exactly as a band arrives.
+        //
+        // ★ THE STRUCTURAL FINDING, and the reason six rounds of re-tuning could not have
+        // worked: EVENT ALIGNMENT NEEDS A FAST RESPONSE, LOW TRAVEL NEEDS SMOOTHING, AND ONE
+        // TERM ON ONE LAYER CANNOT DO BOTH. Every single-term candidate was measured through
+        // this exact composition and each traded one of Matt's complaints for the other —
+        // flux alone reached 1.40× specificity only by tripling total travel ("the trunk is
+        // moving too much", FTR.9), and `max(base, flux)` cost 6.5× travel. The motion
+        // problem WAS solvable at FTR.22 because motion had two layers to separate, a target
+        // and a glide speed. Size had one. This gives it two.
+        //
+        // The base is unchanged — level rank with FTR.18's bounded limiter correction, which
+        // Matt accepted ("ok overall") and which carries the section arc. The accent is
+        // `spectral_level_rise` (FTR.24), the transient sibling of surge, scaled INTO THE
+        // REMAINING HEADROOM so a loud passage cannot be pushed into the ceiling: at
+        // base 0.9 the accent can still add 0.028, and pinning measured 0 % of frames where
+        // the additive formulations pinned 11–15 %.
+        //
+        // Read LIVE (`f`, buffer 0) inside the held evaluation, deliberately — the whole
+        // point of an accent is that it lands when the sound does, so latching it to the
+        // beat grid would defeat it. It is the one term in the preset that must not step.
+        //
+        // Gain 0.45, measured through this exact composition on Matt's own capture
+        // (`2026-08-17T12-47-58Z`, 49 audible events), against the FTR.23 build:
+        //
+        //                        event/random   total travel      span
+        //   FTR.23 shipped          1.53×          8.04          0.472
+        //   + accent 0.30           2.72×          8.99  (+12 %) 0.437  (−7 %)
+        //   + accent 0.45           3.77×         10.06  (+25 %) 0.425  (−10 %)
+        //   + accent 0.55           4.57×         10.88  (+35 %) 0.418  (−11 %)
+        //
+        // 0.45 takes 2.5× the event alignment for 25 % more motion and 10 % less span. The
+        // motion is spent in the right place — Matt's complaint on the FTR.23 build was
+        // *"now it barely moves"* — and it is spent ON events rather than between them,
+        // which is the difference between this and every candidate FTR.23 measured.
+        //
+        // The gain could not have fixed this alone: the FIRST calibration of the detector
+        // fired 1.47 times a second and read as a DC lift, and no gain repaired that (see
+        // `SpectralAnalyzer+Density`'s band comment). Consumer gain sizes an accent; the
+        // detector's duty cycle decides whether it IS one.
+        //
+        // NOT applied to the branch count. The count is quantised and popping it is exactly
+        // the "stuttering" defect FTR.13 was spent on; the trunk and canopy scale are
+        // continuous, so the accent lands there and only there.
+        //
+        // FA #67 (one primitive per visual layer) — this is two primitives reaching one
+        // layer, so it needs its justification stated rather than assumed. The rule exists
+        // to stop two primitives AT THE SAME TIMESCALE fighting over one channel
+        // (Ferrofluid's per-beat spike against per-beat swell). These are two orders of
+        // magnitude apart: the base is a τ≈20 s section follower, the accent decays in
+        // 0.35 s. They cannot compete for the same information, which is the whole design —
+        // and the accent is bounded into the base's headroom, so the base always wins the
+        // argument about how big the tree is.
+        //
+        // FA #31 — the accent's dB thresholds are NOT absolute thresholds on AGC-normalised
+        // energy. `spectral_level_rise` is measured pre-AGC (`LoudnessProfile.levelDB`, the
+        // same scale DYN.1c's offline profile uses) and the threshold is a RELATIVE rise
+        // against the signal's own 0.15 s trailing floor, so no mix-density denominator
+        // moves underneath it.
+        float sizeAccent = 0.45f * saturate(f.spectral_level_rise);
+        float surge = saturate(heldGrowth.y + sizeAccent * (1.0f - heldGrowth.y));
 
         // ── FTR.10: THE TRUNK STEPS ON THE BEAT ──────────────────────────────────
         //
@@ -523,21 +591,35 @@ void fractal_tree_object_shader(
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
         //
-        // Replaces `mid_att`, which delivered 0.42° of a promised 7° (D-212). The
-        // cause was a coefficient written as if the band swings 0→1: `mid_att` means
-        // 0.056 post-AGC on this material and spans 0.007 on love_rehab.
+        // Replaces `mid_att`, which delivered 0.42° of a promised 7° (D-212). The cause was a
+        // coefficient written as if the band swings 0→1: `mid_att` means 0.056 post-AGC on
+        // this material and spans 0.007 on love_rehab.
         //
-        // `spectral_flux` is the only broadband primitive measured with a comparable
-        // span on every source — p05→p95 of 0.555 (Hummer), 0.666, 0.539, 0.477. It
-        // is also the right MUSICAL choice: flux rises when the spectrum CHANGES, so
-        // the canopy opens on chord and texture changes rather than on loudness, which
-        // the canopy-reach route already carries.
+        // `spectral_flux` is the only broadband primitive measured with a comparable span on
+        // every source — p05→p95 of 0.555 (Hummer), 0.666, 0.539, 0.477. It is also the right
+        // MUSICAL choice: flux rises when the spectrum CHANGES, so the canopy opens on chord
+        // and texture changes rather than on loudness, which the canopy-reach route already
+        // carries.
         //
-        // Sized against the measured p05 floor, not against 0: flux never approaches
-        // zero on real music (p05 0.070–0.378), so mapping [0.10, 0.95] onto the full
-        // spread range uses the range the music actually occupies. 20°→34° is double
-        // the shipped 22°→29° nominal, and ~33× the swing actually delivered.
+        // Sized against the measured p05 floor, not against 0: flux never approaches zero on
+        // real music (p05 0.070–0.378), so mapping [0.10, 0.95] onto the full spread range
+        // uses the range the music actually occupies. 20°→34° is double the shipped 22°→29°
+        // nominal, and ~33× the swing actually delivered.
         // FTR.11 — `fHeld`: at 5.48 turns/s this was the fastest-moving term in the preset.
+        //
+        // ⚠ FTR.24 — MATT ASKED FOR THIS ROUTE TO BE REMOVED AND IT IS STILL HERE, PENDING HIS
+        // CALL. His instruction on 2026-08-17 was *"take flux off branch spread"*, given to
+        // free flux for the size term. Two measurements then changed the premise underneath it:
+        // flux cannot fix size (FTR.23 — never event-positive additively, and span collapse or
+        // 6.5× travel otherwise), and FTR.24 fixed size with a new primitive that has nothing
+        // to do with flux. So the trade the instruction was making no longer exists.
+        //
+        // Removing it anyway was measured, and it is expensive: the drive-range response falls
+        // from **1.067 to 0.119** mean |Δpixel| p05→p95, i.e. THE SPREAD CARRIES 89 % OF THIS
+        // PRESET'S MEASURED RESPONSE ACROSS ITS OWN ENERGY RANGE, and `FractalTreeMeshRenderTest`
+        // fails its own 0.5 floor — the FTR.2 dead-route gate, firing correctly. A static canopy
+        // makes the "no clear connection to the music" complaint worse, not better, which is why
+        // this is Matt's call and not a silent one either way.
         float flux   = saturate((fHeld.spectral_flux - 0.10f) / 0.85f);
         float spread = 0.35f + flux * 0.24f;   // 20° … 34°
 
