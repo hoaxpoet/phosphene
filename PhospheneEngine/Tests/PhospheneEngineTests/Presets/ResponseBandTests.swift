@@ -36,7 +36,6 @@ struct ResponseBandTests {
     private static func makeRuntime(for presetID: String) -> (any AudioResponseMetrics)? {
         switch presetID {
         case "Witchlight": return WitchlightPath()
-        case "Stave":      return StaveTraceModel()
         default:           return nil
         }
     }
@@ -50,13 +49,6 @@ struct ResponseBandTests {
             guard let path = runtime as? WitchlightPath else { return }
             let drive = try WitchlightFixtureDrive.load(track)
             WitchlightFixtureDrive.run(path, over: drive)
-        case "Stave":
-            guard let model = runtime as? StaveTraceModel else { return }
-            model.reset()
-            let drive = try WitchlightFixtureDrive.load(track)
-            for (index, features) in drive.features.enumerated() {
-                model.advance(features: features, stems: drive.stems[index])
-            }
         default:
             return
         }

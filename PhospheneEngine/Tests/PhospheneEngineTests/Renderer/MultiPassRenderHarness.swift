@@ -164,14 +164,15 @@ struct MultiPassRenderHarness {
 
     // MARK: - Render: particle (Stave — beaded traces + tint wash over its own ruled field)
 
-    /// Stave's frame is mostly BACKDROP — the ruled field, the haze and the sparkles — with
-    /// the beads and the tint wash on top, so measuring the geometry against a black clear
-    /// would under-report the mean luminance badly. Mirrors `RenderPipeline.drawParticleMode`:
-    /// preset triangle first, then the geometry's four draws into the same encoder.
+    /// Stave reads ONE thing: the engine's waveform buffer. No FeatureVector route, no stems.
+    /// So the worst case has to be built IN THAT BUFFER — a broadband signal whose envelope is
+    /// slammed between silence and full scale at the accent rate. That is the largest
+    /// whole-frame luminance swing the preset can produce, because the frame brightens when
+    /// the bands sum toward white and the fan opens.
     ///
-    /// The settle window is load-bearing here: Stave's subject is an 8 s scrolling history
-    /// ring, so the first ~480 frames are a window FILLING, not the steady plot whose flash
-    /// behaviour is the question. The tint's 8 s EMA needs the same warm-in.
+    /// Mirrors `RenderPipeline.drawParticleMode`: preset ground triangle, then the dispersion
+    /// into the same encoder. The settle window lets the 20 s per-band level tracker warm in,
+    /// so what is measured is the steady preset rather than its gains converging.
     private func renderStave<T>(_ drive: [FeatureVector], _ stems: [StemFeatures],
                                 settle: Int, _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
         let ctx = try MetalContext()
@@ -179,13 +180,42 @@ struct MultiPassRenderHarness {
         guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Stave" }) else {
             throw HarnessError.presetNotFound("Stave")
         }
-        let geo = try StaveTrace(device: ctx.device, library: lib.library,
-                                 configuration: StaveConfiguration(), pixelFormat: ctx.pixelFormat)
         let floatStride = MemoryLayout<Float>.stride
+        let sampleCount = 1024
         guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
-              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+              let wav = ctx.makeSharedBuffer(length: sampleCount * 2 * floatStride) else {
             throw HarnessError.setupFailed("audio buffers")
         }
+        let geo = try StaveTrace(device: ctx.device, library: lib.library, waveform: wav,
+                                 configuration: StaveConfiguration(sampleCount: sampleCount, sampleRate: 48_000),
+                                 pixelFormat: ctx.pixelFormat)
+        let wavePtr = wav.contents().bindMemory(to: Float.self, capacity: sampleCount * 2)
+        // Publish the primitive the way RenderPipeline does — the harness bypasses it, and
+        // without this the fan reads zero and the flash measure would be of a flat wave.
+        var occupancy = WaveformOccupancy()
+
+        // Deterministic broadband noise — a fixed LCG, so the gate measures the same signal on
+        // every run. Real music is not noise, but noise is the densest possible spectrum and
+        // therefore the brightest frame this preset can draw.
+        var lcg: UInt32 = 0x5EED
+        func nextNoise() -> Float {
+            lcg = 1_664_525 &* lcg &+ 1_013_904_223
+            return Float(Int32(bitPattern: lcg)) / Float(Int32.max)
+        }
+        /// Fill the buffer at `envelope` amplitude.
+        func fill(_ envelope: Float) {
+            for i in 0..<sampleCount {
+                let v = nextNoise() * envelope
+                wavePtr[2 * i] = v
+                wavePtr[2 * i + 1] = v
+            }
+        }
+        // Envelope gated at the accent rate: full scale for half a period, silence for half.
+        let period = FlashHarnessSupport.fps / FlashHarnessSupport.accentHz
+        func envelope(_ i: Int) -> Float {
+            (Double(i).truncatingRemainder(dividingBy: period) < period / 2) ? 0.9 : 0.0
+        }
+
         let aspect = Float(width) / Float(height)
         func withAspect(_ i: Int) -> FeatureVector { var f = drive[i]; f.aspectRatio = aspect; return f }
 
@@ -193,16 +223,22 @@ struct MultiPassRenderHarness {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         for i in 0..<settle {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
-            geo.update(features: withAspect(i % drive.count), stemFeatures: stems[i % stems.count],
-                       commandBuffer: cmd)
+            fill(envelope(i))
+            var warm = withAspect(i % drive.count)
+            occupancy.advance(waveform: wavePtr, frames: sampleCount, deltaTime: warm.deltaTime)
+            warm.waveformOccupancy = occupancy.value
+            geo.update(features: warm, stemFeatures: .zero, commandBuffer: cmd)
             cmd.commit(); cmd.waitUntilCompleted()
         }
         var out: [T] = []
         out.reserveCapacity(drive.count)
         for i in 0..<drive.count {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            fill(envelope(settle + i))
             var features = withAspect(i)
-            var stem = stems[i]
+            occupancy.advance(waveform: wavePtr, frames: sampleCount, deltaTime: features.deltaTime)
+            features.waveformOccupancy = occupancy.value
+            var stem = StemFeatures.zero
             geo.update(features: features, stemFeatures: stem, commandBuffer: cmd)
             let rpd = clearRPD(tex)
             guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }

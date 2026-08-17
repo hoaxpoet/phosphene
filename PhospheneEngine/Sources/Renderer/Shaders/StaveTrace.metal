@@ -1,173 +1,95 @@
-// StaveTrace.metal — Stave's four geometry passes, drawn on top of the field backdrop.
+// StaveTrace.metal — Stave's dispersion pass: the waveform split into its spectral colours.
 //
-// The backdrop (`Presets/Shaders/Stave.metal`, `stave_field_fragment`) draws first as the
-// particle-mode preset triangle; these passes then recolour and mark it:
+// One fullscreen draw over the band curves `StaveDispersionModel` uploads. Each band is a soft
+// luminous stroke in the colour of its own frequency — 82 Hz at 662 nm deep red through to
+// ~11 kHz at 404 nm violet — offset vertically by its wavelength so the spectrum physically
+// separates, as a prism separates light.
 //
-//   stave_tint    fullscreen MULTIPLY wash — the room the stems tint (D-216)
-//   stave_rule    vertical rules on cached BeatGrid beats
-//   stave_thread  the faint connecting thread between beads
-//   stave_bead    the beads themselves — the hero trait (`02_meso_bead_spacing.png`)
-//
-// All four share one vertex struct and one config struct with `StaveTrace.swift`; field
-// ORDER is the contract, not field names.
+// Additive by construction (the loop sums), then tone-mapped: where every band is present the
+// frame goes toward white, exactly as mixed light does, and a sparse passage falls back to a
+// few deep curves in the dark.
 
 #include <metal_stdlib>
 using namespace metal;
 
-// MARK: - Shared structs
-
-// PACKED, and this is load-bearing. A plain `float4 color` is 16-byte aligned in MSL, which
-// pads this struct to a 48-byte stride against Swift's 28 — the vertex buffer is then read at
-// the wrong offsets and the traces render as large mis-coloured triangles (CHR.2 defect 1;
-// magenta in a flat-WHITE control was the tell). Same reason `Particles.metal` uses
-// `packed_float4`.
-struct StaveVertexGPU {
-    packed_float2 pos;
-    packed_float4 color;
-    float width;
+struct StaveUniformsGPU {
+    int bandCount;
+    int sampleCount;
+    float thickness;
+    float fan;
+    float spacing;
+    float zoom;
+    float frameKnee;
+    float pad0;
 };
 
-// All scalar floats — no vector members, so there is no alignment padding to disagree about.
-struct StaveConfigGPU {
-    float aspect;
-    float tintR;
-    float tintG;
-    float tintB;
-    float ruleAlpha;
-    float time;
-};
-
-struct StaveVOut {
+struct StaveDispOut {
     float4 position [[position]];
-    float4 color;
-    float2 local;
+    float2 uv;
 };
 
-static_assert(sizeof(StaveVertexGPU) == 28, "StaveVertexGPU must stay 28 bytes");
-static_assert(sizeof(StaveConfigGPU) == 24, "StaveConfigGPU must stay 24 bytes");
+static_assert(sizeof(StaveUniformsGPU) == 32, "StaveUniformsGPU must stay 32 bytes");
 
-// MARK: - Tint wash
-
-vertex StaveVOut stave_tint_vertex(uint vid [[vertex_id]],
-                                   constant StaveConfigGPU &cfg [[buffer(1)]]) {
+vertex StaveDispOut stave_disp_vertex(uint vid [[vertex_id]]) {
     float2 p = float2((vid & 1) ? 1.0 : -1.0, (vid >> 1) ? 1.0 : -1.0);
-    StaveVOut o;
+    StaveDispOut o;
     o.position = float4(p, 0.0, 1.0);
-    o.color = float4(cfg.tintR, cfg.tintG, cfg.tintB, 1.0);
-    o.local = p * 0.5 + 0.5;
+    // x in 0…1 across the wave window; y left in NDC so amplitudes are frame-relative.
+    o.uv = float2(p.x * 0.5 + 0.5, p.y);
     return o;
 }
 
-fragment float4 stave_tint_fragment(StaveVOut in [[stage_in]]) {
-    // Multiply blend: the returned colour scales the backdrop. Every channel is <= 1 and the
-    // peak channel is pinned to 1 on the Swift side, so this recolours without darkening the
-    // frame overall — the field's haze, cloud and sparkle survive being tinted (reference
-    // `03`: colour lives in the field, the structure stays).
-    return in.color;
-}
+fragment float4 stave_disp_fragment(StaveDispOut in [[stage_in]],
+                                    const device float *curves [[buffer(0)]],
+                                    const device float4 *colours [[buffer(1)]],
+                                    constant StaveUniformsGPU &u [[buffer(2)]]) {
+    float fx = in.uv.x * float(u.sampleCount - 1);
+    int i0 = clamp(int(fx), 0, u.sampleCount - 1);
+    int i1 = min(i0 + 1, u.sampleCount - 1);
+    float frac = fx - float(i0);
 
-// MARK: - Segment-quad expansion (rules and thread)
+    float3 col = float3(0.0);
+    for (int b = 0; b < u.bandCount; ++b) {
+        int base = b * u.sampleCount;
+        float amp = mix(curves[base + i0], curves[base + i1], frac);
 
-/// `.lineStrip` cannot carry a per-sample thickness, so both the rules and the thread expand
-/// each segment into a quad. Shared by `stave_rule_vertex` and `stave_thread_vertex`.
-static inline StaveVOut stave_expand_segment(uint vid,
-                                             StaveVertexGPU a,
-                                             StaveVertexGPU b,
-                                             float aspect) {
-    // Perpendicular in aspect-corrected space, so the ribbon keeps an even thickness on a
-    // steep segment instead of pinching.
-    float2 d = float2((b.pos.x - a.pos.x) * aspect, b.pos.y - a.pos.y);
-    float len = length(d);
-    // A degenerate segment has no meaningful direction, so its perpendicular is pure
-    // numerical noise and the quad splays in a random direction. Fall back to a vertical
-    // normal rather than normalising near-zero (CHR.2 defect 3's other half — the 20 Hz plot
-    // rate is the first half).
-    float2 n = (len > 1e-4) ? float2(-d.y, d.x) / len : float2(0.0, 1.0);
-    n.x /= aspect;
+        // Dispersion. `dev` runs −1 (red, deviates least) to +1 (violet, deviates most),
+        // matching the physical order: shorter wavelengths refract further. The exponent
+        // weights the spread toward the red end so the bass has room to be a gesture rather
+        // than competing for space with a crowded violet end.
+        float tb = float(b) / float(u.bandCount - 1);
+        float dev = 2.0 * pow(tb, u.spacing) - 1.0;
+        // Camera zoom, then a soft ceiling at the frame edge. The knee leaves everything
+        // below it untouched and folds only what would otherwise be drawn off-frame — zoom
+        // alone cannot contain peaks measured at 1.53–1.98 NDC without shrinking the image
+        // by 35–50 %.
+        float y = (amp + u.fan * dev) * u.zoom;
+        if (u.frameKnee > 0.0) {
+            // PIECEWISE, not a plain tanh. A tanh through the origin compresses the whole
+            // image — 12 % at mid-amplitude — which quietly shrinks the settled look. Below
+            // the knee the value passes through untouched; only the excursion above it folds,
+            // into the headroom that remains before the frame edge.
+            float a = abs(y);
+            if (a > u.frameKnee) {
+                float head = 1.0 - u.frameKnee;
+                a = u.frameKnee + head * tanh((a - u.frameKnee) / head);
+                y = (y < 0.0) ? -a : a;
+            }
+        }
+        float d = in.uv.y - y;
 
-    bool atEnd = (vid >= 2);
-    StaveVertexGPU s = atEnd ? b : a;
-    float side = (vid & 1) ? 1.0 : -1.0;
+        // Two-part profile: a tight core so each band reads as a line, plus a wide halo so
+        // overlapping bands ADD like light instead of sitting as separate wires. A per-band
+        // thickness ramp was tried and reverted — making the low bands heavy turned the bass
+        // into a soft blob and washed the summed core to white. Weight belongs to AMPLITUDE,
+        // not to line width.
+        float core = exp(-d * d / (u.thickness * u.thickness));
+        float halo = exp(-d * d / (u.thickness * u.thickness * 36.0)) * 0.22;
+        col += colours[b].rgb * (core + halo);
+    }
 
-    StaveVOut o;
-    o.position = float4(s.pos + n * side * s.width, 0.0, 1.0);
-    o.color = s.color;
-    o.local = float2(side, atEnd ? 1.0 : 0.0);
-    return o;
-}
-
-// MARK: - Vertical rules (the beat)
-
-vertex StaveVOut stave_rule_vertex(uint vid [[vertex_id]],
-                                   const device StaveVertexGPU *verts [[buffer(0)]],
-                                   constant StaveConfigGPU &cfg [[buffer(1)]]) {
-    StaveVOut o = stave_expand_segment(vid, verts[0], verts[1], cfg.aspect);
-    // Density fade (§5 decision (c)) — meter-free, so no `beatsPerBar` inference is needed.
-    // Above ~23 rules per 8 s window (Bleed, 172 bpm) the rules stop reading as a pulse and
-    // start reading as graph paper; fading opacity keeps them present without ruling.
-    o.color.a *= cfg.ruleAlpha;
-    return o;
-}
-
-fragment float4 stave_rule_fragment(StaveVOut in [[stage_in]]) {
-    // Soft-edged so a 1-2 px rule does not alias into a dotted line, and dimmer at the top
-    // and bottom so the rules read as ruling on a field rather than as bars across it.
-    float edge = 1.0 - smoothstep(0.55, 1.0, abs(in.local.x));
-    float4 c = in.color;
-    c.a *= edge * 0.5;
-    return float4(c.rgb * c.a, c.a);
-}
-
-// MARK: - Thread
-
-vertex StaveVOut stave_thread_vertex(uint vid [[vertex_id]],
-                                     uint iid [[instance_id]],
-                                     const device StaveVertexGPU *verts [[buffer(0)]],
-                                     constant StaveConfigGPU &cfg [[buffer(1)]]) {
-    StaveVertexGPU a = verts[iid];
-    StaveVertexGPU b = verts[iid + 1];
-    // The thread is much thinner than the beads it connects: reference `02` makes the beads
-    // the hero and `05_anti_solid_line_plot.png` is exactly two solid polylines, so the
-    // thread stays subordinate — it says the beads belong to one trace and nothing more.
-    a.width *= 0.16;
-    b.width *= 0.16;
-    return stave_expand_segment(vid, a, b, cfg.aspect);
-}
-
-fragment float4 stave_thread_fragment(StaveVOut in [[stage_in]]) {
-    float edge = 1.0 - smoothstep(0.4, 1.0, abs(in.local.x));
-    float4 c = in.color;
-    c.a *= edge * 0.42;
-    return float4(c.rgb * c.a, c.a);
-}
-
-// MARK: - Beads
-
-vertex StaveVOut stave_bead_vertex(uint vid [[vertex_id]],
-                                   uint iid [[instance_id]],
-                                   const device StaveVertexGPU *verts [[buffer(0)]],
-                                   constant StaveConfigGPU &cfg [[buffer(1)]]) {
-    StaveVertexGPU s = verts[iid];
-    float2 corner = float2((vid & 1) ? 1.0 : -1.0, (vid >> 1) ? 1.0 : -1.0);
-    // The halo needs room outside the bead core, so the quad is drawn oversized and the
-    // fragment falls off inside it.
-    float2 extent = float2(s.width * 2.6 / cfg.aspect, s.width * 2.6);
-
-    StaveVOut o;
-    o.position = float4(s.pos + corner * extent, 0.0, 1.0);
-    o.color = s.color;
-    o.local = corner;
-    return o;
-}
-
-fragment float4 stave_bead_fragment(StaveVOut in [[stage_in]]) {
-    float r = length(in.local);
-    if (r > 1.0) { discard_fragment(); }
-    // Core plus a soft halo — reference `02`: "beads carry soft glow halos". Two terms rather
-    // than one so the bead has a defined body instead of being a pure gaussian smudge, which
-    // is what makes bead SIZE readable at all.
-    float core = exp(-r * r * 14.0);
-    float halo = exp(-r * r * 2.6) * 0.30;
-    float a = in.color.a * (core + halo);
-    return float4(in.color.rgb * a, a);
+    col = 1.0 - exp(-col * 1.35);
+    // D-037: silence renders the dark ground, never black.
+    col = max(col, float3(0.012, 0.013, 0.020));
+    return float4(col, 1.0);
 }

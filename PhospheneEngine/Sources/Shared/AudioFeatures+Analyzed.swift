@@ -80,9 +80,11 @@ public struct FeatureVector: Sendable {
     /// Seconds since last frame.
     public var deltaTime: Float
 
-    // --- Padding (float 23) ---
-    // swiftlint:disable:next identifier_name
-    public var _pad0: Float
+    // --- Waveform occupancy (float 23) — RECLAIMED from `_pad0` at CHR.3c ---
+
+    /// Spectrum active vs each band's OWN ~20 s level; → 0 at silence. Time-domain derived,
+    /// written by `RenderPipeline`. Full rationale: `WaveformOccupancy`.
+    public var waveformOccupancy: Float
 
     // --- Viewport (float 24) ---
 
@@ -226,7 +228,7 @@ public struct FeatureVector: Sendable {
         self.spectralCentroid = spectralCentroid; self.spectralFlux = spectralFlux
         self.valence = valence; self.arousal = arousal
         self.time = time; self.deltaTime = deltaTime
-        self._pad0 = 0
+        self.waveformOccupancy = 0
         self.aspectRatio = aspectRatio
         self.accumulatedAudioTime = accumulatedAudioTime
         // MV-1 deviation primitives — computed by MIRPipeline each frame.
