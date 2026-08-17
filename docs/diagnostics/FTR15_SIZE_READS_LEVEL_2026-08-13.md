@@ -336,3 +336,80 @@ feeding it is. The real rule is narrower and duller:
 
 Every harness figure quoted for FTR.14–FTR.17 that came through a subsampled render path was
 computed on the buggy glide. The trunk-report figures (which advance every row) are unaffected.
+
+---
+
+## 8. Addendum 2026-08-17 (FTR.23) — the size driver is *inversely* correlated with audible events, and flux does not fix it
+
+Matt's seventh rejection of the same complaint (*"the tree still grows and shrinks with no clear
+connection to the music"*) finally has a number attached to it that is about **events** rather than
+about correlation with a smooth loudness curve.
+
+### 8.1 The event criterion
+
+§1–§7 measured *correlation with loudness*, and the trunk scores **+0.86** against true loudness at
+5 s smoothing — a faithful section-scale follower, which is why every previous round could produce a
+green number for a build Matt rejected. That statistic answers the wrong question. What "connection
+to the music" means perceptually is **the moment you notice something, the visual moves**.
+
+So: 49 audible events detected in `2026-08-17T12-47-58Z` directly from `raw_tap.wav` — a > 3 dB rise
+in the 50 ms RMS envelope over the previous 2 frames, above −40 dBFS, de-duplicated at 300 ms
+(1.63 events/s). For each candidate field, the mean of its **max z-score within ±120 ms** of an event.
+
+| field | z at audible events |
+|---|---|
+| `beatMid` | **+1.00** |
+| `beatBass` | +0.99 |
+| `spectralFlux` | +0.94 |
+| `bassDev` | +0.91 |
+| `spectral_section_ratio` | +0.71 |
+| `arousal` | +0.05 |
+| `spectral_density` | −0.41 |
+| **`spectral_surge` — the shipped size driver** | **−0.52** |
+
+**The size term moves DOWN when the ear notices something.** This is §4's limiter mechanism, but at
+transient rather than section scale: `spectral_surge` is this moment's rank in the track's own
+loudness distribution, and a limited mix *drops* in rank exactly when a band arrives. FTR.18
+corrected the section-scale case and bounded the correction deliberately; the transient case was
+never in scope and is still there.
+
+### 8.2 ❌ `spectralFlux` onto size — measured, NOT shipped
+
+Matt's instruction (2026-08-17) was *"ship it and take flux off branch spread"* — flux being the
+best-scoring field not already spoken for. Measured through the real shipped pipeline (FTR.23 glide,
+`saturate` ceiling, section-glide density), against the §8.1 criterion:
+
+| size formulation | z@events | span (p95−p05) | total travel | pinned at 1.0 |
+|---|---|---|---|---|
+| level base — SHIPPED | −0.49 | 0.472 | 8.04 | 0 % |
+| base + 0.15·flux | −0.48 | 0.520 | 13.08 | 0 % |
+| base + 0.25·flux | −0.46 | 0.554 | 17.84 | 1 % |
+| base + 0.35·flux | −0.45 | 0.546 | 21.35 | **11 %** |
+| base + 0.50·flux | −0.40 | 0.479 | 26.68 | **15 %** |
+| flux alone (knee 0.22–0.55) | **+0.15…+0.19** | **0.12–0.15** | 16–20 | 0 % |
+| `max(base, flux)` | +0.17 | 0.427 | **52.43** | 0 % |
+| 0.45·base + 0.55·flux | −0.20 | 0.424 | 32.68 | 0 % |
+
+**Additive flux does not flip the sign at any usable weight** — the negative base dominates, and by
+the time the weight is large enough to matter the term is pinned at the ceiling 11–15 % of the time
+and the span has started collapsing. **Replacing** the base with flux does flip the sign, but only
+to +0.17, and then either the span falls to a quarter of shipped (DYN.1e: a band too small to see)
+or total travel goes up 6.5× — which is *"the trunk is moving too much"*, the FTR.9 complaint that
+opened this whole arc.
+
+### 8.3 ★★ The structural finding
+
+> **Event alignment requires a fast response; low travel requires smoothing. One term on one visual
+> layer cannot deliver both.** Any formulation that marks 1.6 events/s must move at least that fast,
+> and anything moving that fast on the size term reads as restless.
+
+This is why the size problem has survived seven rejections while the *motion* problem was solvable:
+motion had two layers available (target and glide τ, separated at FTR.22), and size has one. A fix
+therefore has to either split size into two layers — a slow base that carries the section and a
+fast, small, decaying accent that marks events — or take the event marking off the size term
+entirely and put it on a different visual property. Neither is a tuning change, and both alter what
+Matt sees, so neither was shipped on inference.
+
+The only fields that mark events cleanly (`beatBass`/`beatMid`, z ≈ +1.00) are beat-locked: they
+carry the Layer-4 accent-only constraints **and** Matt's twice-stated rejection of beat-driven
+growth at FTR.3. That route needs his explicit call, not my recommendation.

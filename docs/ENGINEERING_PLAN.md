@@ -2486,6 +2486,76 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.23 — retune the continuous glide; FTR.22 shipped 3.5× too slow.** ✅ code-complete,
+**pending live M7** (2026-08-17, merged in [#101](https://github.com/hoaxpoet/phosphene/pull/101))
+Matt on the FTR.22 build (`2026-08-17T12-47-58Z`, *Carry The Zero*): *"Now it barely moves AND the
+tree still grows and shrinks with no clear connection to the music."*
+
+**★ The worst instance of this program's recurring error: the stillness metric was normalised by its
+own peak.** A fraction of *frames below 2 % of **peak** velocity* cannot detect the whole signal
+getting slower. FTR.22 shipped τ 0.35 beat / boost 3 — mean effective τ **567 ms** against FTR.18's
+162 ms — and stillness *improved* 46.5 % → 14.8 % **because peak velocity collapsed 44 %**.
+
+Re-measured on **absolute** travel: FTR.18 (rejected, "robotic") 3.09 travel / 0.500 peak |v| /
+40.2 % still; FTR.22 (rejected, "barely moves") 2.78 / 0.281 / 14.8 %; **shipped FTR.23
+(`continuousGlideBeats: 0.12`, `beatSpeedBoost: 1.0`) 3.27 / 0.455 / 22.1 %** — more total motion
+than the build called robotic, peak within 9 % of it, roughly half its stillness.
+
+**τ has a floor and it is the analysis tick.** The source updates ~15.8/s on this capture (63 ms),
+so τ below that converges inside one tick and the value is a staircase again — the FTR.13 trap.
+0.12 beat is 78 ms, above it. 0.08 beat (52 ms) scored *better* on travel and peak and was rejected
+for being under the floor. `BeatHoldTests` now asserts absolute travel (continuous mode must cover
+≥ 95 % of latched-mode distance on identical input), which is the bar that would have caught FTR.22.
+
+**The size complaint was measured, not fixed.** At the 49 audible loudness events in the capture
+(> 3 dB rise off `raw_tap.wav`, 1.63/s), mean z-score: **`spectral_surge` — the size driver —
+−0.52**; `spectral_density` −0.41; `arousal` +0.05; `spectral_section_ratio` +0.71; `bassDev` +0.91;
+`spectralFlux` +0.94; `beatBass`/`beatMid` +0.99/+1.00. **The size is driven by a signal inversely
+correlated with audible events** — FTR.15's limiter mechanism at transient rather than section scale.
+
+**❌ Moving `spectralFlux` onto size was measured and NOT shipped** (Matt's *"take flux off branch
+spread"*, 2026-08-17). Additive at weight 0.15–0.50: z@events stays negative (−0.49 → −0.40) while
+pinning at the ceiling climbs to 11–15 % and span collapses above 0.25. Flux *alone* flips the sign
+but only to +0.15…+0.19, with span 0.12–0.15 — the DYN.1e band too small to see. `max(base, flux)`
+reaches +0.17 at span 0.427 but **6.5× the total travel** (52.4 vs 8.0), i.e. the "too much motion"
+that opened this arc at FTR.9. **Event alignment wants a fast response and low travel wants
+smoothing; one term on one layer cannot do both.** Reported to Matt rather than shipped on my own
+recommendation. The only fields that mark events cleanly are `beatBass`/`beatMid`, which carry the
+Layer-4 accent-only policy and Matt's twice-stated rejection of beat-driven growth at FTR.3 — so
+that substitution needs his explicit call.
+
+**FTR.22 — the beat sets the SPEED, not the destination.** ✅ superseded by FTR.23 (2026-08-16,
+capture `2026-08-16T20-30-10Z`) Matt: *"Still robotic, the tree still grows and shrinks with no
+clear connection to the music."*
+
+**★ "Robotic" is a VELOCITY property, not a FORM property.** I first diagnosed it as the tree's
+perfect fractal symmetry and began implementing per-branch hash jitter; Matt interrupted:
+*"robotic means it moves in a precise, start-and-stop pattern, like the robot dance. It looks
+MECHANICAL, rather than organic."* The jitter was reverted rather than shipped on a wrong reading —
+the second time this arc that a plausible diagnosis was disproved by one sentence from Matt.
+
+Shipped as a fourth `BeatHold` mode, `init(continuousGlideBeats:beatSpeedBoost:)`: the target is
+**never latched** (it is the live frame every tick), and the beat modulates only the glide τ, so the
+value is always in motion and merely accelerates through the beat. Start-and-stop was the defect;
+the destination was never the problem.
+
+**FTR.20 — the continuous-energy layer the preset never had.** ✅ (2026-08-16) Matt: *"Does not
+carry the energy of the music, feels blunted."* Correct, and structurally: every tone route ran off
+`arousal` and `depth_norm`, so the Layer-1 primary driver of CLAUDE.md's Audio Data Hierarchy was
+absent from colour entirely. Added `energy = bass_dev/(bass_dev + 0.12)` to saturation (+0.32) and
+value (+0.20) — soft-saturated per FA #73, no absolute threshold per FA #31.
+
+**FTR.19 — the "glitchy colour" is a real defect, not a taste call.** ✅ (2026-08-16) Matt:
+*"Color changes feel glitchy, not intentional."* `tonalPhaseFifths` is a circular ±π primitive fed
+**raw** to the hue, so every wrap is a 360° hue jump and p95 frame-to-frame motion was **144°**.
+Fixed with `CircularPhaseSmoother` (D-209: EMA the sin/cos pair, recombine via `atan2` — never EMA
+the raw angle), α = 0.065, exactly-seeded first sample.
+
+**★ The harness hid this for 17 increments.** `FractalTreeMeshRenderTest`'s `FifthsSmoother` was
+smoothing the driver *in the test only*, so every rendered A/B in this program saw a hue the
+production path never produced. It is now a documented no-op pass-through: the harness renders what
+ships.
+
 **FTR.18 — the size correction, bounded to the limiter inversion. ✅ M7: Matt's "ok overall" —
 the FTR.9→FTR.18 motion-and-size arc LANDS HERE.** (2026-08-14, capture
 `2026-08-14T15-21-09Z`, *Carry The Zero*, from the worktree build) Matt: *"It's better than the
