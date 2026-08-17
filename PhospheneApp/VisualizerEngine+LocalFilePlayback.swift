@@ -113,9 +113,20 @@ extension VisualizerEngine: LocalFilePreparing {
     /// `advanceLocalFileQueue()` path (LF.5 Task 8) — not this one.
     @MainActor
     func handleLocalFileReady() {
+        // BUG-091 instrumentation. A local-file session went 84 s with EVERY audio field
+        // exactly zero and left NO trace of its own cause: this function's early returns are
+        // silent, and its failure path logs to `os_log` only, which is not retained on the dev
+        // machine (a `log show` for `com.phosphene.app` over the failure window returned
+        // nothing at all). The whole point of `session.log` is that a capture explains itself,
+        // so every branch that can end in silence now writes there.
         guard let source = sessionManager.currentSource,
               source.isLocalFile,
               let url = source.localFileURL else {
+            sessionRecorder?.log(
+                "WIRING: handleLocalFileReady BAILED — currentSource="
+                + "\(sessionManager.currentSource.map { "\($0)" } ?? "nil") "
+                + "isLocalFile=\(sessionManager.currentSource?.isLocalFile.description ?? "n/a") "
+                + "url=\(sessionManager.currentSource?.localFileURL?.lastPathComponent ?? "nil")")
             return
         }
         // LF.5.fix.3-C: duplicate-emission guard. If `_completeLocalFilesReady`
@@ -130,10 +141,15 @@ extension VisualizerEngine: LocalFilePreparing {
             lfLogger.info(
                 "[LF.5.fix.3-C] handleLocalFileReady ignored — already started for \(name, privacy: .public)"
             )
+            sessionRecorder?.log(
+                "WIRING: handleLocalFileReady IGNORED (duplicate .ready) file='\(name)'")
             return
         }
         guard let identity = sessionManager.currentPlan?.tracks.first else {
             lfLogger.warning("[LF.4] .ready with LF source but no identity in plan — falling through")
+            sessionRecorder?.log(
+                "WIRING: handleLocalFileReady BAILED — LF source but plan has no tracks "
+                + "(currentPlan=\(sessionManager.currentPlan == nil ? "nil" : "present"))")
             return
         }
         // Install BeatGrid + cached StemFeatures + cached bass proportion from the
@@ -171,7 +187,48 @@ extension VisualizerEngine: LocalFilePreparing {
         // (LF.1 behavior preserved); multi-file queues advance + .ended on
         // exhaustion.
         let isMultiFile = source.allLocalFileURLs.count > 1
-        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+        guard #available(macOS 14.2, *) else {
+            sessionRecorder?.log("WIRING: handleLocalFileReady BAILED — macOS < 14.2, no LF router")
+            return
+        }
+        // BUG-091: this cast gates the ENTIRE start below it. If it ever fails the function
+        // returns having installed a BeatGrid and a plan but no audio at all — which is
+        // exactly the observed signature — so it is now a logged guard rather than a silent
+        // `if let`.
+        guard let audioRouter = router as? AudioInputRouter else {
+            sessionRecorder?.log(
+                "WIRING: handleLocalFileReady BAILED — router is \(type(of: router)), "
+                + "not AudioInputRouter; NO audio will start")
+            return
+        }
+
+        // BUG-091: extracted so `handleLocalFileReady` stays inside the 60-line body cap
+        // after its early returns learned to explain themselves. Returns false when the
+        // session was ended by a start failure, so the caller stops rather than running the
+        // post-start wiring against a session that no longer exists.
+        guard startLocalFileRouter(audioRouter, url: url, isMultiFile: isMultiFile) else { return }
+
+        startStemPipeline()
+        nowPlaying.setTrackIndex(0)                         // LF.5: published for chrome + orchestrator
+        isLocalFilePaused = false                           // LF.5.fix D-LF5-3: fresh session starts playing
+
+        sessionManager.beginPlayback()
+
+        if let current = presetLoader.currentPreset {
+            applyPreset(current)
+            showPresetName(current.descriptor.name)
+        }
+
+        refreshLocalFileCacheBytes()
+    }
+
+    /// FTR/BUG-091 — wire the LF callbacks and start the provider. `false` ⇒ start failed and
+    /// the session has been ended; the caller must not continue.
+    @available(macOS 14.2, *)
+    @MainActor
+    private func startLocalFileRouter(_ audioRouter: AudioInputRouter,
+                                      url: URL,
+                                      isMultiFile: Bool) -> Bool {
             if isMultiFile {
                 audioRouter.onLocalFilePlaybackEnded = { [weak self] in
                     Task { @MainActor in self?.advanceLocalFileQueue() }
@@ -231,6 +288,14 @@ extension VisualizerEngine: LocalFilePreparing {
             } catch {
                 let msg = error.localizedDescription
                 lfLogger.error("[LF.4] LF playback router start failed: \(msg, privacy: .public)")
+                // BUG-091: THIS is the line whose absence made the failure unexplainable. It
+                // ends the session (nilling `currentSource`), which in turn makes
+                // `startAudio()`'s LF guard miss and install the system-audio tap — so the
+                // visible symptom is a silent visualizer capturing nothing, several steps
+                // downstream of the real error.
+                sessionRecorder?.log(
+                    "WIRING: LF playback router START FAILED file='\(url.lastPathComponent)' "
+                    + "error='\(msg)' → endSession (currentSource cleared)")
                 // PUB.5 (ultra-review): surface it — the user was previously
                 // stranded on a silent PlaybackView with a log-only error.
                 // Toast (§9.4) + end the session so they land on EndedView
@@ -238,22 +303,9 @@ extension VisualizerEngine: LocalFilePreparing {
                 userFacingErrorSubject.send(
                     .localFilePlaybackFailed(fileName: url.lastPathComponent))
                 sessionManager.endSession()
-                return
+                return false
             }
-        }
-
-        startStemPipeline()
-        nowPlaying.setTrackIndex(0)                         // LF.5: published for chrome + orchestrator
-        isLocalFilePaused = false                           // LF.5.fix D-LF5-3: fresh session starts playing
-
-        sessionManager.beginPlayback()
-
-        if let current = presetLoader.currentPreset {
-            applyPreset(current)
-            showPresetName(current.descriptor.name)
-        }
-
-        refreshLocalFileCacheBytes()
+        return true
     }
 
     // MARK: - LF.5 mid-session queue advance

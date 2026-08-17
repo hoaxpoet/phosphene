@@ -37,8 +37,18 @@ extension VisualizerEngine {
         // already taken care of in `handleLocalFileReady()`.
         if sessionManager.currentSource?.isLocalFile == true {
             apiLogger.info("[LF.4] startAudio skipped — LF playback already active")
+            sessionRecorder?.log("WIRING: startAudio SKIPPED — LF playback active (correct)")
             return
         }
+        // BUG-091 instrumentation. If this guard is reached with no local-file source while a
+        // local-file session is what the user picked, the tap is about to be installed and the
+        // LocalFilePlaybackProvider torn down by `start()`'s `stopInternal()` — the failure
+        // signature observed on 2026-08-17 (84 s, every audio field exactly 0.0). Recording
+        // WHAT the source actually was is the whole diagnosis, and it cost nothing to log.
+        sessionRecorder?.log(
+            "WIRING: startAudio → SYSTEM-AUDIO TAP path; currentSource="
+            + "\(sessionManager.currentSource.map { "\($0)" } ?? "nil") "
+            + "sessionState=\(sessionManager.state)")
         if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
             audioRouter.startMetadataOnly()
         }
