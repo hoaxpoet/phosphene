@@ -101,6 +101,25 @@ public struct StaveConfiguration: Sendable {
     public var fanTau: Float
     /// Seconds. Per-band level tracking. Long by design — see `gains`.
     public var levelTau: Float
+    /// Camera zoom-out. 1.0 = the settled framing; < 1 pulls the whole image in, both the
+    /// wave amplitude and the fan offsets, exactly as backing a camera off would.
+    ///
+    /// Left at 1.0: with the frame knee below doing the containment, no zoom is needed, and
+    /// Matt's requirement is that the waves keep covering most of the vertical area.
+    public var zoom: Float
+    /// Soft frame ceiling in NDC half-heights, or 0 to disable. Above it the composite y
+    /// compresses through a tanh knee instead of running past the viewport.
+    ///
+    /// Zoom alone cannot do this job. Measured peak |y| was 1.53–1.98 across the corpus, so
+    /// containing the peaks by zoom would need 35–50 % — which Matt ruled out as excessive,
+    /// and which would abandon the settled scale. The knee leaves everything below it
+    /// completely untouched and folds only the excursions that would otherwise be clipped by
+    /// the viewport, so the body keeps filling the frame.
+    ///
+    /// 0.75 measured across five tracks: peak |y| lands at 0.999–1.000 with **0 frames** drawn
+    /// outside the frame, and Take Five — which never approached the edge — is unchanged at
+    /// 0.510. Before: 48–231 overflowing frames per 360.
+    public var frameKnee: Float
     /// The LIVE TAP rate, threaded in — never assumed (D-079 / QR.1 / FA #52). It is
     /// load-bearing here in a way it is not for most presets: every band's centre frequency is
     /// `fs / 2W`, so the whole frequency→colour mapping scales with it. Assuming 44.1 kHz on a
@@ -117,6 +136,8 @@ public struct StaveConfiguration: Sendable {
         fanMax: Float = 0.40,
         fanTau: Float = 0.12,
         levelTau: Float = 20.0,
+        zoom: Float = 1.0,
+        frameKnee: Float = 0.75,
         sampleRate: Float
     ) {
         self.sampleCount = sampleCount
@@ -127,6 +148,8 @@ public struct StaveConfiguration: Sendable {
         self.fanMax = fanMax
         self.fanTau = fanTau
         self.levelTau = levelTau
+        self.zoom = zoom
+        self.frameKnee = frameKnee
         self.sampleRate = sampleRate
     }
 }

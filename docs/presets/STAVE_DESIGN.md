@@ -59,6 +59,39 @@
 > | `fanMin`/`fanMax` | 0.02 / 0.40 | Driven, not fixed — a fixed fan collapsed Take Five into a static rainbow layer cake. |
 > | `levelTau` | 20 s | Long enough that a quiet passage still draws quieter; short enough to settle a track change. The spike used whole-track gains, which production cannot have. |
 >
+> ## Frame fit (CHR.3e, Matt's M7 2026-08-17 — *"looks good … otherwise, it works for me"*)
+>
+> First positive M7. One change asked for: *"the camera should zoom out 2-5% so that when there
+> is highly energetic music, the waves do not fall outside of the frame"*, then clarified —
+> *"I want the waves to cover most of the vertical area of the frame, as they do now. I think a
+> zoom of 35-50% is likely excessive."*
+>
+> **Measured before choosing, and the two halves of the first instruction conflicted.** Peak
+> `|y|` across the corpus was **1.53–1.98** against a frame of 1.0, so containing the peaks by
+> zoom alone needs 35–50 % — the amount he then ruled out. A literal 4 % zoom moved peak
+> 1.83 → 1.75 and overflowing frames 125 → 113 out of 360: essentially nothing.
+>
+> **Shipped instead: a piecewise soft ceiling at 0.75 NDC, zoom left at 1.0.** Below the knee
+> the value passes through untouched; above it the excursion folds into the remaining headroom.
+> A plain `tanh` was tried and rejected — it compresses through the origin and shrank
+> mid-amplitude by 12 %, quietly reducing the approved look.
+>
+> | | peak before | after | frames outside frame |
+> |---|---|---|---|
+> | M7 session | 1.83 | 1.000 | 125/360 → **0** |
+> | Carry, loudest | 1.66 | 1.000 | 231/360 → **0** |
+> | Bleed | 1.53 | 0.999 | 48/360 → **0** |
+> | Clair De Lune | 1.98 | 1.000 | 8/360 → **0** |
+> | Take Five | 0.51 | 0.510 | 0 → 0, **unchanged** |
+>
+> Take Five is the control: it never approached the edge and comes through bit-identical, so
+> nothing quiet is touched.
+>
+> **Also confirmed by that session:** `waveform_occupancy` published live on 2031/2032 frames,
+> live range 0.067–0.153 against 0.073–0.124 measured offline — the CHR.3c primitive behaves
+> identically in production. It also confirms the fan saturation item below: on Carry The Zero
+> the fan sits at 0.377–0.400 of a 0.400 ceiling throughout.
+>
 > ## Open items carried into CHR.4
 >
 > 1. **QG.1 cannot gate this preset.** Its only driver is the engine's waveform buffer, which is

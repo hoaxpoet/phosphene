@@ -63,6 +63,24 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment CHR.3e — frame fit ✅ (2026-08-17)
+
+**Matt's first positive M7 on Stave** (*"looks good … otherwise, it works for me"*), with one
+change: the waves should not leave the frame on energetic music, while still covering most of
+the vertical area. Peak `|y|` measured at **1.53–1.98** against a frame of 1.0, so his initial
+2–5 % zoom moves almost nothing (1.83 → 1.75, 125 → 113 overflowing frames of 360) and full
+containment by zoom needs 35–50 %, which he ruled out as excessive.
+
+Shipped a **piecewise soft ceiling at 0.75 NDC with zoom left at 1.0**: untouched below the
+knee, folding only the excursion above it. Across five tracks peak lands at 0.999–1.000 with
+**zero** frames drawn outside the frame, and Take Five — which never reached the edge — is
+bit-identical at 0.510. A plain `tanh` was tried and rejected (compresses through the origin,
+−12 % at mid-amplitude, shrinking the approved look). Flash gate re-run: MEASURED, 0.00
+flashes/s, SAFE.
+
+Also confirmed from that session: **CHR.3c's `waveform_occupancy` works in production** —
+published on 2031/2032 frames, live range 0.067–0.153 against 0.073–0.124 offline.
+
 ### Increment CHR.3c — the routable waveform-derived primitive ✅ (2026-08-17)
 
 `FeatureVector.waveformOccupancy` (float 23, **reclaimed from `_pad0`** so the struct stays

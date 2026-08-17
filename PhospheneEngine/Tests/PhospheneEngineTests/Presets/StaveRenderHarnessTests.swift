@@ -49,7 +49,12 @@ struct StaveRenderHarnessTests {
     }
 
     private static func makeSubject(_ ctx: MetalContext, sampleCount: Int = 1024,
-                                    sampleRate: Float = 48_000) throws -> Subject {
+                                    sampleRate: Float = 48_000,
+                                    zoom: Float? = nil,
+                                    frameKnee: Float? = nil) throws -> Subject {
+        // Fall back to the PRODUCTION defaults, never to hardcoded numbers — a harness that
+        // supplies its own defaults silently tests something the app does not ship.
+        let shipped = StaveConfiguration(sampleRate: sampleRate)
         let lib = try ShaderLibrary(context: ctx)
         let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
         guard let preset = loader.presets.first(where: { $0.descriptor.name == presetName }) else {
@@ -64,7 +69,10 @@ struct StaveRenderHarnessTests {
             as: UInt8.self, repeating: 0, count: sampleCount * 2 * MemoryLayout<Float>.stride)
         let geometry = try StaveTrace(device: ctx.device, library: lib.library,
                                       waveform: waveform,
-                                      configuration: StaveConfiguration(sampleCount: sampleCount, sampleRate: sampleRate),
+                                      configuration: StaveConfiguration(sampleCount: sampleCount,
+                                                                      zoom: zoom ?? shipped.zoom,
+                                                                      frameKnee: frameKnee ?? shipped.frameKnee,
+                                                                      sampleRate: sampleRate),
                                       pixelFormat: ctx.pixelFormat)
         return Subject(preset: preset, geometry: geometry, buffers: buffers, waveform: waveform)
     }
@@ -172,7 +180,11 @@ struct StaveRenderHarnessTests {
 
         let audio = try StaveHarnessAudio(url: URL(fileURLWithPath: (wavPath as NSString).expandingTildeInPath))
         let ctx = try MetalContext()
-        let subject = try Self.makeSubject(ctx, sampleRate: audio.sampleRate)
+        let subject = try Self.makeSubject(
+            ctx,
+            sampleRate: audio.sampleRate,
+            zoom: env["STAVE_RENDER_ZOOM"].flatMap(Float.init),
+            frameKnee: env["STAVE_RENDER_KNEE"].flatMap(Float.init))
         let texture = try HarnessTemplateCore.makeCaptureTexture(ctx, width: width, height: height)
         let sampleCount = subject.geometry.configuration.sampleCount
         let wavePtr = subject.waveform.contents().bindMemory(to: Float.self, capacity: sampleCount * 2)
@@ -184,6 +196,10 @@ struct StaveRenderHarnessTests {
         let warmup = Int(6 * fps)
         var written = 0
         var fanMin = Float.greatestFiniteMagnitude, fanMax: Float = 0
+        // Frame fit: the largest |y| any band reaches, in NDC half-heights. > 1 means the
+        // wave is drawn outside the frame and is being clipped by the viewport.
+        var peakY: Float = 0
+        var overflowFrames = 0
 
         for f in -warmup..<frameCount {
             let t = startAt + Float(f) / fps
@@ -195,6 +211,27 @@ struct StaveRenderHarnessTests {
             guard f >= 0 else { continue }
             fanMin = min(fanMin, subject.geometry.fan)
             fanMax = max(fanMax, subject.geometry.fan)
+            let model = subject.geometry.model
+            let bands = StaveBandPlan.count
+            var framePeak: Float = 0
+            for band in 0..<bands {
+                let ratio = Float(band) / Float(bands - 1)
+                let dev = 2 * pow(ratio, model.configuration.spacing) - 1
+                let offset = model.fan * dev
+                let base = band * model.configuration.sampleCount
+                for i in 0..<model.configuration.sampleCount {
+                    let y = (model.curves[base + i] + offset) * model.configuration.zoom
+                    let knee = model.configuration.frameKnee
+                    var mag = abs(y)
+                    if knee > 0 && mag > knee {
+                        let head = 1 - knee
+                        mag = knee + head * tanhf((mag - knee) / head)
+                    }
+                    framePeak = max(framePeak, mag)
+                }
+            }
+            peakY = max(peakY, framePeak)
+            if framePeak > 1 { overflowFrames += 1 }
             try StaveHarnessAudio.writePNG(
                 bgra: pixels, width: width, height: height,
                 to: outDir.appendingPathComponent(String(format: "stave_seq_%04d.png", written)))
@@ -202,5 +239,8 @@ struct StaveRenderHarnessTests {
         }
         print("[stave] wrote \(written) frames to \(outDir.path)")
         print("[stave] fan over the sequence: \(String(format: "%.3f..%.3f", fanMin, fanMax))")
+        print("[stave] peak |y| \(String(format: "%.3f", peakY)) NDC"
+              + "  (frames drawn outside the frame: \(overflowFrames)/\(written))"
+              + "  → fits at zoom \(String(format: "%.1f", 100 * (1 - 1 / max(peakY, 1)))) %")
     }
 }

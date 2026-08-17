@@ -18,9 +18,9 @@ struct StaveUniformsGPU {
     float thickness;
     float fan;
     float spacing;
+    float zoom;
+    float frameKnee;
     float pad0;
-    float pad1;
-    float pad2;
 };
 
 struct StaveDispOut {
@@ -59,7 +59,24 @@ fragment float4 stave_disp_fragment(StaveDispOut in [[stage_in]],
         // than competing for space with a crowded violet end.
         float tb = float(b) / float(u.bandCount - 1);
         float dev = 2.0 * pow(tb, u.spacing) - 1.0;
-        float d = in.uv.y - (amp + u.fan * dev);
+        // Camera zoom, then a soft ceiling at the frame edge. The knee leaves everything
+        // below it untouched and folds only what would otherwise be drawn off-frame — zoom
+        // alone cannot contain peaks measured at 1.53–1.98 NDC without shrinking the image
+        // by 35–50 %.
+        float y = (amp + u.fan * dev) * u.zoom;
+        if (u.frameKnee > 0.0) {
+            // PIECEWISE, not a plain tanh. A tanh through the origin compresses the whole
+            // image — 12 % at mid-amplitude — which quietly shrinks the settled look. Below
+            // the knee the value passes through untouched; only the excursion above it folds,
+            // into the headroom that remains before the frame edge.
+            float a = abs(y);
+            if (a > u.frameKnee) {
+                float head = 1.0 - u.frameKnee;
+                a = u.frameKnee + head * tanh((a - u.frameKnee) / head);
+                y = (y < 0.0) ? -a : a;
+            }
+        }
+        float d = in.uv.y - y;
 
         // Two-part profile: a tight core so each band reads as a line, plus a wide halo so
         // overlapping bands ADD like light instead of sitting as separate wires. A per-band

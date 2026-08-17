@@ -31,9 +31,9 @@ struct StaveUniformsGPU {
     var thickness: Float = 0.010
     var fan: Float = 0
     var spacing: Float = 0.5
+    var zoom: Float = 1
+    var frameKnee: Float = 0
     var pad0: Float = 0
-    var pad1: Float = 0
-    var pad2: Float = 0
 }
 
 // MARK: - StaveTrace
@@ -103,6 +103,8 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
         uniforms.bandCount = Int32(bands)
         uniforms.sampleCount = Int32(configuration.sampleCount)
         uniforms.spacing = configuration.spacing
+        uniforms.zoom = configuration.zoom
+        uniforms.frameKnee = configuration.frameKnee
 
         staveLogger.info(
             "StaveTrace: \(bands)-band dispersion over \(configuration.sampleCount) samples")
