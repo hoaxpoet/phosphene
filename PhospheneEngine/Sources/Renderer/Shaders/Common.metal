@@ -94,7 +94,7 @@ struct FeatureVector {
     // AudioFeatures+Analyzed.swift field-for-field, not just in count.
     float spectral_surge, spectral_section_ratio;   // 51 DYN.1b, 52 DYN.2
     // FTR.24 (float 53): LEVEL RISE, 0…1 — pre-AGC level against its own 0.15 s trailing
-    // floor, instant attack, 0.35 s release. The TRANSIENT sibling of spectral_surge: use
+    // floor, instant attack, 0.20 s release. The TRANSIENT sibling of spectral_surge: use
     // surge for "how loud is this passage for this track", use this for "something just
     // LANDED". Nothing else here marks an audible event — the beat_* fields are pulse
     // CLOCKS (beat_mid scores BELOW chance against real events), spectral_flux is fast but

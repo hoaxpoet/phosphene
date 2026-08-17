@@ -100,7 +100,7 @@ extension PresetLoader {
             // 52 was _pad52, now DYN.2's section density leg. ORDER IS THE CONTRACT.
             float spectral_surge, spectral_section_ratio;
             // FTR.24 (float 53): LEVEL RISE, 0…1 — pre-AGC level against its own 0.15 s
-            // trailing floor, instant attack, 0.35 s release. The TRANSIENT sibling of
+            // trailing floor, instant attack, 0.20 s release. The TRANSIENT sibling of
             // spectral_surge: surge answers "how loud is this passage for this track", this
             // answers "something just LANDED". Nothing else here marks an audible event —
             // the beat_* fields are pulse CLOCKS (beat_mid scores BELOW chance against real
