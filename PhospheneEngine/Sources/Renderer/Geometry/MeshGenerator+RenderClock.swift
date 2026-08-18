@@ -67,3 +67,30 @@ extension MeshGenerator {
         _ = beatHold.update(features, renderDeltaTime: delta)
     }
 }
+
+// MARK: - FTR.28 the dance clocks
+
+extension MeshGenerator {
+
+    /// Substitute render-rate, phase-locked versions of both dance clocks into the vector every
+    /// preset stage reads. Split out of `draw` to keep `MeshGenerator.swift` inside the 400-line
+    /// budget — the same reason `+RenderClock` and `+Blend` exist.
+    ///
+    /// The tempo offered here is `BeatHold`'s when it has one, but `DancePhase` does not depend on
+    /// it: that hold vouches for a tempo on only 13 % of frames on real captures, and gating the
+    /// dance on it produced no lock at all. See `DancePhase` for the measurement.
+    func applyDanceClocks(to feat: inout FeatureVector,
+                          live: FeatureVector,
+                          renderDelta: Float) {
+        let beatPeriod = beatHold.beatPeriodSeconds ?? 0
+        // A bar clock is the signal that a grid exists at all; without one both phases read 0 and
+        // the tree stands still, which is the cold-start phase contract.
+        let hasGrid = live.beatsPerBar > 0.5
+        feat.beatPhase01 = beatDance.advance(measured: hasGrid ? live.beatPhase01 : nil,
+                                            periodSeconds: beatPeriod,
+                                            deltaTime: renderDelta)
+        feat.barPhase01 = barDance.advance(measured: hasGrid ? live.barPhase01 : nil,
+                                           periodSeconds: beatPeriod * max(live.beatsPerBar, 1),
+                                           deltaTime: renderDelta)
+    }
+}

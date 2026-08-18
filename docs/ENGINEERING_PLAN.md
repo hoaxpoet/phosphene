@@ -2558,6 +2558,59 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.28 — the tree gets a GAIT: the premise change nine tuning rounds never made.** ✅
+code-complete, **pending live M7** (2026-08-17) Matt, asked what he actually pictures: *"the tree
+bounces, sways, grows, and recedes with the music in a coordinated dance. The motion of the
+broomsticks in Fantasia's The Sorcerer's Apprentice is a good example."*
+
+**★★★ THE PREMISE. Every FTR increment drove geometry from an AMPLITUDE — how loud
+(`spectral_surge`), how dense (`spectral_density`), how much changed (`spectral_flux`), did
+something land (`spectral_level_rise`). A dance is a PHASE.** Broomsticks march because they have a
+gait: a cycle locked to the pulse, with the music's intensity deciding only how big each step is.
+This preset had never been given a clock to move ON, which is why BUG-093 could rule out
+"not moving enough" and "a dead channel" and still leave the complaint standing.
+
+**Matt's three product calls, all as recommended:** two layers (bounce per beat under a sway per
+bar); motion travels outward (trunk leads, tips follow); grow/recede stays a slower arc underneath,
+which the existing size machinery already provides — so FTR.28 adds only the dance.
+
+**Shipped.** `DancePhase` (new) + a per-level lagged gait in the mesh shader. The gait is applied
+at TWO scales: at the root, where the whole figure leans on the bar (0.115 rad) and springs on the
+beat (13 % of segment length); and per level inside the ancestor walk with an outward lag
+(0.18 beat / 0.12 bar per depth unit), which is the flex that makes limbs trail the body.
+
+**Four measurement failures on the way, each one a defect this program has hit before:**
+
+1. **The gait applied only inside the ancestor walk moved the body 0.0003 of frame height — 0.3 px.**
+   The walk advances position and THEN rotates, so the first segment out of the root is always
+   vertical: **the tree could not lean.** Fixed by acting at the root as well.
+2. **`beatPhase01` is a STAIRCASE** — 14.6 updates/s in steps of 0.109 of a beat (≈9 per beat, each
+   held ~4 render frames at 59 Hz). Driven raw, the rendered pose's dominant period was **0.133 s:
+   the update cadence, not the music.** That is the FTR.13 / FTR.24 defect a third time, caught by
+   the gate before Matt saw it. Fixed by `DancePhase`, a render-rate phase-locked clock.
+3. **★★★ `BeatHold` vouches for a tempo on only 13 % of frames on a real capture** (47/360; its
+   trust gate wants 8 beat intervals within 20 % spread and a 14.6 Hz phase keeps breaking it).
+   With the dance gated on that, the lean correlated **+0.293 with the bar against a +0.285
+   decoy — no lock at all.** Fixed by having `DancePhase` estimate its own rate from dφ/dt, which
+   needs no confidence gate: the same measurement then reads **+0.757 against +0.222.**
+   ⚠ **This finding is bigger than the dance: the FTR.10 beat-step hold Matt chose has also been
+   engaging on ~13 % of frames.** Filed as BUG-096.
+4. **Autocorrelation was the wrong instrument on real music.** It looks for a PEAK, and the fine
+   tips' broadband churn drowns one — three runs reported "no periodicity" for a provably-correct
+   gait, with the best lag pinned at the search window's edge. A **matched filter against the
+   recorded phases, with a time-reversed decoy as control**, is the instrument that works.
+
+**Gates.** A controlled test freezes every driver but the clocks and asserts both layers land on
+their own periods — **bounce 0.99 beats, sway 4.02 beats**. A real-capture test asserts the lean is
+in step with the bar and beats its decoy by 1.5×. Also fixed: the FTR.25 spark A/B now freezes the
+dance, because `draw` advances the clock between its two encodes and the gait, not the spark, was
+moving the geometry by 0.0078.
+
+**⚠ Honest limits.** The BOUNCE's in-step correlation on real music is weak (+0.124 vs a −0.198
+decoy) — sign-correct and better than chance, but the vertical scalar is 60 % tip churn, so this is
+as much a measurement limit as a visual one. And no frame of this has been seen live: the last two
+canopy changes shipped on fixture evidence and were both rejected.
+
 **FTR.27 — FTR.26 reverted after its live review, and the finding that outranks it (BUG-092).**
 ✅ (2026-08-17) Matt on `2026-08-17T20-01-01Z`: *"sound is back. dislike the new behavior of the
 trunk and canopy. connection to the music is even less clear than before."*

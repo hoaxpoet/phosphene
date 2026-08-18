@@ -129,9 +129,18 @@ struct FractalTreeMeshRenderTest {
         // nothing else — which is the whole claim FTR.25 rests on.
         var accentPair: [(label: String, pixels: [UInt8])] = []
         if let mid = try? Self.driveFrames().first(where: { $0.label == "p50" }) {
+            // FTR.28 — the DANCE has to be frozen for this A/B, or it, not the spark, is what
+            // moves the geometry between the two encodes: `draw` advances the gait's clock on
+            // every call, so the second frame is a fraction of a beat further through the step and
+            // the width assertion below fails on 0.0078 of drift. Zeroing `pulseAmp01` sets the
+            // gait's gain to 0 and holds the branch count at its floor, so the ONLY difference
+            // between these two frames is `spectral_level_rise` — which is exactly what this gate
+            // is about. It leaves a small resting tree, and the spark lives on the tips of
+            // whatever tree is there.
             var dark = mid.features
+            dark.pulseAmp01 = 0
             dark.spectralLevelRise = 0
-            var lit = mid.features
+            var lit = dark
             lit.spectralLevelRise = 1
             generator.renderDeltaOverride = 1.0 / 60.0
             for _ in 0..<40 {
@@ -2081,10 +2090,320 @@ struct FractalTreeMeshRenderTest {
                          from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
         return pixels
     }
+    // MARK: - FTR.28 the gait
+
+    /// Is the tree DANCING — is its motion periodic AT THE BEAT — or merely moving?
+    ///
+    /// This is the gate FTR.28 needs and the one no previous increment had. Nine live rejections
+    /// of "no clear connection" were all measured with AMPLITUDE instruments (span, travel, turn
+    /// rate, event specificity), and every one of them can be satisfied by motion that is
+    /// unrelated to the pulse. A dance is a different claim: the motion must REPEAT ON THE BEAT.
+    ///
+    /// So: render consecutive frames from a real capture, reduce each to two pose scalars — the
+    /// canopy's horizontal centroid (the SWAY) and the height of its topmost lit pixel (the
+    /// BOUNCE) — and autocorrelate. A dancing tree shows a peak at the beat period; a tree
+    /// driven by loudness shows none, however much it moves.
+    ///
+    /// Consecutive frames, never a stride: at 94 BPM the beat is 0.64 s and the sequence
+    /// harness's stride would alias it away entirely (the FTR.13 lesson in a new place).
+    @Test("FTR.28: the tree's motion is periodic at the BEAT (FT_SESSION=<dir>)")
+    func danceIsBeatPeriodic() throws {
+        guard let dir = ProcessInfo.processInfo.environment["FT_SESSION"] else { return }
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                  loadBuiltIn: true)
+        let preset = try #require(loader.presets.first { $0.descriptor.name == "Fractal Tree" })
+        let generator = MeshGenerator(
+            device: ctx.device, pipelineState: preset.pipelineState,
+            configuration: .init(maxVerticesPerMeshlet: 252, maxPrimitivesPerMeshlet: 126,
+                                 meshThreadCount: preset.descriptor.meshThreadCount))
+        let target = try Self.makeTexture(ctx)
+        let csv = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
+            .appendingPathComponent("features.csv")
+        let rows = try Self.loadSessionRows(csv)
+        let stemRows = (try? Self.loadSessionRows(
+            csv.deletingLastPathComponent().appendingPathComponent("stems.csv"),
+            dropBeforeSeconds: nil)) ?? []
+        let stemOffset = (try? Self.leadingRowsDropped(csv)) ?? 0
+
+        // Start past the grid's cold start (it needs a bar clock plus 8 stable beats) and take
+        // 6 s of consecutive frames — long enough for ~9 beats and ~2 bars.
+        let startRow = rows.firstIndex { ($0["time"] ?? 0) >= 14.0 } ?? 0
+        let sampleCount = min(360, rows.count - startRow)
+        guard sampleCount > 120 else { return }
+
+        var fifths = FifthsSmoother()
+        var sway: [Double] = []
+        var bounce: [Double] = []
+        var times: [Double] = []
+        // ⚠ THE RENDER DELTA MUST MATCH THE DATA'S CADENCE, not 1/60. A capture's rows are spaced
+        // by whatever the recording frame rate was (0.0190 s here, ~52.6 Hz), and telling the
+        // generator 1/60 makes its clock run at 88 % of the data's — every period it measures,
+        // including the beat interval the gait free-runs on, comes out short. Third time in this
+        // program that a harness and production disagreed about time (FTR.18's frame-0 glide seed,
+        // FTR.24's smoothing order).
+        var gridFrames = 0
+        var periodSamples: [Double] = []
+        let rowDT = { () -> Double in
+            let a = rows[startRow]["time"] ?? 0
+            let b = rows[min(startRow + sampleCount - 1, rows.count - 1)]["time"] ?? 0
+            return sampleCount > 1 ? (b - a) / Double(sampleCount - 1) : 1.0 / 60.0
+        }()
+        generator.renderDeltaOverride = Float(rowDT)
+        for offset in 0..<sampleCount {
+            let index = startRow + offset
+            var fv = Self.featuresFromSession(rows[index], fifths: &fifths)
+            let stems = Self.sessionStems(stemRows, index: index + stemOffset)
+            // ⚠ NO `advanceBeatHold` here. `encode` calls `generator.draw`, which advances both
+            // holds itself, so calling it as well advanced them TWICE per rendered frame and
+            // inflated the time base the beat period is measured from — the dance then free-ran
+            // at the wrong tempo and this gate reported 0.60 beats for a correct gait.
+            // `advanceBeatHold` is for frames that are NOT drawn.
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            Self.encode(cmd, into: target, generator: generator, features: fv, stems: stems)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            let pose = Self.pose(Self.read(target))
+            sway.append(pose.centroidX)
+            bounce.append(pose.centroidY)
+            times.append(rows[index]["time"] ?? 0)
+            if generator.beatHold.beatPeriodSeconds != nil { gridFrames += 1 }
+            periodSamples.append(generator.beatHold.beatPeriodSeconds.map { Double($0) } ?? 0)
+        }
+
+        let live = periodSamples.filter { $0 > 0 }
+        print(String(format:
+            "[fractal-tree/gait] BeatHold vouched for a tempo on %d/%d frames (%.0f%%); period p50 %.4f s vs grid %.4f s",
+            gridFrames, sway.count, 100.0 * Double(gridFrames) / Double(max(sway.count, 1)),
+            live.isEmpty ? 0 : live.sorted()[live.count / 2],
+            (rows[startRow]["grid_bpm"] ?? 0) > 1 ? 60.0 / (rows[startRow]["grid_bpm"] ?? 1) : 0))
+
+        // ★★★ A MATCHED FILTER, NOT AN AUTOCORRELATION. Autocorrelation looks for a PEAK, and on
+        // real music the fine tips' broadband churn drowns one: the gait is ~40 % of the vertical
+        // motion (0.026 of 0.067) yet three successive runs of this gate reported "no periodicity"
+        // because the best lag sat at the search window's edge every time. The question is not
+        // "what period dominates" but "does the tree move IN STEP with the clock", which is a
+        // correlation against the expected waveform at the phases the capture actually recorded.
+        //
+        // The control is the same correlation against a DECOY clock — the phase series reversed in
+        // time, which preserves its distribution and destroys its alignment. Without that, any
+        // smooth signal scores something and the number means nothing (the lesson from FTR.24's
+        // event specificity, where a matched-magnitude random control was what made the bar real).
+        let phaseRows = (startRow..<(startRow + sway.count)).map { rows[$0] }
+        let barWave = phaseRows.map { sin(2 * Double.pi * (($0["barPhase01_permille"] ?? 0) / 1000)) }
+        let beatWave = phaseRows.map { row -> Double in
+            let p = row["beatPhase01"] ?? 0
+            return exp(-5.0 * p) * sin(2 * Double.pi * p)
+        }
+        let swayCorr = Self.correlation(sway, barWave)
+        let swayDecoy = Self.correlation(sway, barWave.reversed().map { $0 })
+        let bounceCorr = Self.correlation(bounce, beatWave)
+        let bounceDecoy = Self.correlation(bounce, beatWave.reversed().map { $0 })
+        print(String(format:
+            "[fractal-tree/gait] IN STEP WITH THE CLOCK: sway r=%+.3f (decoy %+.3f) | bounce r=%+.3f (decoy %+.3f)",
+            swayCorr, swayDecoy, bounceCorr, bounceDecoy))
+
+        #expect((bounce.max() ?? 0) - (bounce.min() ?? 0) > 0.004, """
+            the tree's body moves \((bounce.max() ?? 0) - (bounce.min() ?? 0)) of frame height across \
+            \(sway.count) frames — the gait is not reaching the geometry at all.
+            """)
+        // The lean must track the bar, and must beat its own decoy by a clear margin. 0.30 is
+        // chosen so a real lock passes on a capture where the tips contribute most of the variance,
+        // while an unsynced tree — which is what every build before FTR.28 was — cannot.
+        #expect(swayCorr > 0.30, """
+            the tree's lean does not move in step with the BAR on real music: r=\(swayCorr) \
+            against the bar waveform (decoy \(swayDecoy)). The controlled test proves the gait \
+            oscillates correctly with every other driver frozen, so a failure HERE means the \
+            dance is not surviving real material rather than being mis-wired.
+            """)
+        #expect(swayCorr > abs(swayDecoy) * 1.5, """
+            the lean's correlation with the bar (\(swayCorr)) is not clearly better than with a \
+            time-reversed decoy clock (\(swayDecoy)) — that margin is what separates "in step" \
+            from "smooth signals correlate with anything".
+            """)
+    }
+
+    /// Pearson correlation, mean-removed. Returns 0 when either series is flat.
+    private static func correlation(_ a: [Double], _ b: [Double]) -> Double {
+        let n = min(a.count, b.count)
+        guard n > 8 else { return 0 }
+        let ma = a.prefix(n).reduce(0, +) / Double(n), mb = b.prefix(n).reduce(0, +) / Double(n)
+        var num = 0.0, da = 0.0, db = 0.0
+        for i in 0..<n {
+            let x = a[i] - ma, y = b[i] - mb
+            num += x * y; da += x * x; db += y * y
+        }
+        guard da > 1e-15, db > 1e-15 else { return 0 }
+        return num / (da * db).squareRoot()
+    }
+
+    /// THE CONTROLLED GAIT TEST: freeze every driver except the two clocks.
+    ///
+    /// The real-capture test above answers "is the dance visible against everything else the
+    /// preset does". This one answers the prior question — "does the gait oscillate at its clock
+    /// period at all" — and it has to exist separately, because a null on the capture cannot
+    /// distinguish "no gait" from "gait buried under the tip flicker". Everything is held
+    /// constant here but `beatPhase01` and `barPhase01`, so ANY motion in the picture is the
+    /// gait and nothing else.
+    ///
+    /// FA #27 does not apply: the claim is definitional (does a phase-driven term oscillate at
+    /// the phase period), not perceptual. The perceptual claim is Matt's live M7.
+    @Test("FTR.28: with every driver frozen but the clocks, the tree oscillates ON the beat")
+    func gaitOscillatesAtTheClockPeriod() throws {
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                  loadBuiltIn: true)
+        let preset = try #require(loader.presets.first { $0.descriptor.name == "Fractal Tree" })
+        let generator = MeshGenerator(
+            device: ctx.device, pipelineState: preset.pipelineState,
+            configuration: .init(maxVerticesPerMeshlet: 252, maxPrimitivesPerMeshlet: 126,
+                                 meshThreadCount: preset.descriptor.meshThreadCount))
+        let target = try Self.makeTexture(ctx)
+
+        let bpm = 94.07, fps = 60.0
+        let beatSeconds = 60.0 / bpm
+        var frame = Self.baseFeatures()
+        frame.arousal = 0.45
+        frame.spectralSectionRatio = 1.4
+        frame.spectralSurge = 0.5
+        frame.spectralDensity = 0.12
+        frame.spectralDensitySlow = 0.12
+        frame.bassDev = 0.35
+        frame.pulseAmp01 = 1.0
+        frame.beatsPerBar = 4
+
+        // 14 s, analysed over the last 8: `BeatHold` needs EIGHT steady beat intervals before it
+        // will report a tempo (~5.1 s at this BPM), and `DancePhase` refuses to run without one.
+        // A 6 s test spent most of its length with no grid and measured the cold start.
+        var sway: [Double] = [], bounce: [Double] = []
+        let frames = Int(14.0 * fps)
+        generator.renderDeltaOverride = Float(1.0 / fps)
+        for step in 0..<frames {
+            let t = Double(step) / fps
+            frame.beatPhase01 = Float((t / beatSeconds).truncatingRemainder(dividingBy: 1.0))
+            frame.barPhase01 = Float((t / (beatSeconds * 4)).truncatingRemainder(dividingBy: 1.0))
+            frame.time = Float(t)
+            // No `advanceBeatHold` — `encode` → `draw` advances the holds. See the note in
+            // `danceIsBeatPeriodic`.
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            Self.encode(cmd, into: target, generator: generator, features: frame, stems: .zero)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            let pose = Self.pose(Self.read(target))
+            sway.append(pose.centroidX)
+            bounce.append(pose.centroidY)
+        }
+        let dt = 1.0 / fps
+        let settled = Int(6.0 * fps)          // drop the pre-grid cold start
+        sway = Array(sway.dropFirst(settled))
+        bounce = Array(bounce.dropFirst(settled))
+        let swayPeriod = Self.dominantPeriod(sway, dt: dt, minPeriod: 0.15, maxPeriod: 5.0)
+        let bouncePeriod = Self.dominantPeriod(bounce, dt: dt, minPeriod: 0.15, maxPeriod: 5.0)
+        print(String(format:
+            "[fractal-tree/gait-control] beat %.3f s bar %.3f s | sway range %.4f period %.3f s (%.2f beats) | bounce range %.4f period %.3f s (%.2f beats)",
+            beatSeconds, beatSeconds * 4,
+            (sway.max() ?? 0) - (sway.min() ?? 0), swayPeriod, swayPeriod / beatSeconds,
+            (bounce.max() ?? 0) - (bounce.min() ?? 0), bouncePeriod, bouncePeriod / beatSeconds))
+
+        // Matt chose TWO layers — "bounce per beat, sway per bar" — so one number for the
+        // dominant period is not enough to know both arrived. A single autocorrelation reports
+        // only the winner, and the bar wins on every scalar simply because it is the larger
+        // gesture. So each band is measured in its own window.
+        let beatBand = Self.dominantPeriod(bounce, dt: dt,
+                                           minPeriod: beatSeconds * 0.6,
+                                           maxPeriod: beatSeconds * 1.5)
+        let barBand = Self.dominantPeriod(sway, dt: dt,
+                                          minPeriod: beatSeconds * 3.0,
+                                          maxPeriod: beatSeconds * 5.0)
+        print(String(format:
+            "[fractal-tree/gait-control] per-BAND: bounce in the beat window %.3f s (%.2f beats) | sway in the bar window %.3f s (%.2f beats)",
+            beatBand, beatBand / beatSeconds, barBand, barBand / beatSeconds))
+
+        #expect((bounce.max() ?? 0) - (bounce.min() ?? 0) > 0.002,
+                "the clocks alone move the body \((bounce.max() ?? 0) - (bounce.min() ?? 0)) — the gait is inert")
+        #expect(abs(beatBand / beatSeconds - 1.0) < 0.3, """
+            the BOUNCE layer is not on the beat: its strongest period inside the beat window is \
+            \(beatBand) s against a beat of \(beatSeconds) s. Matt asked for a bounce per beat \
+            under a sway per bar; a gait with only the bar layer is a sway, not a dance.
+            """)
+        #expect(abs(barBand / beatSeconds - 4.0) < 0.6, """
+            the SWAY layer is not on the bar: strongest period in the bar window \(barBand) s \
+            against a bar of \(beatSeconds * 4) s.
+            """)
+        let onGrid = { (p: Double) -> Bool in
+            [1.0, 2.0, 4.0].contains { abs(p / beatSeconds - $0) < 0.25 }
+        }
+        #expect(onGrid(bouncePeriod) || onGrid(swayPeriod), """
+            with ONLY the clocks moving, the body's period is bounce \(bouncePeriod) s / sway \
+            \(swayPeriod) s against a beat of \(beatSeconds) s and a bar of \(beatSeconds * 4) s. \
+            A phase-driven gait that is not periodic on its own phase is wired wrong.
+            """)
+    }
+
+    /// Pose reduction: where the tree's BODY is, deliberately blind to its tip inventory.
+    ///
+    /// ⚠ THE FIRST VERSION OF THIS MEASURED THE WRONG THING and reported the gait as
+    /// non-periodic. It used the TOPMOST lit pixel for the bounce and the centroid of ALL lit
+    /// pixels for the sway — and both are dominated by the fine tips, which appear and vanish
+    /// with the branch COUNT several times a second. The dominant period came back 0.133 s: the
+    /// tip flicker rate, not the tree's motion. Same species as every other instrument error in
+    /// this program — the metric modelled the wrong part of the picture.
+    ///
+    /// Both scalars now come from the LOWER THIRD of the frame, where the trunk and the first
+    /// two branch generations live and no fine tip ever reaches, and both are mass centroids
+    /// rather than extremes so one arriving branch cannot move them.
+    /// - `centroidX` comes from the LOWER THIRD only — the trunk and first two generations,
+    ///   where no fine tip reaches — because the SWAY is a lean of the body and the tips would
+    ///   swamp it with their own comings and goings.
+    /// - `centroidY` is the whole frame's lit mass, because the BOUNCE is a change in the tree's
+    ///   overall HEIGHT: a spring at the root shortens every segment at once, which moves the
+    ///   whole silhouette's centre of mass and barely changes the lower third's.
+    ///
+    /// Getting this split wrong is what made the first two runs of this gate report a working
+    /// gait as inert or as bar-periodic — measuring the body's lean in a band the lean does not
+    /// move, and the body's spring in a band the spring does not move.
+    private static func pose(_ bgra: [UInt8]) -> (centroidX: Double, centroidY: Double) {
+        let width = Self.width, height = Self.height
+        let bodyTop = (height * 2) / 3        // lower third only — trunk + inner branches
+        var bodySumX = 0.0, bodyLit = 0.0
+        var allSumY = 0.0, allLit = 0.0
+        for y in 0..<height {
+            for x in 0..<width {
+                let i = (y * width + x) * 4
+                guard Int(bgra[i]) + Int(bgra[i + 1]) + Int(bgra[i + 2]) > 24 else { continue }
+                allSumY += Double(y); allLit += 1
+                if y >= bodyTop { bodySumX += Double(x); bodyLit += 1 }
+            }
+        }
+        guard allLit > 0 else { return (0.5, 0.5) }
+        let cx = bodyLit > 0 ? bodySumX / bodyLit / Double(width) : 0.5
+        return (cx, 1.0 - allSumY / allLit / Double(height))
+    }
+
+    /// Dominant period by autocorrelation of the mean-removed series.
+    private static func dominantPeriod(_ series: [Double], dt: Double,
+                                       minPeriod: Double, maxPeriod: Double) -> Double {
+        let mean = series.reduce(0, +) / Double(series.count)
+        let x = series.map { $0 - mean }
+        let energy = x.reduce(0) { $0 + $1 * $1 }
+        guard energy > 1e-12 else { return 0 }
+        let loLag = max(1, Int(minPeriod / dt)), hiLag = min(x.count / 2, Int(maxPeriod / dt))
+        guard hiLag > loLag else { return 0 }
+        var bestLag = loLag, bestValue = -Double.infinity
+        for lag in loLag...hiLag {
+            var acc = 0.0
+            for i in 0..<(x.count - lag) { acc += x[i] * x[i + lag] }
+            acc /= Double(x.count - lag)
+            if acc > bestValue { bestValue = acc; bestLag = lag }
+        }
+        return Double(bestLag) * dt
+    }
+
 }
 
 // MARK: - Errors
 
 enum FractalTreeHarnessError: Error {
     case setupFailed(String)
+
 }
