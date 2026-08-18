@@ -413,6 +413,51 @@ struct WitchlightPathTests {
 
     // MARK: - Against the real fixtures
 
+    @Test("the off-beat pulse survives a heavy frame rate (BUG-097)")
+    func offBeatPulseSurvivesHeavyFrames() {
+        // The gate BUG-097 needed and did not have. Every committed fixture replays at a
+        // steady ~60 Hz, which never approaches the 1/30 s frame-time cap, so a defect that
+        // only appears when frames go long was invisible to the entire suite while production
+        // dropped most of its accents.
+        //
+        // `advance` clamps `dt` to 1/30 s to protect the integrators. `timeSinceWrap` used to
+        // accumulate that clamped value, so a heavy-framed bar MEASURED shorter than it was —
+        // and WL.9 gates the off-beat pulse on `barPeriod / beatsPerBar >= 0.55 s`. Measured on
+        // Matt's session `2026-08-18T16-10-38Z` (48.8 % of frames over the cap): 6 off-beat
+        // pulses in 110 s against ~130 implied by the meter.
+        //
+        // 4/4 at 94 BPM: a bar is 2.55 s, so off-beats should outnumber downbeats about 3:1.
+        // 50 ms frames sit well past the cap and are entirely realistic under load.
+        for frameMs in [16.7, 50.0] {
+            let path = WitchlightPath()
+            Self.driveHeavy(path, seconds: 40, barHz: 1.0 / 2.55, frameSeconds: Float(frameMs) / 1000)
+            let ratio = Float(path.offBeatCount) / Float(max(path.flareCount, 1))
+            #expect(path.flareCount > 8, "no downbeats at \(frameMs) ms — the drive is wrong, not the preset")
+            #expect(ratio > 2.0, """
+                at \(frameMs) ms frames the off-beat pulse fired \(path.offBeatCount) times                 against \(path.flareCount) downbeats (ratio \(ratio)); 4/4 implies ~3:1. A ratio                 that falls as the frame time RISES means a real-time duration is being measured                 with the clamped `dt` again — see the BUG-097 note in `advance`.
+                """)
+        }
+    }
+
+    /// Like `drive`, but with an explicit frame time so a test can go past the 1/30 s clamp.
+    private static func driveHeavy(_ path: WitchlightPath, seconds: Float, barHz: Float,
+                                   frameSeconds: Float) {
+        let frames = Int(seconds / frameSeconds)
+        for i in 0..<frames {
+            var f = FeatureVector()
+            let t = Float(i) * frameSeconds
+            f.deltaTime = frameSeconds
+            f.time = t
+            f.trackElapsedS = t
+            f.bass = 0.3; f.mid = 0.3; f.treble = 0.2
+            f.beatsPerBar = 4
+            f.barPhase01 = (t * barHz).truncatingRemainder(dividingBy: 1)
+            var s = StemFeatures()
+            s.drumsEnergy = 0.3; s.bassEnergy = 0.3; s.otherEnergy = 0.2; s.vocalsEnergy = 0.1
+            path.advance(deltaTime: frameSeconds, features: f, stems: s)
+        }
+    }
+
     @Test("the smoothed harmonic phase travels the distance the SHIPPED two-pole response gives",
           arguments: WitchlightFixtureDrive.tracks)
     func phaseTravelMatchesTheDesignMeasurement(track: String) throws {

@@ -40,8 +40,9 @@ extension WitchlightPath {
     /// itself" bug, and the one being removed was measurably noise against the rhythm.
     /// `bassDev` survives only as the no-grid fallback below.
     func advanceFlare(dt: Float, features: FeatureVector) {
-        flareRefractoryRemaining = max(0, flareRefractoryRemaining - dt)
-        offBeatRefractoryRemaining = max(0, offBeatRefractoryRemaining - dt)
+        // BUG-097: real time, not the clamped `dt` — a refractory is a duration, not a step.
+        flareRefractoryRemaining = max(0, flareRefractoryRemaining - clockDt)
+        offBeatRefractoryRemaining = max(0, offBeatRefractoryRemaining - clockDt)
 
         // No BeatGrid → `barPhase01` is pinned at 0 and never wraps, so the bar route is
         // silently dead. Fall back to the pre-WL.8 bass-excursion trigger rather than
