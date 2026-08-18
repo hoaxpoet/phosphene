@@ -2558,6 +2558,57 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.30 — the three remaining complaints, each with a number.** ✅ code-complete, **pending
+live M7** (2026-08-18) Matt on the FTR.29 build (`2026-08-18T15-17-10Z`): *"On initial playback, the
+preset was moving aggressively. After beat grid, it is swaying and bouncing on the beat. Unclear
+what is motivating the movement of the tips. Tree is not really growing or receding — this looks
+pretty much fixed. Color changes are frequent and seemingly random."*
+
+**★ First: the dance READS.** *"Swaying and bouncing on the beat"* is the first positive on the
+mechanism in eleven increments. Everything below is what surrounds it.
+
+**Aggressive before the grid, and the tips unmotivated — ONE cause.** `otherOnsetRate`, the tips'
+driver, travels **10.2 per second** — 68× the gait's lean and by far the noisiest signal the preset
+reads. Before a grid exists the gait is deliberately still, so the tips were the ONLY motion, which
+is exactly what "moving aggressively" describes. And FTR.12 had already measured that this route is
+residue ACTIVITY, not an instrument, so there is nothing for a viewer to connect it to however fast
+it moves. ⚠ Its comment claimed "BEAT-MATCHED as of FTR.13" — **false since FTR.13**, because
+BUG-096's hold engages on 0–13 % of frames, so `stemsHeld` was effectively live.
+
+**"Not really growing" — my FTR.29 trade-off, measured.** At the 6 s arc the trunk travelled
+**0.005/s — 17 px in three seconds**, which is a drift, not an arc. The sweep showed the fix is
+nearly free: 0.6 s gives **0.020/s (≈65 px in three seconds)** and costs 3 points of coordination
+(85 % → 82 %), because the gait and the now-quiet tips dominate the budget either way.
+
+**Shipped: a THIRD timescale.** `arcHold` (τ 0.6 s) at buffer(7) with its stems at buffer(2), for
+the two things that must be VISIBLE but not frantic — the growth arc and the tips. Buffer(6) stays
+at 6 s for the things that must be STEADY: the gait's stride, the canopy angle, FTR.18's density
+correction.
+
+**★★ Colour: the smoother's own comment was wrong, and the error was on screen.** `CircularPhaseSmoother`
+documented α 0.065 as "≈1 s at the 10–18 Hz analysis rate" — but it is called from `draw` at the
+RENDER rate, so the real time constant was **0.26 s**, four to six times faster than intended. The
+hue travelled **257 °/s** (raw 767 °/s). Now expressed as a TIME CONSTANT converted per frame
+(DYN.4's rule, and the same class as BUG-089's rate dependence): τ 3 s → **~33 °/s**, with the hue
+still traversing 355° across the track. Nothing lost but the flicker.
+
+**Consequence worth recording: buffer(4)/(5) are no longer read by this preset at all.** FTR.29 took
+the trunk off the beat-held vector and FTR.30 took `lift`, the last reader. The FTR.10 gate that
+proved "the object stage reads buffer(4)" was therefore testing a contract the preset no longer has;
+it is **re-pointed to buffer(7)** rather than deleted, because the wiring claim still matters. Same
+mechanism, same probe (canopy height held 0.396 vs unheld 0.925).
+
+**⚠ And FTR.18's glide-seed bug, a third time, caught by that gate.** `arcHold` was added to `draw`
+but not to the undrawn-frame paths, so the wiring test compared two unseeded arcs and read them as
+identical. All three holds now advance through one `advanceAllHolds`.
+
+**Still open and NOT fixed here: what the tips should mean.** Smoothing makes them calm; it does not
+make them legible. The route is residue activity by FTR.12's measurement, and choosing a primitive a
+listener can name is a product decision — Matt has now asked "what is motivating the tips" three
+times across the program.
+
+Dance verified after the change: sway in step **r +0.799 (decoy +0.479)**, coordination **R² 0.85**.
+
 **FTR.29 — one clock: subordinate every other channel to the gait.** ✅ code-complete,
 **pending live M7** (2026-08-18) Matt on the FTR.28 build (`2026-08-18T14-29-37Z`): *"Moves too
 much and in an uncoordinated manner — looks like a very bad dancer,"* and then, correcting me

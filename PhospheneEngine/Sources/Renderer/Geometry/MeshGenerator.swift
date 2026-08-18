@@ -141,6 +141,24 @@ public final class MeshGenerator: @unchecked Sendable {
     /// the share of total motion on the beat or the bar — goes 22 % → 73 %.
     var sectionHold = BeatHold(glideSeconds: 6.0)
 
+    /// FTR.30 — the ARC glide, τ 0.6 s, bound at object/mesh buffer(7) with its stems at
+    /// buffer(2). A THIRD timescale, because Matt's FTR.29 review needed two different things
+    /// from one glide and 6 s could not be both:
+    ///
+    ///   *"Tree is not really growing or receding — this looks pretty much fixed."* At 6 s the
+    ///   trunk travelled 0.005/s — 17 px in three seconds, which is a drift, not an arc.
+    ///   *"Unclear what is motivating the movement of the tips."* Their driver
+    ///   `otherOnsetRate` travels **10.2/s** — 68× the gait's lean, and FTR.12 already measured
+    ///   that it is residue ACTIVITY, not an instrument, so there is nothing for a viewer to
+    ///   connect it to. Unsmoothed it was also the only fast motion before the grid arrives,
+    ///   which is his *"on initial playback, the preset was moving aggressively."*
+    ///
+    /// 0.6 s serves both: the trunk travels 0.020/s (≈65 px in three seconds — visible as growth)
+    /// and the tips' driver drops ~10×, keeping their flicker while ending the thrash. Buffer(6)
+    /// stays at 6 s for the things that must be STEADY — the gait's stride, the canopy angle, and
+    /// FTR.18's density correction.
+    var arcHold = BeatHold(glideSeconds: 0.6)
+
     /// FTR.19 — the D-209 circular smoother for `tonalPhaseFifths`, applied to the vector this
     /// generator binds. `TonalAnalyzer` emits the phase RAW; every other consumer smooths it
     /// itself, and Fractal Tree did not (144° at p95 — Matt's *"colour changes feel glitchy"*).
@@ -272,15 +290,23 @@ public final class MeshGenerator: @unchecked Sendable {
                      stems: StemFeatures = .zero) {
         encoder.setRenderPipelineState(pipelineState)
         var feat = features
+        // ⚠ ONE `nextRenderDelta()` PER DRAW. It advances the render clock, so a second call in
+        // the same frame consumes a second delta and every downstream time constant runs fast —
+        // the double-advance that corrupted FTR.28's own gait harness. Hoisted here because the
+        // hue smoother now needs it too.
+        let renderDelta = nextRenderDelta()
         // FTR.19 — smooth the circular hue driver before ANY stage sees it (D-209).
-        feat.tonalPhaseFifths = fifthsSmoother.smooth(features.tonalPhaseFifths)
+        // FTR.30 — τ-based now: at the render rate the old per-frame alpha was ~0.26 s, not the
+        // ~1 s its comment claimed, and the hue travelled 257 °/s (Matt: *"color changes are
+        // frequent and seemingly random"*).
+        feat.tonalPhaseFifths = fifthsSmoother.smooth(features.tonalPhaseFifths,
+                                                      deltaTime: renderDelta)
         var stemFeat = stems
         // FTR.10 — advance the beat hold on EVERY frame, drawn or not, so the snapshot at
         // buffer(4) reflects the real beat boundaries and not the draw cadence.
         // FTR.13 — offer the stems BEFORE update: `update` is the one place the beat boundary
         // is detected, and it latches both sides there.
         beatHold.offerStems(stems)
-        let renderDelta = nextRenderDelta()
         var heldFeat = beatHold.update(features, renderDeltaTime: renderDelta)
 
         // FTR.28 — REPLACE both phases with render-rate locked ones before any stage reads them.
@@ -290,6 +316,9 @@ public final class MeshGenerator: @unchecked Sendable {
         // returns 0 and the tree simply does not dance — the correct behaviour under the
         // cold-start phase contract, where an ungated accent would fire at the wrong phase.
         applyDanceClocks(to: &feat, live: features, renderDelta: renderDelta)
+        arcHold.offerStems(stems)
+        var arcFeat = arcHold.update(features, renderDeltaTime: renderDelta)
+        var arcStemFeat = arcHold.glidingStemFeatures
         var heldStemFeat = beatHold.glidingStemFeatures
         // FTR.16 — one delta, both holds: two clocks would drift apart within a track.
         sectionHold.offerStems(stems)
@@ -330,6 +359,11 @@ public final class MeshGenerator: @unchecked Sendable {
             let sectionLength = MemoryLayout<FeatureVector>.stride
             encoder.setObjectBytes(&sectionFeat, length: sectionLength, index: 6)
             encoder.setMeshBytes(&sectionFeat, length: sectionLength, index: 6)
+            // FTR.30 — the τ 0.6 s arc: the vector at 7, its stems at 2.
+            encoder.setObjectBytes(&arcFeat, length: MemoryLayout<FeatureVector>.stride, index: 7)
+            encoder.setMeshBytes(&arcFeat, length: MemoryLayout<FeatureVector>.stride, index: 7)
+            encoder.setObjectBytes(&arcStemFeat, length: MemoryLayout<StemFeatures>.stride, index: 2)
+            encoder.setMeshBytes(&arcStemFeat, length: MemoryLayout<StemFeatures>.stride, index: 2)
         }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 

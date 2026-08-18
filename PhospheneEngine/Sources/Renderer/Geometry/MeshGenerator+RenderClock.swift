@@ -40,8 +40,19 @@ extension MeshGenerator {
     /// otherwise glide at the wrong rate).
     public func advanceBeatHoldForSettling(_ features: FeatureVector, stems: StemFeatures = .zero) {
         let delta = nextRenderDelta()
+        advanceAllHolds(features, stems: stems, delta: delta)
+    }
+
+    /// ⚠ EVERY hold, on every path. FTR.18 shipped a rendered A/B that measured nothing because
+    /// `advanceBeatHold` left the glides on their frame-0 seed; FTR.30 repeated it by adding
+    /// `arcHold` to `draw` alone, which made the buffer(7) wiring gate compare two unseeded arcs
+    /// and read them as identical. A hold that is not advanced on undrawn frames is a hold whose
+    /// state depends on the draw cadence.
+    func advanceAllHolds(_ features: FeatureVector, stems: StemFeatures, delta: Float) {
         sectionHold.offerStems(stems)
         _ = sectionHold.update(features, renderDeltaTime: delta)
+        arcHold.offerStems(stems)
+        _ = arcHold.update(features, renderDeltaTime: delta)
         beatHold.offerStems(stems)
         _ = beatHold.update(features, renderDeltaTime: delta)
     }
@@ -61,6 +72,8 @@ extension MeshGenerator {
     /// regardless of the delta.
     public func advanceBeatHold(_ features: FeatureVector, stems: StemFeatures = .zero) {
         let delta = renderDeltaOverride ?? Float(1.0 / 60.0)
+        arcHold.offerStems(stems)
+        _ = arcHold.update(features, renderDeltaTime: delta)
         sectionHold.offerStems(stems)
         _ = sectionHold.update(features, renderDeltaTime: delta)
         beatHold.offerStems(stems)
