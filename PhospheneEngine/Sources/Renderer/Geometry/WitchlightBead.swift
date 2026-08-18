@@ -144,6 +144,28 @@ public struct WitchlightTuning: Sendable {
     /// Circular-EMA time constant on the harmonic phase, seconds (CR.1.2 settled on 1.5 s).
     public var phaseTau: Float = 1.5
 
+    /// Seconds. A SECOND, shorter circular pole applied before `phaseTau` — deliberately a
+    /// two-stage response, which is unusual enough to need its reason recorded.
+    ///
+    /// Until BUG-095, `TonalAnalyzer` smoothed this phase itself, so Witchlight's own
+    /// `phaseTau` was in fact the second stage of a cascade. Witchlight was tuned AND
+    /// CERTIFIED (2026-08-07) against that two-pole response. Removing the analyzer's stage
+    /// was correct for every other consumer — Nacre, Cymatic and Fractal Tree each smooth on
+    /// their own and were certified WITHOUT a second pole — but for Witchlight it removed
+    /// half of a response Matt had already approved: the stroke went from 50 to 74 heading
+    /// turns on his 2026-08-18 session and he read the result as *"slightly less coupled to
+    /// the beat"*. The beat events themselves were bit-identical across the two builds
+    /// (50 downbeat bursts, 50 off-beat pulses, flares within 10 % of a beat 86 % of the
+    /// time); what fell was their LEGIBILITY against a busier stroke.
+    ///
+    /// 0.8 s reproduces the certified 50 turns exactly. Raising `phaseTau` instead cannot —
+    /// it saturates at 68 turns however high it goes, because a longer single pole is not
+    /// equivalent to a cascade: the second pole attenuates fast motion in a way extra
+    /// duration does not. That is the same asymmetry that caused BUG-095.
+    ///
+    /// Set to 0 for a single-pole response.
+    public var phasePreTau: Float = 0.4
+
     /// Laplacian smoothing strength, per SECOND (not per frame).
     ///
     /// Per-frame was both frame-rate-dependent and far too strong: λ = 0.30 applied every
