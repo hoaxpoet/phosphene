@@ -117,7 +117,14 @@ public final class MeshGenerator: @unchecked Sendable {
     /// local-file path (BUG-087) — 2.1 samples of ease then 4.3 samples of stillness per beat.
     /// τ = 1/4 beat: at 94–124 BPM that is 160–120 ms, so ~86 % of the travel happens inside
     /// one beat while the value never actually arrives, which is what removes the freeze.
-    var beatHold = BeatHold(continuousGlideBeats: 0.12, beatSpeedBoost: 1.0)
+    /// FTR.31 — BEAT-LATCHED again (a quarter-beat ease onto a target sampled on the beat).
+    ///
+    /// FTR.22/23 made this hold continuous because Matt called the stepping *"robotic"* — but it
+    /// was carrying the TRUNK's size then. FTR.29/30 moved the trunk and everything else off it,
+    /// and FTR.31 gives it one job: the TIPS, which Matt asked to put on the beat after asking
+    /// three times what motivates them. Stepping is what he wants there; it was never what he
+    /// objected to for a canopy of fine branches, only for the whole skeleton's height.
+    var beatHold = BeatHold(glideBeats: 0.25)
 
     /// FTR.16 — SECTION-SCALE glide of the same vector, bound at object/mesh buffer(6).
     ///
@@ -141,22 +148,11 @@ public final class MeshGenerator: @unchecked Sendable {
     /// the share of total motion on the beat or the bar — goes 22 % → 73 %.
     var sectionHold = BeatHold(glideSeconds: 6.0)
 
-    /// FTR.30 — the ARC glide, τ 0.6 s, bound at object/mesh buffer(7) with its stems at
-    /// buffer(2). A THIRD timescale, because Matt's FTR.29 review needed two different things
-    /// from one glide and 6 s could not be both:
-    ///
-    ///   *"Tree is not really growing or receding — this looks pretty much fixed."* At 6 s the
-    ///   trunk travelled 0.005/s — 17 px in three seconds, which is a drift, not an arc.
-    ///   *"Unclear what is motivating the movement of the tips."* Their driver
-    ///   `otherOnsetRate` travels **10.2/s** — 68× the gait's lean, and FTR.12 already measured
-    ///   that it is residue ACTIVITY, not an instrument, so there is nothing for a viewer to
-    ///   connect it to. Unsmoothed it was also the only fast motion before the grid arrives,
-    ///   which is his *"on initial playback, the preset was moving aggressively."*
-    ///
-    /// 0.6 s serves both: the trunk travels 0.020/s (≈65 px in three seconds — visible as growth)
-    /// and the tips' driver drops ~10×, keeping their flicker while ending the thrash. Buffer(6)
-    /// stays at 6 s for the things that must be STEADY — the gait's stride, the canopy angle, and
-    /// FTR.18's density correction.
+    /// FTR.30 — the ARC glide, τ 0.6 s, at buffer(7) with its stems at buffer(2). A THIRD
+    /// timescale: 6 s made the growth a drift (0.005/s = 17 px in three seconds, Matt's *"pretty
+    /// much fixed"*), while live left the tips thrashing at 10.2/s. 0.6 s gives the trunk 0.020/s
+    /// and cuts the tips ~10×. Buffer(6) stays at 6 s for what must be STEADY — the gait's stride,
+    /// the canopy angle, FTR.18's density correction. Numbers: the FTR.30 plan entry.
     var arcHold = BeatHold(glideSeconds: 0.6)
 
     /// FTR.19 — the D-209 circular smoother for `tonalPhaseFifths`, applied to the vector this
@@ -306,9 +302,6 @@ public final class MeshGenerator: @unchecked Sendable {
         // buffer(4) reflects the real beat boundaries and not the draw cadence.
         // FTR.13 — offer the stems BEFORE update: `update` is the one place the beat boundary
         // is detected, and it latches both sides there.
-        beatHold.offerStems(stems)
-        var heldFeat = beatHold.update(features, renderDeltaTime: renderDelta)
-
         // FTR.28 — REPLACE both phases with render-rate locked ones before any stage reads them.
         // The tempo comes from `beatHold`, which is already measuring beat intervals for its own
         // trust test, so the dance and the hold can never disagree about the tempo. When the hold
@@ -316,8 +309,13 @@ public final class MeshGenerator: @unchecked Sendable {
         // returns 0 and the tree simply does not dance — the correct behaviour under the
         // cold-start phase contract, where an ungated accent would fire at the wrong phase.
         applyDanceClocks(to: &feat, live: features, renderDelta: renderDelta)
+
+        // FTR.31 — the holds are fed `feat`, whose phases are LOCKED, not `features`. Why that
+        // matters, and what it cost to find: `MeshGenerator+RenderClock.applyDanceClocks`.
+        beatHold.offerStems(stems)
+        var heldFeat = beatHold.update(feat, renderDeltaTime: renderDelta)
         arcHold.offerStems(stems)
-        var arcFeat = arcHold.update(features, renderDeltaTime: renderDelta)
+        var arcFeat = arcHold.update(feat, renderDeltaTime: renderDelta)
         var arcStemFeat = arcHold.glidingStemFeatures
         var heldStemFeat = beatHold.glidingStemFeatures
         // FTR.16 — one delta, both holds: two clocks would drift apart within a track.

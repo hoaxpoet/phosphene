@@ -92,6 +92,18 @@ extension MeshGenerator {
     /// The tempo offered here is `BeatHold`'s when it has one, but `DancePhase` does not depend on
     /// it: that hold vouches for a tempo on only 13 % of frames on real captures, and gating the
     /// dance on it produced no lock at all. See `DancePhase` for the measurement.
+    /// ★★★ FTR.31 — AND THE HOLDS MUST BE FED THE OUTPUT OF THIS, NOT THE RAW VECTOR.
+    ///
+    /// `BeatHold` detects a beat by watching `beatPhase01` wrap and measures the intervals between
+    /// wraps to decide whether the grid is trustworthy. Fed the RAW field it watches a staircase —
+    /// ~15 updates a second in steps of ~0.109 of a beat — and its intervals carry ±0.069 s of
+    /// quantisation jitter on a 0.638 s beat.
+    ///
+    /// Fed the LOCKED phase, with `DancePhase`'s rate estimator corrected (see that type), the
+    /// same hold on the same capture goes from vouching for a tempo on **0 of 3000 frames to
+    /// 2650 of 3000 (88 %)**, at 0.2 % tempo error. That is what made "tips on the beat"
+    /// buildable with machinery that has existed since FTR.10 — and it means the beat-step Matt
+    /// chose at FTR.10 had never actually been engaging.
     func applyDanceClocks(to feat: inout FeatureVector,
                           live: FeatureVector,
                           renderDelta: Float) {

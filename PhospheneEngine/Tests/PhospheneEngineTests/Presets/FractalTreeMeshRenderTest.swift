@@ -2140,7 +2140,7 @@ struct FractalTreeMeshRenderTest {
         // Start past the grid's cold start (it needs a bar clock plus 8 stable beats) and take
         // 6 s of consecutive frames — long enough for ~9 beats and ~2 bars.
         let startRow = rows.firstIndex { ($0["time"] ?? 0) >= 14.0 } ?? 0
-        let sampleCount = min(360, rows.count - startRow)
+        let sampleCount = min(Int(ProcessInfo.processInfo.environment["FT_GAIT_FRAMES"] ?? "360") ?? 360, rows.count - startRow)
         guard sampleCount > 120 else { return }
 
         var fifths = FifthsSmoother()
@@ -2206,10 +2206,21 @@ struct FractalTreeMeshRenderTest {
             let p = row["beatPhase01"] ?? 0
             return exp(-5.0 * p) * sin(2 * Double.pi * p)
         }
+        // ⚠ THE DECOY IS AN INCOMMENSURATE TEMPO, NOT A TIME-REVERSED CLOCK. The reversed clock
+        // was a valid control only while the pose was NOT periodic: reverse a sine and you get
+        // ±the same sine, so once FTR.31 made the tree genuinely periodic the decoy scored +0.813
+        // against a real +0.991 and this gate failed a build that had just got dramatically
+        // better. A clock running at 1/1.37 of the bar rate is equally smooth and equally
+        // periodic, and cannot stay aligned — which is the property a control needs.
+        let decoyBar = { () -> Double in
+            let bpm = rows[startRow]["grid_bpm"] ?? 0
+            return (bpm > 1 ? 60.0 / bpm : 0.638) * 4 * 1.37
+        }()
+        let decoyBasis: [Double] = times.map { sin(2 * Double.pi * ($0 - times[0]) / decoyBar) }
         let swayCorr = Self.correlation(sway, barWave)
-        let swayDecoy = Self.correlation(sway, barWave.reversed().map { $0 })
+        let swayDecoy = Self.correlation(sway, decoyBasis)
         let bounceCorr = Self.correlation(bounce, beatWave)
-        let bounceDecoy = Self.correlation(bounce, beatWave.reversed().map { $0 })
+        let bounceDecoy = Self.correlation(bounce, decoyBasis)
         print(String(format:
             "[fractal-tree/gait] IN STEP WITH THE CLOCK: sway r=%+.3f (decoy %+.3f) | bounce r=%+.3f (decoy %+.3f)",
             swayCorr, swayDecoy, bounceCorr, bounceDecoy))
@@ -2373,6 +2384,9 @@ struct FractalTreeMeshRenderTest {
             sway.append(pose.centroidX)
             bounce.append(pose.centroidY)
         }
+        print(String(format: "[fractal-tree/gait-control] beatHold tempo after the run: %@  isStepping=%@",
+                     generator.beatHold.beatPeriodSeconds.map { String(format: "%.4f s", $0) } ?? "nil",
+                     generator.beatHold.isStepping ? "YES" : "no"))
         let dt = 1.0 / fps
         let settled = Int(6.0 * fps)          // drop the pre-grid cold start
         sway = Array(sway.dropFirst(settled))

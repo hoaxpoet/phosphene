@@ -538,8 +538,15 @@ void fractal_tree_object_shader(
         //
         // 0.6 s cuts its travel ~10× and keeps the flicker. What it does NOT do is make the route
         // legible; that needs a different primitive, and choosing one is Matt's call.
-        float residueActivity = stemsArc.other_onset_rate
-                              / (stemsArc.other_onset_rate + 18.0f);
+        // ★ FTR.31 — BACK ON THE BEAT-HELD STEMS (buffer 5), which is what Matt asked for:
+        // *"tips on the beat."* FTR.13 intended exactly this and its comment claimed it, but the
+        // claim was false for eighteen increments — BUG-096 measured the hold engaging on 0–13 %
+        // of frames because it was watching a staircase phase, so `stemsHeld` was effectively
+        // live. FTR.31 feeds the holds `DancePhase`'s locked phase, so the latch actually fires
+        // on beats now. The 0.6 s arc smoothing FTR.30 added is no longer needed here: a value
+        // sampled once per beat cannot thrash at 10.2/s whatever its source does between beats.
+        float residueActivity = stemsHeld.other_onset_rate
+                              / (stemsHeld.other_onset_rate + 18.0f);
 
         // D-019 WARMUP. Every stem field is zero until separation converges (~10 s), and a
         // preset that reads one raw shows nothing until then. Crossfade from the old
@@ -555,7 +562,10 @@ void fractal_tree_object_shader(
         // (every statistic of it is a clock, not music), and unsmoothed it travelled 1.66/s — the
         // aggressive motion of the first ten seconds, before the stems converge and before the
         // grid gives the tree anything to dance to.
-        float melody = mix(fArc.beat_mid / (fArc.beat_mid + 2.2f), residueActivity, stemsAlive);
+        // FTR.31 — the cold-start leg is beat-held too, so the tips step from frame one rather
+        // than thrashing until the stems converge. Before a grid exists the hold tracks live and
+        // this is a continuous value again, which is the honest fallback: no clock, no steps.
+        float melody = mix(fHeld.beat_mid / (fHeld.beat_mid + 2.2f), residueActivity, stemsAlive);
 
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
