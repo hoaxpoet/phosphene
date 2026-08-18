@@ -2216,11 +2216,80 @@ struct FractalTreeMeshRenderTest {
             oscillates correctly with every other driver frozen, so a failure HERE means the \
             dance is not surviving real material rather than being mis-wired.
             """)
+        // ── FTR.29: COORDINATION, measured on the rendered pixels ────────────────────
+        //
+        // Matt's rejection of FTR.28 was two things — *"moves too much and in an uncoordinated
+        // manner… I don't think it reads as a dance"* — and neither is answered by "is a beat
+        // component present". What he is describing is the SHARE of the motion that belongs to
+        // the music: on that build only **22 %** of the tree's travel was on the beat or the bar,
+        // with the canopy angle alone travelling 3.5× further than the lean.
+        //
+        // So: regress the rendered pose on the clock basis and report R² — the fraction of the
+        // pose's variance the two clocks explain. This is the number his complaint is about, and
+        // it is measured on pixels rather than on my model of the shader, which is the mistake
+        // that produced FTR.24's 5× error.
+        let basis: [[Double]] = (0..<sway.count).map { i in
+            let bar = (phaseRows[i]["barPhase01_permille"] ?? 0) / 1000
+            let beat = phaseRows[i]["beatPhase01"] ?? 0
+            return [sin(2 * Double.pi * bar), cos(2 * Double.pi * bar),
+                    exp(-5.0 * beat) * sin(2 * Double.pi * beat), 1.0]
+        }
+        let swayR2 = Self.explainedVariance(sway, basis: basis)
+        let bounceR2 = Self.explainedVariance(bounce, basis: basis)
+        print(String(format:
+            "[fractal-tree/gait] COORDINATION (R² of pose on the clock basis): sway %.2f | bounce %.2f",
+            swayR2, bounceR2))
+        #expect(swayR2 > 0.45, """
+            the clocks explain only \(swayR2) of the tree's lean — the motion is mostly NOT the \
+            music, which is Matt's "uncoordinated… does not read as a dance". Raising the gait's \
+            amplitude does not fix this; QUIETING the free-running channels does (FTR.29 took the \
+            canopy angle, the size arc and the gait's own gain onto slow glides).
+            """)
+
         #expect(swayCorr > abs(swayDecoy) * 1.5, """
             the lean's correlation with the bar (\(swayCorr)) is not clearly better than with a \
             time-reversed decoy clock (\(swayDecoy)) — that margin is what separates "in step" \
             from "smooth signals correlate with anything".
             """)
+    }
+
+    /// Fraction of a series' variance explained by a least-squares fit onto `basis` columns.
+    /// Solved by normal equations with Gaussian elimination — four columns, so this is cheap and
+    /// needs no linear-algebra dependency.
+    private static func explainedVariance(_ y: [Double], basis: [[Double]]) -> Double {
+        let n = min(y.count, basis.count)
+        guard n > 16, let k = basis.first?.count, k > 0 else { return 0 }
+        var ata = [[Double]](repeating: [Double](repeating: 0, count: k + 1), count: k)
+        for i in 0..<n {
+            for a in 0..<k {
+                for b in 0..<k { ata[a][b] += basis[i][a] * basis[i][b] }
+                ata[a][k] += basis[i][a] * y[i]
+            }
+        }
+        for col in 0..<k {                                  // Gaussian elimination, partial pivot
+            var pivot = col
+            for row in (col + 1)..<k where abs(ata[row][col]) > abs(ata[pivot][col]) { pivot = row }
+            ata.swapAt(col, pivot)
+            let d = ata[col][col]
+            guard abs(d) > 1e-12 else { return 0 }
+            for j in col...k { ata[col][j] /= d }
+            for row in 0..<k where row != col {
+                let factor = ata[row][col]
+                guard factor != 0 else { continue }
+                for j in col...k { ata[row][j] -= factor * ata[col][j] }
+            }
+        }
+        let coefficients = (0..<k).map { ata[$0][k] }
+        let mean = y.prefix(n).reduce(0, +) / Double(n)
+        var ssRes = 0.0, ssTot = 0.0
+        for i in 0..<n {
+            var fit = 0.0
+            for a in 0..<k { fit += coefficients[a] * basis[i][a] }
+            ssRes += (y[i] - fit) * (y[i] - fit)
+            ssTot += (y[i] - mean) * (y[i] - mean)
+        }
+        guard ssTot > 1e-15 else { return 0 }
+        return max(0, 1 - ssRes / ssTot)
     }
 
     /// Pearson correlation, mean-removed. Returns 0 when either series is flat.

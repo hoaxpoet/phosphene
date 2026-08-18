@@ -309,7 +309,25 @@ void fractal_tree_object_shader(
         // tips route is unchanged and is now described as residue activity. Evidence and the
         // one remaining candidate (a PANNs guitar class, clean guitar only) are in the tips
         // routing note in the object shader.
-        float2 heldGrowth = fractal_growth(fHeld, fSection);
+        // ── FTR.29: THE TRUNK'S SIZE IS AN ARC, AND THE GAIT CARRIES THE BEAT ────
+        //
+        // Matt on the FTR.28 gait: *"Moves too much and in an uncoordinated manner — looks like a
+        // very bad dancer… I don't think it reads as a dance."* Measured on his capture
+        // `2026-08-18T14-29-37Z`, only **22 % of the tree's motion was on the beat or the bar**.
+        // The gait was the QUIETEST thing on screen: the canopy angle travelled 3.5× further than
+        // the lean and turned 2.69 times a second — faster than the beat — and the size term and
+        // the branch count churning off it accounted for most of the rest.
+        //
+        // So the size now reads the SECTION glide (6 s), not the beat-held vector: it becomes the
+        // slow arc Matt asked for rather than a third source of fast motion. Coordination goes
+        // **22 % → 73 %** and total motion falls to **a quarter** of what he rejected.
+        //
+        // ⚠ THIS SUPERSEDES FTR.10's BEAT-STEP ON THE TRUNK, which he chose twice — deliberately,
+        // and only because the gait now carries the beat far better than that hold ever did.
+        // BUG-096: the hold engaged on ~13 % of frames, so "the trunk steps on the beat" was
+        // absent seven frames in eight; the gait is on the beat every frame. The hold itself
+        // stays for the tips (buffer 4/5 still feed the melodic layer).
+        float2 heldGrowth = fractal_growth(fSection, fSection);
         float reach = heldGrowth.x;
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
@@ -599,7 +617,11 @@ void fractal_tree_object_shader(
         // full-range swing reads as the tree opening; on thickness it reads as every stroke
         // fattening and thinning continuously, which is motion without meaning. Same primitive,
         // same span, opposite legibility — the CHANNEL decides whether a signal reads.
-        float flux   = saturate((fHeld.spectral_flux - 0.10f) / 0.85f);
+        // FTR.29 — `fSection`, not `fHeld`. On flux the spread turned 2.69/s and travelled
+        // 0.521/s: the loudest motion in the preset and unrelated to the beat, which is most of
+        // what made the dance unreadable. On the 6 s glide it travels 0.016/s — the canopy still
+        // opens with the spectrum, over a phrase instead of within a beat.
+        float flux   = saturate((fSection.spectral_flux - 0.10f) / 0.85f);
         float spread = 0.35f + flux * 0.24f;   // 20° … 34°
 
         // Only geometry terms travel in the payload. The fragment stage reads its own
@@ -626,7 +648,12 @@ void fractal_tree_object_shader(
         // Gain, not phase: `amp` is the silence gate (0 before the first note), and the energy
         // term makes a loud passage dance harder. Floor at 0.45 so a quiet passage still moves —
         // a dancer does not stop between phrases.
-        float danceEnergy = saturate(f.bass_dev / (f.bass_dev + 0.12f));
+        // FTR.29 — the STRIDE must be steady. This read live `bass_dev` and the gain travelled
+        // **1.075/s** — seven times the lean's own travel — so the step size changed about 1.3
+        // times a second. That is precisely what a bad dancer looks like, and it was the single
+        // largest contributor to Matt's *"uncoordinated"*. On the section glide it travels
+        // 0.064/s: the dance gets bigger as a passage builds, not within a bar.
+        float danceEnergy = saturate(fSection.bass_dev / (fSection.bass_dev + 0.12f));
         payload->dance = amp * (0.45f + 0.55f * danceEnergy);
         payload->aspect_ratio = max(f.aspect_ratio, 0.1f);
     }
@@ -757,12 +784,16 @@ void fractal_tree_mesh_shader(
     // Lean the whole figure. 0.115 rad ≈ 6.6° at full dance, which carries the top of a
     // half-height trunk about 5 % of frame width — a sway a viewer reads as the tree rocking,
     // where the 3° per-level term alone was a rounding error.
-    float lean     = payload.dance * rootSway * 0.115f;
+    // FTR.29 — ×1.5 (0.115 → 0.172 rad ≈ 9.8°). Raising the gait while quieting everything else
+    // takes the on-clock share of motion to 81 % and STILL leaves the tree moving only a third as
+    // much as the build Matt called "moves too much": the complaint was never the quantity of
+    // motion on its own, it was that almost none of it was on the music.
+    float lean     = payload.dance * rootSway * 0.172f;
     float2 dir     = float2(sin(lean), cos(lean));
     // Spring on the beat: the whole skeleton compresses on the impact and rebounds. Applied to
     // the base length so every segment inherits it — a bounce is the body dropping, not the
     // branches shortening independently.
-    float  seg_len = base_len * (1.0f + payload.dance * rootBounce * 0.13f);
+    float  seg_len = base_len * (1.0f + payload.dance * rootBounce * 0.195f);
     float  thick   = 0.038f + payload.reach * 0.020f;
 
     // Replay ancestors from root toward this branch.
