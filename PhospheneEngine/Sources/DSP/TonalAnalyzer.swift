@@ -185,7 +185,7 @@ public final class TonalAnalyzer {
         )
 
         return Result(
-            phaseFifths: atan2(tIm[4], tRe[4]),   // k=5, circle of fifths — RAW (BUG-092)
+            phaseFifths: atan2(tIm[4], tRe[4]),   // k=5, circle of fifths — RAW (BUG-095)
             phaseThirds: atan2(tIm[3], tRe[3]),   // k=4, major thirds
             consonance: smoothedConsonance,
             tension: tensionRaw * gate,
@@ -214,7 +214,7 @@ public final class TonalAnalyzer {
         return (tRe, tIm)
     }
 
-    // BUG-092 — this analyzer emits `phaseFifths` RAW, and every consumer smooths it itself.
+    // BUG-095 — this analyzer emits `phaseFifths` RAW, and every consumer smooths it itself.
     //
     // FTR.3g added a vector EMA here because Fractal Tree read the field straight into hue.
     // FTR.19 (D-209) then gave Fractal Tree its own `CircularPhaseSmoother` — superseding the

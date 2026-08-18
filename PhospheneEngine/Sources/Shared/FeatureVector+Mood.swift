@@ -1,4 +1,4 @@
-// FeatureVector+Mood — safe unipolar readings of the BIPOLAR mood primitives (BUG-091).
+// FeatureVector+Mood — safe unipolar readings of the BIPOLAR mood primitives (BUG-094).
 //
 // `valence` and `arousal` are declared −1…+1. A consumer that wants a 0…1 envelope must MAP
 // that range, not clamp it:
