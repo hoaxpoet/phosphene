@@ -209,6 +209,14 @@ public struct BeatHold: Sendable {
         sawBarClock && intervals.count == Self.window && Self.isSteady(intervals)
     }
 
+    /// FTR.28 — the mean of the beat intervals this hold has measured, in seconds, or `nil`
+    /// until the evidence window is full. The gait's render-rate phase needs a period to advance
+    /// against, and this object is already the one tracking it; deriving a second estimate
+    /// elsewhere would give the dance and the hold two different ideas of the tempo.
+    public var beatPeriodSeconds: Float? {
+        intervals.count == Self.window ? Self.mean(intervals) : nil
+    }
+
     /// Feed one frame and get back the beat-held vector.
     ///
     /// - Parameter frame: the live `FeatureVector` for this frame.

@@ -137,11 +137,12 @@ public final class MeshGenerator: @unchecked Sendable {
 
     /// FTR.19 — the D-209 circular smoother for `tonalPhaseFifths`, applied to the vector this
     /// generator binds. `TonalAnalyzer` emits the phase RAW; every other consumer smooths it
-    /// itself, and Fractal Tree did not — its hue moved 144° at p95 and up to 180° per analysis
-    /// update on Matt's 2026-08-16 capture, which is his *"colour changes feel glitchy, not
-    /// intentional."* Applied here rather than in the engine so the other consumers, which
-    /// already smooth, are not double-smoothed.
+    /// itself, and Fractal Tree did not (144° at p95 — Matt's *"colour changes feel glitchy"*).
+    /// Applied here, not in the engine, so consumers that already smooth are not double-smoothed.
     private var fifthsSmoother = CircularPhaseSmoother()
+    /// FTR.28 — the gait's clocks. See `DancePhase` and `applyDanceClocks`.
+    var beatDance = DancePhase()
+    var barDance = DancePhase()
 
     /// FTR.14 — render-clock state. The delta arithmetic that reads these lives in
     /// `MeshGenerator+RenderClock.swift`; see that file for why the clock is separate from
@@ -275,6 +276,14 @@ public final class MeshGenerator: @unchecked Sendable {
         beatHold.offerStems(stems)
         let renderDelta = nextRenderDelta()
         var heldFeat = beatHold.update(features, renderDeltaTime: renderDelta)
+
+        // FTR.28 — REPLACE both phases with render-rate locked ones before any stage reads them.
+        // The tempo comes from `beatHold`, which is already measuring beat intervals for its own
+        // trust test, so the dance and the hold can never disagree about the tempo. When the hold
+        // has no period yet (cold start, reactive mode, D-154 irregular material) `DancePhase`
+        // returns 0 and the tree simply does not dance — the correct behaviour under the
+        // cold-start phase contract, where an ungated accent would fire at the wrong phase.
+        applyDanceClocks(to: &feat, live: features, renderDelta: renderDelta)
         var heldStemFeat = beatHold.glidingStemFeatures
         // FTR.16 — one delta, both holds: two clocks would drift apart within a track.
         sectionHold.offerStems(stems)
@@ -333,54 +342,6 @@ public final class MeshGenerator: @unchecked Sendable {
             // Vertex fallback: fullscreen triangle, 3 vertices.
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         }
-    }
-
-    // MARK: - Private Pipeline Compilation
-
-    /// Compile the native mesh render pipeline (M3+).
-    private static func compileMeshPipeline(
-        device: MTLDevice,
-        library: MTLLibrary,
-        pixelFormat: MTLPixelFormat
-    ) throws -> MTLRenderPipelineState {
-        guard let meshFn = library.makeFunction(name: "mesh_shader") else {
-            throw MeshGeneratorError.functionNotFound("mesh_shader")
-        }
-        guard let fragmentFn = library.makeFunction(name: "mesh_fragment") else {
-            throw MeshGeneratorError.functionNotFound("mesh_fragment")
-        }
-        // Object shader is optional; nil skips the object stage.
-        let objectFn = library.makeFunction(name: "mesh_object_shader")
-
-        let descriptor = MTLMeshRenderPipelineDescriptor()
-        descriptor.objectFunction   = objectFn
-        descriptor.meshFunction     = meshFn
-        descriptor.fragmentFunction = fragmentFn
-        descriptor.colorAttachments[0].pixelFormat = pixelFormat
-
-        let (state, _) = try device.makeRenderPipelineState(descriptor: descriptor, options: [])
-        return state
-    }
-
-    /// Compile the vertex-shader fallback pipeline (M1/M2).
-    private static func compileFallbackPipeline(
-        device: MTLDevice,
-        library: MTLLibrary,
-        pixelFormat: MTLPixelFormat
-    ) throws -> MTLRenderPipelineState {
-        guard let vertexFn = library.makeFunction(name: "mesh_fallback_vertex") else {
-            throw MeshGeneratorError.functionNotFound("mesh_fallback_vertex")
-        }
-        guard let fragmentFn = library.makeFunction(name: "mesh_fragment") else {
-            throw MeshGeneratorError.functionNotFound("mesh_fragment")
-        }
-
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction   = vertexFn
-        descriptor.fragmentFunction = fragmentFn
-        descriptor.colorAttachments[0].pixelFormat = pixelFormat
-
-        return try device.makeRenderPipelineState(descriptor: descriptor)
     }
 }
 
