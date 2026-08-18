@@ -718,65 +718,10 @@ A full debugging round on 2026-08-04 was spent on a missing (gitignored) `Phosph
 - **Runbook.** Setup step 5 said to point the Debug/Release xcconfig at `Phosphene.local` in Xcode. That is stale and was the misleading half of the round: `project.pbxproj` already sets `baseConfigurationReference` to `Phosphene.xcconfig`, which ends with `#include? "Phosphene.local.xcconfig"` — creating the file is sufficient. Replaced with "build", plus a note that the file is gitignored and therefore does not survive `git clean -fdx`, a fresh clone, or a new worktree, which is how it went missing.
 
 ### Increment RECON.1–.3 — Production audit: hygiene + doc reconciliation ✅ (2026-08-03)
-
-A full production-environment audit (defects, plan state, pipeline health, dead code, repo
-hygiene) followed by the cleanup it justified. **The audit's main finding was not a code
-defect — it was that this file and `KNOWN_ISSUES.md` had drifted materially from the tree**:
-22 stale or missing plan entries and 12 tracker contradictions, including work that had
-shipped with no row at all and phase headers contradicting their own bodies ~240 lines below.
-
-- **RECON.1 — hygiene.** Pruned 47 GB of stale Xcode DerivedData (52 GB → 4.9 GB, 58 → 6
-  `PhospheneApp-*` dirs) while explicitly **preserving the canonical primary-project build**
-  so the Screen-Recording grant doesn't churn, then reseeded LaunchServices per the known
-  prune+reseed remedy. Removed the merged `ftr1` worktree and its branch. Deleted three
-  unreferenced `fbs/` diagnostic CSVs and `tools/data/corpus_manifest.csv` (verified
-  byte-identical to the committed `.csv.gz` every consumer actually reads); relocated three
-  stray root-level docs into `docs/`. **Explicitly NOT deleted after checking:**
-  `docs/VISUAL_REFERENCES/_pg_spares` (Matt's curated alternates, cited by three reference
-  READMEs — a code-reference count made them look orphaned) and `tunes_club.csv`.
-- **RECON.2 — `KNOWN_ISSUES.md`.** See that file's §Open Index note. BUG-080 / BUG-071 /
-  BUG-041 rotated out of §Open; **BUG-060 reopened** on Matt's report that the hang recurred;
-  BUG-084 filed so it survived BUG-041's closure. DocIntegrityTests 12/12 green.
-- **RECON.3 — this file.** Phase headers reconciled with their bodies (TONAL, ASH, QG, FBS,
-  AGC3), §Immediate Next Increments rewritten from a 2026-05-06 ordering to actual current
-  work, Milestone D recounted from the sidecars (16/26, was 14/25), AV.3.x marked superseded
-  by AV.7, DBN.3's satisfied-but-unresolved gate flagged for Matt, and rows added below for
-  work that shipped without one.
-
-**Deliberately left for Matt:** the 5 superseded + 3 stranded unmerged remote branches, and
-the BUG-080 "third instance" decision. **Queued follow-ups:** fixture-restore consolidation
-behind one shared manifest, CI Option B, wiring `check_drums_beat_intensity.sh` into CI, and
-deleting the zero-consumer RMENV.2/.3 + MFX.1 capabilities (D-213).
-
 ### Increment MEN.2a — Meniscus: serpentine wave surface (stub) ✅ (2026-08-03, `c0453fd9`)
-
-First increment of a new preset. `Meniscus.json` + shader stub shipped `certified: false`;
-design plan and curated references in `docs/presets/MENISCUS_PLAN.md`. **MEN.2b** (faithful
-base port — drop placement mechanism verified, force scale NOT calibrated), **MEN.3** (uplift)
-and **MEN.4** (polish + cert) are specced in that plan. *(Added at RECON.3 — the phase had
-landed and merged with no row in this file.)*
-
 ### Increment LFS.2 / LFS.3 — reference + diagnostic images leave git (D-211) ✅ (2026-07-31 → 2026-08-03)
-
-Completed the reference-media migration out of git after the LFS billing reversal, and
-recorded the completion plus the three gaps it surfaced in the runbook. **Consequence worth
-knowing:** `docs/VISUAL_REFERENCES` and `docs/diagnostics` now hold **zero** gitignored files
-in the primary checkout, so `Scripts/link_fixtures.sh` warns on every run by design. That
-warning is expected, not a fault — but it is also the "third instance" noted in BUG-080,
-where the propagation design assumes on-disk copies that nothing re-establishes. **Decision
-still owed** (Matt): whether those trees get restored on disk, or the job moves to a human
-step. The LFS history purge itself needs a GitHub Support ticket to GC unreferenced objects
-(`Scripts/reclaim-lfs-visual-refs.sh` cannot finish alone). *(Added at RECON.3 — D-211 had
-zero references in this file, uniquely among D-203…D-212.)*
-
 ### Increment GT.3 — BeatBench live baseline ✅ (2026-07-30)
 ### Increment BUG-080 fix — manifest-driven `link_fixtures.sh` ✅ (2026-08-03, `2b36c34d`)
-
-Gitignored-asset propagation repaired at both gaps; full engine suite green in a fresh
-worktree. Detail in `KNOWN_ISSUES.md` §Resolved. **Known residual:** the manifest is
-duplicated by hand against the Swift presence gates — a single shared manifest consumed by
-both is the recorded follow-up, and is queued as a RECON item. *(Added at RECON.3.)*
-
 ### Increment FDYRETIRE.1 — Faraday retired; harness audit kept (D-204) ✅ (2026-07-27)
 ### Increment HARNESS.1 — the replay harness carried almost none of the routes it replayed ✅ (2026-07-27)
 ### Increment FDY.1 — Faraday: a Swift–Hohenberg sea wired into the engine (D-203) 🔨 (2026-07-27)
@@ -2612,6 +2557,59 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
+
+**FTR.28 — the tree gets a GAIT: the premise change nine tuning rounds never made.** ✅
+code-complete, **pending live M7** (2026-08-17) Matt, asked what he actually pictures: *"the tree
+bounces, sways, grows, and recedes with the music in a coordinated dance. The motion of the
+broomsticks in Fantasia's The Sorcerer's Apprentice is a good example."*
+
+**★★★ THE PREMISE. Every FTR increment drove geometry from an AMPLITUDE — how loud
+(`spectral_surge`), how dense (`spectral_density`), how much changed (`spectral_flux`), did
+something land (`spectral_level_rise`). A dance is a PHASE.** Broomsticks march because they have a
+gait: a cycle locked to the pulse, with the music's intensity deciding only how big each step is.
+This preset had never been given a clock to move ON, which is why BUG-093 could rule out
+"not moving enough" and "a dead channel" and still leave the complaint standing.
+
+**Matt's three product calls, all as recommended:** two layers (bounce per beat under a sway per
+bar); motion travels outward (trunk leads, tips follow); grow/recede stays a slower arc underneath,
+which the existing size machinery already provides — so FTR.28 adds only the dance.
+
+**Shipped.** `DancePhase` (new) + a per-level lagged gait in the mesh shader. The gait is applied
+at TWO scales: at the root, where the whole figure leans on the bar (0.115 rad) and springs on the
+beat (13 % of segment length); and per level inside the ancestor walk with an outward lag
+(0.18 beat / 0.12 bar per depth unit), which is the flex that makes limbs trail the body.
+
+**Four measurement failures on the way, each one a defect this program has hit before:**
+
+1. **The gait applied only inside the ancestor walk moved the body 0.0003 of frame height — 0.3 px.**
+   The walk advances position and THEN rotates, so the first segment out of the root is always
+   vertical: **the tree could not lean.** Fixed by acting at the root as well.
+2. **`beatPhase01` is a STAIRCASE** — 14.6 updates/s in steps of 0.109 of a beat (≈9 per beat, each
+   held ~4 render frames at 59 Hz). Driven raw, the rendered pose's dominant period was **0.133 s:
+   the update cadence, not the music.** That is the FTR.13 / FTR.24 defect a third time, caught by
+   the gate before Matt saw it. Fixed by `DancePhase`, a render-rate phase-locked clock.
+3. **★★★ `BeatHold` vouches for a tempo on only 13 % of frames on a real capture** (47/360; its
+   trust gate wants 8 beat intervals within 20 % spread and a 14.6 Hz phase keeps breaking it).
+   With the dance gated on that, the lean correlated **+0.293 with the bar against a +0.285
+   decoy — no lock at all.** Fixed by having `DancePhase` estimate its own rate from dφ/dt, which
+   needs no confidence gate: the same measurement then reads **+0.757 against +0.222.**
+   ⚠ **This finding is bigger than the dance: the FTR.10 beat-step hold Matt chose has also been
+   engaging on ~13 % of frames.** Filed as BUG-094.
+4. **Autocorrelation was the wrong instrument on real music.** It looks for a PEAK, and the fine
+   tips' broadband churn drowns one — three runs reported "no periodicity" for a provably-correct
+   gait, with the best lag pinned at the search window's edge. A **matched filter against the
+   recorded phases, with a time-reversed decoy as control**, is the instrument that works.
+
+**Gates.** A controlled test freezes every driver but the clocks and asserts both layers land on
+their own periods — **bounce 0.99 beats, sway 4.02 beats**. A real-capture test asserts the lean is
+in step with the bar and beats its decoy by 1.5×. Also fixed: the FTR.25 spark A/B now freezes the
+dance, because `draw` advances the clock between its two encodes and the gait, not the spark, was
+moving the geometry by 0.0078.
+
+**⚠ Honest limits.** The BOUNCE's in-step correlation on real music is weak (+0.124 vs a −0.198
+decoy) — sign-correct and better than chance, but the vertical scalar is 60 % tip churn, so this is
+as much a measurement limit as a visual one. And no frame of this has been seen live: the last two
+canopy changes shipped on fixture evidence and were both rejected.
 
 **FTR.27 — FTR.26 reverted after its live review, and the finding that outranks it (BUG-092).**
 ✅ (2026-08-17) Matt on `2026-08-17T20-01-01Z`: *"sound is back. dislike the new behavior of the

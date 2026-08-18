@@ -80,6 +80,22 @@ struct FractalPayload {
     /// whenever the grid is not trustworthy. Every segment scales off it, so this is the
     /// whole skeleton's size, and it is the one term Matt asked to stop sliding.
     float trunk_len;
+    // ── THE GAIT (FTR.28) ────────────────────────────────────────────────────
+    //
+    // Matt: *"the tree bounces, sways, grows, and recedes with the music in a coordinated
+    // dance… the broomsticks in Fantasia's The Sorcerer's Apprentice."*
+    //
+    // ★★★ THE PREMISE CHANGE, and it is why nine tuning rounds failed. Every FTR increment
+    // drove geometry from an AMPLITUDE signal — how loud (`spectral_surge`), how dense
+    // (`spectral_density`), how much changed (`spectral_flux`), did something land
+    // (`spectral_level_rise`). A dance is not an amplitude, it is a PHASE: broomsticks march
+    // because they have a gait — a cycle locked to the pulse — and the music's intensity only
+    // decides how big each step is. This preset had never been given a clock to move ON.
+    //
+    // So these three carry the dance, and nothing here is a level: two phases and one gain.
+    float beat_phase;   // 0→1 within the beat — the BOUNCE
+    float bar_phase;    // 0→1 within the bar  — the SWAY
+    float dance;        // 0…1 how big the step is: music present × energy
     float aspect_ratio;
     uint  branch_count;   // 15–61: how many branch SLOTS to render this frame (= ceil below)
     /// FRACTIONAL BRANCH COUNT — the same quantity as `branch_count` before rounding, and
@@ -596,6 +612,22 @@ void fractal_tree_object_shader(
         payload->spread       = spread;
         payload->branch_count   = min(count, 63u);
         payload->branch_count_f = countF;
+        // FTR.28 — the gait's clocks and its gain. LIVE (`f`), not held: a gait must run
+        // continuously between beats, which is the opposite of what the FTR.10 hold does to the
+        // trunk's SIZE. The two coexist because they act on different quantities — size steps on
+        // the beat, position oscillates within it.
+        //
+        // COLD START IS HANDLED BY DOING NOTHING. Both phases read 0 in reactive mode and before
+        // a grid exists (D-028), so `dance` has no cycle to ride and the tree simply stands
+        // still — which is the correct behaviour under the cold-start phase contract, where an
+        // ungated beat accent would fire at the wrong phase. No suppression logic needed.
+        payload->beat_phase = f.beat_phase01;
+        payload->bar_phase  = f.bar_phase01;
+        // Gain, not phase: `amp` is the silence gate (0 before the first note), and the energy
+        // term makes a loud passage dance harder. Floor at 0.45 so a quiet passage still moves —
+        // a dancer does not stop between phrases.
+        float danceEnergy = saturate(f.bass_dev / (f.bass_dev + 0.12f));
+        payload->dance = amp * (0.45f + 0.55f * danceEnergy);
         payload->aspect_ratio = max(f.aspect_ratio, 0.1f);
     }
 }
@@ -703,12 +735,56 @@ void fractal_tree_mesh_shader(
     float base_len = payload.trunk_len;
     float ang_base = payload.spread;                    // 20°–34°, from spectral_flux
 
+    // ── FTR.28: THE GAIT ACTS ON THE WHOLE BODY, AT THE ROOT ─────────────────────
+    //
+    // ⚠ The first version applied the gait only INSIDE the ancestor walk, and the body moved
+    // 0.0003 of frame height — 0.3 px, invisible. The cause is structural and worth stating: the
+    // walk advances `pos` and THEN rotates `dir`, so the first segment out of the root is always
+    // exactly vertical no matter what the loop does. **The tree could not lean.** Only branches
+    // above the first joint moved, by 3° each, which the body's centre of mass barely registers.
+    //
+    // So the dance is applied twice, at two scales, which is also what makes it read as one
+    // figure dancing rather than as foliage twitching:
+    //   HERE, at the root — the whole tree leans on the bar and springs on the beat. This is the
+    //   body of the gesture and it is what a viewer sees.
+    //   IN THE WALK, per level with an outward lag — the flex that makes the limbs trail the
+    //   body instead of moving as one rigid cutout.
+    float rootSway   = sin(6.2831853f * payload.bar_phase);
+    float rootBeat   = fract(payload.beat_phase);
+    float rootBounce = exp(-5.0f * rootBeat) * sin(6.2831853f * rootBeat);
+
     float2 pos     = float2(0.0f, -0.90f);  // tree root (bottom-centre, clip space)
-    float2 dir     = float2(0.0f,  1.0f);   // initial direction: straight up
-    float  seg_len = base_len;
+    // Lean the whole figure. 0.115 rad ≈ 6.6° at full dance, which carries the top of a
+    // half-height trunk about 5 % of frame width — a sway a viewer reads as the tree rocking,
+    // where the 3° per-level term alone was a rounding error.
+    float lean     = payload.dance * rootSway * 0.115f;
+    float2 dir     = float2(sin(lean), cos(lean));
+    // Spring on the beat: the whole skeleton compresses on the impact and rebounds. Applied to
+    // the base length so every segment inherits it — a bounce is the body dropping, not the
+    // branches shortening independently.
+    float  seg_len = base_len * (1.0f + payload.dance * rootBounce * 0.13f);
     float  thick   = 0.038f + payload.reach * 0.020f;
 
     // Replay ancestors from root toward this branch.
+    //
+    // ── FTR.28: THE GAIT IS APPLIED HERE, PER LEVEL, WITH AN OUTWARD LAG ─────────
+    //
+    // Matt chose "trunk leads, tips follow" — the property that makes a line of broomsticks
+    // read as a coordinated troupe rather than identical copies. It has to live inside this
+    // walk because that is the only place each level's own depth is known: level 1 reads the
+    // phase now, level 5 reads it a fraction of a beat ago, so a single gesture ripples out to
+    // the tips and the tree acquires flex instead of moving like a cutout.
+    //
+    // Two clocks, two shapes, deliberately different in kind:
+    //   BOUNCE (beat)  a damped single lobe — `exp(-5p)·sin(2πp)` — which is a footfall: an
+    //                  impact and a settle, zero at both ends so it is continuous across the
+    //                  wrap. A sine here would read as a wobble, not a step.
+    //   SWAY  (bar)    a plain sine over the whole bar — the body rocking under the step.
+    //
+    // The amplitudes are small on purpose. This preset's history is nine rejections, two of
+    // them for too much motion ("the trunk is moving too much", "herky-jerky"), and a gait
+    // reads from its TIMING, not its size: 3° of sway that arrives on the beat is legible where
+    // 15° of unsynced swing is noise.
     for (int k = leaf_depth - 1; k >= 0; k--) {
         pos     += dir * seg_len;
         seg_len *= 0.62f;
@@ -716,6 +792,19 @@ void fractal_tree_mesh_shader(
 
         bool  is_left = (leaf_path[k] % 2u == 1u);
         float angle   = ang_base * (is_left ? 1.0f : -1.0f);
+
+        // How far out this joint sits, 0 at the trunk → 1 at the finest level.
+        float segOut  = float(leaf_depth - k) * (1.0f / 5.0f);
+        // Lagged phases. `fract` keeps them in 0…1 after the subtraction wraps negative.
+        float bPhase  = fract(payload.beat_phase - segOut * 0.18f + 1.0f);
+        float sPhase  = fract(payload.bar_phase  - segOut * 0.12f + 1.0f);
+        float bounce  = exp(-5.0f * bPhase) * sin(6.2831853f * bPhase);
+        float sway    = sin(6.2831853f * sPhase);
+        // Sway swings the whole limb one way and back; the bounce kicks it and settles.
+        angle += payload.dance * (sway * 0.055f + bounce * 0.035f);
+        // Squash-and-stretch: the segment shortens on the impact and springs back. Compounds
+        // mildly down the chain (each level multiplies), which is what gives the tips overshoot.
+        seg_len *= 1.0f + payload.dance * bounce * 0.06f;
 
         // 2-D rotation: counterclockwise for left, clockwise for right.
         float ca = cos(angle), sa = sin(angle);

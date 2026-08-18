@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-094 | **P1** · evidence-only, filed 2026-08-17 | dsp.beat / calibration | **`BeatHold`'s trust gate is satisfied on only 13 % of frames on real material — so the beat-step hold Matt chose at FTR.10, and every consumer of `BeatHold.isStepping`, is inactive ~87 % of the time.** Measured on `2026-08-17T20-01-01Z`: the hold reported a beat period on **47 of 360 consecutive frames**, and when it did the period was accurate to 1.5 % (0.647 s against the grid's 0.638 s) — so the tempo is right and the CONFIDENCE is what keeps lapsing. Mechanism: the gate wants eight beat intervals whose spread is ≤ 20 % of the mean, and `beatPhase01` arrives at **14.6 Hz in steps of 0.109 of a beat**, so wrap-detection jitter (±0.069 s on a 0.638 s beat) plus the stall/implausible-interval clears keep emptying the evidence window. **Consequence beyond FTR.28:** Matt chose "the trunk holds still between beats and steps on the beat" twice (FTR.10, FTR.11) and it has been engaging on about one frame in eight — a plausible contributor to the whole FTR.15→FTR.27 "no clear connection" arc that was never checked. FTR.28's `DancePhase` works around it by self-rating and does not fix it. **Not root-caused past the mechanism above** — whether the fix belongs in the gate's tolerance, in the phase's delivery rate (BUG-087's neighbour), or in wrap detection is a `dsp.beat` increment, which per the beat-sync program must open with the `beat-sync-session` skill and a BeatBench baseline |
 | BUG-093 | **P1** · open, evidence-only | preset.fidelity | **Fractal Tree's geometry DOES move with the music by every measure available, and Matt still reports no clear connection — after nine live rejections.** Measured after 12 s on `2026-08-17T20-01-01Z`: `reach` spans 0.680, the size term 0.360, visible **trunk length 0.151 clip space ≈ 164 px of 1080**, branch spread 20°→34°, and the FTR.25 tip spark fires 0.37/s on events. So this is NOT a dead-channel or dead-route problem, and BUG-092 (which briefly claimed it was) is retracted on that point. **What IS established about the signals it tracks:** `spectral_surge`, which drives size, scores **0.25× event-versus-random specificity — it moves DOWN when the ear notices something** (FTR15 §9); `spectral_section_ratio`, which drives growth, is a slow density RANK, not a loudness or arrangement reading; `spectral_flux`, which drives the spread, is broadband change that fires as often between events as on them (1.50×). **The tree therefore moves a great deal while tracking three quantities that do not correspond to what a listener notices** — that is the standing hypothesis and it is consistent with every rejection in FTR.15→FTR.27, including the two where a more event-aligned driver was tried and rejected for its motion cost (FTR.24: 10.7× peak velocity). ⚠ **Do not open another tuning increment against this.** The next move needs a changed premise about WHICH quantity the tree should follow, and that is a product decision. Detail: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §§8–11 |
 | BUG-092 | P3 · **RE-SCOPED 2026-08-17, hours after filing — the original headline was WRONG** | preset.fidelity / documentation-drift | **Fractal Tree's declared `growth` route reads `arousal`, and `arousal` is INERT: it loses its own `max()` on 100 % of frames.** The shader computes `reach = max(0.10 · arousalReach, fullness) · musicGate`; measured after 12 s on `2026-08-17T20-01-01Z`, `0.10 · arousalReach` spans **0.032** against `fullness`'s **0.646** and never wins. So the sidecar's `growth ← arousal` is a manifest entry with no visible effect — the FTR.2 false-route class, which QG.1 cannot catch because `arousal` does *vary* (just at 3 % of the competing term's amplitude). `arousal` is separately near-constant within a track (mean 0.446…0.475, sd 0.048…0.069, same 0.26…0.51 bounds on five captures across three builds), which is fine for a MOOD classifier and is why nobody noticed. ⚠ **WHAT THIS ENTRY ORIGINALLY CLAIMED AND GOT WRONG:** that arousal was the preset's primary growth driver and that its flatness explained nine live rejections of "no clear connection". False. I measured the primitive's flatness and never checked its COEFFICIENT. Growth's real driver is `spectral_section_ratio` (span 0.646) and the visible trunk length swings **0.151 clip space ≈ 164 px of 1080** after 12 s — the geometry moves across two thirds of its range. **The connection complaint remains UNEXPLAINED**; see BUG-093. Fix here is small and cosmetic: either delete the inert arousal term and the route, or give it a coefficient that can compete — Matt's call, since one of those changes what he sees. Detail below |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
@@ -66,6 +67,44 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-094 — `BeatHold`'s trust gate holds on only 13 % of frames; the FTR.10 beat-step has been mostly inactive (2026-08-17)
+
+**Status: P1, evidence only. Found while building FTR.28's gait; not fixed there.**
+
+**Measured** on `2026-08-17T20-01-01Z`, 360 consecutive rendered frames:
+
+| | |
+|---|---|
+| frames where `BeatHold` reported a beat period | **47 / 360 (13 %)** |
+| period when it did report one | 0.6474 s (grid: 0.6378 s — **1.5 % error**) |
+| `beatPhase01` update rate | **14.6 Hz**, in steps of **0.109 of a beat** |
+| render rate | 59 Hz — so each phase value is held ~4 frames |
+
+So the tempo estimate is accurate and the CONFIDENCE is what lapses. The gate requires eight beat
+intervals whose spread is ≤ 20 % of the mean; intervals derived from a 14.6 Hz phase carry
+±0.069 s of wrap-detection jitter on a 0.638 s beat, and the `intervals.removeAll()` paths (an
+implausible period, or a phase judged stalled) empty the window whenever that jitter crosses a
+threshold — after which eight more beats (~5 s) are needed to refill.
+
+**Why this matters beyond the increment that found it.** Matt chose "the trunk holds still between
+beats and steps on the beat" twice (FTR.10, FTR.11), and `BeatHold.isStepping` gates it. On this
+evidence that behaviour has been present on roughly one frame in eight. **That was never checked
+across FTR.15→FTR.27**, an arc of nine live rejections of "no clear connection to the music", and
+it is a plausible contributor: a beat-locked visual that engages 13 % of the time reads as neither
+beat-locked nor continuous.
+
+**What FTR.28 did about it:** worked around it. `DancePhase` estimates its own cycle rate from
+dφ/dt of the phase it is handed, so the dance needs no confidence gate. Gating the dance on the
+hold instead produced a lean correlating **+0.293 with the bar against a +0.285 time-reversed
+decoy** — no lock; self-rated it reads **+0.757 against +0.222**.
+
+**Not root-caused past the mechanism above, deliberately.** Three candidate fixes — relax the
+spread tolerance, raise the phase delivery rate (BUG-087's neighbour), or make wrap detection
+robust to a coarse phase — have different blast radii, and this is `dsp.beat`, where the program
+requires opening with the `beat-sync-session` skill and a BeatBench baseline before proposing one.
 
 ---
 
@@ -1746,236 +1785,6 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ## Resolved (recent)
 
 *(PUB.3 pruning pass, 2026-07-11: 24 resolved entries moved here from §Open; BUG-013/001/005 reclassified to §Known Limitations. rotate_docs.sh files these to KNOWN_ISSUES_HISTORY.md after 14 days.)*
-
----
-
-### BUG-082 — Session retention keeps 6, not 10: fixture folders occupy the slots permanently (2026-08-03)
-
-> **Renumbered 080 → 082 at merge.** Filed as BUG-080 against a tree where 079 was the highest; a parallel session landed a *different* BUG-080 (gitignored-asset propagation) on `main` first, and `DocIntegrityTests` gates BUG-number uniqueness. **The commits on this branch are titled `[BUG-080]` — they mean this entry.** Its sibling was filed as BUG-081 and hit the SAME collision one merge later (a parallel `main` BUG-081, an unrelated beachball), so it is now **BUG-083**; its commits are titled `[BUG-081]`.
-
-**P2 · app.diagnostics / algorithm · RESOLVED 2026-08-03.**
-
-**Resolution.** `sessionFolders` now filters to directories whose name parses as a session timestamp, so a non-session directory is neither counted against the limit nor a deletion candidate. `dateFromFolderName` was rewritten as a strict whole-string `DateFormatter` match — the previous character-substitution routine did `index(startIndex, offsetBy: 10)` unconditionally and traps on any shorter name, which was unreachable while only the age-based arms called it but becomes reachable the moment every directory is parsed (a folder named `old/` would have crashed app launch). Regression tests in `SessionRecorderRetentionPolicyTests`: `lastN10_nonSessionFoldersNeitherCountedNorDeleted` (12 sessions + the 4 real fixture folders → exactly the 2 oldest sessions deleted, fixtures untouched), `oneWeek_doesNotDeleteNonSessionFolders`, `shortAndOddFolderNamesDoNotTrap`. **The regression test was confirmed to fail before the fix** — it reported 6 surviving sessions against the expected 10, reproducing the defect exactly.
-
-**Expected.** With the default `lastN10` retention, the ten most recent *session recordings* survive; older ones are pruned.
-
-**Actual.** Six survive. `SessionRecorderRetentionPolicy.sessionFolders` enumerates every directory under `~/Documents/phosphene_sessions/` and sorts `$0.name > $1.name` on the stated assumption that "ISO timestamps sort lexicographically" — but the directory also holds permanent non-session folders, and in ASCII letters sort above digits. Verified against the live directory:
-
-```
- 1 fixturegen-there_there        <- not a session
- 2 fixturegen-so_what            <- not a session
- 3 fixturegen-love_rehab         <- not a session
- 4 beat-match-test-session       <- not a session
- 5 2026-08-03T21-07-43Z          <- newest real folder is only rank 5
-...
-11 2026-08-03T19-49-56Z          <- deleted next
-```
-
-`lastN10` does `Array(folders.dropFirst(10))`, so the four fixture folders permanently consume four retention slots **and can never be pruned themselves** (they are always in the kept prefix). Effective session retention is `10 - <number of named folders>` = 6 today, and it shrinks further as fixture folders are added.
-
-**Reproduction.** `ls -d ~/Documents/phosphene_sessions/*/ | sort -r` — any folder not named `YYYY-MM-DDTHH-MM-SSZ` appears above every real session.
-
-**Impact.** Real captures are deleted well before the user's setting says. Observed live on 2026-08-03: session `2026-08-03T15-05-43Z` was evicted **while it was being used** as the input for Witchlight motion-sequence renders, forcing a re-render against a different capture. Compounds with BUG-081, which manufactures folders that consume the same slots.
-
-**Failure class.** `algorithm` — an ordering assumption ("every directory here is a timestamp") that the directory's actual contents violate.
-
-**Fix (not implemented).** Filter `sessionFolders` to entries whose name parses as an ISO timestamp. `dateFromFolderName` already exists in the same file and the `oneDay`/`oneWeek` arms already rely on it; only the `lastN` arms skip the check. One-line filter plus a regression test that plants a named folder among timestamped ones and asserts it is neither counted nor deleted.
-
-**Verification criteria (written before the fix).** (1) Automated: a `SessionRecorderRetentionPolicyTests` case with 4 named folders + 12 timestamped ones under `lastN10` deletes exactly the 2 oldest *timestamped* folders and leaves all named folders untouched. (2) Manual: with 10+ real sessions on disk, launch the app and confirm the count of timestamped folders afterwards is 10, not 6.
-
----
-
-### BUG-083 — A session folder is written on every engine construction, including test runs (2026-08-03)
-
-**P2 · app.diagnostics / test-isolation / resource-management · RESOLVED 2026-08-03.**
-
-**Resolution.** `SessionRecorder.init` no longer touches the filesystem — it computes paths only. Directory creation, CSV headers, the startup banner and the disk-space pre-flight moved into `materializeIfNeeded()`, called on the serial queue from the first actual write. Every disk-touching entry point is guarded: frame rows, `log`/`writeLogLine`, the raw-tap WAV (`createFile` does not create intermediate directories), the stem dump (`withIntermediateDirectories` would otherwise conjure the directory with no headers), and the video writer. `finish()` early-outs when nothing was ever written, so it cannot materialize the empty folder the fix exists to prevent. The banner uses `writeLogLine` rather than `log` so it stays the first line of `session.log` instead of being enqueued behind the row that triggered materialization. Regression tests in `SessionRecorderTests`: `test_construction_writesNothingToDisk`, `test_finishWithoutWriting_leavesNoDirectory`, `test_firstLogWrite_materializesDirectoryWithHeadersAndBanner`. Two pre-existing tests asserted the old init-time contract and were updated, not weakened — `test_init_createsSessionDirectoryWithCSVsAndLog` became `test_firstWrite_createsSessionDirectoryWithCSVsAndLog`, keeping every assertion and moving them one write later. **Verified end-to-end:** the full app test suite now leaves the session directory listing byte-identical, where before it added a folder and evicted one.
-
-**Expected.** A folder appears under `~/Documents/phosphene_sessions/` when a session is *recorded*. Running the test suite writes nothing to the user's Documents directory.
-
-**Actual.** `VisualizerEngine.swift:942` constructs `SessionRecorder()` unconditionally, and `SessionRecorder.init` creates the directory, writes both CSV headers and the three-line startup banner immediately. Any `VisualizerEngine` construction therefore leaves a folder behind whether or not a session ever starts — including every `xcodebuild -scheme PhospheneApp test` run, and every app launch the user closes without recording.
-
-**Reproduction (performed).** Count folders, run `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`, count again: `2026-08-03T21-07-43Z` appears with a header-only `features.csv` (1 line, 0 data rows) and a `session.log` containing only the banner — no `WIRING:`, no `preset →`, no `SIGNAL_HEALTH`. Four of the six empty folders present on 2026-08-03 match `xcodebuild` app-test completion times to within 3 s (19-49-56Z, 20-01-18Z, 20-12-53Z, 21-00-25Z).
-
-**Impact.** Two, and the second is the damaging one:
-1. Test-isolation violation — the test suite writes into the user's `~/Documents/`.
-2. The junk folders **consume retention slots**, so running the test suite (or launching the app a few times without recording) silently evicts real captures. With BUG-080 also in play the usable window is 6, so ~6 test runs are enough to destroy every real session on disk. This is what made a real capture disappear mid-analysis on 2026-08-03.
-
-**Diagnostic confusion it caused.** These folders are indistinguishable at a glance from a session where audio capture failed, and were initially misread as six failed M7 attempts (a silent-tap symptom, BUG-055/BUG-057 class). They are not — they are empty by construction.
-
-**Failure class.** `resource-management` (eager side-effecting allocation in an initializer) with a `test-isolation` consequence.
-
-**Fix (not implemented).** Create the directory lazily on the first row write, or behind an explicit `startRecording()` that the session lifecycle calls — so an engine that never records leaves nothing behind. Either way the recorder stops side-effecting from `init`.
-
-**Verification criteria (written before the fix).** (1) Automated: constructing a `SessionRecorder` (or a `VisualizerEngine`) and never writing a row creates no directory; writing one row creates it with headers intact. (2) Manual: note the folder count, run the full app test suite, confirm the count is unchanged.
-
----
-
-### BUG-080 — Gitignored-asset propagation is broken at two points: fresh worktrees (and `main`) fail the engine suite (2026-08-03)
-
-**P2 · build / test-isolation · RESOLVED 2026-08-03 — fix `2b36c34d`.** Filed P3, **widened to P2** the same day when the second gap surfaced. Found at FTR.1; not caused by it.
-
-*Severity note:* P2 per `DEFECT_TAXONOMY.md` — "works for typical inputs but degrades noticeably for specific conditions." The verification harness passes in the one blessed checkout and fails everywhere else, including a fresh clone. No product impact; downgrade to P3 if the every-new-session tax is judged cosmetic.
-
-**Expected.** `swift test --package-path PhospheneEngine` passes in any checkout prepared per the documented flow — `git worktree add` followed by `Scripts/link_fixtures.sh`.
-
-**Actual.** Exit code 1. Two independent causes, discovered in sequence.
-
-### Gap A — `link_fixtures.sh` does not cover the ML weights
-
-PUB.2 moved the weights out of git (gitignored; shipped as the `ml-weights-v1` Release asset). `link_fixtures.sh` exists to bridge exactly that class of gap — its own header says *"Gitignored-but-needed paths that a fresh worktree would otherwise lack"* — but `linked_rel` covers only:
-
-```
-PhospheneEngine/Tests/Fixtures
-docs/VISUAL_REFERENCES
-docs/diagnostics
-```
-
-`PhospheneEngine/Sources/ML/Weights` is absent. The failure has two halves: the trailing filter would also reject the files.
-
-```
-| grep -E '^PhospheneEngine/Tests/Fixtures/|\.(jpg|jpeg|png|gif)$'
-```
-
-A `.bin` matches neither alternative, so adding the directory alone is insufficient.
-
-| Weights directory | Primary | FTR.1 worktree (before workaround) |
-|---|---|---|
-| `Sources/ML/Weights/` | 176 | 4 |
-| `.../beat_this/` | 162 | 1 |
-| `.../panns_mobilenetv1/` | 147 | 1 |
-
-479 gitignored files never arrive. Failures: `StemModelTests` (6), `StemSeparationPerformanceTests` (2), `WeightChecksumTests.test_completeness_{stem,beatThis,panns}` each reporting `onDisk → []`, `PANNsMobileNetV1Tests` `.tensorFileMissing("spectrogram_extractor_stft_conv_real_weight.bin")`, and the loveRehab 118-BPM port test.
-
-### Gap B — the primary checkout is not a complete source
-
-`PhospheneEngine/Tests/Fixtures/tempo/` — three licensed `.m4a` preview clips, gitignored at `.gitignore:63` ("Local audio fixtures for DSP.1 tempo capture (preview clips are licensed)") — **was absent from the primary checkout entirely**. The files existed only inside `.claude/worktrees/men-2a-kickoff-250b81/`, as real 1 MB files, presumably restored there by whichever session needed them.
-
-`link_fixtures.sh` links *from* the primary. It cannot supply what the primary lacks. So:
-
-- no worktree could ever obtain these fixtures, no matter how correctly prepared;
-- the primary checkout itself fails the same gate;
-- the script reports success (`linked N fixture(s)`) while propagating a hole.
-
-`BeatThisFixturePresenceGate` fired loudly with a path-and-instructions message — **that gate is working exactly as QR.3 designed it**, and it is the only reason this surfaced rather than silently disabling the BeatThis regression surface.
-
-Failures: `BeatThisFixturePresenceGate`, `BeatThisLayerMatch`, `LiveDriftValidation`, `BeatGridAccuracyDiagnostic — BUG-008`, `PreviewAudio content-hash + identity migration`. Several `LocalFilePlaybackProvider` concurrency tests (`routerChurn_…`, `deinitWhilePlaying_…`, `concurrentDoubleStart_…`) also failed at `0.001 s` immediately after tests that hung ~54 s on the missing audio — suspected cascade, not independent, but unconfirmed; BUG-078 is a real intermittent in that same area, so any that survive a green fixture run deserve their own look.
-
-### Root cause, stated generally
-
-`link_fixtures.sh` treats the primary checkout as an authoritative, complete source of gitignored material, and **nothing verifies that assumption**. The primary is simply whichever clone happened to receive the files. There is no manifest of required-but-gitignored paths, no provenance, and no check that the source has them before linking. Gap A is a stale allowlist; Gap B is the missing invariant underneath it.
-
-**Reproduction.**
-
-```
-git worktree add .claude/worktrees/<name> -b <branch> main
-cd .claude/worktrees/<name>
-Scripts/link_fixtures.sh
-swift test --package-path PhospheneEngine
-```
-
-**Evidence.** Three `Scripts/closeout_evidence.sh` runs, all at commit `935d77d3`, tree clean:
-
-| Run | Failing lines | State |
-|---|---|---|
-| `2026-08-03T13:54:40-0500` | 81 | before any workaround |
-| `2026-08-03T14:06:29-0500` | 81 | after `link_fixtures.sh` — **identical**, which is what proved the script does not cover Gap A |
-| `2026-08-03T14:15:24-0500` | 21 | after 479 weight symlinks — XCTest half reports `0 failures`; remainder is Gap B |
-
-Every reduction came from restoring a file. No code changed across any of the three runs.
-
-**Failure class.** `test-isolation`, with a `documentation-drift` component: `link_fixtures.sh`'s header claims to cover the gitignored set and no longer does.
-
-**Impact.** No shipped code path affected. The cost is **misdiagnosis** — a fresh-worktree run reads as a regression in whatever increment is under test, and `closeout_evidence.sh` honestly stamps `EVIDENCE: FAILURES PRESENT`, so a closeout stalls until someone traces it. With one worktree per session now the standing convention (D-212 process note), every new session pays this tax.
-
-**Proposed fix (NOT implemented here — this is the diagnosis increment).**
-
-1. Add `PhospheneEngine/Sources/ML/Weights` to `linked_rel` and widen the grep filter to admit it. (~2 lines; closes Gap A.)
-2. **Verify the source before linking.** Check the primary actually holds each required gitignored tree and fail loudly if not, mirroring `BeatThisFixturePresenceGate`'s philosophy — a script that silently propagates a hole is the same failure class the gate was written to kill. (Closes Gap B.)
-3. Consider a single manifest of required-but-gitignored paths, consumed by both `link_fixtures.sh` and the presence gates, so the two cannot drift apart again.
-
-Per the Defect Handling Protocol, diagnosis and fix are separate increments unless Matt explicitly approves collapsing them. **Matt approved collapsing them for this defect (2026-08-03, in chat), so the diagnosis, the fix (`2b36c34d`) and the validation below all sit in one increment.**
-
-**Verification criteria (written before the fix).**
-
-1. *Automated:* in a worktree created fresh and prepared with the patched script, `swift test --package-path PhospheneEngine` exits 0, with `WeightChecksumTests.test_completeness_{stem,beatThis,panns}` and the whole `BeatThisFixturePresenceGate` suite green.
-2. *Automated:* for every path in `linked_rel`, the count of gitignored files in the primary equals the count of links created in the worktree (479 weights + 3 tempo clips at time of filing).
-3. *Automated:* with a required tree deliberately removed from the primary, `link_fixtures.sh` **fails** rather than reporting success — the Gap B regression test.
-4. *Manual:* `Scripts/closeout_evidence.sh` in that worktree footers `engine=0` and does not print `EVIDENCE: FAILURES PRESENT`.
-
-**Workaround applied (2026-08-03, not a fix).** 479 weight files symlinked into the FTR.1 worktree with absolute targets into the primary; the three tempo clips copied from the `men-2a-kickoff-250b81` worktree into the primary (restoring the canonical source) and symlinked onward. Both trees now report 72 fixture entries.
-
-**FIX LANDED (2026-08-03, same day, pending validation).** `Scripts/link_fixtures.sh` rewritten around a declarative manifest:
-
-```
-<path>|<required>|<match-regex>
-  PhospheneEngine/Tests/Fixtures      | yes | .
-  PhospheneEngine/Sources/ML/Weights  | yes | .
-  docs/VISUAL_REFERENCES              | no  | \.(jpg|jpeg|png|gif)$
-  docs/diagnostics                    | no  | \.(jpg|jpeg|png|gif)$
-```
-
-- **Gap A closed** — weights are in the manifest, and the match filter is per-path rather than one global grep, so `.bin` passes where it structurally could not before.
-- **Gap B closed** — `required=yes` makes an empty source tree a **hard error with a path-and-instructions message**, not a silent skip. The script can no longer report success while propagating a hole.
-- **New `--verify` mode** — checks the primary is a complete source and exits non-zero if not, linking nothing. Runnable from the primary itself, so it works as a standalone gate (CI-ready).
-- **Missing-on-disk files warn and set a non-zero exit** instead of `continue`-ing in silence (the old line 54).
-
-Verified by hand on the primary at time of writing:
-
-| Check | Result |
-|---|---|
-| `--verify` on a complete primary | exit 0; reports 3 fixture + 479 weight files |
-| **Gap B regression:** required tree hidden, then `--verify` | exit 1, loud error naming the path |
-| link mode run from the primary | exit 0, correct no-op |
-| `bash -n` syntax check | clean |
-
-**RESOLVED 2026-08-03 — fix commit `2b36c34d`.**
-
-Closing gate: `swift test --package-path PhospheneEngine` run in `.claude/worktrees/ftr1` at commit `935d77d3`, tree clean.
-
-```
-Executed 225 tests, with 7 tests skipped and 0 failures (0 unexpected) in 69.842 seconds
-✔ Test run with 1732 tests in 246 suites passed after 211.083 seconds.
-```
-
-Both halves green — the first fully green engine run on this material. Every failure named in Gap A and Gap B now passes: `WeightChecksumTests.test_completeness_{stem,beatThis,panns}`, `PANNsMobileNetV1Tests`, `StemModelTests`, the whole `BeatThisFixturePresenceGate` suite, `BeatThisLayerMatch`, `LiveDriftValidation`, `BeatGridAccuracyDiagnostic`, and the loveRehab 118-BPM port test.
-
-**The `LocalFilePlaybackProvider` concurrency failures were cascade, as suspected.** `routerChurn_…`, `deinitWhilePlaying_…` and `concurrentDoubleStart_…` all pass once the audio fixtures exist. Nothing is owed to BUG-078 from this filing — it remains open on its own evidence.
-
-**The three perf tests also passed cold**, closing the FTR.1 closeout's §2 caveat. `PostProcessChainTests.test_fullChain_under2ms_at1080p`, `RayMarchPipelineTests.test_fullPipeline_under8ms_at1080p` and `StemSeparationPerformanceTests.test_separate_1SecondAudio_performance` failed at `14:27:48` and passed at `14:15:24` on the identical commit with no code change; they pass here too. Confirmed flake — the timing-sensitivity class `DEFECT_TAXONOMY.md` already names P2 — not a regression.
-
-**Verification criteria, scored honestly against what was actually run.**
-
-| # | Criterion (written before the fix) | Result |
-|---|---|---|
-| 1 | Fresh worktree prepared with the patched script → suite exits 0 | **Green, with a caveat.** The suite is green, but that worktree ran the *pre-fix* script against an environment repaired by hand — its output still prints the old `link_fixtures: 0 fixture(s) linked` message. What is proven is that a complete environment makes the suite pass, i.e. the diagnosis was right and nothing else was wrong. What is **not** yet proven is that the patched script is what produces that completeness. |
-| 2 | Per-path link count in the worktree equals the gitignored count in the primary | Met by hand (479 weights, 3 clips, 72 fixture entries in both trees); not re-measured through the patched script. |
-| 3 | Required tree removed from the primary → script **fails** rather than reporting success | **Fully met.** Exercised during the fix: exit 1 with a loud error naming the path. This is the Gap B invariant and it holds. |
-| 4 | `closeout_evidence.sh` footers `engine=0`, no `EVIDENCE: FAILURES PRESENT` | Met by the equivalent direct `swift test` run above. |
-
-**Closing on the caveat.** Criteria 1 and 2 close for real at the first worktree created from `main` *after* `2b36c34d` merges — the first genuinely fresh preparation by the patched script. That is a five-minute check, not new work: `git worktree add`, `Scripts/link_fixtures.sh`, compare counts. **Append the result here when it happens**; until then this entry is resolved on a strong-but-indirect validation, and says so.
-
-**Follow-up CLOSED 2026-08-04 (RECON.13) — the shared manifest, and a correction to this entry's own claims.**
-
-`Scripts/fixtures.manifest` is now the single source of truth for which gitignored files a default `swift test` requires, read by three consumers that previously disagreed: `link_fixtures.sh --verify`, `bootstrap_fixtures.sh`'s no-op guard, and the Swift gate (renamed `FixtureManifestPresenceGate`, was `BeatThisFixturePresenceGate`, which had hardcoded one filename). **The bug the duplication was actually hiding was a granularity mismatch, not just drift:** the shell side asked "is the directory non-empty" while the Swift side asked "does this specific file exist". A tempo tree holding **1 of 3** clips satisfied both shell checks and still failed the tests they exist to protect. Verified by removing one clip: `--verify` and `bootstrap_fixtures.sh` both previously reported success, and now both fail naming the exact missing path. Adding a fixture is a one-line manifest edit rather than a two-file edit someone can half-finish.
-
-**Correction — the "3 of ≥8 fixtures" claim in this entry and in RUNBOOK §Worktree setup was WRONG.** The 2026-08-03 audit reported that `fetch_tempo_fixtures.sh` retrieved 3 tracks against a suite needing "at least eight", naming `pyramid_song`, `yyz`, `clair_de_lune`, `money`, `if_i_were_with_her_now`. Measured directly at RECON.13: the default-required set **is** those three (`love_rehab`, `so_what`, `there_there`), and the fetch script covers all of them. The claim conflated **three separate fixture systems** — (1) tempo clips, gitignored, required, gated here; (2) **BeatBench**'s 17 tracks, which live *outside the repo* at `BEATBENCH_FIXTURES_DIR` under their own sha256 gate and are env-gated; (3) **diagnostic-harness audio** like `pyramid_song.m4a`, whose only consumer is `RicercarFluidVideoHarness`, a suite with "env-gated" in its own name. `BeatGridResolverTests` never referenced `pyramid_song` at all. *Root cause of the bad claim: a name-frequency grep across the test tree, with the hits attributed to the wrong system and never opened. Same failure shape as the RECON.1 fixture deletion — a count treated as evidence.* The RUNBOOK now carries the three-system table instead.
-
-**Still open, tracked separately.** The **third instance** — `docs/VISUAL_REFERENCES` and `docs/diagnostics` empty in the primary — is not fixed by `2b36c34d`; the script now only warns about it. It is **not a regression to be undone**: the images were untracked on purpose at LFS.2 to stop the LFS bill and must stay out of history. What is owed is a decision about the *on-disk* half — re-curate locally (billing-neutral, `.gitignore:101-108` still excludes them) or retire the image-linking half and make the READMEs the authority. See the corrected THIRD INSTANCE note above.
-
-
-**THIRD INSTANCE, found by the fix's own `--verify` (2026-08-03) — and it is a different kind of finding from Gaps A and B.** `docs/VISUAL_REFERENCES` and `docs/diagnostics` report **0 gitignored files in the primary**.
-
-**CORRECTED 2026-08-03 (Matt).** The first draft of this note read as though the images had gone missing. They did not. **They were deliberately untracked at LFS.2 / PUB.2 to stop the Git-LFS bill** — the "stop the bleeding" change recorded in `PUBLISHING.md` §1 and `RUNBOOK.md` — and the LFS.3 history rewrite then removed them from reachable history. Verified here: **zero image blobs across all 2,348 reachable commits**, and `git lfs` is no longer installed on this machine. So their absence *from git* is correct, intended, and must stay that way.
-
-**What is actually defective is the half of the system nobody updated to match.** D-211 extended `link_fixtures.sh` to propagate these images precisely *because* they are gitignored — the design is: images live on disk, never in history, and travel worktree-to-worktree by symlink. LFS.2 removed them from git and nothing re-established the on-disk copies or reassigned that job to a human. `.gitignore:101-108` still excludes every `.jpg/.jpeg/.png/.gif` under both trees, so **local on-disk copies are billing-neutral** — the machinery is correct and costs nothing; the larder is simply empty. The consequence D-211 named, *"silently degrades preset work rather than failing,"* has therefore been the standing condition everywhere rather than a worktree-only risk, and `docs/VISUAL_REFERENCES/<preset>/` holds READMEs describing images nobody can see.
-
-**Restore path.** Not recoverable from the repo — re-curation from the sources each README cites is the only route back. Left `required=no` because promoting it would fail every run today, but it now warns loudly on every invocation.
-
-**Open decision (narrower than first stated).** Either keep the `required=no` warning and re-curate locally when a preset session needs images, or drop both trees from the manifest entirely and rewrite the preset-session checklist's "look at the images" step to point at the READMEs as the authority. Not urgent, and **not** a reason to put images back under version control. Bears on FTR.2's reference curation, which per D-212 wants a low-fidelity set rather than the painterly one that left with Goldengrove.
-
-
-**Related.** D-211 (the images half of this same gap, and the worktree-propagation reasoning), PUB.2 (weights → Release asset), QR.3 (`BeatThisFixturePresenceGate` — the gate that caught Gap B), D-212 process note (one worktree per session), BUG-078 (the concurrency intermittent the cascade failures may mask), BUG-079 (the other build-level gate that cannot currently run).
 
 ---
 

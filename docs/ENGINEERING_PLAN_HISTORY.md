@@ -5,6 +5,66 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Increment RECON.1–.3 — Production audit: hygiene + doc reconciliation ✅ (2026-08-03)
+
+A full production-environment audit (defects, plan state, pipeline health, dead code, repo
+hygiene) followed by the cleanup it justified. **The audit's main finding was not a code
+defect — it was that this file and `KNOWN_ISSUES.md` had drifted materially from the tree**:
+22 stale or missing plan entries and 12 tracker contradictions, including work that had
+shipped with no row at all and phase headers contradicting their own bodies ~240 lines below.
+
+- **RECON.1 — hygiene.** Pruned 47 GB of stale Xcode DerivedData (52 GB → 4.9 GB, 58 → 6
+  `PhospheneApp-*` dirs) while explicitly **preserving the canonical primary-project build**
+  so the Screen-Recording grant doesn't churn, then reseeded LaunchServices per the known
+  prune+reseed remedy. Removed the merged `ftr1` worktree and its branch. Deleted three
+  unreferenced `fbs/` diagnostic CSVs and `tools/data/corpus_manifest.csv` (verified
+  byte-identical to the committed `.csv.gz` every consumer actually reads); relocated three
+  stray root-level docs into `docs/`. **Explicitly NOT deleted after checking:**
+  `docs/VISUAL_REFERENCES/_pg_spares` (Matt's curated alternates, cited by three reference
+  READMEs — a code-reference count made them look orphaned) and `tunes_club.csv`.
+- **RECON.2 — `KNOWN_ISSUES.md`.** See that file's §Open Index note. BUG-080 / BUG-071 /
+  BUG-041 rotated out of §Open; **BUG-060 reopened** on Matt's report that the hang recurred;
+  BUG-084 filed so it survived BUG-041's closure. DocIntegrityTests 12/12 green.
+- **RECON.3 — this file.** Phase headers reconciled with their bodies (TONAL, ASH, QG, FBS,
+  AGC3), §Immediate Next Increments rewritten from a 2026-05-06 ordering to actual current
+  work, Milestone D recounted from the sidecars (16/26, was 14/25), AV.3.x marked superseded
+  by AV.7, DBN.3's satisfied-but-unresolved gate flagged for Matt, and rows added below for
+  work that shipped without one.
+
+**Deliberately left for Matt:** the 5 superseded + 3 stranded unmerged remote branches, and
+the BUG-080 "third instance" decision. **Queued follow-ups:** fixture-restore consolidation
+behind one shared manifest, CI Option B, wiring `check_drums_beat_intensity.sh` into CI, and
+deleting the zero-consumer RMENV.2/.3 + MFX.1 capabilities (D-213).
+
+### Increment MEN.2a — Meniscus: serpentine wave surface (stub) ✅ (2026-08-03, `c0453fd9`)
+
+First increment of a new preset. `Meniscus.json` + shader stub shipped `certified: false`;
+design plan and curated references in `docs/presets/MENISCUS_PLAN.md`. **MEN.2b** (faithful
+base port — drop placement mechanism verified, force scale NOT calibrated), **MEN.3** (uplift)
+and **MEN.4** (polish + cert) are specced in that plan. *(Added at RECON.3 — the phase had
+landed and merged with no row in this file.)*
+
+### Increment LFS.2 / LFS.3 — reference + diagnostic images leave git (D-211) ✅ (2026-07-31 → 2026-08-03)
+
+Completed the reference-media migration out of git after the LFS billing reversal, and
+recorded the completion plus the three gaps it surfaced in the runbook. **Consequence worth
+knowing:** `docs/VISUAL_REFERENCES` and `docs/diagnostics` now hold **zero** gitignored files
+in the primary checkout, so `Scripts/link_fixtures.sh` warns on every run by design. That
+warning is expected, not a fault — but it is also the "third instance" noted in BUG-080,
+where the propagation design assumes on-disk copies that nothing re-establishes. **Decision
+still owed** (Matt): whether those trees get restored on disk, or the job moves to a human
+step. The LFS history purge itself needs a GitHub Support ticket to GC unreferenced objects
+(`Scripts/reclaim-lfs-visual-refs.sh` cannot finish alone). *(Added at RECON.3 — D-211 had
+zero references in this file, uniquely among D-203…D-212.)*
+
+### Increment BUG-080 fix — manifest-driven `link_fixtures.sh` ✅ (2026-08-03, `2b36c34d`)
+
+Gitignored-asset propagation repaired at both gaps; full engine suite green in a fresh
+worktree. Detail in `KNOWN_ISSUES.md` §Resolved. **Known residual:** the manifest is
+duplicated by hand against the Swift presence gates — a single shared manifest consumed by
+both is the recorded follow-up, and is queued as a RECON item. *(Added at RECON.3.)*
+
+
 ### Increment GT.3 — BeatBench live baseline ✅ (2026-07-30)
 
 The live-path baseline that D-205 ratifies its per-suite targets against, and that the TRK.3
