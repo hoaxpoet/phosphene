@@ -87,4 +87,35 @@ extension WitchlightPath {
         penY += speed * dt * sin(heading)
         return speed
     }
+
+    /// The harmonic steer: a TWO-pole circular smoothing of `tonalPhaseFifths`, and its rate.
+    func advanceHarmonicPhase(dt: Float, features: FeatureVector) {
+        // BUG-095 follow-up (Matt's M7 call, 2026-08-18): the FIRST of two poles. See
+        // `WitchlightTuning.phasePreTau` for why this preset alone smooths twice.
+        var raw = features.tonalPhaseFifths
+        if tuning.phasePreTau > 0 {
+            let preAlpha = dt / (tuning.phasePreTau + dt)
+            prePhaseSin += (sin(raw) - prePhaseSin) * preAlpha
+            prePhaseCos += (cos(raw) - prePhaseCos) * preAlpha
+            raw = atan2(prePhaseSin, prePhaseCos)
+        }
+        let alpha = dt / (tuning.phaseTau + dt)
+        phaseSin += (sin(raw) - phaseSin) * alpha
+        phaseCos += (cos(raw) - phaseCos) * alpha
+        let homeAlpha = dt / (tuning.homeTau + dt)
+        homeSin += (sin(raw) - homeSin) * homeAlpha
+        homeCos += (cos(raw) - homeCos) * homeAlpha
+        let phi = atan2(phaseSin, phaseCos)
+        // Wrapped difference — the phase is circular, so a −π→+π step is a small move.
+        var delta = phi - previousPhase
+        while delta > .pi { delta -= 2 * .pi }
+        while delta < -.pi { delta += 2 * .pi }
+        previousPhase = phi
+        // NO second smoothing stage. φ̄ is ALREADY the CR.1.2-smoothed phase, and an extra
+        // EMA on its signed rate cancels the reversals that carry the harmonic motion:
+        // measured, it cut the phase travel from the design §2.3 figures (2.1 / 1.7 / 15.4
+        // circles per 30 s) to 0.85 / 1.09 / 3.95, and the pen drew a straight line. The
+        // derivative of an EMA-smoothed circular phase needs no further filtering.
+        phaseRate = delta / dt
+    }
 }

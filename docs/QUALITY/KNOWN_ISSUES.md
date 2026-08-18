@@ -36,8 +36,9 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
-| BUG-095 | P1 · **FIXED in code 2026-08-17; ⚠ awaiting M7 — changes a CERTIFIED preset's motion** | dsp.tonal / cross-preset-regression | **A source-side EMA in `TonalAnalyzer` outlived the reason it was added, and all four consumers were smoothing an already-smoothed angle — cutting Witchlight's hero driver's travel by up to 4×.** Witchlight steers the pen with a circular EMA on `tonalPhaseFifths` at τ = 1.5 s (`WitchlightPath.swift:379`, D-198). Since `2861140e` the analyzer ALSO EMAs that phase in the complex plane, so the value is smoothed twice. Measured over 30 s per track, phase travel in circles — **committed fixtures (pre-FTR.3g pipeline) vs today's**: so_what **2.09 → 0.72** (2.9×), there_there **1.80 → 1.00** (1.8×), love_rehab **15.10 → 3.77** (4.0×). Heading monotonicity on love_rehab also falls 0.38 → 0.24. ⚠ **`WitchlightPathTests` was built to catch exactly this** — its own comment says it is *"the check that caught a stray second smoothing stage cutting the travel by 2.5×"*. It did catch it; it was blinded only because the QG.1 fixtures were frozen pre-FTR.3g (BUG-090). **Do NOT re-derive the §2.3 constants to make it green** — that laundered a 4× reduction in a certified preset's primary driver, and was the first thing attempted here before the numbers were read. **Fixed** by removing the source EMA (FTR.19/D-209 had already superseded its purpose), restoring every consumer to the single pole it was designed with: travel returns to 2.09 / 1.80 / 15.10 against a design of 2.1 / 1.7 / 15.4, suite 1862/1862 green. ⚠ Removing *Witchlight's* EMA instead — the obvious reading, and the first fix chosen — was measured and **rejected**: it overshoots to 6.66 / 5.90 / 30.69 with monotonicity 0.03, drawing the preset's own anti-reference. Needs an M7 |
-| BUG-096 | **P1** · evidence-only, filed 2026-08-17 | dsp.beat / calibration | **`BeatHold`'s trust gate is satisfied on 0–13 % of frames on real material (0/360 on `2026-08-18T14-29-37Z`, 47/360 the day before) — so the beat-step hold Matt chose at FTR.10, and every consumer of `BeatHold.isStepping`, is inactive ~87 % of the time.** Measured on `2026-08-17T20-01-01Z`: the hold reported a beat period on **47 of 360 consecutive frames**, and when it did the period was accurate to 1.5 % (0.647 s against the grid's 0.638 s) — so the tempo is right and the CONFIDENCE is what keeps lapsing. Mechanism: the gate wants eight beat intervals whose spread is ≤ 20 % of the mean, and `beatPhase01` arrives at **14.6 Hz in steps of 0.109 of a beat**, so wrap-detection jitter (±0.069 s on a 0.638 s beat) plus the stall/implausible-interval clears keep emptying the evidence window. **Consequence beyond FTR.28:** Matt chose "the trunk holds still between beats and steps on the beat" twice (FTR.10, FTR.11) and it has been engaging on about one frame in eight — a plausible contributor to the whole FTR.15→FTR.27 "no clear connection" arc that was never checked. FTR.28's `DancePhase` works around it by self-rating and does not fix it. **Not root-caused past the mechanism above** — whether the fix belongs in the gate's tolerance, in the phase's delivery rate (BUG-087's neighbour), or in wrap detection is a `dsp.beat` increment, which per the beat-sync program must open with the `beat-sync-session` skill and a BeatBench baseline |
+| BUG-097 | **P1** · evidence-only, root-caused + causally confirmed 2026-08-18; **fix NOT applied — it changes what a CERTIFIED preset does, Matt's call** | preset.witchlight / frame-rate-coupling | **A frame-time clamp meant for physics stability silently corrupts a MUSICAL measurement, and Witchlight drops two thirds of its off-beat accents on exactly the sessions where the frame rate is worst.** `WitchlightPath.advance` opens with `let dt = min(max(deltaTime…, 1/240), 1/30)` — a sane guard against a huge `dt` after a stall. But `timeSinceWrap += dt` then accumulates the CLAMPED value, and `barPeriod = timeSinceWrap` at each downbeat is a *musical* quantity: `offBeatsAllowed = barPeriod / beatsPerBar >= 0.55 s` decides whether the non-downbeat pulse fires at all (WL.9). On Matt's session `2026-08-18T14-09-35Z` **25.3 % of frames exceeded 33.3 ms**, discarding **28.8 % of elapsed time**, so the measured bar period read **1.80 s median against a true 2.55 s** (33 of 50 bars short) and `beatSeconds` fell to 0.435 — under the 0.55 threshold. **Causally confirmed** by raising the cap alone: rejections **101 → 3**, off-beat pulses **50 → 149**, i.e. the 3:1 ratio 4/4 should give. The comparison session `2026-08-17T15-23-17Z` had only **0.2 %** of frames over the cap, measured 2.52 s bars, and fired 79 off-beats against 28 downbeats (2.8:1) — so the same code is correct there. ⚠ **The failure is self-reinforcing and points the wrong way:** the heavier the scene, the fewer accents, so the preset looks LEAST musical exactly when the machine is struggling. It is also invisible to every gate — the committed fixtures run at a steady synthetic rate and never trip the cap. Found while chasing a 1:1 off-beat/downbeat ratio noticed during the BUG-095 M7; it is INDEPENDENT of that fix and reproduces identically on both code paths. **Likely fix:** accumulate the musical clock from the unclamped `deltaTime` and keep the clamp for the physics integrators only — one line, but it triples the off-beat accent rate on affected sessions, so it needs Matt's pick and an M7 |
+| BUG-095 | P1 · **FIXED 2026-08-17; M7'd 2026-08-18 → WL.13 follow-up (Witchlight keeps its second pole, locally)** | dsp.tonal / cross-preset-regression | **A source-side EMA in `TonalAnalyzer` outlived the reason it was added, and all four consumers were smoothing an already-smoothed angle — cutting Witchlight's hero driver's travel by up to 4×.** Witchlight steers the pen with a circular EMA on `tonalPhaseFifths` at τ = 1.5 s (`WitchlightPath.swift:379`, D-198). Since `2861140e` the analyzer ALSO EMAs that phase in the complex plane, so the value is smoothed twice. Measured over 30 s per track, phase travel in circles — **committed fixtures (pre-FTR.3g pipeline) vs today's**: so_what **2.09 → 0.72** (2.9×), there_there **1.80 → 1.00** (1.8×), love_rehab **15.10 → 3.77** (4.0×). Heading monotonicity on love_rehab also falls 0.38 → 0.24. ⚠ **`WitchlightPathTests` was built to catch exactly this** — its own comment says it is *"the check that caught a stray second smoothing stage cutting the travel by 2.5×"*. It did catch it; it was blinded only because the QG.1 fixtures were frozen pre-FTR.3g (BUG-090). **Do NOT re-derive the §2.3 constants to make it green** — that laundered a 4× reduction in a certified preset's primary driver, and was the first thing attempted here before the numbers were read. **Fixed** by removing the source EMA (FTR.19/D-209 had already superseded its purpose), restoring every consumer to the single pole it was designed with: travel returns to 2.09 / 1.80 / 15.10 against a design of 2.1 / 1.7 / 15.4, suite 1862/1862 green. ⚠ Removing *Witchlight's* EMA instead — the obvious reading, and the first fix chosen — was measured and **rejected**: it overshoots to 6.66 / 5.90 / 30.69 with monotonicity 0.03, drawing the preset's own anti-reference. Needs an M7 |
+| BUG-096 | **P1** · evidence-only, filed 2026-08-17 | dsp.beat / calibration | **`BeatHold`'s trust gate is satisfied on only 13 % of frames on real material — so the beat-step hold Matt chose at FTR.10, and every consumer of `BeatHold.isStepping`, is inactive ~87 % of the time.** Measured on `2026-08-17T20-01-01Z`: the hold reported a beat period on **47 of 360 consecutive frames**, and when it did the period was accurate to 1.5 % (0.647 s against the grid's 0.638 s) — so the tempo is right and the CONFIDENCE is what keeps lapsing. Mechanism: the gate wants eight beat intervals whose spread is ≤ 20 % of the mean, and `beatPhase01` arrives at **14.6 Hz in steps of 0.109 of a beat**, so wrap-detection jitter (±0.069 s on a 0.638 s beat) plus the stall/implausible-interval clears keep emptying the evidence window. **Consequence beyond FTR.28:** Matt chose "the trunk holds still between beats and steps on the beat" twice (FTR.10, FTR.11) and it has been engaging on about one frame in eight — a plausible contributor to the whole FTR.15→FTR.27 "no clear connection" arc that was never checked. FTR.28's `DancePhase` works around it by self-rating and does not fix it. **Not root-caused past the mechanism above** — whether the fix belongs in the gate's tolerance, in the phase's delivery rate (BUG-087's neighbour), or in wrap detection is a `dsp.beat` increment, which per the beat-sync program must open with the `beat-sync-session` skill and a BeatBench baseline |
 | BUG-094 | P2 · **root-caused + probe-verified 2026-08-17; FIX NOT APPLIED — changes a certified preset's look, Matt's call** | preset.meniscus / primitive-contract | **Meniscus reads `arousal` as if it were 0…1 when its contract is −1…+1, discarding the entire calm half of the primitive.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as `max(0, min(features.arousal, 1))`, which clamps rather than maps — and `MeniscusCamera.swift:106` repeats it for the camera envelope, so the preset discards the calm half twice. On calm material that zeroes the lift for a large fraction of the track — measured **35 % of frames on `so_what`** (arousal −0.393…+0.519) — collapsing `arcEnvelope`, then `density`, until the backbeat-gated **vocals region places 0 drops across the whole track**. Masked until now because MEN.4a was calibrated on one capture where arousal never went negative (its own code comment records the range as *0.19 → 0.52 → 0.27*), and because the committed QG.1 fixtures happen to bottom out at −0.077. It surfaced only when BUG-090's regenerated fixtures carried today's mood output. **Probe-verified:** replacing the clamp with a map (`(clamp(arousal,−1,1)+1)/2`) takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green (14 tests / 9 suites). Probe reverted, not committed. **Not applied because it changes what a CERTIFIED preset looks like** — more drops on calm material — which is a product call, not a test fix. Needs Matt's pick and an M7. ⚠ **Transferable:** any consumer of a bipolar primitive that writes `max(0, x)` is silently discarding half its range. Worth grepping the other presets |
 | BUG-093 | **P1** · open, evidence-only | preset.fidelity | **Fractal Tree's geometry DOES move with the music by every measure available, and Matt still reports no clear connection — after nine live rejections.** Measured after 12 s on `2026-08-17T20-01-01Z`: `reach` spans 0.680, the size term 0.360, visible **trunk length 0.151 clip space ≈ 164 px of 1080**, branch spread 20°→34°, and the FTR.25 tip spark fires 0.37/s on events. So this is NOT a dead-channel or dead-route problem, and BUG-092 (which briefly claimed it was) is retracted on that point. **What IS established about the signals it tracks:** `spectral_surge`, which drives size, scores **0.25× event-versus-random specificity — it moves DOWN when the ear notices something** (FTR15 §9); `spectral_section_ratio`, which drives growth, is a slow density RANK, not a loudness or arrangement reading; `spectral_flux`, which drives the spread, is broadband change that fires as often between events as on them (1.50×). **The tree therefore moves a great deal while tracking three quantities that do not correspond to what a listener notices** — that is the standing hypothesis and it is consistent with every rejection in FTR.15→FTR.27, including the two where a more event-aligned driver was tried and rejected for its motion cost (FTR.24: 10.7× peak velocity). ⚠ **Do not open another tuning increment against this.** The next move needs a changed premise about WHICH quantity the tree should follow, and that is a product decision. Detail: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §§8–11 |
 | BUG-092 | P3 · **RE-SCOPED 2026-08-17, hours after filing — the original headline was WRONG** | preset.fidelity / documentation-drift | **Fractal Tree's declared `growth` route reads `arousal`, and `arousal` is INERT: it loses its own `max()` on 100 % of frames.** The shader computes `reach = max(0.10 · arousalReach, fullness) · musicGate`; measured after 12 s on `2026-08-17T20-01-01Z`, `0.10 · arousalReach` spans **0.032** against `fullness`'s **0.646** and never wins. So the sidecar's `growth ← arousal` is a manifest entry with no visible effect — the FTR.2 false-route class, which QG.1 cannot catch because `arousal` does *vary* (just at 3 % of the competing term's amplitude). `arousal` is separately near-constant within a track (mean 0.446…0.475, sd 0.048…0.069, same 0.26…0.51 bounds on five captures across three builds), which is fine for a MOOD classifier and is why nobody noticed. ⚠ **WHAT THIS ENTRY ORIGINALLY CLAIMED AND GOT WRONG:** that arousal was the preset's primary growth driver and that its flatness explained nine live rejections of "no clear connection". False. I measured the primitive's flatness and never checked its COEFFICIENT. Growth's real driver is `spectral_section_ratio` (span 0.646) and the visible trunk length swings **0.151 clip space ≈ 164 px of 1080** after 12 s — the geometry moves across two thirds of its range. **The connection complaint remains UNEXPLAINED**; see BUG-093. Fix here is small and cosmetic: either delete the inert arousal term and the route, or give it a coefficient that can compete — Matt's call, since one of those changes what he sees. Detail below |
@@ -111,6 +112,68 @@ decoy** — no lock; self-rated it reads **+0.757 against +0.222**.
 spread tolerance, raise the phase delivery rate (BUG-087's neighbour), or make wrap detection
 robust to a coarse phase — have different blast radii, and this is `dsp.beat`, where the program
 requires opening with the `beat-sync-session` skill and a BeatBench baseline before proposing one.
+
+---
+
+### BUG-097 — A physics frame-time clamp corrupts a musical measurement: Witchlight loses two thirds of its off-beat accents when frames get heavy (2026-08-18)
+
+**Status: evidence-only, root-caused and causally confirmed. Fix NOT applied — it changes what a
+certified preset does.**
+
+**How it was found.** Matt's BUG-095 M7 reported Witchlight as *"less coupled to the beat"*. The
+A/B on that session showed the beat events were bit-identical between builds, so the phase fix
+was exonerated — but the probe also showed **50 downbeat bursts and 50 off-beat pulses**, a 1:1
+ratio where 4/4 should give 3:1. That anomaly is this bug, and it is unrelated to BUG-095.
+
+**Mechanism.** `WitchlightPath.advance` begins:
+
+```swift
+let dt = min(max(deltaTime > 0 ? deltaTime : 1.0 / 60.0, 1.0 / 240.0), 1.0 / 30.0)
+```
+
+The 1/30 s ceiling is correct for what it was written for — integrators must not take a huge step
+after a stall. The defect is that **one consumer of `dt` is not a physics integrator**:
+
+```swift
+timeSinceWrap += dt
+if barDownbeatNow { barPeriod = timeSinceWrap; timeSinceWrap = 0 }
+```
+
+`barPeriod` is how long a bar lasted, and WL.9 gates the off-beat pulse on it:
+`offBeatsAllowed = barPeriod / beatsPerBar >= offBeatMinBeatSeconds` (0.55 s). Clamping `dt`
+makes a heavy-framed bar *measure* shorter than it was, so a 94 BPM track can be misread as too
+fast for an off-beat pulse to read — and the pulse is simply not emitted.
+
+**Measured, two sessions, same track (`Carry The Zero`, 94.1 BPM, true bar 2.55 s):**
+
+| session | frames > 33.3 ms | elapsed time discarded | measured bar period | downbeats : off-beats |
+|---|---|---|---|---|
+| `2026-08-17T15-23-17Z` | 0.2 % | 19.4 % | 2.52 s (1/28 short) | 28 : 79 — **2.8:1**, correct |
+| `2026-08-18T14-09-35Z` | **25.3 %** | **28.8 %** | **1.80 s (33/50 short)** | 50 : 50 — **1:1** |
+
+**Causally confirmed, not inferred.** Raising the cap alone on the affected session, changing
+nothing else: `offBeatsAllowed` rejections **101 → 3**, off-beat pulses **50 → 149**. 149:50 is
+the 3:1 the meter implies. Two earlier hypotheses were tested and **falsified** first — the meter
+(`beatsPerBar` is 4 in every session) and the WL.11 drift compensation (disabling it changed
+nothing) — and the raw `barPhase01` wrap intervals in the CSV are a clean 2.45–2.65 s under both
+the wall clock and summed `deltaTime`, which is what localised the fault to the clamp rather than
+to the grid.
+
+⚠ **Two things make this worse than its size suggests.**
+1. **It is self-reinforcing and points the wrong way.** More load → more long frames → fewer
+   accents. The preset reads least musical exactly when the machine is most stressed, which is
+   also when a viewer is most likely to blame the preset.
+2. **No gate can see it.** The committed fixtures replay at a steady synthetic frame rate and
+   never approach the cap, so every WL gate passes while production silently drops accents. This
+   is the `SessionReplayHarness` failure class again: the harness is not reproducing the
+   production time base.
+
+**Likely fix, and why it is not applied here.** Accumulate the musical clock from the unclamped
+`deltaTime` (keeping the clamp for the integrators), or clamp far higher for that one use. It is
+close to a one-line change, but it roughly **triples the off-beat accent rate** on affected
+sessions — a visible change to a CERTIFIED preset, so it needs Matt's pick and an M7 rather than
+being folded into an unrelated increment. Worth checking whether any other preset accumulates a
+musical quantity from a clamped `dt`.
 
 ---
 
@@ -189,6 +252,27 @@ for Nacre this restores the behaviour it was certified with.
 **Blast radius checked:** full engine suite 1862/1862 green, including the Nacre, Cymatic and
 Fractal Tree suites; Fractal Tree's hue holds 87.5–101.6° across its drive frames, its D-209
 smoother doing the job unaided.
+
+**FOLLOW-UP (M7, 2026-08-18): the engine fix was right and the preset fix was wrong, and only
+Matt's eye could separate them.** On the corrected single pole he reported Witchlight as
+*"slightly less coupled to the beat … drifts a bit more out of sync over time"* (Nacre: *"looks
+fine"*). Replaying his session `2026-08-18T14-09-35Z` through the production path under BOTH
+code paths returned **bit-identical** beat behaviour — 50 downbeat bursts, 50 off-beat pulses,
+flares within 10 % of a beat 86 % of the time, pen speed swing 4.13× — with **heading turns
+50 → 74** the single moved quantity. The complaint was real and it was about LEGIBILITY, not
+timing: unchanged accents against a stroke wandering 50 % more.
+
+Cause: Witchlight was tuned and certified (2026-08-07) *during* the double-smoothed window, so
+the cascade was the response Matt approved. `WitchlightTuning.phasePreTau` now makes that second
+pole explicit and local to Witchlight; the analyzer stays raw for every other consumer. ⚠ Note
+that raising `phaseTau` instead **cannot** substitute — it saturates at 68 turns however high it
+goes, the same "a cascade is not a longer single pole" asymmetry that caused this defect.
+
+Knock-on, fixed in the same increment: the calmer stroke sweeps fewer pixels, dropping ribbon
+share 0.406 % → 0.368 % against a 0.40 % floor (WL.2-g) that had only 1.5 % headroom. Widening
+the halo's falloff 2.8 → 2.1 *within* the existing sprite quad gives 0.433 % and 16 distinct
+beads (up from 13) — the shading remedy the gate itself prescribes, and pointedly NOT
+`WL_HALO_EXTENT`, which WL.2-j had to cut for fusing beads.
 
 ---
 

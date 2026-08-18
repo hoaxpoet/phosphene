@@ -52,19 +52,22 @@ public final class WitchlightPath: AudioResponseMetrics {
     var emitAccumulator: Float = 0
 
     // Harmonic state — sin/cos accumulators, NEVER the raw ±π sawtooth.
-    private var phaseSin: Float = 0
-    private var phaseCos: Float = 1
-    private var previousPhase: Float = 0
+    var phaseSin: Float = 0
+    var phaseCos: Float = 1
+    var previousPhase: Float = 0
     var phaseRate: Float = 0
     /// Smoothed harmonic phase φ̄, radians. Also the hue source (§3.4).
+    var prePhaseSin: Float = 0
+    var prePhaseCos: Float = 1
+
     public var smoothedPhase: Float { atan2(phaseSin, phaseCos) }
 
     // Tonal "home" — a long-τ circular mean of φ̄, for `.curvatureDeviation`.
     /// Running estimate of |deviation from tonal home|, for the per-track gain.
     var deviationScale: Float = 0.3
 
-    private var homeSin: Float = 0
-    private var homeCos: Float = 1
+    var homeSin: Float = 0
+    var homeCos: Float = 1
     /// Wrapped excursion of φ̄ from the track's tonal home, radians (±π).
     public var phaseFromHome: Float {
         var delta = smoothedPhase - atan2(homeSin, homeCos)
@@ -245,6 +248,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         beads.removeAll(keepingCapacity: true)
         heading = 0; penX = 0; penY = 0; emitAccumulator = 0
         phaseSin = 0; phaseCos = 1; previousPhase = 0; phaseRate = 0
+        prePhaseSin = 0; prePhaseCos = 1
         homeSin = 0; homeCos = 1
         turnSign = 0; turnCandidateSign = 0; turnCandidateAge = 0
         turnCandidateBeadIndex = nil; hueTurnOffset = 0; turnCount = 0
@@ -373,27 +377,5 @@ public final class WitchlightPath: AudioResponseMetrics {
         reframe(dt: dt)
     }
 
-    // MARK: - (a) Harmonic steer
-
-    private func advanceHarmonicPhase(dt: Float, features: FeatureVector) {
-        let alpha = dt / (tuning.phaseTau + dt)
-        let raw = features.tonalPhaseFifths
-        phaseSin += (sin(raw) - phaseSin) * alpha
-        phaseCos += (cos(raw) - phaseCos) * alpha
-        let homeAlpha = dt / (tuning.homeTau + dt)
-        homeSin += (sin(raw) - homeSin) * homeAlpha
-        homeCos += (cos(raw) - homeCos) * homeAlpha
-        let phi = atan2(phaseSin, phaseCos)
-        // Wrapped difference — the phase is circular, so a −π→+π step is a small move.
-        var delta = phi - previousPhase
-        while delta > .pi { delta -= 2 * .pi }
-        while delta < -.pi { delta += 2 * .pi }
-        previousPhase = phi
-        // NO second smoothing stage. φ̄ is ALREADY the CR.1.2-smoothed phase, and an extra
-        // EMA on its signed rate cancels the reversals that carry the harmonic motion:
-        // measured, it cut the phase travel from the design §2.3 figures (2.1 / 1.7 / 15.4
-        // circles per 30 s) to 0.85 / 1.09 / 3.95, and the pen drew a straight line. The
-        // derivative of an EMA-smoothed circular phase needs no further filtering.
-        phaseRate = delta / dt
-    }
+    // MARK: - (a) Harmonic steer — see `WitchlightPath+Pen.advanceHarmonicPhase`
 }
