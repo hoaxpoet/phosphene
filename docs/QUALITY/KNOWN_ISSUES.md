@@ -36,10 +36,12 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-095 | P1 · **FIXED in code 2026-08-17; ⚠ awaiting M7 — changes a CERTIFIED preset's motion** | dsp.tonal / cross-preset-regression | **A source-side EMA in `TonalAnalyzer` outlived the reason it was added, and all four consumers were smoothing an already-smoothed angle — cutting Witchlight's hero driver's travel by up to 4×.** Witchlight steers the pen with a circular EMA on `tonalPhaseFifths` at τ = 1.5 s (`WitchlightPath.swift:379`, D-198). Since `2861140e` the analyzer ALSO EMAs that phase in the complex plane, so the value is smoothed twice. Measured over 30 s per track, phase travel in circles — **committed fixtures (pre-FTR.3g pipeline) vs today's**: so_what **2.09 → 0.72** (2.9×), there_there **1.80 → 1.00** (1.8×), love_rehab **15.10 → 3.77** (4.0×). Heading monotonicity on love_rehab also falls 0.38 → 0.24. ⚠ **`WitchlightPathTests` was built to catch exactly this** — its own comment says it is *"the check that caught a stray second smoothing stage cutting the travel by 2.5×"*. It did catch it; it was blinded only because the QG.1 fixtures were frozen pre-FTR.3g (BUG-090). **Do NOT re-derive the §2.3 constants to make it green** — that laundered a 4× reduction in a certified preset's primary driver, and was the first thing attempted here before the numbers were read. **Fixed** by removing the source EMA (FTR.19/D-209 had already superseded its purpose), restoring every consumer to the single pole it was designed with: travel returns to 2.09 / 1.80 / 15.10 against a design of 2.1 / 1.7 / 15.4, suite 1862/1862 green. ⚠ Removing *Witchlight's* EMA instead — the obvious reading, and the first fix chosen — was measured and **rejected**: it overshoots to 6.66 / 5.90 / 30.69 with monotonicity 0.03, drawing the preset's own anti-reference. Needs an M7 |
+| BUG-094 | P2 · **root-caused + probe-verified 2026-08-17; FIX NOT APPLIED — changes a certified preset's look, Matt's call** | preset.meniscus / primitive-contract | **Meniscus reads `arousal` as if it were 0…1 when its contract is −1…+1, discarding the entire calm half of the primitive.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as `max(0, min(features.arousal, 1))`, which clamps rather than maps — and `MeniscusCamera.swift:106` repeats it for the camera envelope, so the preset discards the calm half twice. On calm material that zeroes the lift for a large fraction of the track — measured **35 % of frames on `so_what`** (arousal −0.393…+0.519) — collapsing `arcEnvelope`, then `density`, until the backbeat-gated **vocals region places 0 drops across the whole track**. Masked until now because MEN.4a was calibrated on one capture where arousal never went negative (its own code comment records the range as *0.19 → 0.52 → 0.27*), and because the committed QG.1 fixtures happen to bottom out at −0.077. It surfaced only when BUG-090's regenerated fixtures carried today's mood output. **Probe-verified:** replacing the clamp with a map (`(clamp(arousal,−1,1)+1)/2`) takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green (14 tests / 9 suites). Probe reverted, not committed. **Not applied because it changes what a CERTIFIED preset looks like** — more drops on calm material — which is a product call, not a test fix. Needs Matt's pick and an M7. ⚠ **Transferable:** any consumer of a bipolar primitive that writes `max(0, x)` is silently discarding half its range. Worth grepping the other presets |
 | BUG-093 | **P1** · open, evidence-only | preset.fidelity | **Fractal Tree's geometry DOES move with the music by every measure available, and Matt still reports no clear connection — after nine live rejections.** Measured after 12 s on `2026-08-17T20-01-01Z`: `reach` spans 0.680, the size term 0.360, visible **trunk length 0.151 clip space ≈ 164 px of 1080**, branch spread 20°→34°, and the FTR.25 tip spark fires 0.37/s on events. So this is NOT a dead-channel or dead-route problem, and BUG-092 (which briefly claimed it was) is retracted on that point. **What IS established about the signals it tracks:** `spectral_surge`, which drives size, scores **0.25× event-versus-random specificity — it moves DOWN when the ear notices something** (FTR15 §9); `spectral_section_ratio`, which drives growth, is a slow density RANK, not a loudness or arrangement reading; `spectral_flux`, which drives the spread, is broadband change that fires as often between events as on them (1.50×). **The tree therefore moves a great deal while tracking three quantities that do not correspond to what a listener notices** — that is the standing hypothesis and it is consistent with every rejection in FTR.15→FTR.27, including the two where a more event-aligned driver was tried and rejected for its motion cost (FTR.24: 10.7× peak velocity). ⚠ **Do not open another tuning increment against this.** The next move needs a changed premise about WHICH quantity the tree should follow, and that is a product decision. Detail: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §§8–11 |
 | BUG-092 | P3 · **RE-SCOPED 2026-08-17, hours after filing — the original headline was WRONG** | preset.fidelity / documentation-drift | **Fractal Tree's declared `growth` route reads `arousal`, and `arousal` is INERT: it loses its own `max()` on 100 % of frames.** The shader computes `reach = max(0.10 · arousalReach, fullness) · musicGate`; measured after 12 s on `2026-08-17T20-01-01Z`, `0.10 · arousalReach` spans **0.032** against `fullness`'s **0.646** and never wins. So the sidecar's `growth ← arousal` is a manifest entry with no visible effect — the FTR.2 false-route class, which QG.1 cannot catch because `arousal` does *vary* (just at 3 % of the competing term's amplitude). `arousal` is separately near-constant within a track (mean 0.446…0.475, sd 0.048…0.069, same 0.26…0.51 bounds on five captures across three builds), which is fine for a MOOD classifier and is why nobody noticed. ⚠ **WHAT THIS ENTRY ORIGINALLY CLAIMED AND GOT WRONG:** that arousal was the preset's primary growth driver and that its flatness explained nine live rejections of "no clear connection". False. I measured the primitive's flatness and never checked its COEFFICIENT. Growth's real driver is `spectral_section_ratio` (span 0.646) and the visible trunk length swings **0.151 clip space ≈ 164 px of 1080** after 12 s — the geometry moves across two thirds of its range. **The connection complaint remains UNEXPLAINED**; see BUG-093. Fix here is small and cosmetic: either delete the inert arousal term and the route, or give it a coefficient that can compete — Matt's call, since one of those changes what he sees. Detail below |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
-| BUG-090 | P2 · **evidence-only, filed 2026-08-17; no fix attempted** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
+| BUG-090 | P2 · **resolved 2026-08-17 — cause (a), and it concealed a real regression** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
 | BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
@@ -69,6 +71,154 @@ read the crash reports already on disk.**)*
 
 ---
 
+### BUG-095 — Double-smoothed harmonic phase: a source EMA outlived its reason and every consumer was smoothing twice (2026-08-17)
+
+**Status: FIXED in code — `TonalAnalyzer` now emits `phaseFifths` RAW. Full engine suite green
+(1862 tests / 284 suites). ⚠ Witchlight is CERTIFIED and this changes its motion: needs an M7.**
+
+**What happened.** `2861140e [FTR.3g]` (2026-08-04) added a vector EMA to the circle-of-fifths
+phase inside `TonalAnalyzer`, because Fractal Tree read the field straight into hue. On
+2026-08-16 `acc3c935 [FTR.19]` gave Fractal Tree its own `CircularPhaseSmoother` (D-209) —
+superseding the reason the source EMA existed — but nobody removed it. **All four consumers
+already smooth this angle themselves**, so all four were smoothing an already-smoothed value:
+
+| consumer | its own circular EMA |
+|---|---|
+| Witchlight | τ = 1.5 s (`WitchlightPath.advanceHarmonicPhase`, D-198) |
+| Nacre | ~0.9 s (`RenderPipeline+Nacre.swift:129`) |
+| Cymatic | `hueTau` (`CymaticSandGeometry.swift:310`) |
+| Fractal Tree | D-209 `CircularPhaseSmoother` (`MeshGenerator.swift:269`) |
+
+A cascaded second pole does not merely lengthen the time constant — it attenuates *fast* motion
+far harder, which is why the worst loss landed on the track whose harmony moves most.
+
+**Measured, 30 s per track, total wrapped phase in circles (design: 2.1 / 1.7 / 15.4):**
+
+| track | double-smoothed | source RAW (fixed) | design §2.3 |
+|---|---|---|---|
+| so_what | 0.72 | **2.09** | 2.1 |
+| there_there | 1.00 | **1.80** | 1.7 |
+| love_rehab | 3.77 | **15.10** | 15.4 |
+
+love_rehab heading monotonicity recovers 0.24 → 0.38. **The §2.3 constants needed no
+re-derivation — they were right all along**, and the fix reproduces them to within 2 %.
+
+**The first wrong fix.** *Re-deriving the §2.3 constants* to make the gate green would have
+laundered a 4× regression in a certified preset's hero driver. The second candidate — removing
+Witchlight's own EMA — is treated below.
+
+⚠ **The fixture rate is NOT the production rate, and this nearly produced a wrong conclusion.**
+`TonalAnalyzer`'s α = 0.065 is a fixed *per-frame* factor, so its time constant depends on how
+often analysis runs. `FixtureSessionCaptureGenerator` emits at **43.07 Hz** (1024 frames at
+44.1 kHz), where α = 0.065 is τ ≈ **0.36 s**. Live analysis runs at **10.0–16.4 Hz** (BUG-087),
+where the same α is τ ≈ **0.94–1.54 s** — so the source comment's *"τ ≈ 1.5 s at the ~10 Hz
+analysis rate"* was accurate for production, and every τ figure in the sweep below is a
+**fixture-rate** number. The first draft of this entry asserted the comment was "stale, off by
+4×". It was not; the fixtures and production simply run the analyzer at different rates, which
+is its own fixture-fidelity problem and is why a per-frame α is the wrong construction. Every
+other smoother in that file takes `deltaTime`.
+
+**Why the fix is still the source EMA and not Witchlight's.** In production the double-smoothing
+was ~1.5 s (source) *plus* 1.5 s (Witchlight) — worse than the fixtures show, so the defect is
+real and the direction of the fix is unchanged. But the choice between the two candidates turns
+on rate-robustness rather than on the sweep: removing **Witchlight's** EMA leaves every consumer
+sharing one source pole whose length is set by the analysis rate, and that rate is actively
+moving (BUG-087 took it 10.0 → 16.4 Hz, and raising it further is an open increment). Removing
+the **source** EMA leaves each consumer on its own `deltaTime`-based pole at the τ it was
+designed and measured with, identical at any rate. Measured at fixture rate the Witchlight-side
+fix also overshoots outright — 6.66 / 5.90 / 30.69 circles with love_rehab monotonicity
+collapsing to **0.03**, a tangle, which is the preset's own anti-reference
+`10_anti_tangled_scribble_ball` — and a τ sweep (0 / 0.3 / 0.6 / 0.9 / 1.2 / 1.5) found no
+consumer τ reproducing the design figures, because the defect is the extra *pole*, not the
+time constant.
+
+**How it hid, and the order of events.** The committed QG.1 fixtures were captured *before*
+FTR.3g, so their `tonal_phase_fifths` column is raw and every gate kept passing against a
+pipeline that no longer existed (BUG-090). `WitchlightPathTests`' own comment describes it as
+*"the check that caught a stray second smoothing stage cutting the travel by 2.5×"* — it was
+built for exactly this failure and was blinded by its own fixture. Note the dates:
+**FTR.3g 08-04 → Witchlight certified 08-07 → FTR.19 08-16.** Matt's certification M7 was on
+the double-smoothed build, so this fix moves Witchlight *away* from what he signed off and
+*toward* what its design doc specifies. That is why it needs a fresh M7 rather than being
+treated as a restoration. Nacre is the opposite case — certified 2026-06-26, before FTR.3g, so
+for Nacre this restores the behaviour it was certified with.
+
+**Blast radius checked:** full engine suite 1862/1862 green, including the Nacre, Cymatic and
+Fractal Tree suites; Fractal Tree's hue holds 87.5–101.6° across its drive frames, its D-209
+smoother doing the job unaided.
+
+---
+
+### BUG-094 — Meniscus clamps `arousal` to 0…1 when its contract is −1…+1, and a beat-locked region goes dead on calm material (2026-08-17)
+
+**Status: root-caused and probe-verified. Fix NOT applied — it changes what a certified preset
+looks like, which is Matt's call.**
+
+**The defect.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as:
+
+```swift
+let lift = max(0, min(features.arousal, 1))
+```
+
+`arousal`'s declared contract is **−1 (calm) to +1 (energetic)** (`AudioFeatures+Analyzed.swift`).
+This clamps rather than maps, so the entire calm half of the primitive is discarded — every
+negative frame reads as identical to "not calm at all".
+
+**What it costs.** On `so_what` (Miles Davis, quiet modal jazz) today's mood output runs
+−0.393…+0.519 with **35 % of frames negative**. Those all collapse to zero, `arcEnvelope`
+(τ 6 s) sits low, `density = 0.35·arcEnvelope + 0.65·arrangement` never rises, and the
+backbeat-gated **vocals region places 0 drops across the entire track** — which
+`MeniscusStemDropsTests` correctly calls a dead route, since those three regions are beat-locked
+and absolute.
+
+**Why it stayed hidden.** MEN.4a was calibrated on a single capture where arousal never went
+negative — its own comment records the range as *"arousal 0.19 → 0.52 → 0.27"* — so the clamp
+never engaged. And the committed QG.1 fixtures bottom out at −0.077, roughly 0 % negative. The
+defect only surfaced when BUG-090's regenerated fixtures carried today's mood output, after
+DYN.6.2/DYN.7 refit the classifier.
+
+**Probe (reverted, not committed).** Replacing the clamp with a map:
+
+```swift
+let lift = (max(-1, min(features.arousal, 1)) + 1) * 0.5
+```
+
+takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green
+(14 tests / 9 suites), with the other two tracks unaffected in kind.
+
+**Why the fix is not applied here.** It makes a **certified** preset place more drops on calm
+material — a visible change to what Matt sees, and therefore a product call plus an M7, not a
+test fix. Applying it as a side effect of a fixture investigation is exactly the laundering
+BUG-090 was filed to prevent.
+
+**The sweep found a SECOND site, in the same preset.** `MeniscusCamera.swift:106` does the
+identical thing to its own envelope:
+
+```swift
+arousalEnvelope += (max(0, min(features.arousal, 1)) - arousalEnvelope) * …
+```
+
+So Meniscus discards the calm half of `arousal` twice — once for drop density, once for camera
+motion. Both need the same correction, and both change what a certified preset looks like.
+
+**The codebase already has the correct idiom, two files away.** The orchestrator maps the same
+primitive properly:
+
+```swift
+SessionPlanner.swift:327    let energy       = max(0, min(1, 0.5 + 0.4 * profile.mood.arousal))
+PresetScorer.swift:277-279  let targetTemp   = max(0, min(1, 0.5 + 0.4 * valence))
+                            let targetDensity = max(0, min(1, 0.5 + 0.4 * arousal))
+```
+
+`0.5 + 0.4 · x` centres the bipolar range on 0.5 and keeps both halves. That is the shape the
+Meniscus sites should have used.
+
+⚠ **Also checked and NOT affected.** `RayMarchPipeline+MetalFX.swift:183–184` writes
+`max(0, valence)` / `max(0, -valence)` — that is a deliberate split of a bipolar signal into two
+unipolar channels (warm and cool), which loses nothing. And the deviation family (`*Dev`) is
+`max(0, *Rel)` **by definition**, not by accident. No MSL-side instances. The rule is not
+"`max(0, …)` is wrong" — it is "clamping a bipolar primitive to one side of zero throws away
+half of it".
 ### BUG-093 — The tree moves plenty and still reads as disconnected; the drivers track the wrong quantities (2026-08-17)
 
 **Status: P1, evidence only, and deliberately NOT a tuning ticket.**
@@ -327,14 +477,43 @@ set adds **six** columns — the whole DYN block (`spectral_density`, `_slow`, `
 (CHR.3c). So the fixture gap currently blocks route coverage for three separate increments'
 primitives, not one.
 
-**What remains, and it is a judgement call rather than a measurement.** Regenerating is now
-known to be safe and reproducible, but it re-baselines two gates — one of them on a **certified**
-preset. That needs Matt's sign-off and its own increment, because the honest framing is *"these
-two gates have been measuring a stale baseline since FTR.3g/DYN.6, and re-capturing makes them
-measure today's pipeline"* — which is a claim about Witchlight's certification evidence, not a
-fixture chore. **Recommended:** re-capture the fixtures, re-derive the two gates' targets from
-the current pipeline, and have Matt re-confirm Witchlight's phase-travel figure against a live
-render rather than accepting a recomputed constant.
+**RESOLVED (same day).** Regenerating was safe and reproducible, and **neither failing gate was
+a stale baseline — both were real defects the frozen fixtures had been hiding** (BUG-094
+Meniscus, BUG-095 double-smoothed phase). With both fixed, the regenerated fixtures are
+committed and the full suite is green at 1862/1862. Drift is now **four** columns — `arousal`,
+`valence` (both moved by the DYN mood work) and `harmonic_flux`, `tonal_tension` — each traced
+to an intentional change, plus the six new columns above. `tonal_phase_fifths`, the fifth
+drifted column, is **gone from the list**: it was the regression, not drift.
+`RouteCoverageTests.columnsPostdatingFixtures` is now **empty** — every column added since
+QG.1.3 is present and covered, and the gate reads 199 routes / 20 presets, 0 red.
+
+**One thing regenerating did NOT unblock, and the reason was misdiagnosed.** Stave's
+`waveformOccupancy` route was recorded as blocked by BUG-090. It is not: the regenerated
+fixtures carry `waveform_occupancy`, but it is **0.0000 with zero variance on all three
+tracks**, because the model is ticked in the render path while the generator runs only the MIR
+pipeline. That is the **QG.1.1** limitation. Stave's certification is still blocked, and the
+fix is a generator change (tick the occupancy model during capture), not a fixture refresh.
+
+**FOLLOW-UP (CHR.3h, same day): the two failures are NOT the same kind of thing, and only one
+is a re-baseline.** Investigated separately rather than treated as one fixture chore:
+
+- **Witchlight — ⚠ THIS CALL WAS WRONG, and it is the most useful thing in this entry.** CHR.3h
+  read the gate as a stale baseline: `circles` fell below 0.7 × target on all three tracks, which
+  is the direction FTR.3g predicts, so the constant was assumed to predate the change and the
+  preset was assumed sound. **It was a real regression** — filed as BUG-095 and fixed. The
+  reasoning failed in a specific, repeatable way: *a plausible mechanism that predicts the
+  direction of a change was accepted as an explanation for its magnitude.* FTR.3g does predict
+  less travel; it does not predict **4×**, and nothing checked whether the size was consistent
+  with one extra smoothing stage rather than two. The measurement that settled it took one
+  command — regenerate the fixtures with the source EMA disabled and read the number: 2.09 /
+  1.80 / 15.10 against a design of 2.1 / 1.7 / 15.4, i.e. the constant was never stale at all.
+  **Re-deriving the target would have written the regression into the doc as the new truth**, on
+  a certified preset, with the gate that was built to catch exactly this failure reporting green.
+- **Meniscus — a REAL DEFECT, now filed as BUG-094.** Not a stale target at all: it clamps
+  `arousal` to 0…1 when the contract is −1…+1, so on calm material the arc lift dies and a
+  beat-locked region goes silent. The gate was right to fail. **Re-baselining it would have
+  laundered a genuine bug in a certified preset** — which is precisely the outcome this defect
+  was originally filed to avoid, arrived at from the opposite direction.
 
 ---
 
@@ -1746,236 +1925,6 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ## Resolved (recent)
 
 *(PUB.3 pruning pass, 2026-07-11: 24 resolved entries moved here from §Open; BUG-013/001/005 reclassified to §Known Limitations. rotate_docs.sh files these to KNOWN_ISSUES_HISTORY.md after 14 days.)*
-
----
-
-### BUG-082 — Session retention keeps 6, not 10: fixture folders occupy the slots permanently (2026-08-03)
-
-> **Renumbered 080 → 082 at merge.** Filed as BUG-080 against a tree where 079 was the highest; a parallel session landed a *different* BUG-080 (gitignored-asset propagation) on `main` first, and `DocIntegrityTests` gates BUG-number uniqueness. **The commits on this branch are titled `[BUG-080]` — they mean this entry.** Its sibling was filed as BUG-081 and hit the SAME collision one merge later (a parallel `main` BUG-081, an unrelated beachball), so it is now **BUG-083**; its commits are titled `[BUG-081]`.
-
-**P2 · app.diagnostics / algorithm · RESOLVED 2026-08-03.**
-
-**Resolution.** `sessionFolders` now filters to directories whose name parses as a session timestamp, so a non-session directory is neither counted against the limit nor a deletion candidate. `dateFromFolderName` was rewritten as a strict whole-string `DateFormatter` match — the previous character-substitution routine did `index(startIndex, offsetBy: 10)` unconditionally and traps on any shorter name, which was unreachable while only the age-based arms called it but becomes reachable the moment every directory is parsed (a folder named `old/` would have crashed app launch). Regression tests in `SessionRecorderRetentionPolicyTests`: `lastN10_nonSessionFoldersNeitherCountedNorDeleted` (12 sessions + the 4 real fixture folders → exactly the 2 oldest sessions deleted, fixtures untouched), `oneWeek_doesNotDeleteNonSessionFolders`, `shortAndOddFolderNamesDoNotTrap`. **The regression test was confirmed to fail before the fix** — it reported 6 surviving sessions against the expected 10, reproducing the defect exactly.
-
-**Expected.** With the default `lastN10` retention, the ten most recent *session recordings* survive; older ones are pruned.
-
-**Actual.** Six survive. `SessionRecorderRetentionPolicy.sessionFolders` enumerates every directory under `~/Documents/phosphene_sessions/` and sorts `$0.name > $1.name` on the stated assumption that "ISO timestamps sort lexicographically" — but the directory also holds permanent non-session folders, and in ASCII letters sort above digits. Verified against the live directory:
-
-```
- 1 fixturegen-there_there        <- not a session
- 2 fixturegen-so_what            <- not a session
- 3 fixturegen-love_rehab         <- not a session
- 4 beat-match-test-session       <- not a session
- 5 2026-08-03T21-07-43Z          <- newest real folder is only rank 5
-...
-11 2026-08-03T19-49-56Z          <- deleted next
-```
-
-`lastN10` does `Array(folders.dropFirst(10))`, so the four fixture folders permanently consume four retention slots **and can never be pruned themselves** (they are always in the kept prefix). Effective session retention is `10 - <number of named folders>` = 6 today, and it shrinks further as fixture folders are added.
-
-**Reproduction.** `ls -d ~/Documents/phosphene_sessions/*/ | sort -r` — any folder not named `YYYY-MM-DDTHH-MM-SSZ` appears above every real session.
-
-**Impact.** Real captures are deleted well before the user's setting says. Observed live on 2026-08-03: session `2026-08-03T15-05-43Z` was evicted **while it was being used** as the input for Witchlight motion-sequence renders, forcing a re-render against a different capture. Compounds with BUG-081, which manufactures folders that consume the same slots.
-
-**Failure class.** `algorithm` — an ordering assumption ("every directory here is a timestamp") that the directory's actual contents violate.
-
-**Fix (not implemented).** Filter `sessionFolders` to entries whose name parses as an ISO timestamp. `dateFromFolderName` already exists in the same file and the `oneDay`/`oneWeek` arms already rely on it; only the `lastN` arms skip the check. One-line filter plus a regression test that plants a named folder among timestamped ones and asserts it is neither counted nor deleted.
-
-**Verification criteria (written before the fix).** (1) Automated: a `SessionRecorderRetentionPolicyTests` case with 4 named folders + 12 timestamped ones under `lastN10` deletes exactly the 2 oldest *timestamped* folders and leaves all named folders untouched. (2) Manual: with 10+ real sessions on disk, launch the app and confirm the count of timestamped folders afterwards is 10, not 6.
-
----
-
-### BUG-083 — A session folder is written on every engine construction, including test runs (2026-08-03)
-
-**P2 · app.diagnostics / test-isolation / resource-management · RESOLVED 2026-08-03.**
-
-**Resolution.** `SessionRecorder.init` no longer touches the filesystem — it computes paths only. Directory creation, CSV headers, the startup banner and the disk-space pre-flight moved into `materializeIfNeeded()`, called on the serial queue from the first actual write. Every disk-touching entry point is guarded: frame rows, `log`/`writeLogLine`, the raw-tap WAV (`createFile` does not create intermediate directories), the stem dump (`withIntermediateDirectories` would otherwise conjure the directory with no headers), and the video writer. `finish()` early-outs when nothing was ever written, so it cannot materialize the empty folder the fix exists to prevent. The banner uses `writeLogLine` rather than `log` so it stays the first line of `session.log` instead of being enqueued behind the row that triggered materialization. Regression tests in `SessionRecorderTests`: `test_construction_writesNothingToDisk`, `test_finishWithoutWriting_leavesNoDirectory`, `test_firstLogWrite_materializesDirectoryWithHeadersAndBanner`. Two pre-existing tests asserted the old init-time contract and were updated, not weakened — `test_init_createsSessionDirectoryWithCSVsAndLog` became `test_firstWrite_createsSessionDirectoryWithCSVsAndLog`, keeping every assertion and moving them one write later. **Verified end-to-end:** the full app test suite now leaves the session directory listing byte-identical, where before it added a folder and evicted one.
-
-**Expected.** A folder appears under `~/Documents/phosphene_sessions/` when a session is *recorded*. Running the test suite writes nothing to the user's Documents directory.
-
-**Actual.** `VisualizerEngine.swift:942` constructs `SessionRecorder()` unconditionally, and `SessionRecorder.init` creates the directory, writes both CSV headers and the three-line startup banner immediately. Any `VisualizerEngine` construction therefore leaves a folder behind whether or not a session ever starts — including every `xcodebuild -scheme PhospheneApp test` run, and every app launch the user closes without recording.
-
-**Reproduction (performed).** Count folders, run `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`, count again: `2026-08-03T21-07-43Z` appears with a header-only `features.csv` (1 line, 0 data rows) and a `session.log` containing only the banner — no `WIRING:`, no `preset →`, no `SIGNAL_HEALTH`. Four of the six empty folders present on 2026-08-03 match `xcodebuild` app-test completion times to within 3 s (19-49-56Z, 20-01-18Z, 20-12-53Z, 21-00-25Z).
-
-**Impact.** Two, and the second is the damaging one:
-1. Test-isolation violation — the test suite writes into the user's `~/Documents/`.
-2. The junk folders **consume retention slots**, so running the test suite (or launching the app a few times without recording) silently evicts real captures. With BUG-080 also in play the usable window is 6, so ~6 test runs are enough to destroy every real session on disk. This is what made a real capture disappear mid-analysis on 2026-08-03.
-
-**Diagnostic confusion it caused.** These folders are indistinguishable at a glance from a session where audio capture failed, and were initially misread as six failed M7 attempts (a silent-tap symptom, BUG-055/BUG-057 class). They are not — they are empty by construction.
-
-**Failure class.** `resource-management` (eager side-effecting allocation in an initializer) with a `test-isolation` consequence.
-
-**Fix (not implemented).** Create the directory lazily on the first row write, or behind an explicit `startRecording()` that the session lifecycle calls — so an engine that never records leaves nothing behind. Either way the recorder stops side-effecting from `init`.
-
-**Verification criteria (written before the fix).** (1) Automated: constructing a `SessionRecorder` (or a `VisualizerEngine`) and never writing a row creates no directory; writing one row creates it with headers intact. (2) Manual: note the folder count, run the full app test suite, confirm the count is unchanged.
-
----
-
-### BUG-080 — Gitignored-asset propagation is broken at two points: fresh worktrees (and `main`) fail the engine suite (2026-08-03)
-
-**P2 · build / test-isolation · RESOLVED 2026-08-03 — fix `2b36c34d`.** Filed P3, **widened to P2** the same day when the second gap surfaced. Found at FTR.1; not caused by it.
-
-*Severity note:* P2 per `DEFECT_TAXONOMY.md` — "works for typical inputs but degrades noticeably for specific conditions." The verification harness passes in the one blessed checkout and fails everywhere else, including a fresh clone. No product impact; downgrade to P3 if the every-new-session tax is judged cosmetic.
-
-**Expected.** `swift test --package-path PhospheneEngine` passes in any checkout prepared per the documented flow — `git worktree add` followed by `Scripts/link_fixtures.sh`.
-
-**Actual.** Exit code 1. Two independent causes, discovered in sequence.
-
-### Gap A — `link_fixtures.sh` does not cover the ML weights
-
-PUB.2 moved the weights out of git (gitignored; shipped as the `ml-weights-v1` Release asset). `link_fixtures.sh` exists to bridge exactly that class of gap — its own header says *"Gitignored-but-needed paths that a fresh worktree would otherwise lack"* — but `linked_rel` covers only:
-
-```
-PhospheneEngine/Tests/Fixtures
-docs/VISUAL_REFERENCES
-docs/diagnostics
-```
-
-`PhospheneEngine/Sources/ML/Weights` is absent. The failure has two halves: the trailing filter would also reject the files.
-
-```
-| grep -E '^PhospheneEngine/Tests/Fixtures/|\.(jpg|jpeg|png|gif)$'
-```
-
-A `.bin` matches neither alternative, so adding the directory alone is insufficient.
-
-| Weights directory | Primary | FTR.1 worktree (before workaround) |
-|---|---|---|
-| `Sources/ML/Weights/` | 176 | 4 |
-| `.../beat_this/` | 162 | 1 |
-| `.../panns_mobilenetv1/` | 147 | 1 |
-
-479 gitignored files never arrive. Failures: `StemModelTests` (6), `StemSeparationPerformanceTests` (2), `WeightChecksumTests.test_completeness_{stem,beatThis,panns}` each reporting `onDisk → []`, `PANNsMobileNetV1Tests` `.tensorFileMissing("spectrogram_extractor_stft_conv_real_weight.bin")`, and the loveRehab 118-BPM port test.
-
-### Gap B — the primary checkout is not a complete source
-
-`PhospheneEngine/Tests/Fixtures/tempo/` — three licensed `.m4a` preview clips, gitignored at `.gitignore:63` ("Local audio fixtures for DSP.1 tempo capture (preview clips are licensed)") — **was absent from the primary checkout entirely**. The files existed only inside `.claude/worktrees/men-2a-kickoff-250b81/`, as real 1 MB files, presumably restored there by whichever session needed them.
-
-`link_fixtures.sh` links *from* the primary. It cannot supply what the primary lacks. So:
-
-- no worktree could ever obtain these fixtures, no matter how correctly prepared;
-- the primary checkout itself fails the same gate;
-- the script reports success (`linked N fixture(s)`) while propagating a hole.
-
-`BeatThisFixturePresenceGate` fired loudly with a path-and-instructions message — **that gate is working exactly as QR.3 designed it**, and it is the only reason this surfaced rather than silently disabling the BeatThis regression surface.
-
-Failures: `BeatThisFixturePresenceGate`, `BeatThisLayerMatch`, `LiveDriftValidation`, `BeatGridAccuracyDiagnostic — BUG-008`, `PreviewAudio content-hash + identity migration`. Several `LocalFilePlaybackProvider` concurrency tests (`routerChurn_…`, `deinitWhilePlaying_…`, `concurrentDoubleStart_…`) also failed at `0.001 s` immediately after tests that hung ~54 s on the missing audio — suspected cascade, not independent, but unconfirmed; BUG-078 is a real intermittent in that same area, so any that survive a green fixture run deserve their own look.
-
-### Root cause, stated generally
-
-`link_fixtures.sh` treats the primary checkout as an authoritative, complete source of gitignored material, and **nothing verifies that assumption**. The primary is simply whichever clone happened to receive the files. There is no manifest of required-but-gitignored paths, no provenance, and no check that the source has them before linking. Gap A is a stale allowlist; Gap B is the missing invariant underneath it.
-
-**Reproduction.**
-
-```
-git worktree add .claude/worktrees/<name> -b <branch> main
-cd .claude/worktrees/<name>
-Scripts/link_fixtures.sh
-swift test --package-path PhospheneEngine
-```
-
-**Evidence.** Three `Scripts/closeout_evidence.sh` runs, all at commit `935d77d3`, tree clean:
-
-| Run | Failing lines | State |
-|---|---|---|
-| `2026-08-03T13:54:40-0500` | 81 | before any workaround |
-| `2026-08-03T14:06:29-0500` | 81 | after `link_fixtures.sh` — **identical**, which is what proved the script does not cover Gap A |
-| `2026-08-03T14:15:24-0500` | 21 | after 479 weight symlinks — XCTest half reports `0 failures`; remainder is Gap B |
-
-Every reduction came from restoring a file. No code changed across any of the three runs.
-
-**Failure class.** `test-isolation`, with a `documentation-drift` component: `link_fixtures.sh`'s header claims to cover the gitignored set and no longer does.
-
-**Impact.** No shipped code path affected. The cost is **misdiagnosis** — a fresh-worktree run reads as a regression in whatever increment is under test, and `closeout_evidence.sh` honestly stamps `EVIDENCE: FAILURES PRESENT`, so a closeout stalls until someone traces it. With one worktree per session now the standing convention (D-212 process note), every new session pays this tax.
-
-**Proposed fix (NOT implemented here — this is the diagnosis increment).**
-
-1. Add `PhospheneEngine/Sources/ML/Weights` to `linked_rel` and widen the grep filter to admit it. (~2 lines; closes Gap A.)
-2. **Verify the source before linking.** Check the primary actually holds each required gitignored tree and fail loudly if not, mirroring `BeatThisFixturePresenceGate`'s philosophy — a script that silently propagates a hole is the same failure class the gate was written to kill. (Closes Gap B.)
-3. Consider a single manifest of required-but-gitignored paths, consumed by both `link_fixtures.sh` and the presence gates, so the two cannot drift apart again.
-
-Per the Defect Handling Protocol, diagnosis and fix are separate increments unless Matt explicitly approves collapsing them. **Matt approved collapsing them for this defect (2026-08-03, in chat), so the diagnosis, the fix (`2b36c34d`) and the validation below all sit in one increment.**
-
-**Verification criteria (written before the fix).**
-
-1. *Automated:* in a worktree created fresh and prepared with the patched script, `swift test --package-path PhospheneEngine` exits 0, with `WeightChecksumTests.test_completeness_{stem,beatThis,panns}` and the whole `BeatThisFixturePresenceGate` suite green.
-2. *Automated:* for every path in `linked_rel`, the count of gitignored files in the primary equals the count of links created in the worktree (479 weights + 3 tempo clips at time of filing).
-3. *Automated:* with a required tree deliberately removed from the primary, `link_fixtures.sh` **fails** rather than reporting success — the Gap B regression test.
-4. *Manual:* `Scripts/closeout_evidence.sh` in that worktree footers `engine=0` and does not print `EVIDENCE: FAILURES PRESENT`.
-
-**Workaround applied (2026-08-03, not a fix).** 479 weight files symlinked into the FTR.1 worktree with absolute targets into the primary; the three tempo clips copied from the `men-2a-kickoff-250b81` worktree into the primary (restoring the canonical source) and symlinked onward. Both trees now report 72 fixture entries.
-
-**FIX LANDED (2026-08-03, same day, pending validation).** `Scripts/link_fixtures.sh` rewritten around a declarative manifest:
-
-```
-<path>|<required>|<match-regex>
-  PhospheneEngine/Tests/Fixtures      | yes | .
-  PhospheneEngine/Sources/ML/Weights  | yes | .
-  docs/VISUAL_REFERENCES              | no  | \.(jpg|jpeg|png|gif)$
-  docs/diagnostics                    | no  | \.(jpg|jpeg|png|gif)$
-```
-
-- **Gap A closed** — weights are in the manifest, and the match filter is per-path rather than one global grep, so `.bin` passes where it structurally could not before.
-- **Gap B closed** — `required=yes` makes an empty source tree a **hard error with a path-and-instructions message**, not a silent skip. The script can no longer report success while propagating a hole.
-- **New `--verify` mode** — checks the primary is a complete source and exits non-zero if not, linking nothing. Runnable from the primary itself, so it works as a standalone gate (CI-ready).
-- **Missing-on-disk files warn and set a non-zero exit** instead of `continue`-ing in silence (the old line 54).
-
-Verified by hand on the primary at time of writing:
-
-| Check | Result |
-|---|---|
-| `--verify` on a complete primary | exit 0; reports 3 fixture + 479 weight files |
-| **Gap B regression:** required tree hidden, then `--verify` | exit 1, loud error naming the path |
-| link mode run from the primary | exit 0, correct no-op |
-| `bash -n` syntax check | clean |
-
-**RESOLVED 2026-08-03 — fix commit `2b36c34d`.**
-
-Closing gate: `swift test --package-path PhospheneEngine` run in `.claude/worktrees/ftr1` at commit `935d77d3`, tree clean.
-
-```
-Executed 225 tests, with 7 tests skipped and 0 failures (0 unexpected) in 69.842 seconds
-✔ Test run with 1732 tests in 246 suites passed after 211.083 seconds.
-```
-
-Both halves green — the first fully green engine run on this material. Every failure named in Gap A and Gap B now passes: `WeightChecksumTests.test_completeness_{stem,beatThis,panns}`, `PANNsMobileNetV1Tests`, `StemModelTests`, the whole `BeatThisFixturePresenceGate` suite, `BeatThisLayerMatch`, `LiveDriftValidation`, `BeatGridAccuracyDiagnostic`, and the loveRehab 118-BPM port test.
-
-**The `LocalFilePlaybackProvider` concurrency failures were cascade, as suspected.** `routerChurn_…`, `deinitWhilePlaying_…` and `concurrentDoubleStart_…` all pass once the audio fixtures exist. Nothing is owed to BUG-078 from this filing — it remains open on its own evidence.
-
-**The three perf tests also passed cold**, closing the FTR.1 closeout's §2 caveat. `PostProcessChainTests.test_fullChain_under2ms_at1080p`, `RayMarchPipelineTests.test_fullPipeline_under8ms_at1080p` and `StemSeparationPerformanceTests.test_separate_1SecondAudio_performance` failed at `14:27:48` and passed at `14:15:24` on the identical commit with no code change; they pass here too. Confirmed flake — the timing-sensitivity class `DEFECT_TAXONOMY.md` already names P2 — not a regression.
-
-**Verification criteria, scored honestly against what was actually run.**
-
-| # | Criterion (written before the fix) | Result |
-|---|---|---|
-| 1 | Fresh worktree prepared with the patched script → suite exits 0 | **Green, with a caveat.** The suite is green, but that worktree ran the *pre-fix* script against an environment repaired by hand — its output still prints the old `link_fixtures: 0 fixture(s) linked` message. What is proven is that a complete environment makes the suite pass, i.e. the diagnosis was right and nothing else was wrong. What is **not** yet proven is that the patched script is what produces that completeness. |
-| 2 | Per-path link count in the worktree equals the gitignored count in the primary | Met by hand (479 weights, 3 clips, 72 fixture entries in both trees); not re-measured through the patched script. |
-| 3 | Required tree removed from the primary → script **fails** rather than reporting success | **Fully met.** Exercised during the fix: exit 1 with a loud error naming the path. This is the Gap B invariant and it holds. |
-| 4 | `closeout_evidence.sh` footers `engine=0`, no `EVIDENCE: FAILURES PRESENT` | Met by the equivalent direct `swift test` run above. |
-
-**Closing on the caveat.** Criteria 1 and 2 close for real at the first worktree created from `main` *after* `2b36c34d` merges — the first genuinely fresh preparation by the patched script. That is a five-minute check, not new work: `git worktree add`, `Scripts/link_fixtures.sh`, compare counts. **Append the result here when it happens**; until then this entry is resolved on a strong-but-indirect validation, and says so.
-
-**Follow-up CLOSED 2026-08-04 (RECON.13) — the shared manifest, and a correction to this entry's own claims.**
-
-`Scripts/fixtures.manifest` is now the single source of truth for which gitignored files a default `swift test` requires, read by three consumers that previously disagreed: `link_fixtures.sh --verify`, `bootstrap_fixtures.sh`'s no-op guard, and the Swift gate (renamed `FixtureManifestPresenceGate`, was `BeatThisFixturePresenceGate`, which had hardcoded one filename). **The bug the duplication was actually hiding was a granularity mismatch, not just drift:** the shell side asked "is the directory non-empty" while the Swift side asked "does this specific file exist". A tempo tree holding **1 of 3** clips satisfied both shell checks and still failed the tests they exist to protect. Verified by removing one clip: `--verify` and `bootstrap_fixtures.sh` both previously reported success, and now both fail naming the exact missing path. Adding a fixture is a one-line manifest edit rather than a two-file edit someone can half-finish.
-
-**Correction — the "3 of ≥8 fixtures" claim in this entry and in RUNBOOK §Worktree setup was WRONG.** The 2026-08-03 audit reported that `fetch_tempo_fixtures.sh` retrieved 3 tracks against a suite needing "at least eight", naming `pyramid_song`, `yyz`, `clair_de_lune`, `money`, `if_i_were_with_her_now`. Measured directly at RECON.13: the default-required set **is** those three (`love_rehab`, `so_what`, `there_there`), and the fetch script covers all of them. The claim conflated **three separate fixture systems** — (1) tempo clips, gitignored, required, gated here; (2) **BeatBench**'s 17 tracks, which live *outside the repo* at `BEATBENCH_FIXTURES_DIR` under their own sha256 gate and are env-gated; (3) **diagnostic-harness audio** like `pyramid_song.m4a`, whose only consumer is `RicercarFluidVideoHarness`, a suite with "env-gated" in its own name. `BeatGridResolverTests` never referenced `pyramid_song` at all. *Root cause of the bad claim: a name-frequency grep across the test tree, with the hits attributed to the wrong system and never opened. Same failure shape as the RECON.1 fixture deletion — a count treated as evidence.* The RUNBOOK now carries the three-system table instead.
-
-**Still open, tracked separately.** The **third instance** — `docs/VISUAL_REFERENCES` and `docs/diagnostics` empty in the primary — is not fixed by `2b36c34d`; the script now only warns about it. It is **not a regression to be undone**: the images were untracked on purpose at LFS.2 to stop the LFS bill and must stay out of history. What is owed is a decision about the *on-disk* half — re-curate locally (billing-neutral, `.gitignore:101-108` still excludes them) or retire the image-linking half and make the READMEs the authority. See the corrected THIRD INSTANCE note above.
-
-
-**THIRD INSTANCE, found by the fix's own `--verify` (2026-08-03) — and it is a different kind of finding from Gaps A and B.** `docs/VISUAL_REFERENCES` and `docs/diagnostics` report **0 gitignored files in the primary**.
-
-**CORRECTED 2026-08-03 (Matt).** The first draft of this note read as though the images had gone missing. They did not. **They were deliberately untracked at LFS.2 / PUB.2 to stop the Git-LFS bill** — the "stop the bleeding" change recorded in `PUBLISHING.md` §1 and `RUNBOOK.md` — and the LFS.3 history rewrite then removed them from reachable history. Verified here: **zero image blobs across all 2,348 reachable commits**, and `git lfs` is no longer installed on this machine. So their absence *from git* is correct, intended, and must stay that way.
-
-**What is actually defective is the half of the system nobody updated to match.** D-211 extended `link_fixtures.sh` to propagate these images precisely *because* they are gitignored — the design is: images live on disk, never in history, and travel worktree-to-worktree by symlink. LFS.2 removed them from git and nothing re-established the on-disk copies or reassigned that job to a human. `.gitignore:101-108` still excludes every `.jpg/.jpeg/.png/.gif` under both trees, so **local on-disk copies are billing-neutral** — the machinery is correct and costs nothing; the larder is simply empty. The consequence D-211 named, *"silently degrades preset work rather than failing,"* has therefore been the standing condition everywhere rather than a worktree-only risk, and `docs/VISUAL_REFERENCES/<preset>/` holds READMEs describing images nobody can see.
-
-**Restore path.** Not recoverable from the repo — re-curation from the sources each README cites is the only route back. Left `required=no` because promoting it would fail every run today, but it now warns loudly on every invocation.
-
-**Open decision (narrower than first stated).** Either keep the `required=no` warning and re-curate locally when a preset session needs images, or drop both trees from the manifest entirely and rewrite the preset-session checklist's "look at the images" step to point at the READMEs as the authority. Not urgent, and **not** a reason to put images back under version control. Bears on FTR.2's reference curation, which per D-212 wants a low-fidelity set rather than the painterly one that left with Goldengrove.
-
-
-**Related.** D-211 (the images half of this same gap, and the worktree-propagation reasoning), PUB.2 (weights → Release asset), QR.3 (`BeatThisFixturePresenceGate` — the gate that caught Gap B), D-212 process note (one worktree per session), BUG-078 (the concurrency intermittent the cascade failures may mask), BUG-079 (the other build-level gate that cannot currently run).
 
 ---
 

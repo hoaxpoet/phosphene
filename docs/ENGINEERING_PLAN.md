@@ -718,65 +718,10 @@ A full debugging round on 2026-08-04 was spent on a missing (gitignored) `Phosph
 - **Runbook.** Setup step 5 said to point the Debug/Release xcconfig at `Phosphene.local` in Xcode. That is stale and was the misleading half of the round: `project.pbxproj` already sets `baseConfigurationReference` to `Phosphene.xcconfig`, which ends with `#include? "Phosphene.local.xcconfig"` — creating the file is sufficient. Replaced with "build", plus a note that the file is gitignored and therefore does not survive `git clean -fdx`, a fresh clone, or a new worktree, which is how it went missing.
 
 ### Increment RECON.1–.3 — Production audit: hygiene + doc reconciliation ✅ (2026-08-03)
-
-A full production-environment audit (defects, plan state, pipeline health, dead code, repo
-hygiene) followed by the cleanup it justified. **The audit's main finding was not a code
-defect — it was that this file and `KNOWN_ISSUES.md` had drifted materially from the tree**:
-22 stale or missing plan entries and 12 tracker contradictions, including work that had
-shipped with no row at all and phase headers contradicting their own bodies ~240 lines below.
-
-- **RECON.1 — hygiene.** Pruned 47 GB of stale Xcode DerivedData (52 GB → 4.9 GB, 58 → 6
-  `PhospheneApp-*` dirs) while explicitly **preserving the canonical primary-project build**
-  so the Screen-Recording grant doesn't churn, then reseeded LaunchServices per the known
-  prune+reseed remedy. Removed the merged `ftr1` worktree and its branch. Deleted three
-  unreferenced `fbs/` diagnostic CSVs and `tools/data/corpus_manifest.csv` (verified
-  byte-identical to the committed `.csv.gz` every consumer actually reads); relocated three
-  stray root-level docs into `docs/`. **Explicitly NOT deleted after checking:**
-  `docs/VISUAL_REFERENCES/_pg_spares` (Matt's curated alternates, cited by three reference
-  READMEs — a code-reference count made them look orphaned) and `tunes_club.csv`.
-- **RECON.2 — `KNOWN_ISSUES.md`.** See that file's §Open Index note. BUG-080 / BUG-071 /
-  BUG-041 rotated out of §Open; **BUG-060 reopened** on Matt's report that the hang recurred;
-  BUG-084 filed so it survived BUG-041's closure. DocIntegrityTests 12/12 green.
-- **RECON.3 — this file.** Phase headers reconciled with their bodies (TONAL, ASH, QG, FBS,
-  AGC3), §Immediate Next Increments rewritten from a 2026-05-06 ordering to actual current
-  work, Milestone D recounted from the sidecars (16/26, was 14/25), AV.3.x marked superseded
-  by AV.7, DBN.3's satisfied-but-unresolved gate flagged for Matt, and rows added below for
-  work that shipped without one.
-
-**Deliberately left for Matt:** the 5 superseded + 3 stranded unmerged remote branches, and
-the BUG-080 "third instance" decision. **Queued follow-ups:** fixture-restore consolidation
-behind one shared manifest, CI Option B, wiring `check_drums_beat_intensity.sh` into CI, and
-deleting the zero-consumer RMENV.2/.3 + MFX.1 capabilities (D-213).
-
 ### Increment MEN.2a — Meniscus: serpentine wave surface (stub) ✅ (2026-08-03, `c0453fd9`)
-
-First increment of a new preset. `Meniscus.json` + shader stub shipped `certified: false`;
-design plan and curated references in `docs/presets/MENISCUS_PLAN.md`. **MEN.2b** (faithful
-base port — drop placement mechanism verified, force scale NOT calibrated), **MEN.3** (uplift)
-and **MEN.4** (polish + cert) are specced in that plan. *(Added at RECON.3 — the phase had
-landed and merged with no row in this file.)*
-
 ### Increment LFS.2 / LFS.3 — reference + diagnostic images leave git (D-211) ✅ (2026-07-31 → 2026-08-03)
-
-Completed the reference-media migration out of git after the LFS billing reversal, and
-recorded the completion plus the three gaps it surfaced in the runbook. **Consequence worth
-knowing:** `docs/VISUAL_REFERENCES` and `docs/diagnostics` now hold **zero** gitignored files
-in the primary checkout, so `Scripts/link_fixtures.sh` warns on every run by design. That
-warning is expected, not a fault — but it is also the "third instance" noted in BUG-080,
-where the propagation design assumes on-disk copies that nothing re-establishes. **Decision
-still owed** (Matt): whether those trees get restored on disk, or the job moves to a human
-step. The LFS history purge itself needs a GitHub Support ticket to GC unreferenced objects
-(`Scripts/reclaim-lfs-visual-refs.sh` cannot finish alone). *(Added at RECON.3 — D-211 had
-zero references in this file, uniquely among D-203…D-212.)*
-
 ### Increment GT.3 — BeatBench live baseline ✅ (2026-07-30)
 ### Increment BUG-080 fix — manifest-driven `link_fixtures.sh` ✅ (2026-08-03, `2b36c34d`)
-
-Gitignored-asset propagation repaired at both gaps; full engine suite green in a fresh
-worktree. Detail in `KNOWN_ISSUES.md` §Resolved. **Known residual:** the manifest is
-duplicated by hand against the Swift presence gates — a single shared manifest consumed by
-both is the recorded follow-up, and is queued as a RECON item. *(Added at RECON.3.)*
-
 ### Increment FDYRETIRE.1 — Faraday retired; harness audit kept (D-204) ✅ (2026-07-27)
 ### Increment HARNESS.1 — the replay harness carried almost none of the routes it replayed ✅ (2026-07-27)
 ### Increment FDY.1 — Faraday: a Swift–Hohenberg sea wired into the engine (D-203) 🔨 (2026-07-27)
@@ -5451,3 +5396,47 @@ Confidence fusion + FeatureVector plumbing (D-D), D-154 binary gate → graded s
 Beat This! final0 offline A/B on all suites; adopt only if deltas justify weight/prep cost (D-E). 1–2 sessions, any time after GT.3. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
 
 - **MDL.1 — final0 offline A/B ✅ (2026-07-31). ❌ NOT ADOPTED — D-E resolved as D-208 (Matt 2026-07-31).** Done-when met: A/B table committed at [`docs/diagnostics/MDL1_FINAL0_AB_2026-07-31.md`](diagnostics/MDL1_FINAL0_AB_2026-07-31.md). final0 converted (161 tensors, **20,253,104 params / 81 MB**, matching the plan) and run through the **real MPSGraph path** — D-E asks about prep latency, which the PyTorch reference cannot measure. Weights deliberately **not vendored**; `BeatThisModel(device:variant:weightsDirectory:)` loads them externally. **Result: meter correct 2/6 for BOTH** (final0 gains bohemian_rhapsody, loses bleed — a trade), mean downbeat:beat ratio 0.494 → 0.475 (4 %, and inconsistent: money improves 0.90 → 0.59 while solsbury_hill 0.69 → 0.87 and take_five 0.41 → 0.58 get worse), at ~10× the weight size and ~1.3× steady-state inference. **`bleed` — the suite-4 case the plan expected final0 to fix — regresses** (BPM doubles 115.00 → 259.43, meter 4 ✓ → 2 ✗). **Corollary, which matters more than the decision: the evidence ceiling DBN.2 hit is NOT a capacity problem.** Scaling the same model family does not produce a cleaner downbeat stream, so categories 2 and 4 need a changed premise rather than a bigger checkpoint. Caveat recorded in the doc: no final0 layer-match fixture exists, so the port is unverified — build one before adopting against this recommendation.
+
+### Increment CHR.3j — BUG-095: a source EMA outlived its reason, and Witchlight's hero driver returns ✅ code-complete ⚠ awaiting M7 (2026-08-17)
+
+**One line of behaviour changed: `TonalAnalyzer` now emits `phaseFifths` RAW.** `FTR.3g`
+(2026-08-04) added a vector EMA there because Fractal Tree read the field straight into hue;
+`FTR.19`/D-209 (2026-08-16) gave Fractal Tree its own `CircularPhaseSmoother`, superseding that
+reason, but the source EMA stayed. All four consumers (Witchlight 1.5 s, Nacre ~0.9 s, Cymatic
+`hueTau`, Fractal Tree D-209) were therefore smoothing an already-smoothed angle. Witchlight's
+phase travel returns to **2.09 / 1.80 / 15.10** circles against a design of 2.1 / 1.7 / 15.4,
+from a double-smoothed 0.72 / 1.00 / 3.77. Suite **1862/1862**, lint 0.
+
+**BUG-090 is resolved as a side effect, and its recorded conclusion was inverted.** CHR.3h had
+split the two failing gates into "Witchlight = stale baseline, Meniscus = real bug". Both were
+real bugs. The regenerated fixtures are now committed, `columnsPostdatingFixtures` is empty, and
+route coverage reads 199 routes / 20 presets, 0 red.
+
+**The transferable failure, and it is a reasoning failure rather than a coding one: a mechanism
+that predicts the DIRECTION of a change was accepted as an explanation for its MAGNITUDE.**
+FTR.3g does predict less phase travel, so "the constant predates the change" fitted — and
+nothing asked whether **4×** was the size one extra smoothing stage should produce. The check
+that settled it was one command (regenerate with the source EMA disabled, read the number) and
+it inverted the conclusion. Re-deriving the target instead would have written a regression into
+the design doc as the new truth, on a certified preset, with the gate built to catch exactly
+this failure reporting green.
+
+**A second-order catch worth keeping: the fixture generator runs the analyzer at 43.07 Hz while
+live analysis runs at 10.0–16.4 Hz (BUG-087).** A fixed per-frame α therefore means a different
+time constant offline than in production (0.36 s vs ~0.94–1.54 s), so the first draft of this
+increment's write-up wrongly called the source comment "stale, off by 4×" from fixture-rate
+numbers. It was accurate for production. This is why the fix belongs at the consumers, which
+smooth on `deltaTime`: their behaviour is identical at any analysis rate, and that rate is
+actively moving.
+
+**Still open, and NOT unblocked by this.** Stave's `waveformOccupancy` route was recorded as
+blocked by BUG-090; it is not. The regenerated fixtures carry `waveform_occupancy` but it is
+0.0000 with zero variance on all three tracks, because the model is ticked in the render path
+while the generator runs only the MIR pipeline — the QG.1.1 limitation. Stave stays
+`certified: false`; the fix is a generator change, not a preset or fixture change.
+
+⚠ **Witchlight is CERTIFIED and this changes its motion — an M7 is required.** Note the order:
+FTR.3g 08-04 → Witchlight certified 08-07 → FTR.19 08-16. Matt's certification M7 was on the
+double-smoothed build, so this moves the preset *away* from what he signed off and *toward* its
+design doc. Nacre is the opposite case (certified 2026-06-26, before FTR.3g), so for Nacre this
+restores the behaviour it was certified with.

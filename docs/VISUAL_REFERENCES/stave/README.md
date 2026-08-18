@@ -99,9 +99,15 @@ What this preset must NOT look like:
 | Band colour | **not audio-driven** — fixed by physics, `centreHz → nm` | constant |
 
 ⚠ **`audio_routes` is empty and that is deliberate.** The preset's driver is the waveform
-buffer, and `waveformOccupancy` — created for exactly this — cannot yet be asserted because the
-committed `route_coverage` fixtures predate the column. See **BUG-090**. Declaring routes the
-gate cannot prove would be worse than declaring none, and this blocks certification.
+buffer, and `waveformOccupancy` — created for exactly this — cannot be asserted by QG.1. **The
+original reason (BUG-090, frozen fixtures) is now fixed and was the wrong reason**: the fixtures
+were regenerated on 2026-08-17 and carry the column, but it is **0.0000 on all three tracks with
+zero variance**, because `WaveformOccupancy` is ticked in the *render path* and
+`FixtureSessionCaptureGenerator` runs only the MIR pipeline. This is the QG.1.1 limitation
+(offline fixtures cannot reach render-path-derived values), not a fixture-staleness problem.
+Declaring a route the gate cannot prove would be worse than declaring none, so certification
+stays blocked until the generator ticks the occupancy model — a generator change, not a preset
+change.
 
 ## Provenance
 
