@@ -2558,6 +2558,51 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.31 — tips on the beat, and the reason the beat machinery never worked.** ✅ code-complete,
+**pending live M7** (2026-08-18) Matt: *"tips on the beat."*
+
+**The route was already there and had been broken since FTR.13.** The tips are supposed to read the
+beat-held pair at buffer(4)/(5), and FTR.13's comment claimed they did — *"the tips change on the
+beat like everything else"*. They did not: `BeatHold` reported a tempo on **0 of 3000 frames** on a
+real capture, so `stemsHeld` was effectively live and the tips thrashed at their driver's 10.2/s.
+
+**★★★ And the cause was my own code from FTR.28, not the hold.** Fed a clean synthetic clock the
+hold engages instantly (tempo 0.6375 s, `isStepping` true) — the gate BUG-096 blamed is correct.
+`DancePhase`'s self-rate estimator measured **dφ/dt per RENDER frame** on a phase that only changes
+on analysis updates, so a 0.109-of-a-beat jump inside one 17 ms frame read as **6.5 cycles/s against
+a 1.57 Hz beat**. The lock still pulled the phase onto the beat — which is why the gait measured
+well and the error hid for three increments — but it free-ran 4× fast between corrections and
+crossed zero far too often, producing ~0.15 s "beats" that fell below the hold's plausibility floor
+and were all discarded.
+
+**Fix: rate = EMA(advance)/EMA(elapsed).** A frame with no update contributes 0 to the numerator and
+its dt to the denominator, which is what a staircase requires. Everything downstream moved at once:
+
+| | before | after |
+|---|---|---|
+| `BeatHold` vouches for a tempo | 0 / 3000 frames | **2650 / 3000 (88 %)** |
+| tempo error vs the grid | — | **0.2 %** |
+| sway in step with the bar | +0.799 | **+0.991** (decoy +0.043) |
+| coordination R² | 0.85 | **0.98** |
+
+**Shipped:** the holds are fed the LOCKED phase, not the raw one; `beatHold` returns to its latched
+mode (a quarter-beat ease onto a target sampled on the beat) now that its only consumer is the tips;
+the tips read buffer(4)/(5) again. FTR.22/23 made that hold continuous because stepping felt
+*"robotic"* — but it was carrying the TRUNK's height then, and Matt's objection was to the whole
+skeleton stepping, not to a canopy of fine branches.
+
+**⚠ A gate of my own had to be replaced, and the reason is the interesting part.** The real-capture
+gait test controlled against a TIME-REVERSED clock. That is a valid control only while the pose is
+not periodic — reverse a sine and you get ±the same sine. Once FTR.31 made the tree genuinely
+periodic the decoy scored **+0.813 against a real +0.991** and the gate failed a build that had just
+improved dramatically. Replaced with a clock at an **incommensurate tempo** (1/1.37 of the bar),
+equally smooth and equally periodic but unable to stay aligned: the same measurement now reads
+**+0.991 against +0.043**.
+
+**BUG-096 is RESOLVED and its diagnosis retracted** — the tolerance never needed relaxing, and the
+claim that the FTR.10 beat-step "engaged on ~1 frame in 8" was itself an artifact of the broken rate
+estimator.
+
 **FTR.30 — the three remaining complaints, each with a number.** ✅ code-complete, **pending
 live M7** (2026-08-18) Matt on the FTR.29 build (`2026-08-18T15-17-10Z`): *"On initial playback, the
 preset was moving aggressively. After beat grid, it is swaying and bouncing on the beat. Unclear
