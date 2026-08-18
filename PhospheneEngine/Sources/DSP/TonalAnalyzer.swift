@@ -98,10 +98,6 @@ public final class TonalAnalyzer {
     private var slowIm = [Float](repeating: 0, count: 6)
     private var prevRe = [Float](repeating: 0, count: 6)
     private var prevIm = [Float](repeating: 0, count: 6)
-    /// Vector-domain EMA of the k=5 term, for the smoothed fifths phase.
-    private var fifthsRe: Float = 0
-    private var fifthsIm: Float = 0
-    private var fifthsSeeded = false
     private var smoothedConsonance: Float = 0
     private var smoothedFlux: Float = 0
     private var hasPrev = false
@@ -189,7 +185,7 @@ public final class TonalAnalyzer {
         )
 
         return Result(
-            phaseFifths: smoothPhaseFifths(re: tRe[4], im: tIm[4]),   // k=5, circle of fifths
+            phaseFifths: atan2(tIm[4], tRe[4]),   // k=5, circle of fifths — RAW (BUG-095)
             phaseThirds: atan2(tIm[3], tRe[3]),   // k=4, major thirds
             consonance: smoothedConsonance,
             tension: tensionRaw * gate,
@@ -218,21 +214,33 @@ public final class TonalAnalyzer {
         return (tRe, tIm)
     }
 
-    /// Reset all decaying state on track change (D-026 reset discipline).
-    /// EMA of the k=5 tonal vector, smoothed as a vector so the ±π wrap is not a step.
-    /// τ ≈ 1.5 s at the ~10 Hz analysis rate: fast enough to follow a chord change,
-    /// slow enough that a single noisy frame cannot flip the palette.
-    private func smoothPhaseFifths(re: Float, im: Float) -> Float {
-        let alpha: Float = 0.065
-        if !fifthsSeeded {
-            fifthsRe = re; fifthsIm = im; fifthsSeeded = true
-        } else {
-            fifthsRe = alpha * re + (1 - alpha) * fifthsRe
-            fifthsIm = alpha * im + (1 - alpha) * fifthsIm
-        }
-        return atan2(fifthsIm, fifthsRe)
-    }
+    // BUG-095 — this analyzer emits `phaseFifths` RAW, and every consumer smooths it itself.
+    //
+    // FTR.3g added a vector EMA here because Fractal Tree read the field straight into hue.
+    // FTR.19 (D-209) then gave Fractal Tree its own `CircularPhaseSmoother` — superseding the
+    // reason this existed — but the source EMA was never removed, so all four consumers
+    // (Witchlight 1.5 s, Nacre ~0.9 s, Cymatic `hueTau`, Fractal Tree D-209) were smoothing an
+    // ALREADY-smoothed angle. A cascaded second pole does not just lengthen the time constant;
+    // it attenuates fast motion far harder, and Witchlight's harmonic steer — the whole point of
+    // the preset — lost 3-4x of its travel: 2.09 -> 0.72, 1.80 -> 1.00, 15.10 -> 3.77 circles
+    // per 30 s, with `love_rehab` monotonicity collapsing 0.38 -> 0.24.
+    //
+    // NOTE the alpha below was a fixed PER-FRAME factor, so its time constant tracked the
+    // analysis rate: ~1.5 s live (10-16.4 Hz, BUG-087) but ~0.36 s in the 43.07 Hz offline
+    // fixture generator. Consumers smooth on `deltaTime` and do not have that problem, which is
+    // the other reason to smooth there rather than here.
+    //
+    // It stayed invisible for the same reason BUG-090 did: the committed `route_coverage`
+    // fixtures predate FTR.3g, so their `tonal_phase_fifths` column is raw and every gate kept
+    // passing. Regenerating them is what exposed it. Emitting raw restores each consumer to the
+    // single pole it was designed and measured with — Witchlight is back to 2.09 / 1.80 / 15.10
+    // against a design of 2.1 / 1.7 / 15.4.
+    //
+    // The header on `CircularPhaseSmoother` already documented this contract as the intended
+    // one ("`tonalPhaseFifths` is a +/-pi sawtooth that `TonalAnalyzer` emits RAW"). It was
+    // describing the design, not the code. Now they agree.
 
+    /// Reset all decaying state on track change (D-026 reset discipline).
     public func reset() {
         fastRe = [Float](repeating: 0, count: 6); fastIm = [Float](repeating: 0, count: 6)
         slowRe = [Float](repeating: 0, count: 6); slowIm = [Float](repeating: 0, count: 6)
@@ -240,7 +248,6 @@ public final class TonalAnalyzer {
         smoothedConsonance = 0
         smoothedFlux = 0
         hasPrev = false
-        fifthsRe = 0; fifthsIm = 0; fifthsSeeded = false
     }
 
     // MARK: - Helpers

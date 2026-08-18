@@ -36,11 +36,13 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
-| BUG-094 | **P1** · evidence-only, filed 2026-08-17 | dsp.beat / calibration | **`BeatHold`'s trust gate is satisfied on only 13 % of frames on real material — so the beat-step hold Matt chose at FTR.10, and every consumer of `BeatHold.isStepping`, is inactive ~87 % of the time.** Measured on `2026-08-17T20-01-01Z`: the hold reported a beat period on **47 of 360 consecutive frames**, and when it did the period was accurate to 1.5 % (0.647 s against the grid's 0.638 s) — so the tempo is right and the CONFIDENCE is what keeps lapsing. Mechanism: the gate wants eight beat intervals whose spread is ≤ 20 % of the mean, and `beatPhase01` arrives at **14.6 Hz in steps of 0.109 of a beat**, so wrap-detection jitter (±0.069 s on a 0.638 s beat) plus the stall/implausible-interval clears keep emptying the evidence window. **Consequence beyond FTR.28:** Matt chose "the trunk holds still between beats and steps on the beat" twice (FTR.10, FTR.11) and it has been engaging on about one frame in eight — a plausible contributor to the whole FTR.15→FTR.27 "no clear connection" arc that was never checked. FTR.28's `DancePhase` works around it by self-rating and does not fix it. **Not root-caused past the mechanism above** — whether the fix belongs in the gate's tolerance, in the phase's delivery rate (BUG-087's neighbour), or in wrap detection is a `dsp.beat` increment, which per the beat-sync program must open with the `beat-sync-session` skill and a BeatBench baseline |
+| BUG-095 | P1 · **FIXED in code 2026-08-17; ⚠ awaiting M7 — changes a CERTIFIED preset's motion** | dsp.tonal / cross-preset-regression | **A source-side EMA in `TonalAnalyzer` outlived the reason it was added, and all four consumers were smoothing an already-smoothed angle — cutting Witchlight's hero driver's travel by up to 4×.** Witchlight steers the pen with a circular EMA on `tonalPhaseFifths` at τ = 1.5 s (`WitchlightPath.swift:379`, D-198). Since `2861140e` the analyzer ALSO EMAs that phase in the complex plane, so the value is smoothed twice. Measured over 30 s per track, phase travel in circles — **committed fixtures (pre-FTR.3g pipeline) vs today's**: so_what **2.09 → 0.72** (2.9×), there_there **1.80 → 1.00** (1.8×), love_rehab **15.10 → 3.77** (4.0×). Heading monotonicity on love_rehab also falls 0.38 → 0.24. ⚠ **`WitchlightPathTests` was built to catch exactly this** — its own comment says it is *"the check that caught a stray second smoothing stage cutting the travel by 2.5×"*. It did catch it; it was blinded only because the QG.1 fixtures were frozen pre-FTR.3g (BUG-090). **Do NOT re-derive the §2.3 constants to make it green** — that laundered a 4× reduction in a certified preset's primary driver, and was the first thing attempted here before the numbers were read. **Fixed** by removing the source EMA (FTR.19/D-209 had already superseded its purpose), restoring every consumer to the single pole it was designed with: travel returns to 2.09 / 1.80 / 15.10 against a design of 2.1 / 1.7 / 15.4, suite 1862/1862 green. ⚠ Removing *Witchlight's* EMA instead — the obvious reading, and the first fix chosen — was measured and **rejected**: it overshoots to 6.66 / 5.90 / 30.69 with monotonicity 0.03, drawing the preset's own anti-reference. Needs an M7 |
+| BUG-096 | **P1** · evidence-only, filed 2026-08-17 | dsp.beat / calibration | **`BeatHold`'s trust gate is satisfied on only 13 % of frames on real material — so the beat-step hold Matt chose at FTR.10, and every consumer of `BeatHold.isStepping`, is inactive ~87 % of the time.** Measured on `2026-08-17T20-01-01Z`: the hold reported a beat period on **47 of 360 consecutive frames**, and when it did the period was accurate to 1.5 % (0.647 s against the grid's 0.638 s) — so the tempo is right and the CONFIDENCE is what keeps lapsing. Mechanism: the gate wants eight beat intervals whose spread is ≤ 20 % of the mean, and `beatPhase01` arrives at **14.6 Hz in steps of 0.109 of a beat**, so wrap-detection jitter (±0.069 s on a 0.638 s beat) plus the stall/implausible-interval clears keep emptying the evidence window. **Consequence beyond FTR.28:** Matt chose "the trunk holds still between beats and steps on the beat" twice (FTR.10, FTR.11) and it has been engaging on about one frame in eight — a plausible contributor to the whole FTR.15→FTR.27 "no clear connection" arc that was never checked. FTR.28's `DancePhase` works around it by self-rating and does not fix it. **Not root-caused past the mechanism above** — whether the fix belongs in the gate's tolerance, in the phase's delivery rate (BUG-087's neighbour), or in wrap detection is a `dsp.beat` increment, which per the beat-sync program must open with the `beat-sync-session` skill and a BeatBench baseline |
+| BUG-094 | P2 · **root-caused + probe-verified 2026-08-17; FIX NOT APPLIED — changes a certified preset's look, Matt's call** | preset.meniscus / primitive-contract | **Meniscus reads `arousal` as if it were 0…1 when its contract is −1…+1, discarding the entire calm half of the primitive.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as `max(0, min(features.arousal, 1))`, which clamps rather than maps — and `MeniscusCamera.swift:106` repeats it for the camera envelope, so the preset discards the calm half twice. On calm material that zeroes the lift for a large fraction of the track — measured **35 % of frames on `so_what`** (arousal −0.393…+0.519) — collapsing `arcEnvelope`, then `density`, until the backbeat-gated **vocals region places 0 drops across the whole track**. Masked until now because MEN.4a was calibrated on one capture where arousal never went negative (its own code comment records the range as *0.19 → 0.52 → 0.27*), and because the committed QG.1 fixtures happen to bottom out at −0.077. It surfaced only when BUG-090's regenerated fixtures carried today's mood output. **Probe-verified:** replacing the clamp with a map (`(clamp(arousal,−1,1)+1)/2`) takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green (14 tests / 9 suites). Probe reverted, not committed. **Not applied because it changes what a CERTIFIED preset looks like** — more drops on calm material — which is a product call, not a test fix. Needs Matt's pick and an M7. ⚠ **Transferable:** any consumer of a bipolar primitive that writes `max(0, x)` is silently discarding half its range. Worth grepping the other presets |
 | BUG-093 | **P1** · open, evidence-only | preset.fidelity | **Fractal Tree's geometry DOES move with the music by every measure available, and Matt still reports no clear connection — after nine live rejections.** Measured after 12 s on `2026-08-17T20-01-01Z`: `reach` spans 0.680, the size term 0.360, visible **trunk length 0.151 clip space ≈ 164 px of 1080**, branch spread 20°→34°, and the FTR.25 tip spark fires 0.37/s on events. So this is NOT a dead-channel or dead-route problem, and BUG-092 (which briefly claimed it was) is retracted on that point. **What IS established about the signals it tracks:** `spectral_surge`, which drives size, scores **0.25× event-versus-random specificity — it moves DOWN when the ear notices something** (FTR15 §9); `spectral_section_ratio`, which drives growth, is a slow density RANK, not a loudness or arrangement reading; `spectral_flux`, which drives the spread, is broadband change that fires as often between events as on them (1.50×). **The tree therefore moves a great deal while tracking three quantities that do not correspond to what a listener notices** — that is the standing hypothesis and it is consistent with every rejection in FTR.15→FTR.27, including the two where a more event-aligned driver was tried and rejected for its motion cost (FTR.24: 10.7× peak velocity). ⚠ **Do not open another tuning increment against this.** The next move needs a changed premise about WHICH quantity the tree should follow, and that is a product decision. Detail: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §§8–11 |
 | BUG-092 | P3 · **RE-SCOPED 2026-08-17, hours after filing — the original headline was WRONG** | preset.fidelity / documentation-drift | **Fractal Tree's declared `growth` route reads `arousal`, and `arousal` is INERT: it loses its own `max()` on 100 % of frames.** The shader computes `reach = max(0.10 · arousalReach, fullness) · musicGate`; measured after 12 s on `2026-08-17T20-01-01Z`, `0.10 · arousalReach` spans **0.032** against `fullness`'s **0.646** and never wins. So the sidecar's `growth ← arousal` is a manifest entry with no visible effect — the FTR.2 false-route class, which QG.1 cannot catch because `arousal` does *vary* (just at 3 % of the competing term's amplitude). `arousal` is separately near-constant within a track (mean 0.446…0.475, sd 0.048…0.069, same 0.26…0.51 bounds on five captures across three builds), which is fine for a MOOD classifier and is why nobody noticed. ⚠ **WHAT THIS ENTRY ORIGINALLY CLAIMED AND GOT WRONG:** that arousal was the preset's primary growth driver and that its flatness explained nine live rejections of "no clear connection". False. I measured the primitive's flatness and never checked its COEFFICIENT. Growth's real driver is `spectral_section_ratio` (span 0.646) and the visible trunk length swings **0.151 clip space ≈ 164 px of 1080** after 12 s — the geometry moves across two thirds of its range. **The connection complaint remains UNEXPLAINED**; see BUG-093. Fix here is small and cosmetic: either delete the inert arousal term and the route, or give it a coefficient that can compete — Matt's call, since one of those changes what he sees. Detail below |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
-| BUG-090 | P2 · **evidence-only, filed 2026-08-17; no fix attempted** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
+| BUG-090 | P2 · **resolved 2026-08-17 — cause (a), and it concealed a real regression** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
 | BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
@@ -70,7 +72,11 @@ read the crash reports already on disk.**)*
 
 ---
 
-### BUG-094 — `BeatHold`'s trust gate holds on only 13 % of frames; the FTR.10 beat-step has been mostly inactive (2026-08-17)
+### BUG-096 — `BeatHold`'s trust gate holds on only 13 % of frames; the FTR.10 beat-step has been mostly inactive (2026-08-17)
+
+*(Filed as BUG-094 on the FTR.28 branch and renumbered to 096 on merge: a parallel session had
+already published 094 and 095 on `main`. Commit `e350c0b7` and the FTR.28 plan entry still say
+094 — this entry is the authoritative row.)*
 
 **Status: P1, evidence only. Found while building FTR.28's gait; not fixed there.**
 
@@ -108,6 +114,154 @@ requires opening with the `beat-sync-session` skill and a BeatBench baseline bef
 
 ---
 
+### BUG-095 — Double-smoothed harmonic phase: a source EMA outlived its reason and every consumer was smoothing twice (2026-08-17)
+
+**Status: FIXED in code — `TonalAnalyzer` now emits `phaseFifths` RAW. Full engine suite green
+(1862 tests / 284 suites). ⚠ Witchlight is CERTIFIED and this changes its motion: needs an M7.**
+
+**What happened.** `2861140e [FTR.3g]` (2026-08-04) added a vector EMA to the circle-of-fifths
+phase inside `TonalAnalyzer`, because Fractal Tree read the field straight into hue. On
+2026-08-16 `acc3c935 [FTR.19]` gave Fractal Tree its own `CircularPhaseSmoother` (D-209) —
+superseding the reason the source EMA existed — but nobody removed it. **All four consumers
+already smooth this angle themselves**, so all four were smoothing an already-smoothed value:
+
+| consumer | its own circular EMA |
+|---|---|
+| Witchlight | τ = 1.5 s (`WitchlightPath.advanceHarmonicPhase`, D-198) |
+| Nacre | ~0.9 s (`RenderPipeline+Nacre.swift:129`) |
+| Cymatic | `hueTau` (`CymaticSandGeometry.swift:310`) |
+| Fractal Tree | D-209 `CircularPhaseSmoother` (`MeshGenerator.swift:269`) |
+
+A cascaded second pole does not merely lengthen the time constant — it attenuates *fast* motion
+far harder, which is why the worst loss landed on the track whose harmony moves most.
+
+**Measured, 30 s per track, total wrapped phase in circles (design: 2.1 / 1.7 / 15.4):**
+
+| track | double-smoothed | source RAW (fixed) | design §2.3 |
+|---|---|---|---|
+| so_what | 0.72 | **2.09** | 2.1 |
+| there_there | 1.00 | **1.80** | 1.7 |
+| love_rehab | 3.77 | **15.10** | 15.4 |
+
+love_rehab heading monotonicity recovers 0.24 → 0.38. **The §2.3 constants needed no
+re-derivation — they were right all along**, and the fix reproduces them to within 2 %.
+
+**The first wrong fix.** *Re-deriving the §2.3 constants* to make the gate green would have
+laundered a 4× regression in a certified preset's hero driver. The second candidate — removing
+Witchlight's own EMA — is treated below.
+
+⚠ **The fixture rate is NOT the production rate, and this nearly produced a wrong conclusion.**
+`TonalAnalyzer`'s α = 0.065 is a fixed *per-frame* factor, so its time constant depends on how
+often analysis runs. `FixtureSessionCaptureGenerator` emits at **43.07 Hz** (1024 frames at
+44.1 kHz), where α = 0.065 is τ ≈ **0.36 s**. Live analysis runs at **10.0–16.4 Hz** (BUG-087),
+where the same α is τ ≈ **0.94–1.54 s** — so the source comment's *"τ ≈ 1.5 s at the ~10 Hz
+analysis rate"* was accurate for production, and every τ figure in the sweep below is a
+**fixture-rate** number. The first draft of this entry asserted the comment was "stale, off by
+4×". It was not; the fixtures and production simply run the analyzer at different rates, which
+is its own fixture-fidelity problem and is why a per-frame α is the wrong construction. Every
+other smoother in that file takes `deltaTime`.
+
+**Why the fix is still the source EMA and not Witchlight's.** In production the double-smoothing
+was ~1.5 s (source) *plus* 1.5 s (Witchlight) — worse than the fixtures show, so the defect is
+real and the direction of the fix is unchanged. But the choice between the two candidates turns
+on rate-robustness rather than on the sweep: removing **Witchlight's** EMA leaves every consumer
+sharing one source pole whose length is set by the analysis rate, and that rate is actively
+moving (BUG-087 took it 10.0 → 16.4 Hz, and raising it further is an open increment). Removing
+the **source** EMA leaves each consumer on its own `deltaTime`-based pole at the τ it was
+designed and measured with, identical at any rate. Measured at fixture rate the Witchlight-side
+fix also overshoots outright — 6.66 / 5.90 / 30.69 circles with love_rehab monotonicity
+collapsing to **0.03**, a tangle, which is the preset's own anti-reference
+`10_anti_tangled_scribble_ball` — and a τ sweep (0 / 0.3 / 0.6 / 0.9 / 1.2 / 1.5) found no
+consumer τ reproducing the design figures, because the defect is the extra *pole*, not the
+time constant.
+
+**How it hid, and the order of events.** The committed QG.1 fixtures were captured *before*
+FTR.3g, so their `tonal_phase_fifths` column is raw and every gate kept passing against a
+pipeline that no longer existed (BUG-090). `WitchlightPathTests`' own comment describes it as
+*"the check that caught a stray second smoothing stage cutting the travel by 2.5×"* — it was
+built for exactly this failure and was blinded by its own fixture. Note the dates:
+**FTR.3g 08-04 → Witchlight certified 08-07 → FTR.19 08-16.** Matt's certification M7 was on
+the double-smoothed build, so this fix moves Witchlight *away* from what he signed off and
+*toward* what its design doc specifies. That is why it needs a fresh M7 rather than being
+treated as a restoration. Nacre is the opposite case — certified 2026-06-26, before FTR.3g, so
+for Nacre this restores the behaviour it was certified with.
+
+**Blast radius checked:** full engine suite 1862/1862 green, including the Nacre, Cymatic and
+Fractal Tree suites; Fractal Tree's hue holds 87.5–101.6° across its drive frames, its D-209
+smoother doing the job unaided.
+
+---
+
+### BUG-094 — Meniscus clamps `arousal` to 0…1 when its contract is −1…+1, and a beat-locked region goes dead on calm material (2026-08-17)
+
+**Status: root-caused and probe-verified. Fix NOT applied — it changes what a certified preset
+looks like, which is Matt's call.**
+
+**The defect.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as:
+
+```swift
+let lift = max(0, min(features.arousal, 1))
+```
+
+`arousal`'s declared contract is **−1 (calm) to +1 (energetic)** (`AudioFeatures+Analyzed.swift`).
+This clamps rather than maps, so the entire calm half of the primitive is discarded — every
+negative frame reads as identical to "not calm at all".
+
+**What it costs.** On `so_what` (Miles Davis, quiet modal jazz) today's mood output runs
+−0.393…+0.519 with **35 % of frames negative**. Those all collapse to zero, `arcEnvelope`
+(τ 6 s) sits low, `density = 0.35·arcEnvelope + 0.65·arrangement` never rises, and the
+backbeat-gated **vocals region places 0 drops across the entire track** — which
+`MeniscusStemDropsTests` correctly calls a dead route, since those three regions are beat-locked
+and absolute.
+
+**Why it stayed hidden.** MEN.4a was calibrated on a single capture where arousal never went
+negative — its own comment records the range as *"arousal 0.19 → 0.52 → 0.27"* — so the clamp
+never engaged. And the committed QG.1 fixtures bottom out at −0.077, roughly 0 % negative. The
+defect only surfaced when BUG-090's regenerated fixtures carried today's mood output, after
+DYN.6.2/DYN.7 refit the classifier.
+
+**Probe (reverted, not committed).** Replacing the clamp with a map:
+
+```swift
+let lift = (max(-1, min(features.arousal, 1)) + 1) * 0.5
+```
+
+takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green
+(14 tests / 9 suites), with the other two tracks unaffected in kind.
+
+**Why the fix is not applied here.** It makes a **certified** preset place more drops on calm
+material — a visible change to what Matt sees, and therefore a product call plus an M7, not a
+test fix. Applying it as a side effect of a fixture investigation is exactly the laundering
+BUG-090 was filed to prevent.
+
+**The sweep found a SECOND site, in the same preset.** `MeniscusCamera.swift:106` does the
+identical thing to its own envelope:
+
+```swift
+arousalEnvelope += (max(0, min(features.arousal, 1)) - arousalEnvelope) * …
+```
+
+So Meniscus discards the calm half of `arousal` twice — once for drop density, once for camera
+motion. Both need the same correction, and both change what a certified preset looks like.
+
+**The codebase already has the correct idiom, two files away.** The orchestrator maps the same
+primitive properly:
+
+```swift
+SessionPlanner.swift:327    let energy       = max(0, min(1, 0.5 + 0.4 * profile.mood.arousal))
+PresetScorer.swift:277-279  let targetTemp   = max(0, min(1, 0.5 + 0.4 * valence))
+                            let targetDensity = max(0, min(1, 0.5 + 0.4 * arousal))
+```
+
+`0.5 + 0.4 · x` centres the bipolar range on 0.5 and keeps both halves. That is the shape the
+Meniscus sites should have used.
+
+⚠ **Also checked and NOT affected.** `RayMarchPipeline+MetalFX.swift:183–184` writes
+`max(0, valence)` / `max(0, -valence)` — that is a deliberate split of a bipolar signal into two
+unipolar channels (warm and cool), which loses nothing. And the deviation family (`*Dev`) is
+`max(0, *Rel)` **by definition**, not by accident. No MSL-side instances. The rule is not
+"`max(0, …)` is wrong" — it is "clamping a bipolar primitive to one side of zero throws away
+half of it".
 ### BUG-093 — The tree moves plenty and still reads as disconnected; the drivers track the wrong quantities (2026-08-17)
 
 **Status: P1, evidence only, and deliberately NOT a tuning ticket.**
@@ -366,14 +520,43 @@ set adds **six** columns — the whole DYN block (`spectral_density`, `_slow`, `
 (CHR.3c). So the fixture gap currently blocks route coverage for three separate increments'
 primitives, not one.
 
-**What remains, and it is a judgement call rather than a measurement.** Regenerating is now
-known to be safe and reproducible, but it re-baselines two gates — one of them on a **certified**
-preset. That needs Matt's sign-off and its own increment, because the honest framing is *"these
-two gates have been measuring a stale baseline since FTR.3g/DYN.6, and re-capturing makes them
-measure today's pipeline"* — which is a claim about Witchlight's certification evidence, not a
-fixture chore. **Recommended:** re-capture the fixtures, re-derive the two gates' targets from
-the current pipeline, and have Matt re-confirm Witchlight's phase-travel figure against a live
-render rather than accepting a recomputed constant.
+**RESOLVED (same day).** Regenerating was safe and reproducible, and **neither failing gate was
+a stale baseline — both were real defects the frozen fixtures had been hiding** (BUG-094
+Meniscus, BUG-095 double-smoothed phase). With both fixed, the regenerated fixtures are
+committed and the full suite is green at 1862/1862. Drift is now **four** columns — `arousal`,
+`valence` (both moved by the DYN mood work) and `harmonic_flux`, `tonal_tension` — each traced
+to an intentional change, plus the six new columns above. `tonal_phase_fifths`, the fifth
+drifted column, is **gone from the list**: it was the regression, not drift.
+`RouteCoverageTests.columnsPostdatingFixtures` is now **empty** — every column added since
+QG.1.3 is present and covered, and the gate reads 199 routes / 20 presets, 0 red.
+
+**One thing regenerating did NOT unblock, and the reason was misdiagnosed.** Stave's
+`waveformOccupancy` route was recorded as blocked by BUG-090. It is not: the regenerated
+fixtures carry `waveform_occupancy`, but it is **0.0000 with zero variance on all three
+tracks**, because the model is ticked in the render path while the generator runs only the MIR
+pipeline. That is the **QG.1.1** limitation. Stave's certification is still blocked, and the
+fix is a generator change (tick the occupancy model during capture), not a fixture refresh.
+
+**FOLLOW-UP (CHR.3h, same day): the two failures are NOT the same kind of thing, and only one
+is a re-baseline.** Investigated separately rather than treated as one fixture chore:
+
+- **Witchlight — ⚠ THIS CALL WAS WRONG, and it is the most useful thing in this entry.** CHR.3h
+  read the gate as a stale baseline: `circles` fell below 0.7 × target on all three tracks, which
+  is the direction FTR.3g predicts, so the constant was assumed to predate the change and the
+  preset was assumed sound. **It was a real regression** — filed as BUG-095 and fixed. The
+  reasoning failed in a specific, repeatable way: *a plausible mechanism that predicts the
+  direction of a change was accepted as an explanation for its magnitude.* FTR.3g does predict
+  less travel; it does not predict **4×**, and nothing checked whether the size was consistent
+  with one extra smoothing stage rather than two. The measurement that settled it took one
+  command — regenerate the fixtures with the source EMA disabled and read the number: 2.09 /
+  1.80 / 15.10 against a design of 2.1 / 1.7 / 15.4, i.e. the constant was never stale at all.
+  **Re-deriving the target would have written the regression into the doc as the new truth**, on
+  a certified preset, with the gate that was built to catch exactly this failure reporting green.
+- **Meniscus — a REAL DEFECT, now filed as BUG-094.** Not a stale target at all: it clamps
+  `arousal` to 0…1 when the contract is −1…+1, so on calm material the arc lift dies and a
+  beat-locked region goes silent. The gate was right to fail. **Re-baselining it would have
+  laundered a genuine bug in a certified preset** — which is precisely the outcome this defect
+  was originally filed to avoid, arrived at from the opposite direction.
 
 ---
 

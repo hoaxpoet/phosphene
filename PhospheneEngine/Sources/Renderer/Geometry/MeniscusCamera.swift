@@ -103,7 +103,9 @@ struct MeniscusCamera {
         // already carries loudness. Arousal is a genuinely independent wide-window signal,
         // and AV.7 / D-185 found mood envelopes are the right driver where deviation
         // primitives measure too spiky.
-        arousalEnvelope += (max(0, min(features.arousal, 1)) - arousalEnvelope)
+        // BUG-094: was `max(0, min(features.arousal, 1))`, which clamped a −1…+1 primitive
+        // and pinned the dolly at the hero distance for every calm passage.
+        arousalEnvelope += (features.arousal01 - arousalEnvelope)
             * (1 - exp(-dt / max(configuration.dollyTau, 0.1)))
     }
 

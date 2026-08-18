@@ -81,7 +81,10 @@ struct RouteCoverageTests {
     /// ⚠ THIS SET MUST SHRINK, NEVER GROW QUIETLY. Each entry is a route the gate is NOT
     /// checking. An entry added to turn a red gate green is the floor-tuning move QG.1 exists to
     /// prevent — the gate stays red instead.
-    static let columnsPostdatingFixtures: Set<String> = ["spectral_level_rise"]
+    /// BUG-090 resolved 2026-08-17: the fixtures were regenerated, so every column added since
+    /// QG.1.3 is now present and route-coverable. Empty is the healthy state — a name here means
+    /// a route is UNVERIFIED, so add one only alongside a filed reason to regenerate.
+    static let columnsPostdatingFixtures: Set<String> = []
 
     // MARK: - Fixtures
 
@@ -151,8 +154,7 @@ struct RouteCoverageTests {
                 if columnsPostdatingFixtures.contains(mapping.column) {
                     // FIXTURE GAP, not a dead route. Printed every run so it cannot go invisible.
                     print("[route-coverage] FIXTURE GAP \(preset)/\(route.route): "
-                          + "'\(mapping.column)' postdates \(name); route UNVERIFIED here "
-                          + "(BUG-090 blocks regeneration)")
+                          + "'\(mapping.column)' postdates \(name); route UNVERIFIED here")
                     return nil
                 }
                 return "\(preset)/\(route.route): column '\(mapping.column)' absent from \(name) — not recorded"
