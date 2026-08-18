@@ -2558,6 +2558,23 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.31a — the cold start FTR.31 would have undone.** ✅ (2026-08-18) Caught while answering
+"is this ready for M7?" rather than by a review.
+
+`BeatHold` tracks the LIVE value until its trust conditions hold, and even with FTR.31's rate fix
+that takes **~7 s** (1.5 s to estimate the rate, then eight beat intervals ≈ 5.7 s at 94 BPM). FTR.31
+moved the tips back onto that hold — so for the first seven seconds of every track they would have
+run at their driver's **10.2/s** again, which is precisely Matt's *"on initial playback, the preset
+was moving aggressively"*: the complaint FTR.30 fixed and FTR.31 silently reintroduced.
+
+Fixed by ORDER: the arc glide runs first and the beat hold is fed its output, so the tips are
+smoothed-only before the grid and smoothed-AND-latched after it — never live. The tips' cold-start
+`beat_mid` leg reads the arc for the same reason.
+
+**★ The lesson is about reviews, not about clocks: a change that restores a route also restores
+whatever that route's fallback does.** FTR.31's own gates were all green — the fallback path is not
+what they measure.
+
 **FTR.31 — tips on the beat, and the reason the beat machinery never worked.** ✅ code-complete,
 **pending live M7** (2026-08-18) Matt: *"tips on the beat."*
 

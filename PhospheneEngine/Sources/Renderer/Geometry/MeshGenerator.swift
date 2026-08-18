@@ -312,11 +312,16 @@ public final class MeshGenerator: @unchecked Sendable {
 
         // FTR.31 — the holds are fed `feat`, whose phases are LOCKED, not `features`. Why that
         // matters, and what it cost to find: `MeshGenerator+RenderClock.applyDanceClocks`.
-        beatHold.offerStems(stems)
-        var heldFeat = beatHold.update(feat, renderDeltaTime: renderDelta)
+        // ⚠ ARC FIRST, THEN THE BEAT HOLD IS FED THE ARC'S OUTPUT. `BeatHold` tracks the LIVE
+        // value until its trust conditions hold — still ~7 s after FTR.31's rate fix — so fed raw
+        // stems the tips would run at 10.2/s for those seconds, which is Matt's *"on initial
+        // playback, the preset was moving aggressively"*. Fed the arc, they are smoothed-only
+        // before the grid and smoothed-AND-latched after it, never live.
         arcHold.offerStems(stems)
         var arcFeat = arcHold.update(feat, renderDeltaTime: renderDelta)
         var arcStemFeat = arcHold.glidingStemFeatures
+        beatHold.offerStems(arcStemFeat)
+        var heldFeat = beatHold.update(feat, renderDeltaTime: renderDelta)
         var heldStemFeat = beatHold.glidingStemFeatures
         // FTR.16 — one delta, both holds: two clocks would drift apart within a track.
         sectionHold.offerStems(stems)
