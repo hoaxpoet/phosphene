@@ -235,7 +235,21 @@ fragment float4 witchlight_bead_fragment(WLBeadOut in [[stage_in]]) {
     float core = exp(-rc2 * 9.0);
     // Windowed to zero at the quad edge. Without it a halo bright enough to read leaves a
     // hard disc boundary where `discard_fragment` cuts it.
-    float halo = exp(-r2 * 2.8) * smoothstep(1.0, 0.75, r2);
+    //
+    // **2.8 → 2.1 (2026-08-18).** The falloff is the WIDTH of the halo INSIDE the existing
+    // quad, and it is not the same lever as `WL_HALO_EXTENT` (the quad itself), which WL.2-j
+    // had to cut 3.2 → 1.6 because reach made neighbouring sprites overlap and fuse into the
+    // glow tube of anti-`11`. Widening the profile instead lifts more of each bead's own
+    // footprint above the ribbon-share threshold without moving the sprites closer together,
+    // so it buys luminance where extent cannot: measured 0.368 % → 0.433 % ribbon share, and
+    // distinct beads went UP, 13 → 16. That direction is the tell that this is the right
+    // lever — the WL.2-j failure moved beads the other way.
+    //
+    // Why it was needed: `phasePreTau` (Matt's 2026-08-18 M7) calms the stroke back to the
+    // certified motion, and a calmer stroke sweeps fewer pixels, which cost 0.406 % → 0.368 %
+    // against a 0.40 % floor. Note the floor had only 1.5 % headroom to begin with. Level is
+    // NOT the lever here and the comment below records why (near-doubling bought 0.016 %).
+    float halo = exp(-r2 * 2.1) * smoothstep(1.0, 0.75, r2);
     // 0.34, not more. A cooler halo is closer to `08` in the abstract, but at 0.44 the
     // stroke measurably lost its hue (the head washed to neutral white) for no gain in
     // ribbon share — and hue IS the information here (trait #7), so the lift stops at the

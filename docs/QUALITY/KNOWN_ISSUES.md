@@ -147,6 +147,27 @@ for Nacre this restores the behaviour it was certified with.
 Fractal Tree suites; Fractal Tree's hue holds 87.5–101.6° across its drive frames, its D-209
 smoother doing the job unaided.
 
+**FOLLOW-UP (M7, 2026-08-18): the engine fix was right and the preset fix was wrong, and only
+Matt's eye could separate them.** On the corrected single pole he reported Witchlight as
+*"slightly less coupled to the beat … drifts a bit more out of sync over time"* (Nacre: *"looks
+fine"*). Replaying his session `2026-08-18T14-09-35Z` through the production path under BOTH
+code paths returned **bit-identical** beat behaviour — 50 downbeat bursts, 50 off-beat pulses,
+flares within 10 % of a beat 86 % of the time, pen speed swing 4.13× — with **heading turns
+50 → 74** the single moved quantity. The complaint was real and it was about LEGIBILITY, not
+timing: unchanged accents against a stroke wandering 50 % more.
+
+Cause: Witchlight was tuned and certified (2026-08-07) *during* the double-smoothed window, so
+the cascade was the response Matt approved. `WitchlightTuning.phasePreTau` now makes that second
+pole explicit and local to Witchlight; the analyzer stays raw for every other consumer. ⚠ Note
+that raising `phaseTau` instead **cannot** substitute — it saturates at 68 turns however high it
+goes, the same "a cascade is not a longer single pole" asymmetry that caused this defect.
+
+Knock-on, fixed in the same increment: the calmer stroke sweeps fewer pixels, dropping ribbon
+share 0.406 % → 0.368 % against a 0.40 % floor (WL.2-g) that had only 1.5 % headroom. Widening
+the halo's falloff 2.8 → 2.1 *within* the existing sprite quad gives 0.433 % and 16 distinct
+beads (up from 13) — the shading remedy the gate itself prescribes, and pointedly NOT
+`WL_HALO_EXTENT`, which WL.2-j had to cut for fusing beads.
+
 ---
 
 ### BUG-094 — Meniscus clamps `arousal` to 0…1 when its contract is −1…+1, and a beat-locked region goes dead on calm material (2026-08-17)

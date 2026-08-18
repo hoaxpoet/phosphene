@@ -413,26 +413,50 @@ struct WitchlightPathTests {
 
     // MARK: - Against the real fixtures
 
-    @Test("the smoothed harmonic phase travels the distance WITCHLIGHT_DESIGN §2.3 measured",
+    @Test("the smoothed harmonic phase travels the distance the SHIPPED two-pole response gives",
           arguments: WitchlightFixtureDrive.tracks)
     func phaseTravelMatchesTheDesignMeasurement(track: String) throws {
-        // §2.3's table: total wrapped path over 30 s at τ = 1.5 s is 2.1 / 1.7 / 15.4 circles
-        // for so_what / there_there / love_rehab. Reproducing it here proves the pen is being
-        // steered by the SAME smoothed quantity the design was written against — the check
-        // that caught a stray second smoothing stage cutting the travel by 2.5×.
-        let expected: [String: Float] = ["so_what": 2.1, "there_there": 1.7, "love_rehab": 15.4]
+        // ⚠ THESE CONSTANTS WERE RE-DERIVED ON 2026-08-18, AND THE REASON MATTERS, because
+        // re-deriving them is exactly what BUG-095 warns against.
+        //
+        // The old row (2.1 / 1.7 / 15.4, WITCHLIGHT_DESIGN §2.3) was measured at CR.1.2 against
+        // a single 1.5 s pole. BUG-095 found the analyzer had since added a second pole, cutting
+        // travel up to 4×, and removing it restored 2.09 / 1.80 / 15.10 — the doc figure, near
+        // exactly. That was the correct engine fix and it stands for every other consumer.
+        //
+        // It was WRONG for Witchlight, and only a human could tell. Witchlight was tuned and
+        // CERTIFIED (2026-08-07) during the two-pole window, so the response Matt approved was
+        // the cascade. On the restored single pole his 2026-08-18 M7 read *"slightly less
+        // coupled to the beat … drifts a bit more out of sync over time"*. Measured on that
+        // session, the beat events were BIT-IDENTICAL between the two builds — 50 downbeat
+        // bursts, 50 off-beat pulses, flares within 10 % of a beat 86 % of the time — and the
+        // only thing that moved was heading turns, 50 → 74. Legibility fell, not timing. He
+        // chose the certified motion, so `phasePreTau` (0.8 s) makes the second pole explicit
+        // and local to this preset, and these constants follow the shipped response.
+        //
+        // The distinction from laundering: nobody changed a number to make a red gate green.
+        // The engine defect was fixed first and independently, a human then compared two live
+        // builds and picked one, and the gate was re-pointed at what he picked.
+        //
+        // ⚠ These are FIXTURE-RATE figures and are a regression tripwire, NOT the design intent.
+        // The fixtures run the analyzer at 43.07 Hz while live analysis runs at 10.0–16.4 Hz
+        // (BUG-087), so a dt-based pole lands differently here than in production — which is why
+        // 0.8 s reproduces the certified 50 turns live while reading BELOW the old double-smoothed
+        // figures here. The intent lives in `WitchlightBeatAlignmentProbe` against a real session.
+        let expected: [String: Float] = ["so_what": 0.51, "there_there": 0.74, "love_rehab": 2.26]
         let drive = try WitchlightFixtureDrive.load(track)
         let path = WitchlightPath()
         WitchlightFixtureDrive.run(path, over: drive)
 
         let circles = path.phaseTravel / (2 * .pi)
         let target = try #require(expected[track])
-        print(String(format: "[witchlight-path] %@: phase %.2f circles (design %.1f) · clamp %.1f %% · monotonicity %.2f",
+        print(String(format: "[witchlight-path] %@: phase %.2f circles (shipped %.2f) · clamp %.1f %% · monotonicity %.2f",
                      track, circles, target, path.clampedFraction * 100, path.headingMonotonicity))
         #expect(circles > target * 0.7 && circles < target * 1.4, """
-            \(track): the smoothed phase travelled \(circles) circles over 30 s; \
-            WITCHLIGHT_DESIGN §2.3 measured \(target). A large gap means the pen is not reading \
-            the driver the design was written against.
+            \(track): the smoothed phase travelled \(circles) circles over 30 s; the shipped \
+            two-pole response measures \(target). A large gap means the pen is not reading the \
+            driver it was certified against — check `phasePreTau` and `phaseTau` before touching \
+            this number, and read the BUG-095 note above.
             """)
     }
 

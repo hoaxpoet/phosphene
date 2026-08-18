@@ -5440,3 +5440,46 @@ FTR.3g 08-04 → Witchlight certified 08-07 → FTR.19 08-16. Matt's certificati
 double-smoothed build, so this moves the preset *away* from what he signed off and *toward* its
 design doc. Nacre is the opposite case (certified 2026-06-26, before FTR.3g), so for Nacre this
 restores the behaviour it was certified with.
+
+### Increment WL.13 — BUG-095 follow-up: the engine fix was right, the preset fix was wrong ✅ (2026-08-18)
+
+**Matt's M7 on the BUG-095 build: Witchlight *"slightly less coupled to the beat … drifts a bit
+more out of sync over time"*; Nacre *"looks fine"*.** Both halves of that were informative, and
+the split is the increment: the analyzer change was correct and Nacre confirms it, while
+Witchlight — alone among the four consumers — had been tuned and CERTIFIED against the cascade.
+
+**What the measurement settled, and it contradicted the complaint's wording.** Replaying his
+session `2026-08-18T14-09-35Z` through the production path under both code paths (the pre-fix
+build simulated by re-applying the source EMA to the same session's own phase column) returned
+**bit-identical** beat behaviour: 50 downbeat bursts, 50 off-beat pulses, flares within 10 % of
+a beat 86 % of the time (chance 20 %), pen speed swing 4.13×, beads alive 118. **Heading turns,
+50 → 74, was the only quantity that moved.** So nothing about beat *timing* changed; the accents
+simply became harder to see against a stroke wandering ~50 % more. Taking a complaint about
+"beat coupling" literally would have sent this increment into the beat path, which was innocent.
+
+**Fix:** `WitchlightTuning.phasePreTau` makes the second pole explicit and local to Witchlight
+(0.4 s shipped; 53 turns against the certified 50). The analyzer stays raw for Nacre, Cymatic and
+Fractal Tree, each of which was certified without a second pole. ⚠ Raising `phaseTau` instead
+**cannot** work — it saturates at 68 turns however high it goes, because a longer single pole is
+not equivalent to a cascade. That is the same asymmetry that caused BUG-095, met from the other
+side.
+
+**Knock-on, fixed rather than waived.** The calmer stroke sweeps fewer pixels, so ribbon share
+fell 0.406 % → 0.368 % against WL.2-g's 0.40 % floor — a gate passing by only 1.5 % to begin
+with. Rather than lower a certified preset's quality floor, the shading remedy the gate itself
+prescribes: the bead halo's falloff widened 2.8 → 2.1 **inside the existing sprite quad**, giving
+0.433 % share and **16 distinct beads, up from 13**. Beads becoming MORE distinct is the tell
+that this was the right lever — `WL_HALO_EXTENT` (the quad) is the wrong one and WL.2-j already
+had to cut it 3.2 → 1.6 for fusing beads into anti-`11`'s glow tube.
+
+**`WitchlightPathTests` re-derived — the one case where that is legitimate.** BUG-095 warns
+explicitly against re-deriving these constants, because doing so would launder a regression. The
+distinction: the engine defect was found and fixed FIRST and independently, a human then compared
+two live builds and chose one, and the gate was re-pointed at what he chose. Nobody edited a
+number to turn a gate green. The old §2.3 row is kept, not deleted — the gap between it and the
+shipped figures is the lesson that **a design measurement describes a pipeline, not a look**.
+
+**Structural:** `advanceHarmonicPhase` moved to `WitchlightPath+Pen.swift` (the file-length
+budget), leaving `WitchlightPath.swift` at 381 lines.
+
+Suite 1862/1862, lint 0.
