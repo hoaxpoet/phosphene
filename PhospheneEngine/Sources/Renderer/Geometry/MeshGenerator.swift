@@ -133,7 +133,13 @@ public final class MeshGenerator: @unchecked Sendable {
     /// occupied. A SEPARATE slot rather than a new `FeatureVector` field on purpose: a layout
     /// change would ripple into every parallel worktree's `CommonLayoutTest`, and this needs no
     /// new data — only the same data on a slower clock.
-    var sectionHold = BeatHold(glideSeconds: 2.0)
+    ///
+    /// FTR.29 — 6 s, not 2. Matt's FTR.28 answer was that grow/recede is "a slower arc
+    /// underneath" the dance, and at 2 s it was not an arc: the size term travelled 0.162/s and
+    /// the branch count churned off it, which together left 78 % of the tree's motion
+    /// free-running against the gait. At 6 s that term travels 0.076/s and the coordination —
+    /// the share of total motion on the beat or the bar — goes 22 % → 73 %.
+    var sectionHold = BeatHold(glideSeconds: 6.0)
 
     /// FTR.19 — the D-209 circular smoother for `tonalPhaseFifths`, applied to the vector this
     /// generator binds. `TonalAnalyzer` emits the phase RAW; every other consumer smooths it

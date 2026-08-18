@@ -2558,6 +2558,63 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.29 — one clock: subordinate every other channel to the gait.** ✅ code-complete,
+**pending live M7** (2026-08-18) Matt on the FTR.28 build (`2026-08-18T14-29-37Z`): *"Moves too
+much and in an uncoordinated manner — looks like a very bad dancer,"* and then, correcting me
+directly: *"I don't think it reads as a dance."*
+
+**The measurement that explains both halves of that in one table.** A motion budget over the
+capture — turns/s and travel/s per channel, computed through the shader's own arithmetic:
+
+| channel | turns/s | travel/s |
+|---|---|---|
+| gait lean (bar) | 1.91 | 0.151 |
+| gait spring (beat) | 0.19 | 0.090 |
+| **canopy angle ← `spectral_flux`** | **2.69** | **0.521** |
+| size ← surge + density | 0.72 | 0.162 |
+| **the gait's own GAIN ← `bass_dev`** | **1.29** | **1.075** |
+
+**The gait was the quietest thing on screen.** Only **22 %** of the tree's travel was on the beat
+or the bar. Two of the three causes were my own design errors in FTR.28: the canopy angle travelled
+**3.5× further than the lean and turned faster than the beat**, and I modulated the gait's step
+size with an unsmoothed fast primitive, so the STRIDE LENGTH changed ~1.3 times a second — which is
+what a bad dancer looks like.
+
+**★★★ THE PRINCIPLE, and it is the one FTR.15→FTR.28 never applied: a dance needs ONE CLOCK.**
+Amplitude signals may set how BIG the motion is; they must not add motion of their own at their own
+rate. Every channel that was free-running is now on a slow glide, so the only fast motion left is
+the gait:
+
+| build | on-clock share | total motion |
+|---|---|---|
+| FTR.28 (rejected) | 22 % | 1.121 |
+| + steady stride + slow canopy angle | 36 % | 0.586 |
+| + the 6 s growth ARC | 73 % | 0.287 |
+| **shipped: + gait ×1.5** | **81 %** | **0.392** |
+
+Shipped: the gait's gain and the canopy angle read `fSection`; `sectionHold` goes 2 s → **6 s**, which
+is the "slower arc underneath" Matt asked for at FTR.28 and was not getting; the trunk's size reads
+that arc instead of the beat-held vector; gait amplitudes ×1.5. **Total motion is a third of the
+build he rejected while the dance is now the dominant motion rather than the quietest.**
+
+**⚠ This supersedes FTR.10's beat-step on the trunk, which Matt chose twice** — deliberately, and
+only because BUG-096 measured that hold engaging on ~13 % of frames (0 % on this capture), while the
+gait is on the beat every frame. The hold stays for the melodic tips.
+
+**Verified in the rendered domain, not from a model of it.** New gate: regress the rendered pose on
+the clock basis and report R². **Sway R² = 0.82** (the clocks explain 82 % of the tree's lean) with
+in-step r **+0.743 against a time-reversed decoy of +0.361**. Both gait layers still land exactly:
+bounce 0.99 beats, sway 4.02 beats.
+
+**⚠ Honest limit, and the one thing to watch live: the BOUNCE is not measurable.** Bounce R² is
+**0.05**, and raising the spring 2.3× moved it to 0.03 — because the vertical pose is ~95 % melodic
+tip flicker, a layer Matt explicitly asked for. The spring was left where it is rather than inflated
+to satisfy a metric that cannot see it. Whether the bob reads is his call.
+
+**BUG-096 is worse than filed:** `BeatHold` vouched for a tempo on **0 of 360 frames** on this
+capture (13 % on the previous one). The dance locks anyway, which is the whole point of
+`DancePhase` self-rating.
+
 **FTR.28 — the tree gets a GAIT: the premise change nine tuning rounds never made.** ✅
 code-complete, **pending live M7** (2026-08-17) Matt, asked what he actually pictures: *"the tree
 bounces, sways, grows, and recedes with the music in a coordinated dance. The motion of the
