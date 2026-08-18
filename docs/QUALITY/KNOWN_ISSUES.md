@@ -38,7 +38,7 @@ read the crash reports already on disk.**)*
 |---|---|---|---|
 | BUG-097 | **P1** · **FIXED 2026-08-18, validated on three real sessions + a new gate** | preset.witchlight / frame-rate-coupling | **A frame-time clamp meant for physics stability was corrupting a MUSICAL measurement, and Witchlight dropped most of its off-beat accents on exactly the sessions where the frame rate was worst.** `WitchlightPath.advance` clamps `dt` to 1/30 s so an integrator cannot take a wild step after a stall — correct for the integrators, wrong for the four quantities that measure how long something LASTED: `timeSinceWrap` (→ `barPeriod`), `gridSilentFor`, and the two refractories. WL.9 gates the off-beat pulse on `barPeriod / beatsPerBar >= 0.55 s`, so under load a 94 BPM bar measured **1.80 s against a true 2.55 s** and the pulse was never emitted. On `2026-08-18T16-10-38Z` — 48.8 % of frames over the cap, 38 % of elapsed time discarded — the preset fired **6 off-beat pulses in 110 s** where the meter implies ~130. **Fixed** by splitting `clockDt` (real elapsed time) from `dt` (the clamped integrator step). Validated on three real sessions: 6 → **105**, 50 → **149**, and the already-healthy session 79 → **83**, i.e. every one lands at the designed ~3:1 and the healthy case barely moves — the signature of a fix rather than a re-tune. Flare alignment on the worst session also rose 36 % → 54 % within 10 % of a beat. ⚠ It was invisible to the whole suite because every committed fixture replays at a steady ~60 Hz and never approaches the cap; `offBeatPulseSurvivesHeavyFrames` now drives at 50 ms frames and **was confirmed to fail (0 pulses) on the pre-fix code** |
 | BUG-095 | P1 · **FIXED 2026-08-17; M7 CONFIRMED LIVE 2026-08-18** (WL.13 — Witchlight keeps its second pole, locally) | dsp.tonal / cross-preset-regression | **A source-side EMA in `TonalAnalyzer` outlived the reason it was added, and all four consumers were smoothing an already-smoothed angle — cutting Witchlight's hero driver's travel by up to 4×.** Removing it was correct for Nacre, Cymatic and Fractal Tree (Matt on Nacre, 2026-08-18: *"looks fine"*) but wrong for Witchlight, which had been tuned AND certified against the cascade. `WitchlightTuning.phasePreTau` restores that second pole locally. **Live-confirmed on `2026-08-18T16-10-38Z`: Matt *"Looks good overall"*, stroke measured at 42 heading turns against 74 pre-fix and 50 on the certified build.** ⚠ Note his sign-off covers the STROKE and the ribbon, not the beat accents — that session was the worst BUG-097 case measured (6 off-beat pulses in 110 s), so the accents were largely absent from what he judged |
-| BUG-096 | **P1** · evidence-only, filed 2026-08-17 | dsp.beat / calibration | **`BeatHold`'s trust gate is satisfied on only 13 % of frames on real material — so the beat-step hold Matt chose at FTR.10, and every consumer of `BeatHold.isStepping`, is inactive ~87 % of the time.** Measured on `2026-08-17T20-01-01Z`: the hold reported a beat period on **47 of 360 consecutive frames**, and when it did the period was accurate to 1.5 % (0.647 s against the grid's 0.638 s) — so the tempo is right and the CONFIDENCE is what keeps lapsing. Mechanism: the gate wants eight beat intervals whose spread is ≤ 20 % of the mean, and `beatPhase01` arrives at **14.6 Hz in steps of 0.109 of a beat**, so wrap-detection jitter (±0.069 s on a 0.638 s beat) plus the stall/implausible-interval clears keep emptying the evidence window. **Consequence beyond FTR.28:** Matt chose "the trunk holds still between beats and steps on the beat" twice (FTR.10, FTR.11) and it has been engaging on about one frame in eight — a plausible contributor to the whole FTR.15→FTR.27 "no clear connection" arc that was never checked. FTR.28's `DancePhase` works around it by self-rating and does not fix it. **Not root-caused past the mechanism above** — whether the fix belongs in the gate's tolerance, in the phase's delivery rate (BUG-087's neighbour), or in wrap detection is a `dsp.beat` increment, which per the beat-sync program must open with the `beat-sync-session` skill and a BeatBench baseline |
+| BUG-096 | **RESOLVED 2026-08-18 (FTR.31) — and the original diagnosis was WRONG** | dsp.beat / calibration | **`BeatHold` was never the problem: it was being fed a staircase, and then fed a phase whose own rate estimator was 4× too fast.** Filed claiming the hold's trust gate (8 intervals within 20 % spread) was too strict for a 14.6 Hz phase. What FTR.31 measured instead: the hold engages **instantly on a clean synthetic clock** (tempo 0.6375 s, `isStepping` true), so the gate is fine. On real captures it reported 0/3000 frames because `DancePhase`'s self-rate measured **dφ/dt per RENDER frame** on a phase that only changes on analysis updates — a 0.109 jump in one 17 ms frame reads as **6.5 cycles/s on a 1.57 Hz beat**. The lock still pulled the phase onto the beat (so the gait measured fine, in-step +0.799) but it free-ran 4× fast between corrections and crossed zero far too often; anything counting those crossings as beats saw ~0.15 s intervals, below `periodRange`'s 0.25 s floor, and discarded every one. **Fix: rate = EMA(advance)/EMA(elapsed) — a frame with no update contributes 0 to the numerator and its dt to the denominator, which is what a staircase requires.** Same capture, after: **2650/3000 frames (88 %)** at 0.2 % tempo error. ⚠ **Two claims made against this entry are retracted:** that the FTR.10 beat-step "has been engaging on ~1 frame in 8" (it was engaging on ~none, for a reason that is now fixed), and that the tolerance needed relaxing (it did not). Detail below |
 | BUG-094 | P2 · **root-caused + probe-verified 2026-08-17; FIX NOT APPLIED — changes a certified preset's look, Matt's call** | preset.meniscus / primitive-contract | **Meniscus reads `arousal` as if it were 0…1 when its contract is −1…+1, discarding the entire calm half of the primitive.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as `max(0, min(features.arousal, 1))`, which clamps rather than maps — and `MeniscusCamera.swift:106` repeats it for the camera envelope, so the preset discards the calm half twice. On calm material that zeroes the lift for a large fraction of the track — measured **35 % of frames on `so_what`** (arousal −0.393…+0.519) — collapsing `arcEnvelope`, then `density`, until the backbeat-gated **vocals region places 0 drops across the whole track**. Masked until now because MEN.4a was calibrated on one capture where arousal never went negative (its own code comment records the range as *0.19 → 0.52 → 0.27*), and because the committed QG.1 fixtures happen to bottom out at −0.077. It surfaced only when BUG-090's regenerated fixtures carried today's mood output. **Probe-verified:** replacing the clamp with a map (`(clamp(arousal,−1,1)+1)/2`) takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green (14 tests / 9 suites). Probe reverted, not committed. **Not applied because it changes what a CERTIFIED preset looks like** — more drops on calm material — which is a product call, not a test fix. Needs Matt's pick and an M7. ⚠ **Transferable:** any consumer of a bipolar primitive that writes `max(0, x)` is silently discarding half its range. Worth grepping the other presets |
 | BUG-093 | **P1** · open, evidence-only | preset.fidelity | **Fractal Tree's geometry DOES move with the music by every measure available, and Matt still reports no clear connection — after nine live rejections.** Measured after 12 s on `2026-08-17T20-01-01Z`: `reach` spans 0.680, the size term 0.360, visible **trunk length 0.151 clip space ≈ 164 px of 1080**, branch spread 20°→34°, and the FTR.25 tip spark fires 0.37/s on events. So this is NOT a dead-channel or dead-route problem, and BUG-092 (which briefly claimed it was) is retracted on that point. **What IS established about the signals it tracks:** `spectral_surge`, which drives size, scores **0.25× event-versus-random specificity — it moves DOWN when the ear notices something** (FTR15 §9); `spectral_section_ratio`, which drives growth, is a slow density RANK, not a loudness or arrangement reading; `spectral_flux`, which drives the spread, is broadband change that fires as often between events as on them (1.50×). **The tree therefore moves a great deal while tracking three quantities that do not correspond to what a listener notices** — that is the standing hypothesis and it is consistent with every rejection in FTR.15→FTR.27, including the two where a more event-aligned driver was tried and rejected for its motion cost (FTR.24: 10.7× peak velocity). ⚠ **Do not open another tuning increment against this.** The next move needs a changed premise about WHICH quantity the tree should follow, and that is a product decision. Detail: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §§8–11 |
 | BUG-092 | P3 · **RE-SCOPED 2026-08-17, hours after filing — the original headline was WRONG** | preset.fidelity / documentation-drift | **Fractal Tree's declared `growth` route reads `arousal`, and `arousal` is INERT: it loses its own `max()` on 100 % of frames.** The shader computes `reach = max(0.10 · arousalReach, fullness) · musicGate`; measured after 12 s on `2026-08-17T20-01-01Z`, `0.10 · arousalReach` spans **0.032** against `fullness`'s **0.646** and never wins. So the sidecar's `growth ← arousal` is a manifest entry with no visible effect — the FTR.2 false-route class, which QG.1 cannot catch because `arousal` does *vary* (just at 3 % of the competing term's amplitude). `arousal` is separately near-constant within a track (mean 0.446…0.475, sd 0.048…0.069, same 0.26…0.51 bounds on five captures across three builds), which is fine for a MOOD classifier and is why nobody noticed. ⚠ **WHAT THIS ENTRY ORIGINALLY CLAIMED AND GOT WRONG:** that arousal was the preset's primary growth driver and that its flatness explained nine live rejections of "no clear connection". False. I measured the primitive's flatness and never checked its COEFFICIENT. Growth's real driver is `spectral_section_ratio` (span 0.646) and the visible trunk length swings **0.151 clip space ≈ 164 px of 1080** after 12 s — the geometry moves across two thirds of its range. **The connection complaint remains UNEXPLAINED**; see BUG-093. Fix here is small and cosmetic: either delete the inert arousal term and the route, or give it a coefficient that can compete — Matt's call, since one of those changes what he sees. Detail below |
@@ -70,48 +70,6 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
-
----
-
-### BUG-096 — `BeatHold`'s trust gate holds on only 13 % of frames; the FTR.10 beat-step has been mostly inactive (2026-08-17)
-
-*(Filed as BUG-094 on the FTR.28 branch and renumbered to 096 on merge: a parallel session had
-already published 094 and 095 on `main`. Commit `e350c0b7` and the FTR.28 plan entry still say
-094 — this entry is the authoritative row.)*
-
-**Status: P1, evidence only. Found while building FTR.28's gait; not fixed there.**
-
-**Measured** on `2026-08-17T20-01-01Z`, 360 consecutive rendered frames:
-
-| | |
-|---|---|
-| frames where `BeatHold` reported a beat period | **47 / 360 (13 %)** |
-| period when it did report one | 0.6474 s (grid: 0.6378 s — **1.5 % error**) |
-| `beatPhase01` update rate | **14.6 Hz**, in steps of **0.109 of a beat** |
-| render rate | 59 Hz — so each phase value is held ~4 frames |
-
-So the tempo estimate is accurate and the CONFIDENCE is what lapses. The gate requires eight beat
-intervals whose spread is ≤ 20 % of the mean; intervals derived from a 14.6 Hz phase carry
-±0.069 s of wrap-detection jitter on a 0.638 s beat, and the `intervals.removeAll()` paths (an
-implausible period, or a phase judged stalled) empty the window whenever that jitter crosses a
-threshold — after which eight more beats (~5 s) are needed to refill.
-
-**Why this matters beyond the increment that found it.** Matt chose "the trunk holds still between
-beats and steps on the beat" twice (FTR.10, FTR.11), and `BeatHold.isStepping` gates it. On this
-evidence that behaviour has been present on roughly one frame in eight. **That was never checked
-across FTR.15→FTR.27**, an arc of nine live rejections of "no clear connection to the music", and
-it is a plausible contributor: a beat-locked visual that engages 13 % of the time reads as neither
-beat-locked nor continuous.
-
-**What FTR.28 did about it:** worked around it. `DancePhase` estimates its own cycle rate from
-dφ/dt of the phase it is handed, so the dance needs no confidence gate. Gating the dance on the
-hold instead produced a lean correlating **+0.293 with the bar against a +0.285 time-reversed
-decoy** — no lock; self-rated it reads **+0.757 against +0.222**.
-
-**Not root-caused past the mechanism above, deliberately.** Three candidate fixes — relax the
-spread tolerance, raise the phase delivery rate (BUG-087's neighbour), or make wrap detection
-robust to a coarse phase — have different blast radii, and this is `dsp.beat`, where the program
-requires opening with the `beat-sync-session` skill and a BeatBench baseline before proposing one.
 
 ---
 
@@ -192,6 +150,52 @@ close to a one-line change, but it roughly **triples the off-beat accent rate** 
 sessions — a visible change to a CERTIFIED preset, so it needs Matt's pick and an M7 rather than
 being folded into an unrelated increment. Worth checking whether any other preset accumulates a
 musical quantity from a clamped `dt`.
+
+---
+
+---
+
+### BUG-096 — RESOLVED (FTR.31): the hold was fine; the phase feeding it was not (2026-08-17, resolved 2026-08-18)
+
+**Status: RESOLVED in FTR.31. The original diagnosis was wrong in a way worth keeping, because it
+sent two increments down the wrong road.**
+
+**What was filed.** That `BeatHold`'s trust gate — eight beat intervals whose spread is ≤ 20 % of
+the mean — was too strict for a `beatPhase01` arriving at 14.6 Hz in 0.109-beat steps, and that the
+fix belonged in the tolerance, the phase's delivery rate, or wrap detection.
+
+**What was actually true.** The hold engages **immediately on a clean clock**: fed a smooth 60 Hz
+phase it reports a tempo of 0.6375 s with `isStepping` true within nine beats. The gate is correct.
+
+The real cause was in `DancePhase`, which FTR.28 wrote to work around this very bug. Its self-rate
+estimator measured **dφ/dt per render frame** — but the measured phase is a staircase that changes
+only on an analysis update, so a 0.109 jump inside one 17 ms frame reads as **6.5 cycles per second
+on a 1.57 Hz beat**. The lock's correction still dragged the phase onto the beat, which is why the
+gait measured well (in-step r +0.799, coordination R² 0.85) and why the error stayed hidden for
+three increments. But between corrections the phase free-ran four times too fast and was yanked
+back, crossing zero far more often than once per beat — and anything counting those crossings as
+beats saw intervals of ~0.15 s, under `periodRange`'s 0.25 s floor, and threw every one away.
+
+**The fix, one expression:** rate = `EMA(advance) / EMA(elapsed)`, both smoothed with the same τ.
+A frame with no update contributes 0 to the numerator and its dt to the denominator, which is
+exactly what a staircase requires. Measured on the same capture, the same hold:
+
+| | before | after |
+|---|---|---|
+| frames where `BeatHold` vouched for a tempo | **0 / 3000** | **2650 / 3000 (88 %)** |
+| tempo error vs the grid | — | **0.2 %** (0.6365 s vs 0.6378 s) |
+| sway in step with the bar | +0.799 | **+0.991** (decoy +0.043) |
+| coordination R² | 0.85 | **0.98** |
+
+**⚠ Two claims made in this entry's name are retracted.** (1) That the FTR.10 beat-step "has been
+engaging on ~1 frame in 8" — it was engaging on approximately none, for a reason that is now fixed,
+and FTR.29's decision to supersede it on the trunk was taken partly on that number. (2) That the
+gate's tolerance needed relaxing — it did not, and relaxing it would have masked this.
+
+**★ The transferable lesson: a per-frame derivative of a signal that updates slower than the frame
+rate measures the UPDATE CADENCE, not the signal.** Third instance of that family in four days —
+BUG-089's trailing minimum, FTR.28's 0.133 s "dominant period", and this. When a quantity is
+sampled coarser than it is consumed, every rate taken from it needs a window, not a difference.
 
 ---
 

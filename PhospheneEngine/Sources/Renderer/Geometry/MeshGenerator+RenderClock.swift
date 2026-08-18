@@ -40,8 +40,19 @@ extension MeshGenerator {
     /// otherwise glide at the wrong rate).
     public func advanceBeatHoldForSettling(_ features: FeatureVector, stems: StemFeatures = .zero) {
         let delta = nextRenderDelta()
+        advanceAllHolds(features, stems: stems, delta: delta)
+    }
+
+    /// ⚠ EVERY hold, on every path. FTR.18 shipped a rendered A/B that measured nothing because
+    /// `advanceBeatHold` left the glides on their frame-0 seed; FTR.30 repeated it by adding
+    /// `arcHold` to `draw` alone, which made the buffer(7) wiring gate compare two unseeded arcs
+    /// and read them as identical. A hold that is not advanced on undrawn frames is a hold whose
+    /// state depends on the draw cadence.
+    func advanceAllHolds(_ features: FeatureVector, stems: StemFeatures, delta: Float) {
         sectionHold.offerStems(stems)
         _ = sectionHold.update(features, renderDeltaTime: delta)
+        arcHold.offerStems(stems)
+        _ = arcHold.update(features, renderDeltaTime: delta)
         beatHold.offerStems(stems)
         _ = beatHold.update(features, renderDeltaTime: delta)
     }
@@ -61,6 +72,8 @@ extension MeshGenerator {
     /// regardless of the delta.
     public func advanceBeatHold(_ features: FeatureVector, stems: StemFeatures = .zero) {
         let delta = renderDeltaOverride ?? Float(1.0 / 60.0)
+        arcHold.offerStems(stems)
+        _ = arcHold.update(features, renderDeltaTime: delta)
         sectionHold.offerStems(stems)
         _ = sectionHold.update(features, renderDeltaTime: delta)
         beatHold.offerStems(stems)
@@ -79,6 +92,18 @@ extension MeshGenerator {
     /// The tempo offered here is `BeatHold`'s when it has one, but `DancePhase` does not depend on
     /// it: that hold vouches for a tempo on only 13 % of frames on real captures, and gating the
     /// dance on it produced no lock at all. See `DancePhase` for the measurement.
+    /// ★★★ FTR.31 — AND THE HOLDS MUST BE FED THE OUTPUT OF THIS, NOT THE RAW VECTOR.
+    ///
+    /// `BeatHold` detects a beat by watching `beatPhase01` wrap and measures the intervals between
+    /// wraps to decide whether the grid is trustworthy. Fed the RAW field it watches a staircase —
+    /// ~15 updates a second in steps of ~0.109 of a beat — and its intervals carry ±0.069 s of
+    /// quantisation jitter on a 0.638 s beat.
+    ///
+    /// Fed the LOCKED phase, with `DancePhase`'s rate estimator corrected (see that type), the
+    /// same hold on the same capture goes from vouching for a tempo on **0 of 3000 frames to
+    /// 2650 of 3000 (88 %)**, at 0.2 % tempo error. That is what made "tips on the beat"
+    /// buildable with machinery that has existed since FTR.10 — and it means the beat-step Matt
+    /// chose at FTR.10 had never actually been engaging.
     func applyDanceClocks(to feat: inout FeatureVector,
                           live: FeatureVector,
                           renderDelta: Float) {

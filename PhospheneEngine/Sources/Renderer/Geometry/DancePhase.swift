@@ -57,6 +57,10 @@ public struct DancePhase {
     /// is a fraction of a beat's worth of error and converges within two beats.
     private var lastMeasured: Float?
     private var rateHz: Float = 0
+    /// Advance and elapsed time, each smoothed with the SAME time constant, so the rate is their
+    /// ratio. See `updateRate` for why a per-frame dφ/dt cannot work here.
+    private var advanceEMA: Float = 0
+    private var elapsedEMA: Float = 0
 
     /// How long the dance keeps going on its own after the grid stops vouching for a tempo.
     /// 2.5 s is about a bar at 94 BPM: long enough to ride out the trust flicker measured below,
@@ -122,18 +126,40 @@ public struct DancePhase {
         return phase
     }
 
-    /// Track the measured phase's own rate of change, wrap-aware and smoothed. Extracted from
-    /// `advance` to keep it inside the cyclomatic-complexity cap.
+    /// Track the measured phase's own rate of change, wrap-aware and smoothed.
+    ///
+    /// ★★★ THE RATE IS A RATIO OF TWO SMOOTHED SUMS, NOT A PER-FRAME dφ/dt, and the difference is
+    /// not cosmetic. The measured phase is a STAIRCASE: it changes only on an analysis update —
+    /// ~15 times a second, in steps of ~0.109 of a cycle — and holds between them. A per-frame
+    /// dφ/dt therefore reads either 0 (most frames, and skipping those biases the average) or
+    /// 0.109 / 0.0167 s = **6.5 cycles per second on a 1.57 Hz beat**, four times too fast.
+    ///
+    /// The consequence was invisible in the dance and fatal downstream. The lock's correction
+    /// still pulled the phase onto the beat, so the gait measured fine (in-step r +0.799) — but
+    /// the phase free-ran four times too fast between corrections and got yanked back, so it
+    /// crossed zero far more often than once per beat. Anything counting those wraps as beats saw
+    /// intervals of ~0.15 s, below `BeatHold.periodRange`'s 0.25 s floor, and threw every one
+    /// away: the hold reported a tempo on **0 of 3000 frames** on a real capture while engaging
+    /// instantly on a synthetic clock. That was mis-filed as BUG-096 against the hold's tolerance.
+    ///
+    /// Smoothing the advance and the elapsed time with the same τ and dividing gives the honest
+    /// average: a frame with no update contributes 0 to the numerator and its dt to the
+    /// denominator, which is exactly what a staircase requires.
     private mutating func updateRate(measured: Float?, deltaTime: Float) {
         defer { if measured != nil { lastMeasured = measured } }
-        guard let measured, let previous = lastMeasured, deltaTime > 1e-5 else { return }
-        var advance = measured - previous
-        if advance < -0.5 { advance += 1 }        // wrapped forward past 1.0
-        if advance > 0.5 { advance -= 1 }         // a correction stepped backwards
-        guard advance > 0 else { return }
-        let instant = advance / deltaTime
-        let alpha = 1 - exp(-deltaTime / 1.0)     // τ 1 s
-        rateHz = rateHz > 0 ? rateHz + (instant - rateHz) * alpha : instant
+        guard deltaTime > 1e-5 else { return }
+        var advance: Float = 0
+        if let measured, let previous = lastMeasured {
+            advance = measured - previous
+            if advance < -0.5 { advance += 1 }    // wrapped forward past 1.0
+            if advance > 0.5 { advance -= 1 }     // a correction stepped backwards
+            if advance < 0 { advance = 0 }        // never let a correction read as negative tempo
+        }
+        let alpha = 1 - exp(-deltaTime / 1.5)     // τ 1.5 s — ≈ two beats at 94 BPM
+        advanceEMA += (advance - advanceEMA) * alpha
+        elapsedEMA += (deltaTime - elapsedEMA) * alpha
+        guard elapsedEMA > 1e-6 else { return }
+        rateHz = advanceEMA / elapsedEMA
     }
 
     /// Drop the lock — call at a track change so the next track's grid is adopted exactly

@@ -1299,7 +1299,17 @@ struct FractalTreeMeshRenderTest {
     /// engages, then renders a frame whose LIVE surge has jumped — mid-beat, so the held
     /// vector still carries the old value. The tree must render at its OLD height. A
     /// generator that never saw the clock renders the same live frame taller.
-    @Test("the object stage reads the beat-held FeatureVector at buffer(4) (FTR.10)")
+    /// FTR.30 — RE-POINTED FROM buffer(4) TO buffer(7), and the reason matters more than the
+    /// change. This gate proved the object stage reads a GLIDED vector rather than the live one,
+    /// using the trunk's height as the probe. FTR.29 moved the trunk deliberately off the
+    /// beat-held vector — Matt's FTR.10 beat-step was engaging on 0–13 % of frames (BUG-096) while
+    /// the FTR.28 gait carries the beat every frame — and FTR.30 moved the last remaining reader
+    /// (`lift`) too. So the old assertion tested a contract this preset no longer has.
+    ///
+    /// It is re-pointed rather than deleted because the WIRING claim is still worth proving: the
+    /// object stage must read the τ 0.6 s arc at buffer(7), not the live vector. Same mechanism,
+    /// same probe, different buffer. Buffers 4 and 5 remain bound for other mesh presets.
+    @Test("the object stage reads the ARC FeatureVector at buffer(7) (FTR.30, was FTR.10/buffer(4))")
     func objectStageReadsTheBeatHeldVector() throws {
         let ctx = try MetalContext()
         let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
@@ -1332,6 +1342,7 @@ struct FractalTreeMeshRenderTest {
         // enough for the hold to engage after eight consistent intervals.
         let warm = makeGenerator()
         for tick in 0...101 { warm.advanceBeatHold(frame(time: Float(tick) * 0.1, surge: 0.10)) }
+        // The arc is a τ 0.6 s glide, so ten seconds of quiet leaves it fully settled at 0.10.
 
         // t = 10.25 s is mid-beat (the last beat was 10.0, the last fed frame 10.1): the live
         // surge slams to 1.0 but the held vector still carries the 0.10 sampled on the beat,
@@ -1355,10 +1366,10 @@ struct FractalTreeMeshRenderTest {
         print(String(format: "[fractal-tree/hold] canopy height held %.4f vs unheld %.4f",
                      heldHeight, freshHeight))
         #expect(heldHeight < freshHeight * 0.95, """
-            the tree rendered the same height (\(heldHeight) vs \(freshHeight)) whether or not \
-            the beat hold had engaged. Either buffer(4) is not bound on the object stage or \
-            the shader is not reading it — the trunk is still sliding with the live surge and \
-            everything this increment reports is measuring a mirror, not the GPU.
+            the tree rendered the same height (\(heldHeight) vs \(freshHeight)) whether or not the \
+            arc glide had settled. Either buffer(7) is not bound on the object stage or the shader \
+            is not reading it — the trunk is sliding with the LIVE surge, and everything this \
+            increment reports is measuring a mirror rather than the GPU.
             """)
     }
 
@@ -2129,7 +2140,7 @@ struct FractalTreeMeshRenderTest {
         // Start past the grid's cold start (it needs a bar clock plus 8 stable beats) and take
         // 6 s of consecutive frames — long enough for ~9 beats and ~2 bars.
         let startRow = rows.firstIndex { ($0["time"] ?? 0) >= 14.0 } ?? 0
-        let sampleCount = min(360, rows.count - startRow)
+        let sampleCount = min(Int(ProcessInfo.processInfo.environment["FT_GAIT_FRAMES"] ?? "360") ?? 360, rows.count - startRow)
         guard sampleCount > 120 else { return }
 
         var fifths = FifthsSmoother()
@@ -2195,10 +2206,21 @@ struct FractalTreeMeshRenderTest {
             let p = row["beatPhase01"] ?? 0
             return exp(-5.0 * p) * sin(2 * Double.pi * p)
         }
+        // ⚠ THE DECOY IS AN INCOMMENSURATE TEMPO, NOT A TIME-REVERSED CLOCK. The reversed clock
+        // was a valid control only while the pose was NOT periodic: reverse a sine and you get
+        // ±the same sine, so once FTR.31 made the tree genuinely periodic the decoy scored +0.813
+        // against a real +0.991 and this gate failed a build that had just got dramatically
+        // better. A clock running at 1/1.37 of the bar rate is equally smooth and equally
+        // periodic, and cannot stay aligned — which is the property a control needs.
+        let decoyBar = { () -> Double in
+            let bpm = rows[startRow]["grid_bpm"] ?? 0
+            return (bpm > 1 ? 60.0 / bpm : 0.638) * 4 * 1.37
+        }()
+        let decoyBasis: [Double] = times.map { sin(2 * Double.pi * ($0 - times[0]) / decoyBar) }
         let swayCorr = Self.correlation(sway, barWave)
-        let swayDecoy = Self.correlation(sway, barWave.reversed().map { $0 })
+        let swayDecoy = Self.correlation(sway, decoyBasis)
         let bounceCorr = Self.correlation(bounce, beatWave)
-        let bounceDecoy = Self.correlation(bounce, beatWave.reversed().map { $0 })
+        let bounceDecoy = Self.correlation(bounce, decoyBasis)
         print(String(format:
             "[fractal-tree/gait] IN STEP WITH THE CLOCK: sway r=%+.3f (decoy %+.3f) | bounce r=%+.3f (decoy %+.3f)",
             swayCorr, swayDecoy, bounceCorr, bounceDecoy))
@@ -2362,6 +2384,9 @@ struct FractalTreeMeshRenderTest {
             sway.append(pose.centroidX)
             bounce.append(pose.centroidY)
         }
+        print(String(format: "[fractal-tree/gait-control] beatHold tempo after the run: %@  isStepping=%@",
+                     generator.beatHold.beatPeriodSeconds.map { String(format: "%.4f s", $0) } ?? "nil",
+                     generator.beatHold.isStepping ? "YES" : "no"))
         let dt = 1.0 / fps
         let settled = Int(6.0 * fps)          // drop the pre-grid cold start
         sway = Array(sway.dropFirst(settled))

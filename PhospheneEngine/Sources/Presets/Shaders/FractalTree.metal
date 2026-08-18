@@ -186,6 +186,14 @@ void fractal_tree_object_shader(
     constant FeatureVector&       fHeld [[buffer(4)]],
     /// FTR.18 — the ~2 s section glide, read ONLY to correct a limiter inversion in the size.
     constant FeatureVector&       fSection [[buffer(6)]],
+    /// FTR.30 — the τ 0.6 s ARC (buffer 7) and its stems (buffer 2). Buffer(6) is the 6 s glide
+    /// for things that must be STEADY (the gait's stride, the canopy angle, FTR.18's density
+    /// correction); this one is for the two things that must be VISIBLE but not frantic — the
+    /// growth arc and the tips. Matt, on the 6 s-everything build: *"Tree is not really growing
+    /// or receding — this looks pretty much fixed"* and *"unclear what is motivating the
+    /// movement of the tips."*
+    constant FeatureVector&       fArc [[buffer(7)]],
+    constant StemFeatures&        stemsArc [[buffer(2)]],
     /// FTR.13 — the beat-held stem features, same beats and same ease as `fHeld` (buffer(5),
     /// bound by `MeshGenerator`). Matt: *"the tips … should be beat matched."* The tips' driver
     /// is a per-stem field, so holding only `fHeld` left them changing 4–5 times a second
@@ -327,7 +335,13 @@ void fractal_tree_object_shader(
         // BUG-096: the hold engaged on ~13 % of frames, so "the trunk steps on the beat" was
         // absent seven frames in eight; the gait is on the beat every frame. The hold itself
         // stays for the tips (buffer 4/5 still feed the melodic layer).
-        float2 heldGrowth = fractal_growth(fSection, fSection);
+        // FTR.30 — the ARC (0.6 s), not the 6 s glide. At 6 s the trunk travelled 0.005/s: 17 px
+        // in three seconds, which Matt read as *"pretty much fixed."* At 0.6 s it travels
+        // 0.020/s — ≈65 px in three seconds, visible as growth — and the coordination cost is
+        // almost nothing (85 % → 82 %), because the gait and the now-quiet tips dominate the
+        // motion budget either way. The DENSITY half of the correction still comes from the 6 s
+        // glide, which is what FTR.18 calibrated it against.
+        float2 heldGrowth = fractal_growth(fArc, fSection);
         float reach = heldGrowth.x;
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
@@ -421,7 +435,12 @@ void fractal_tree_object_shader(
         float trunkLen = 0.27f + reach * 0.13f + surge * 0.32f;
 
         // Kept for the canopy's finer response; the surge carries the arrival.
-        float lift = saturate((fHeld.spectral_density / max(fHeld.spectral_density_slow, 1e-4f) - 1.0f) * 1.1f);
+        // FTR.30 — `fArc`, the last term in this preset to leave the beat-held vector. It feeds
+        // the branch COUNT, so it belongs on the same clock as the other count terms; and after
+        // FTR.29 moved the trunk off `fHeld` this was the single remaining reader of buffer(4),
+        // kept there by nothing but history. Buffer(4)/(5) stay BOUND (other mesh presets read
+        // them) but Fractal Tree no longer reads either.
+        float lift = saturate((fArc.spectral_density / max(fArc.spectral_density_slow, 1e-4f) - 1.0f) * 1.1f);
 
         // SILENCE GATE. `pulse_amp01` is 0 before the first note and across sustained
         // silence, returning the sparse 7-branch figure the reference README asks for
@@ -502,6 +521,30 @@ void fractal_tree_object_shader(
         // buffer(4) vector), so the tips change on the beat like everything else instead of
         // 4–5 times a second. Matt, seeing FTR.11 live: *"the tips probably are still moving
         // too fast if they change 2x per beat — should be beat matched."*
+        // ⚠ FTR.30 — `stemsArc` (τ 0.6 s), NOT `stemsHeld`. Two measurements forced this.
+        //
+        // First: `other_onset_rate` travels **10.2 per second** on Matt's capture
+        // `2026-08-18T15-17-10Z` — 68× the gait's lean and by far the noisiest signal the preset
+        // reads. Second: BUG-096 measured the beat-hold this line used engaging on 0–13 % of
+        // frames, so "BEAT-MATCHED" above was aspirational; `stemsHeld` was effectively live, and
+        // the comment describing it as beat-matched had been wrong since FTR.13.
+        //
+        // Together those made the tips the loudest motion in the preset AND the only fast motion
+        // before a grid exists, which is exactly Matt's pair of observations: *"on initial
+        // playback, the preset was moving aggressively"* and *"unclear what is motivating the
+        // movement of the tips."* FTR.12 had already established there is nothing perceptible
+        // behind this route — it is residue ACTIVITY, not an instrument — so a viewer cannot
+        // connect it to anything however fast it moves.
+        //
+        // 0.6 s cuts its travel ~10× and keeps the flicker. What it does NOT do is make the route
+        // legible; that needs a different primitive, and choosing one is Matt's call.
+        // ★ FTR.31 — BACK ON THE BEAT-HELD STEMS (buffer 5), which is what Matt asked for:
+        // *"tips on the beat."* FTR.13 intended exactly this and its comment claimed it, but the
+        // claim was false for eighteen increments — BUG-096 measured the hold engaging on 0–13 %
+        // of frames because it was watching a staircase phase, so `stemsHeld` was effectively
+        // live. FTR.31 feeds the holds `DancePhase`'s locked phase, so the latch actually fires
+        // on beats now. The 0.6 s arc smoothing FTR.30 added is no longer needed here: a value
+        // sampled once per beat cannot thrash at 10.2/s whatever its source does between beats.
         float residueActivity = stemsHeld.other_onset_rate
                               / (stemsHeld.other_onset_rate + 18.0f);
 
@@ -515,6 +558,13 @@ void fractal_tree_object_shader(
         float stemEnergy = stems.vocals_energy + stems.drums_energy
                          + stems.bass_energy + stems.other_energy;
         float stemsAlive = smoothstep(0.02f, 0.06f, stemEnergy);
+        // FTR.30 — the cold-start leg reads the arc too. `beat_mid` is a saturating pulse CLOCK
+        // (every statistic of it is a clock, not music), and unsmoothed it travelled 1.66/s — the
+        // aggressive motion of the first ten seconds, before the stems converge and before the
+        // grid gives the tree anything to dance to.
+        // FTR.31 — the cold-start leg is beat-held too, so the tips step from frame one rather
+        // than thrashing until the stems converge. Before a grid exists the hold tracks live and
+        // this is a continuous value again, which is the honest fallback: no clock, no steps.
         float melody = mix(fHeld.beat_mid / (fHeld.beat_mid + 2.2f), residueActivity, stemsAlive);
 
         // Depth tiers are the mechanism: a tier appears only above a threshold count
