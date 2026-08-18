@@ -64,7 +64,9 @@ struct FractalPayload {
     /// coupled gesture rather than three layers racing on one primitive (the FA #67
     /// collision D-212 measured).
     float reach;
-    /// BRANCH SPREAD, radians — how wide the canopy opens. From `spectral_flux`.
+    /// BRANCH SPREAD, radians — how wide the canopy opens. From `spectral_flux`; removed at
+    /// FTR.26 on Matt's instruction and RESTORED at FTR.27 after he reviewed the alternative
+    /// live. See the spread block in the object shader for the full history.
     float spread;
     /// SECTION SURGE, 0…1 — steps up on an arrival and holds. Elongates the trunk and
     /// carries the branch count across a tier boundary.
@@ -559,37 +561,28 @@ void fractal_tree_object_shader(
         float countF = min(7.0f + base + section + tipsF, 63.0f);
         uint  count  = min((uint)ceil(countF), 63u);
 
-        // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
+        // ── BRANCH SPREAD ← spectral_flux (RESTORED at FTR.27) ───────────────────
         //
-        // Replaces `mid_att`, which delivered 0.42° of a promised 7° (D-212). The cause was a
-        // coefficient written as if the band swings 0→1: `mid_att` means 0.056 post-AGC on
-        // this material and spans 0.007 on love_rehab.
+        // The full history, because this route has now been removed and restored and the
+        // reasons are not obvious from the code:
         //
-        // `spectral_flux` is the only broadband primitive measured with a comparable span on
-        // every source — p05→p95 of 0.555 (Hummer), 0.666, 0.539, 0.477. It is also the right
-        // MUSICAL choice: flux rises when the spectrum CHANGES, so the canopy opens on chord
-        // and texture changes rather than on loudness, which the canopy-reach route already
-        // carries.
+        //   D-212 → FTR.25   flux drives the spread. It is the only broadband primitive with
+        //                    real span on every source (p05→p95 0.480…0.672 on the three
+        //                    fixtures; every unused alternative is dead or inconsistent).
+        //   FTR.26           Matt asked twice for flux to come OFF the spread, to free it for
+        //                    the size term. Spread became a constant; flux moved to the branch
+        //                    count and thickness as "canopy weight".
+        //   FTR.27           He reviewed that live: *"dislike the new behavior of the trunk and
+        //                    canopy. connection to the music is even less clear than before."*
+        //                    Restored.
         //
-        // Sized against the measured p05 floor, not against 0: flux never approaches zero on
-        // real music (p05 0.070–0.378), so mapping [0.10, 0.95] onto the full spread range
-        // uses the range the music actually occupies. 20°→34° is double the shipped 22°→29°
-        // nominal, and ~33× the swing actually delivered.
-        // FTR.11 — `fHeld`: at 5.48 turns/s this was the fastest-moving term in the preset.
-        //
-        // ⚠ FTR.24 — MATT ASKED FOR THIS ROUTE TO BE REMOVED AND IT IS STILL HERE, PENDING HIS
-        // CALL. His instruction on 2026-08-17 was *"take flux off branch spread"*, given to
-        // free flux for the size term. Two measurements then changed the premise underneath it:
-        // flux cannot fix size (FTR.23 — never event-positive additively, and span collapse or
-        // 6.5× travel otherwise), and FTR.24 fixed size with a new primitive that has nothing
-        // to do with flux. So the trade the instruction was making no longer exists.
-        //
-        // Removing it anyway was measured, and it is expensive: the drive-range response falls
-        // from **1.067 to 0.119** mean |Δpixel| p05→p95, i.e. THE SPREAD CARRIES 89 % OF THIS
-        // PRESET'S MEASURED RESPONSE ACROSS ITS OWN ENERGY RANGE, and `FractalTreeMeshRenderTest`
-        // fails its own 0.5 floor — the FTR.2 dead-route gate, firing correctly. A static canopy
-        // makes the "no clear connection to the music" complaint worse, not better, which is why
-        // this is Matt's call and not a silent one either way.
+        // ⚠ AND THE MEASUREMENT SAYS WHY, which is the part worth keeping. On his capture
+        // `2026-08-17T20-01-01Z` the canopy-weight form swung flux's full range inside EVERY
+        // 10 s window (0.24…1.00 in all six buckets) and moved every branch's thickness by
+        // 12.7 px at 1080p. On the spread the same signal changes the canopy's ANGLE, where a
+        // full-range swing reads as the tree opening; on thickness it reads as every stroke
+        // fattening and thinning continuously, which is motion without meaning. Same primitive,
+        // same span, opposite legibility — the CHANNEL decides whether a signal reads.
         float flux   = saturate((fHeld.spectral_flux - 0.10f) / 0.85f);
         float spread = 0.35f + flux * 0.24f;   // 20° … 34°
 
