@@ -213,6 +213,26 @@ contradict.
 - **Level correction is dead on this evidence** (D-210's clause), independently of the label
   question.
 
+## Resolution — Matt, 2026-08-19
+
+> *"I would not trust my tapping on these tracks, especially Bleed."*
+
+So the taps are the unreliable side, and the consequence is stated exactly: **there are
+currently ZERO established real wrong-level tracks.** FT.3.1 has no positives to detect and
+closes — not because the method failed, but because the thing it was built to find was never
+shown to exist.
+
+Note what this does **not** license. Matt distrusting the taps is not the same as the backends
+being right; the correct status for money's and bleed's metrical level is **unknown**, pending
+re-annotation. Filed as **BUG-101** (P1, `test.groundtruth / dsp.beat`), which carries the list
+of contaminated numbers and the fix path. Ground truth changes only through the tap + reconcile
+pipeline — no JSON was edited.
+
+The one piece of corroboration worth repeating, because it was already in the repo: **BUG-076's
+body states bleed's ~115 BPM is "correct — matches madmom 115.0, librosa 115.0, drums-stem
+115.1"** — a third independent source — while `bleed.groundtruth.json` asserts 226.72 and
+BeatBench scores bleed against it. Both are live in the repo and cannot both be right.
+
 ## Reproduce
 
 ```bash
