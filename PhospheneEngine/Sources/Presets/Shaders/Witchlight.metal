@@ -96,6 +96,26 @@ static inline float3 witchlight_bloom(float2 uv, float aspect, float t, float hu
     // the darkness back without desaturating the lobe, so the bloom still reads as the
     // violet emission `06` calls for instead of fading to a grey smudge.
     float body = exp(-r * r * 70.0);
+    // PERF (BUG-098) — EARLY OUT BEFORE THE NOISE, which is the whole cost of this preset.
+    //
+    // The two calls below are ~64 Perlin evaluations per pixel (`fbm8` is 8; `warped_fbm` is
+    // 7 x fbm8 = ~56 — VolumetricLithograph.metal:635 records the same figure and avoids it
+    // for exactly this reason). They ran for EVERY pixel of the frame and were then multiplied
+    // by `body`, a Gaussian that is essentially zero outside a ball a sixth of the frame wide.
+    // At 3840x2160 that is ~530 MILLION Perlin evaluations per frame to produce black.
+    //
+    // Measured on Matt's session `2026-08-19T14-25-55Z`: Witchlight 273.88 ms median GPU at 4K
+    // — 11.2 fps, 16x over the 16.7 ms budget — while six other presets in the same session
+    // held 59-60 fps (Arachne 3.27 ms, Stave 4.94 ms, Volumetric Lithograph 16.44 ms). The cost
+    // stepped straight to ~272 ms the instant the preset became active rather than ramping, so
+    // it was never the trail or the beads: it is a fixed per-pixel cost.
+    //
+    // The branch is spatially coherent — the lobe is one compact ball, so whole tiles take the
+    // same path and the GPU keeps the win. The threshold is below what 8-bit output can show:
+    // `lobe <= body`, and the return is `hue * lobe * 0.24`, so body = 1e-3 caps this pixel's
+    // contribution at 2.4e-4 against an 8-bit LSB of 3.9e-3 — a sixteenth of the smallest
+    // representable step. Visually identical, not merely close.
+    if (body < 1e-3) { return float3(0.0); }
     // Low-frequency structure only: the fbm is sampled at a large scale so the lobe stays
     // one soft mass rather than becoming cloud detail.
     float structure = fbm8(float3(d * 1.5, t * 0.008), 0.62) * 0.5 + 0.5;

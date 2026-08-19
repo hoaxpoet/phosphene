@@ -5828,3 +5828,48 @@ the gate must assert → build the per-preset budget gate, declaring explicitly 
 omitting them silently.
 
 Suite 1865/1865, lint 0, app builds.
+
+### Increment PERF.2 — Witchlight: ~530 million Perlin evaluations per frame to produce black ✅ (2026-08-19)
+
+**Matt, on the first fullscreen session ever recorded: *"Witchlight's performance is horrible at
+fullscreen."*** He was right, and the number is worse than the word: **273.88 ms median GPU at
+3840×2160 — 11.2 fps, 16× over the 16.7 ms budget.**
+
+**The comparison is what makes it a defect rather than a cost.** In the *same session*, six other
+presets held 59–60 fps at the same 4K: Arachne 3.27 ms, Fata Morgana 3.30, Stave 4.94, Spectral
+Cartograph 4.94, Skein 4.94, Volumetric Lithograph 16.44. Witchlight was **84× Arachne**.
+
+**Root cause.** `witchlight_bloom` computed `fbm8` (8 Perlin evaluations) and `warped_fbm`
+(7 × fbm8 ≈ 56) for **every pixel of the frame**, then multiplied the result by
+`body = exp(-r*r*70)` — a lobe roughly a sixth of the frame wide, and numerically zero over the
+rest. At 4K that is ~**530 million Perlin evaluations per frame, almost all of them multiplied by
+zero**. `VolumetricLithograph.metal:635` already records `warped_fbm`'s cost and avoids it for
+precisely this reason; Witchlight never got that treatment.
+
+**Fix: one early return**, before the noise, when `body < 1e-3`. The threshold is below what the
+output can represent — `lobe <= body` and the return is `hue * lobe * 0.24`, so the capped
+contribution is 2.4e-4 against an 8-bit LSB of 3.9e-3 — and the branch is spatially coherent (one
+compact ball), so whole tiles take it and the GPU keeps the win.
+
+| | 4K frame time (harness) |
+|---|---|
+| before | **151.2 ms** |
+| after | **31.8 ms** (re-run 30.9) |
+
+**4.9×**, with output identical to every printed digit on the WL.2 gates (sky luma 9.22, lit
+2.49 %, ribbon share 0.433 % both ways) — verified by A/B rather than asserted.
+
+⚠ **This meets the stated target and does NOT fix fullscreen.** Extrapolated to production:
+~56 ms at 4K (still ~3× over) and ~13 ms at 1800×1200 (inside budget). `CLAUDE.md` promises
+60 fps **at 1080p**, which is now met; a 4K panel is outside that promise. The residual ~31 ms is
+the beads and star layers and is separate work — and worth a product decision first, since
+`setDirectRenderScale` already exists for exactly this (Nimbus renders at 0.5×).
+
+**How it was found, which is the transferable part.** Not by profiling: by Matt asking *"are all
+presets supposed to run at 60 fps, and isn't that something you can verify?"* — and the answer
+being no. Three measurement errors had to be cleared first: the wrong column (`deltaTime` is
+vsync-dominated), a sample selected by accident (4 of 29 presets, chosen by what he left on
+screen), and **no record of the output resolution at all**, which is what PERF.1 added. The bug
+was only visible once the instrument existed; every prior sign-off had been at 900×600.
+
+Suite 1865/1865, lint 0.
