@@ -853,7 +853,7 @@ the generator now ticks the same `WaveformOccupancy` model from each hop's sampl
 `RenderPipeline.swift:773` does per frame. The column measures 0.003–0.368, 100 % nonzero on all
 three tracks; exactly one column changed in the regenerated fixtures; Stave declares
 `band_dispersion ← waveformOccupancy` and route coverage reads **203 routes / 21 presets,
-0 red**. Stave's certification is no longer blocked on tooling — it needs Matt's M7.
+0 red**. Stave's certification is no longer blocked on tooling, and **Matt's M7 certified it on 2026-08-19 (CHR.3k)** — the 19th certified preset.
 
 **FOLLOW-UP (CHR.3h, same day): the two failures are NOT the same kind of thing, and only one
 is a re-baseline.** Investigated separately rather than treated as one fixture chore:

@@ -899,7 +899,7 @@ Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) i
 **What is actually in flight, 2026-08-03.** Each entry names its own owner section; this list is a pointer, not a second source of truth.
 
 1. **Beat-sync program (D-202)** — the largest active program. Phase TRK is ⏸ **PARKED** (D-206) and must not reopen without a changed premise about the **grid**, not the tracker. **DBN.3** is the live thread but its stated gate ("blocked on FT.1") is **satisfied-but-unresolved**: FT.1 landed 2026-07-31 with a **negative** payoff, so the block condition is met while the decision it was waiting for was never made — see the DBN.3 row for the successor state. **FT.3** and **FT.3.1** are specced and awaiting Matt (`docs/prompts/FT3_BARLINE_FROM_ACCENTS.md`, `docs/prompts/FT31_GRID_METRICAL_LEVEL.md`). Owner section: §Phase FT / §Beat-Sync Program.
-2. **Preset work in flight** — ~~FTR.3/.4/.5 (Fractal Tree)~~ **✅ CERTIFIED 2026-08-19, the 19th** (FTR.5; M7 on `2026-08-19T17-25-03Z`), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
+2. **Preset work in flight** — ~~FTR.3/.4/.5 (Fractal Tree)~~ **✅ CERTIFIED 2026-08-19, the 20th** (FTR.5; M7 on `2026-08-19T17-25-03Z`), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
 3. **CLEAN backlog** — Phases 0–5 and 7 are closed. **Phase 6** (5 open rows) and **Phase 8** (4 open rows, the XL decomposition) remain. Phase 8 is the same work as PUB **R3.5**. Authoritative queue: [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) Part C.
 4. **PUB R3 decomposition** — slices R3.1/R3.2 done; **R3.3 (analysis), R3.4 (LF transport), R3.5 (orchestrator bridge)** queued. R3.5 = CLEAN Phase 8; do not schedule them as separate efforts.
 5. **Open defects worth scheduling** *(refreshed 2026-08-07 — BUG-079 and BUG-078 are now RESOLVED and have left §Open; the working order below is the triage that replaced this line's earlier list)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
@@ -2609,9 +2609,15 @@ Ricercar), `staged` ×2 (Arachne, Staged Sandbox), `mv_warp` ×1 (Gossamer), `ra
 four.**
 
 **FTR.5 — Fractal Tree CERTIFIED.** ✅ **2026-08-19**, Matt on session `2026-08-19T17-25-03Z`:
-*"Fractal Tree looks good. I think it's ready for certification finally."* The **19th certified
+*"Fractal Tree looks good. I think it's ready for certification finally."* The **20th certified
 preset**, and the longest road of any of them — 33 increments and roughly a dozen live rejections
 of a single complaint.
+
+⚠ **Written as "the 19th" and corrected to the 20th on merge.** A parallel session's Stave (CHR.3k)
+reached `main` first while this branch waited on CI — twice, since Stave's earlier CHR.3i
+certification had also been reverted in between. Recorded rather than quietly fixed: an ordinal is a
+race between branches, so it is only meaningful against merge order, and claiming one from inside an
+open branch is claiming something the branch cannot know.
 
 **What actually unlocked it, in one line: the tree had to DANCE, not react.** Nine increments were
 spent on WHICH SIGNAL should set the tree's size, and every one of them was answering the wrong
@@ -6363,3 +6369,37 @@ in the rendered PNGs answered it directly. **Fourth metric misread in a day**; t
 identical each time — the number was real, and what it measured was not what the question asked.
 
 Suite 1876/1876, lint 0.
+
+### Increment CHR.3k — Stave CERTIFIED ✅ (2026-08-19)
+
+**Matt's M7** on `2026-08-19T18-23-44Z`: *"Looks good. I recommend we keep 0.88."* Stave is the
+**19th certified preset** and the first in the `waveform` family.
+
+**The build was verified before the pass was recorded, and that mattered — twice.** Two earlier
+sign-offs in this same sequence turned out to be on the wrong value:
+
+| session | binary's `zoom` | Matt |
+|---|---|---|
+| 17:50 | 0.93 | *"the size of the visual looked the same"* |
+| 18:16 | 0.93 (again — #128 had not merged) | *"looks good"* |
+| **18:23** | **0.88** (`.o` compiled 18:23:25 UTC, 21 s before the session) | *"Looks good. Keep 0.88."* |
+
+The 18:16 approval was of the value he had just called invisible, because the newer build had
+not reached his machine. Checking the object timestamp against the merge time is what caught it;
+the app bundle's own timestamp would not have, since the launcher relinks without recompiling.
+
+**What the certification covers.** `zoom: 0.88` (−9.2 % visible extent, measured on rendered
+frames), the CHR.3g route declaration (`band_dispersion ← waveformOccupancy`, proved by QG.1),
+and the CHR.3b concept — the visible spectrum aligned to the frequency spectrum.
+
+**What it explicitly does not cover: BUG-100.** Matt's earlier *"performance slowed over time"*
+was traced to a whole-app limit under sustained 4K that affects every preset, with three
+preset-side hypotheses falsified. Certifying Stave does not close it, and it remains open.
+
+**Roster: 29 presets, 19 certified.**
+
+Also in this increment: `TempVLPerf.swift`, a throwaway VL timing probe, was swept into the
+CHR.3j commit by `git add -A` and reached main. Removed. It was env-gated so it never ran, but a
+scratch file in the test target is noise the next reader has to identify and discard.
+
+Suite green, lint 0.

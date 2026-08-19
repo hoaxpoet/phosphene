@@ -308,8 +308,12 @@ struct FidelityRubricGateTests {
     // SkeinState, invisible to the MSL heuristic — the Lumen Mosaic
     // precedent); Matt's M7 is the load-bearing gate per SHADER_CRAFT §12.1.
     // FRACTAL TREE — certified 2026-08-19 (FTR.5), Matt on session `2026-08-19T17-25-03Z`:
-    // *"Fractal Tree looks good. I think it's ready for certification finally."* The 19th, and
-    // the one that took longest: thirty-three increments and roughly a dozen live rejections of
+    // *"Fractal Tree looks good. I think it's ready for certification finally."*
+    //
+    // ⚠ THE 20th, NOT THE 19th, and the correction is recorded rather than quietly fixed: this was
+    // written as "the 19th" and a parallel session's Stave (CHR.3k) reached `main` first while this
+    // branch waited on CI. Ordinals are a race, so they are worth stating only against the merge
+    // order — Stave is 19, Fractal Tree is 20. It is still the one that took longest: thirty-three increments and roughly a dozen live rejections of
     // one complaint — *"no clear connection to the music"* — while every amplitude route measured
     // healthy. What finally moved it was not a signal but a PREMISE: the tree needed to DANCE
     // (FTR.28, his Fantasia broomsticks reframe), and a dance is a phase, not an amplitude. The
@@ -329,7 +333,7 @@ struct FidelityRubricGateTests {
     // ⚠ Verified the reviewed BINARY, not just the session: `ArrivalStep.o` compiled 12:24:46,
     // app built 12:24:50, last run 12:25:06, session log opens 12:25:04 CDT — so the M7 was on
     // the FTR.33 build and not a stale one (the BUG-051 discipline).
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Aurora Veil", "Cymatic Resonance", "Volumetric Lithograph", "Meniscus", "Witchlight", "Fractal Tree"]
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Aurora Veil", "Cymatic Resonance", "Volumetric Lithograph", "Meniscus", "Witchlight", "Stave", "Fractal Tree"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

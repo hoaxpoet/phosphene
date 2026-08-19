@@ -1,5 +1,10 @@
 # Visual References — Stave
 
+**Status:** ✅ **CERTIFIED 2026-08-19 (CHR.3k)** — Matt's M7 on session `2026-08-19T18-23-44Z`,
+*"Looks good. I recommend we keep 0.88."* The 19th certified preset and the first in the
+`waveform` family. ⚠ Build verified before recording the pass: `StaveDispersionModel.o` compiled
+18:23:25 UTC, three minutes after the `zoom: 0.88` merge and 21 s before the session — two
+earlier sign-offs in this sequence turned out to be on the previous value.
 **Family:** waveform — spectral dispersion of the live signal
 **Render pipeline:** particles (CPU band split → one fullscreen dispersion pass) + feedback
 **Rubric:** lightweight — a 2D luminous plot with no lighting, no G-buffer and no material
