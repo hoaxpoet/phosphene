@@ -1474,6 +1474,9 @@ struct FractalTreeMeshRenderTest {
         f.spectralSurge = value("spectral_surge")
         f.spectralSectionRatio = value("spectral_section_ratio")
         f.spectralLevelRise = value("spectral_level_rise")   // FTR.24; 0 on older captures
+        // FTR.32 — the canopy's grow-in reads this. Unmapped it is 0 forever, which renders a
+        // permanent 7-branch sapling and would have made every measurement below a fiction.
+        f.trackElapsedS = value("track_elapsed_s")
         f.time = value("time")
         return f
     }
@@ -1898,6 +1901,10 @@ struct FractalTreeMeshRenderTest {
 
     private static func baseFeatures() -> FeatureVector {
         var f = FeatureVector()
+        // FTR.32 — synthetic frames represent a settled track, not a track's first second, so the
+        // canopy grow-in is complete. Leaving this at 0 would make every drive-range and accent
+        // measurement a picture of the opening ramp.
+        f.trackElapsedS = 60
         f.deltaTime = 1.0 / 60.0
         f.aspectRatio = Float(width) / Float(height)
         return f
@@ -2139,13 +2146,19 @@ struct FractalTreeMeshRenderTest {
 
         // Start past the grid's cold start (it needs a bar clock plus 8 stable beats) and take
         // 6 s of consecutive frames — long enough for ~9 beats and ~2 bars.
-        let startRow = rows.firstIndex { ($0["time"] ?? 0) >= 14.0 } ?? 0
+        // FT_GAIT_SKIP lets the window start at the very beginning of playback instead of past
+        // the grid's cold start, which is the only way to measure what Matt sees in the first
+        // seconds — the *"on initial playback, the preset was moving aggressively"* complaint.
+        let skipTo = Double(ProcessInfo.processInfo.environment["FT_GAIT_SKIP"] ?? "") ?? 14.0
+        let firstTime = rows.first?["time"] ?? 0
+        let startRow = rows.firstIndex { ($0["time"] ?? 0) >= firstTime + skipTo } ?? 0
         let sampleCount = min(Int(ProcessInfo.processInfo.environment["FT_GAIT_FRAMES"] ?? "360") ?? 360, rows.count - startRow)
         guard sampleCount > 120 else { return }
 
         var fifths = FifthsSmoother()
         var sway: [Double] = []
         var bounce: [Double] = []
+        var tipInk: [Double] = []
         var times: [Double] = []
         // ⚠ THE RENDER DELTA MUST MATCH THE DATA'S CADENCE, not 1/60. A capture's rows are spaced
         // by whatever the recording frame rate was (0.0190 s here, ~52.6 Hz), and telling the
@@ -2174,9 +2187,11 @@ struct FractalTreeMeshRenderTest {
             Self.encode(cmd, into: target, generator: generator, features: fv, stems: stems)
             cmd.commit()
             cmd.waitUntilCompleted()
-            let pose = Self.pose(Self.read(target))
+            let pixels = Self.read(target)
+            let pose = Self.pose(pixels)
             sway.append(pose.centroidX)
             bounce.append(pose.centroidY)
+            tipInk.append(Self.outerInk(pixels))
             times.append(rows[index]["time"] ?? 0)
             if generator.beatHold.beatPeriodSeconds != nil { gridFrames += 1 }
             periodSamples.append(generator.beatHold.beatPeriodSeconds.map { Double($0) } ?? 0)
@@ -2256,6 +2271,35 @@ struct FractalTreeMeshRenderTest {
             return [sin(2 * Double.pi * bar), cos(2 * Double.pi * bar),
                     exp(-5.0 * beat) * sin(2 * Double.pi * beat), 1.0]
         }
+        // FTR.31a EVIDENCE — motion in the first seconds versus once the grid is up. The tips
+        // track LIVE until the hold trusts the grid (~7 s), so if they are fed raw this ratio blows
+        // out and that is precisely the "aggressive on initial playback" signature.
+        let earlyCount = min(Int(7.0 / rowDT), sway.count / 2)
+        if earlyCount > 30 {
+            func travelPerSecond(_ v: ArraySlice<Double>) -> Double {
+                let a = Array(v)
+                guard a.count > 2 else { return 0 }
+                var sum = 0.0
+                for i in 1..<a.count { sum += abs(a[i] - a[i - 1]) }
+                return sum / (Double(a.count) * rowDT)
+            }
+            let earlyInk = travelPerSecond(tipInk.prefix(earlyCount))
+            let lateInk = travelPerSecond(tipInk.suffix(earlyCount))
+            print(String(format:
+                "[fractal-tree/gait] TIP INK travel: first %.1f s %.5f → last %.1f s %.5f (%.2f×)",
+                Double(earlyCount) * rowDT, earlyInk, Double(earlyCount) * rowDT, lateInk,
+                lateInk > 1e-9 ? earlyInk / lateInk : 0))
+            let earlyX = travelPerSecond(sway.prefix(earlyCount))
+            let lateX = travelPerSecond(sway.suffix(earlyCount))
+            let earlyY = travelPerSecond(bounce.prefix(earlyCount))
+            let lateY = travelPerSecond(bounce.suffix(earlyCount))
+            print(String(format:
+                "[fractal-tree/gait] COLD START (first %.1f s vs last %.1f s): lean travel %.4f → %.4f (%.2f×) | vertical %.4f → %.4f (%.2f×)",
+                Double(earlyCount) * rowDT, Double(earlyCount) * rowDT,
+                earlyX, lateX, lateX > 1e-9 ? earlyX / lateX : 0,
+                earlyY, lateY, lateY > 1e-9 ? earlyY / lateY : 0))
+        }
+
         let swayR2 = Self.explainedVariance(sway, basis: basis)
         let bounceR2 = Self.explainedVariance(bounce, basis: basis)
         // ⚠ THE BOUNCE MUST BE MEASURED ON THE FAST RESIDUAL, NOT THE RAW POSE. R² is a share of
@@ -2494,6 +2538,27 @@ struct FractalTreeMeshRenderTest {
     /// Getting this split wrong is what made the first two runs of this gate report a working
     /// gait as inert or as bar-periodic — measuring the body's lean in a band the lean does not
     /// move, and the body's spring in a band the spring does not move.
+    /// FTR.31c — lit-pixel fraction in the OUTER canopy (the upper half), where the fine tips live.
+    ///
+    /// Needed because neither pose scalar could see the tips at all: the cold-start comparison read
+    /// 1.11×/1.27× for the current build AND for the FTR.29 wiring Matt called *"moving
+    /// aggressively"*, which means those numbers were measuring the lean and the growth arc, not
+    /// the thing under test. Tips appear and vanish as the branch count crosses their tier, so the
+    /// quantity that tracks them is INK COUNT in the region they occupy — not a centroid, which
+    /// barely moves when a few thin branches wink.
+    private static func outerInk(_ bgra: [UInt8]) -> Double {
+        let width = Self.width, height = Self.height
+        let canopyBottom = height / 2          // upper half only — the tip tiers
+        var lit = 0
+        for y in 0..<canopyBottom {
+            for x in 0..<width {
+                let i = (y * width + x) * 4
+                if Int(bgra[i]) + Int(bgra[i + 1]) + Int(bgra[i + 2]) > 24 { lit += 1 }
+            }
+        }
+        return Double(lit) / Double(width * canopyBottom)
+    }
+
     private static func pose(_ bgra: [UInt8]) -> (centroidX: Double, centroidY: Double) {
         let width = Self.width, height = Self.height
         let bodyTop = (height * 2) / 3        // lower third only — trunk + inner branches

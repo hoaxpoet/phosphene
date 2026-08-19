@@ -2552,6 +2552,48 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.32 — the canopy grows in, and the cold start finally diagnosed by LOOKING.** ✅
+code-complete, **pending live M7** (2026-08-19) Matt's opening complaint, unfixed across two
+increments that both blamed the wrong thing: *"On initial playback, the preset was moving
+aggressively."*
+
+**★★★ TWO WRONG DIAGNOSES FIRST, AND THE REASON THEY WERE WRONG IS THE SAME.** FTR.30 blamed the
+tips' driver (`otherOnsetRate`, travel 10.2/s) and smoothed it; FTR.31a claimed FTR.31 had
+reintroduced the fault and re-ordered the glides. **Neither was ever measured on the RENDERED
+image.** Rendering the first seven seconds under three wirings — current, FTR.31-without-31a, and
+the FTR.29 build Matt actually called aggressive — gives output identical **to five decimal places**
+on every pose scalar, including one written specifically to see the tips. So FTR.31a fixed nothing,
+and FTR.30's diagnosis was a driver statistic mistaken for a visual one.
+
+**Then I looked at the frames, which took two minutes and settled it.** The canopy inflates from a
+sapling to a full tree in under a second, whole tiers arriving at once with their own depth-hue —
+which also accounts for the colour "popping" at the start:
+
+| t | branches |
+|---|---|
+| 0.0 s | 10 |
+| 0.3 s | **25** |
+| 0.6 s | 30 |
+| settled | ~30 |
+
+Cause: `pulse_amp01` is a silence GATE and rises 0.12 → 1.00 in 300 ms (correct for a gate), the
+whole canopy is scaled by it, and nothing limits the rate.
+
+**Shipped:** the count gets its own grow-in from `track_elapsed_s` (CSP.3, track-relative, reset at
+track change) — `smoothstep(0, 2.5 s)` on the count's amp-scaled terms only. The tree arrives as a
+7-branch sapling and fills out over 2.5 s. **Peak arrival rate in any 200 ms window: 61.6 → 21.5
+branches/s, i.e. 5.4× the settled peak down to 1.9×.** The silence gate itself is untouched — a
+preset that takes 2.5 s to notice music has started is a different defect — and when the CSP.3
+toggle is off the field reads 100, so the smoothstep is already 1 and nothing changes.
+
+**⚠ A harness hole closed with it:** `track_elapsed_s` was not mapped in `featuresFromSession`, so
+the replay would have rendered a permanent 7-branch sapling and every measurement above would have
+been a fiction. Fifth instance of the harness-does-not-carry-the-route trap in this program.
+
+**★ The average-rate metric could not see this fix either** — spreading the same 23 branches across
+the same 2 s window leaves the average identical (11.3 → 10.8/s). PEAK rate in a short window is the
+quantity that matches what an eye calls "aggressive".
+
 **FTR.31b — the bounce was never weak; the instrument was measuring the arc.** ✅ (2026-08-18)
 Matt, on being told the build was "ready for a look" with a missing requirement attached: *"Why
 would you have me test this based on what you wrote me? Sounds like it doesn't meet my
