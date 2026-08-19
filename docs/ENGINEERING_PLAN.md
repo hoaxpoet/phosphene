@@ -5727,3 +5727,59 @@ shipped figures is the lesson that **a design measurement describes a pipeline, 
 budget), leaving `WitchlightPath.swift` at 381 lines.
 
 Suite 1862/1862, lint 0.
+
+### Increment WL.14 — BUG-097: a physics clamp was corrupting a musical measurement ✅ (2026-08-18)
+
+**Found by chasing an anomaly, not by looking for it.** The BUG-095 M7 probe reported 50 downbeat
+bursts and 50 off-beat pulses on Matt's session — a 1:1 ratio where 4/4 implies 3:1. That
+anomaly was unrelated to the increment in flight and turned out to be a P1.
+
+**Root cause.** `WitchlightPath.advance` clamps `dt` to 1/30 s so an integrator cannot take a
+wild step after a stall. That is correct for the integrators and wrong for the four quantities
+that measure how long something LASTED: `timeSinceWrap` (→ `barPeriod`), `gridSilentFor`, and
+the two refractories. WL.9 gates the off-beat pulse on `barPeriod / beatsPerBar >= 0.55 s`, so
+under load a 94 BPM bar *measured* 1.80 s against a true 2.55 s and the pulse was never emitted.
+
+**Fixed** by deriving `clockDt` (real elapsed time) alongside `dt` (the clamped integrator step).
+
+| session | frames over cap | off-beats before | after |
+|---|---|---|---|
+| `2026-08-18T16-10-38Z` | 48.8 % | 6 | **105** |
+| `2026-08-18T14-09-35Z` | 25.3 % | 50 | **149** |
+| `2026-08-17T15-23-17Z` | 0.2 % | 79 | **83** |
+
+All three land at the designed ~3:1 and **the already-healthy session barely moves** — the
+signature of a fix rather than a re-tune. Flare alignment on the worst session rose 36 % → 54 %.
+
+**Two things worth carrying forward.**
+
+1. **The failure pointed the wrong way.** More load → more long frames → fewer accents, so the
+   preset read least musical exactly when the machine was most stressed — which is also when a
+   viewer is most likely to blame the preset rather than the hardware.
+2. **No gate could see it, and that was structural.** Every committed fixture replays at a
+   steady ~60 Hz and never approaches the cap, so the entire suite stayed green while production
+   dropped accents. `offBeatPulseSurvivesHeavyFrames` now drives at 16.7 ms AND 50 ms frames,
+   and **was confirmed to fail (0 pulses) on the pre-fix code** rather than merely passing beside
+   it. Same species as the earlier `SessionReplayHarness` misses: a harness that does not
+   reproduce the production time base is not testing production.
+
+**Second M7 the same day closed the accent gap** (`2026-08-18T18-04-06Z`, Matt: *"Witchlight looks
+good"*). That session was healthy — 16.7 ms median, 0.0 % of frames over the cap — so BUG-097 was
+dormant and the accents fired at **55 : 162 (2.95:1)**. Matt has therefore approved the calm
+stroke and the working accents together. ⚠ It ran the **WL.13** binary (objects compiled 11:10:12
+against a 13:03:44 merge), so **WL.14 is still un-validated live**: it only bites under load, and
+no loaded session yet carries it. Evidenced offline only.
+
+⚠ **A frame-rate/build race worth remembering.** The app linked 5 s after the merge and 34 s
+before the session — Matt rebuilt on the merge notification, before the fast-forward reached his
+checkout, so his source had the fix and his binary did not. Merging does not reach the app, and
+neither does fast-forwarding once a build is already running. Check the changed file's `.o`
+timestamp, not the app bundle's.
+
+**Also recorded here: BUG-095's M7 came back positive** (`2026-08-18T16-10-38Z`, Matt: *"Looks
+good overall"*) — 42 heading turns against 74 pre-fix and 50 certified. ⚠ His sign-off covers the
+stroke and the ribbon, NOT the beat accents: that session was the worst BUG-097 case measured, so
+the accents were largely absent from what he judged. Witchlight's certification evidence should
+be re-confirmed once he has seen a session with the accents actually firing.
+
+Suite 1865/1865, lint 0.

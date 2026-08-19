@@ -120,6 +120,8 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// tier is gated on. No `bpm` field is needed on FeatureVector.
     var barPeriod: Float = 0
     var timeSinceWrap: Float = 0
+    /// Real (unclamped) seconds for the last frame — see the BUG-097 note in `advance`.
+    var clockDt: Float = 1.0 / 60.0
     /// WL.11 — the beat tracker's own estimate of how far its grid sits from the audible
     /// beat, seconds, already clamped and smoothed. Fed through the CPU-only runtime tick
     /// (the same bridge `sectionIndex` uses) because it never needs to reach a shader —
@@ -310,8 +312,24 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// Advance one frame: steer, move, emit, age, relax, reframe.
     public func advance(deltaTime: Float, features: FeatureVector, stems: StemFeatures) {
         let dt = min(max(deltaTime > 0 ? deltaTime : 1.0 / 60.0, 1.0 / 240.0), 1.0 / 30.0)
+        // BUG-097 — REAL elapsed time, deliberately NOT clamped.
+        //
+        // `dt` above is capped at 1/30 s so an integrator cannot take a wild step after a
+        // stall. That is right for the integrators and WRONG for anything measuring how long
+        // something LASTED, because on a heavy frame the cap silently discards real time.
+        // `timeSinceWrap` feeds `barPeriod`, and WL.9 gates the off-beat pulse on
+        // `barPeriod / beatsPerBar >= 0.55 s` — so under load a 94 BPM bar measured 1.80 s
+        // against a true 2.55 s and the pulse was simply not emitted. On Matt's session
+        // `2026-08-18T16-10-38Z`, 48.8 % of frames exceeded the cap, 38 % of elapsed time was
+        // discarded, and the preset fired 6 off-beat pulses in 110 s where the meter implies
+        // ~130. The failure pointed the wrong way: the heavier the scene, the fewer accents.
+        //
+        // The refractories and `gridSilentFor` are the same species — real-time durations, so
+        // a clamped `dt` made them outlast their nominal seconds under load.
+        let clockDt = max(deltaTime > 0 ? deltaTime : 1.0 / 60.0, 1.0 / 240.0)
+        self.clockDt = clockDt
         frameCount += 1
-        elapsedSeconds += Double(dt)
+        elapsedSeconds += Double(clockDt)
         let mixEnergy = features.bass + features.mid + features.treble
 
         // WL.5 — silence is decided by the LIVE MIX ALONE, and the `&& stemTotal` that used to
@@ -355,8 +373,8 @@ public final class WitchlightPath: AudioResponseMetrics {
         barDownbeatNow = previousBarPhase > 0.85 && bar < 0.15
         previousBarPhase = bar
         if barDownbeatNow { promoteNextBead = true }
-        gridSilentFor = rawBar > 0 ? 0 : gridSilentFor + dt
-        timeSinceWrap += dt
+        gridSilentFor = rawBar > 0 ? 0 : gridSilentFor + clockDt
+        timeSinceWrap += clockDt
         if barDownbeatNow { barPeriod = timeSinceWrap; timeSinceWrap = 0 }
         // WL.9 — beat edges by subdividing the bar. `beatsPerBar` carries the meter, so 7/8
         // subdivides into 7 and the pulse stays musical without a special case.
