@@ -645,7 +645,29 @@ void fractal_tree_object_shader(
         // FTR.13 — FRACTIONAL, not rounded. The count is what pops, and the fractional part is
         // what lets the frontier branch grow in instead of appearing (see `branch_count_f`).
         float tipsF  = melody * 26.0f * amp * smoothstep(0.03f, 0.15f, reach);
-        float countF = min(7.0f + base + section + tipsF, 63.0f);
+        // ── FTR.32: THE CANOPY GROWS IN — it no longer snaps to full in 300 ms ────
+        //
+        // Matt, on the opening of every track: *"On initial playback, the preset was moving
+        // aggressively."* Two increments blamed the tips and both were wrong — measured on the
+        // rendered frames, the build he called aggressive and the "fixed" one were identical to
+        // five decimal places. LOOKING at the first second showed the real thing: the canopy
+        // inflates from 10 branches to 30 in under a second, whole tiers popping in at once.
+        //
+        //     t=0.0s  10 branches      11.3 branches added per second over the first 2 s
+        //     t=0.3s  25 branches      …against 2.3/s once the track is settled
+        //     t=0.6s  30 branches
+        //
+        // The cause is `pulse_amp01` going 0.12 → 1.00 in 300 ms (it is a silence GATE, so a fast
+        // attack is right for it) with the whole canopy scaled by it and nothing limiting the
+        // rate. So the count gets its own grow-in from `track_elapsed_s` (CSP.3, track-relative,
+        // reset at track change): the tree arrives as a sapling and fills out over 2.5 s.
+        //
+        // NOT applied to the silence gate itself, which must stay fast — a preset that takes
+        // 2.5 s to notice music has started is a different defect. And the fallback is correct by
+        // construction: when the CSP.3 toggle is off the field reads 100, so the smoothstep is
+        // already 1 and nothing changes.
+        float growIn = smoothstep(0.0f, 2.5f, f.track_elapsed_s);
+        float countF = min(7.0f + (base + section) * growIn + tipsF, 63.0f);
         uint  count  = min((uint)ceil(countF), 63u);
 
         // ── BRANCH SPREAD ← spectral_flux (RESTORED at FTR.27) ───────────────────
