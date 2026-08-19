@@ -2,7 +2,7 @@
   "name": "Fractal Tree",
   "family": "fractal",
   "duration": 30,
-  "description": "Recursive binary tree - low-fidelity graphic branch-fan in a psychedelic palette, where every branch level carries its own colour and the harmony shifts the whole set together. The tree DANCES: it bounces on every beat and sways across each bar, with the motion rippling outward from the trunk so the fine branches follow a beat behind, while underneath the dance it grows as a section builds and recedes as it eases. The finest branches flicker in and out with the melodic activity around the drums and bass, the outer tips spark brighter the moment a sound lands, the canopy opens as the spectrum changes, and the colour deepens with the music's energy.",
+  "description": "Recursive binary tree - low-fidelity graphic branch-fan in a fixed psychedelic palette, green at the trunk through cyan and violet to magenta at the tips, where every branch level carries its own colour. The tree DANCES: it bounces on every beat and sways across each bar, with the motion rippling outward from the trunk so the fine branches follow a beat behind, and the finest tips wink in and out on the beat with the dance. Underneath it holds ONE size and steps to a new one when a sound lands, so the tree is small in a sparse passage and full in a dense one and still in between. The outer tips spark brighter the moment a sound lands, the canopy opens as the spectrum changes, and the tone deepens with the music's energy.",
   "author": "Matt",
   "passes": [
     "mesh_shader"
@@ -35,23 +35,18 @@
   "rubric_profile": "lightweight",
   "audio_routes": [
     {
-      "route": "growth",
-      "primitive": "arousal",
+      "route": "growth_tier",
+      "primitive": "spectralSectionRatio",
       "kind": "continuous"
     },
     {
-      "route": "melodic_tips",
-      "primitive": "otherOnsetRate",
+      "route": "growth_commit",
+      "primitive": "spectralLevelRise",
       "kind": "continuous"
     },
     {
-      "route": "tips_cold_start",
-      "primitive": "beatMid",
-      "kind": "continuous"
-    },
-    {
-      "route": "leaf_hue",
-      "primitive": "tonalPhaseFifths",
+      "route": "tip_beat",
+      "primitive": "beatPhase01",
       "kind": "continuous"
     },
     {

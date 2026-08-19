@@ -8,21 +8,34 @@
 // Five visual layers, five distinct primitives (FA #67), every coefficient sized
 // against its primitive's MEASURED span on a real capture:
 //
-//   arousal            → GROWTH: trunk, thickness, brightness and the canopy floor.
-//                        The only slow signal in the vector (0.52 turns/s) and the
-//                        only thing continuous geometry is allowed to read.
-//   spectral_density   → SECTION LIFT on the branch COUNT only (DYN.1). Registers a
-//                        distorted guitar or a chorus on a limited master, where RMS
-//                        is flat and arousal has already saturated.
-//   other_onset_rate   → THE TIPS: how many fine branches exist and how far each one
-//                        reaches. An ACTIVITY LEVEL in the non-drum/non-bass/non-vocal
-//                        residue — NOT an instrument. FTR.8 routed this as "the guitar";
-//                        FTR.12 measured that claim false and retired it (Matt,
-//                        2026-08-12). See the routing note in the object shader.
-//   beat_mid           → the cold-start stand-in for the tips until the stems converge
-//                        (D-019 crossfade); carries nothing once they do.
+//   ── ROUTING AS OF FTR.33 ────────────────────────────────────────────────────────────
+//
+//   beat_phase01       → THE BOUNCE, and the TIPS. The gait springs at the root and the
+//                        finest branches wink in and out, both on `DancePhase`'s locked
+//                        render-rate phase. This is the channel Matt confirmed reads:
+//                        *"The tree bounces to the beat - great."*
+//   bar_phase01        → THE SWAY, one lean per bar, lagging outward per level so the
+//                        motion travels trunk → tip (his Fantasia brief).
+//   bass_dev           → how BIG the dance is (step size only, never its rate — FTR.29's
+//                        one-clock rule) and the tone's depth.
+//   spectral_section_ratio
+//                      → THE SIZE, through `ArrivalStep` on the CPU: three HELD tiers on
+//                        this per-track density rank. The tree holds one size and steps.
+//   spectral_level_rise→ WHEN a size step commits, so the change lands with a sound; and
+//                        the tip spark (FTR.25), the one place an event may be fast.
 //   spectral_flux      → branch spread angle (20°–34°)
-//   tonal_phase_fifths → hue, with a per-depth offset so every level has its own colour
+//   pulse_amp01        → silence gate (a gate, not a route — "is anything playing")
+//
+//   RETIRED AT FTR.33, all three for one reason — they tracked quantities no listener is
+//   holding, and Matt called each of them random:
+//     tonal_phase_fifths → hue. The palette is now FIXED. The smoothed phase spans 352°
+//                        p05→p95: an unanchored angle visiting the whole colour wheel.
+//     other_onset_rate   → the tips. Residue activity, not an instrument (FTR.12).
+//     arousal            → growth. Inert in any case — it lost its own max() on 0 % of
+//                        frames (BUG-092).
+//   The per-depth hue offset SURVIVES: every branch level still has its own colour, which
+//   is the half Matt liked, and it was never the moving part.
+//
 //   pulse_amp01        → silence gate (a gate, not a route — "is anything playing")
 //
 // THE ONE STRUCTURAL RULE, learned the hard way three times: CONTINUOUS GEOMETRY READS
@@ -44,10 +57,9 @@
 // systems (Matt rejected beat-driven activity twice); and an asymmetric-decay tap that
 // was really just a permanently lower threshold, which lit too much of the canopy.
 //
-// STEMS: bound at buffer(3) on the object/mesh stages as of FTR.4 — `MeshGenerator.draw`
-// mirrors the fragment binding `drawWithMeshShader` always had. The tips read
-// `stems.other_onset_rate` (residue activity, NOT an instrument — FTR.12); see the routing
-// note in the object shader.
+// STEMS: NONE, as of FTR.33. The tips were the only stem route and they moved to the beat, so
+// this preset declares no `StemFeatures` buffer. `MeshGenerator` still binds slots 2/3/5 for the
+// presets that use them; see the note on the object shader's signature for what that costs.
 //
 // Geometry: each branch is a screen-aligned quad (4 vertices, 2 triangles).
 //   Total: 63 × 4 = 252 vertices ≤ 256, 63 × 2 = 126 primitives ≤ 512.
@@ -128,49 +140,40 @@ static inline uint fractal_hash(uint x)
 
 // MARK: - Growth
 
-/// The two continuous growth terms — `.x` canopy reach, `.y` section surge — derived from
-/// one FeatureVector.
+/// The two growth terms — `.x` canopy reach, `.y` section surge — from the held tier.
 ///
-/// Factored out at FTR.10 so the object shader can evaluate them TWICE: once on the live
-/// vector at buffer(0), for the canopy and the branch counts, and once on the beat-held
-/// vector at buffer(4), for the trunk. Two call sites, one arithmetic — a second copy of
-/// this expression is how the trunk and the canopy would silently drift apart.
-/// - Parameter fSection: the same vector on a ~2 s glide (buffer 6). Supplies the DENSITY used
-///   only to correct a limiter inversion; see the size block.
-static inline float2 fractal_growth(constant FeatureVector& f,
-                                    constant FeatureVector& fSection)
+/// Factored out at FTR.10 so the trunk and the canopy can never disagree: one arithmetic, one
+/// call site. FTR.33 replaced its continuous inputs with the stepped tier; the limiter
+/// correction that used to live here moved to `MeshGenerator.advanceGrowthStep`, because the
+/// step has to quantise the CORRECTED level or it inverts at the arrival it should fire on.
+/// - Parameter growthStep: the eased tier from `ArrivalStep`, 0…1 (buffer 8).
+static inline float2 fractal_growth(constant FeatureVector& f, float growthStep)
 {
-    float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
-    // DYN.2c: the field is this moment's RANK in the track's own density distribution
-    // (×2, so 1.0 still reads as "this track's normal"). Uniform over the track by
-    // construction, so there are NO fitted edges left to get wrong — the 0.78/1.38 pair
-    // this replaces was fitted against DYN.2b's broken ratio and clipped Hummer to a
-    // flat 1.00 for four minutes once the normal was measured correctly.
-    float fullness = saturate(f.spectral_section_ratio * 0.5f);
+    // ── FTR.33: THE SIZE HOLDS AND STEPS. IT NO LONGER DRIFTS. ───────────────────────
+    //
+    // Matt, on three consecutive live reviews: *"Tree also grows and shrinks in a seemingly
+    // random manner"*. Measured on his 2026-08-19 capture the branch count spans 15 → 33,
+    // crosses its median 0.105 times/s — one grow/shrink cycle per ~9.5 s — and is ENTIRELY
+    // drift: half the variance in a tau 8 s component, the rest slower. Not one step in it.
+    //
+    // His own definition was a step: *"shoot up = the trunk elongates and the next level of
+    // branches appears"* (FTR.11) — and note that it couples the two, which is why one value
+    // drives both halves here. Five continuous drivers were tried (`bass_rel`, `arousal`,
+    // `spectral_density`, `spectral_surge`, the tau 20 s section rank) and each was smoothed
+    // into drift. Accuracy was never the missing property: the size follows true loudness at
+    // r = +0.863 (FTR.15) and still reads as random. Legibility needs a reference the LISTENER
+    // holds — the beat, in the gait he approved; a sound LANDING, here.
+    //
+    // The tier and its timing come from `ArrivalStep` on the CPU (hysteresis and a commit-on-
+    // arrival rule need state, and state belongs there). This function only says what a tier
+    // MEANS, mapping 0..1 onto the spans the drifting version already occupied — measured
+    // reach 0.06..0.89 and surge 0.36..0.75 — so the tree is the same size range held still.
+    //
+    // `musicGate` is unchanged and still live: silence must collapse the tree whatever tier the
+    // stepper is parked on, and a bright quiet intro must not inflate it (FTR.13).
     float musicGate = smoothstep(0.05f, 0.30f, saturate(f.spectral_surge));
-    // ── THE SIZE: LEVEL, CORRECTED ONLY WHERE THE LIMITER INVERTS IT (FTR.18) ────────
-    //
-    // Level rank stays the driver. It has the dynamic range — six alternatives were measured
-    // across FTR.16/17 and every one lost span, height or pacing (see the diagnostics doc). Its
-    // ONE defect is that on a limited master the level DIPS as the band arrives: measured
-    // r(trunk, spectral_density) = −0.641 on Carry The Zero, whose `musicRange` is 3.6 dB.
-    //
-    // So correct that defect and nothing else. The limiter signature is specific — level LOW
-    // while density is HIGH — and it is detectable without trusting level's magnitude:
-    //
-    //   band entry (playback 6.7 s):  level 0.088   density-knee 0.751   → lift +0.663
-    //   quiet passage (35.0 s):       level 0.515   density-knee 0.442   → lift  0.000
-    //
-    // BOUNDED, which is the whole point (Matt, after seeing an unbounded `max()` render:
-    // *"row 4 looks too active"*). The correction is gated OFF as level rises, so a passage whose
-    // level is already healthy cannot be lifted however high density goes. Below 0.15 the gate is
-    // fully open; by 0.40 it is shut. Both conditions must hold — `max(0, density − level)` is
-    // already zero unless density exceeds level — so this fires only on the inversion.
-    float level = saturate(f.spectral_surge);
-    float density = saturate(fSection.spectral_density / (fSection.spectral_density + 0.22f));
-    float inverted = 1.0f - smoothstep(0.15f, 0.40f, level);
-    return float2(saturate(max(0.10f * arousalReach, fullness) * musicGate),
-                  saturate(level + max(0.0f, density - level) * inverted));
+    float tier      = saturate(growthStep) * musicGate;
+    return float2(mix(0.10f, 0.70f, tier), mix(0.35f, 0.65f, tier));
 }
 
 // MARK: - Object Shader
@@ -182,7 +185,6 @@ void fractal_tree_object_shader(
     object_data FractalPayload* payload [[payload]],
     mesh_grid_properties          mgp,
     constant FeatureVector&       f [[buffer(0)]],
-    constant StemFeatures&        stems [[buffer(3)]],
     constant FeatureVector&       fHeld [[buffer(4)]],
     /// FTR.18 — the ~2 s section glide, read ONLY to correct a limiter inversion in the size.
     constant FeatureVector&       fSection [[buffer(6)]],
@@ -193,13 +195,19 @@ void fractal_tree_object_shader(
     /// or receding — this looks pretty much fixed"* and *"unclear what is motivating the
     /// movement of the tips."*
     constant FeatureVector&       fArc [[buffer(7)]],
-    constant StemFeatures&        stemsArc [[buffer(2)]],
-    /// FTR.13 — the beat-held stem features, same beats and same ease as `fHeld` (buffer(5),
-    /// bound by `MeshGenerator`). Matt: *"the tips … should be beat matched."* The tips' driver
-    /// is a per-stem field, so holding only `fHeld` left them changing 4–5 times a second
-    /// whatever the frame did — measured 2.05 changes per BEAT against everything else at
-    /// ≤ 0.74. `stems` at buffer(3) stays live for anything that should not step.
-    constant StemFeatures&        stemsHeld [[buffer(5)]],
+    /// FTR.33 — the growth TIER, 0..1, stepped and eased on the CPU by `ArrivalStep` and bound
+    /// at object/mesh slot 8 by `MeshGenerator.bindGrowthStep`. Slot 8 on the mesh stages is
+    /// free; the ray-march path's slot 8 is a FRAGMENT binding in a different pipeline.
+    constant float&               growthStep [[buffer(8)]],
+    /// ── FTR.33: NO StemFeatures BINDINGS AT ALL, and that is a deliberate consequence.
+    ///
+    /// Buffers 2, 3 and 5 (live / arc / beat-held stems) are gone from this signature because
+    /// nothing reads them any more. The tips were the preset's only stem route, and Matt moved
+    /// them onto the beat — so stem separation now contributes nothing here. Given the ≈2.5 s
+    /// stem latency (BUG-086) and FTR.12's finding that the per-stem rich features describe the
+    /// onset detector rather than the instrument, that is a reasonable place for this preset to
+    /// land, but it IS a lost capability and is recorded as one rather than discovered later.
+    /// `MeshGenerator` still binds all three slots for the presets that use them.
     uint tid [[thread_index_in_threadgroup]])
 {
     // Always dispatch exactly one mesh threadgroup (all 63 branches in one meshlet).
@@ -341,7 +349,7 @@ void fractal_tree_object_shader(
         // almost nothing (85 % → 82 %), because the gait and the now-quiet tips dominate the
         // motion budget either way. The DENSITY half of the correction still comes from the 6 s
         // glide, which is what FTR.18 calibrated it against.
-        float2 heldGrowth = fractal_growth(fArc, fSection);
+        float2 heldGrowth = fractal_growth(fArc, growthStep);
         float reach = heldGrowth.x;
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
@@ -440,7 +448,12 @@ void fractal_tree_object_shader(
         // FTR.29 moved the trunk off `fHeld` this was the single remaining reader of buffer(4),
         // kept there by nothing but history. Buffer(4)/(5) stay BOUND (other mesh presets read
         // them) but Fractal Tree no longer reads either.
-        float lift = saturate((fArc.spectral_density / max(fArc.spectral_density_slow, 1e-4f) - 1.0f) * 1.1f);
+        // ── FTR.33: THE DENSITY LIFT IS GONE, and it is the other half of "seemingly random".
+        // It added up to 8 branches of continuous tau 0.6 s drift on top of the size. Leaving it
+        // in would have kept the count wandering underneath the new steps — the same complaint,
+        // a third of the amplitude, and much harder to see the next time. If the canopy turns
+        // out to need a finer response than three tiers, the answer is another tier, not a
+        // continuous term smuggled back alongside them.
 
         // SILENCE GATE. `pulse_amp01` is 0 before the first note and across sustained
         // silence, returning the sparse 7-branch figure the reference README asks for
@@ -545,30 +558,34 @@ void fractal_tree_object_shader(
         // live. FTR.31 feeds the holds `DancePhase`'s locked phase, so the latch actually fires
         // on beats now. The 0.6 s arc smoothing FTR.30 added is no longer needed here: a value
         // sampled once per beat cannot thrash at 10.2/s whatever its source does between beats.
-        float residueActivity = stemsHeld.other_onset_rate
-                              / (stemsHeld.other_onset_rate + 18.0f);
-
-        // D-019 WARMUP. Every stem field is zero until separation converges (~10 s), and a
-        // preset that reads one raw shows nothing until then. Crossfade from the old
-        // `beat_mid` driver so the tips are alive from frame 1 and hand over to the stem
-        // term as the stems arrive — the tree must not stand bare through the first ten
-        // seconds of every track, which is exactly when a listener is deciding whether it
-        // responds. Read from the LIVE stems: this is a "have the stems arrived yet" gate, and
-        // gating on a beat-held copy would keep it at zero until the first beat lands.
-        float stemEnergy = stems.vocals_energy + stems.drums_energy
-                         + stems.bass_energy + stems.other_energy;
-        float stemsAlive = smoothstep(0.02f, 0.06f, stemEnergy);
-        // FTR.30 — the cold-start leg reads the arc too. `beat_mid` is a saturating pulse CLOCK
-        // (every statistic of it is a clock, not music), and unsmoothed it travelled 1.66/s — the
-        // aggressive motion of the first ten seconds, before the stems converge and before the
-        // grid gives the tree anything to dance to.
-        // FTR.31 — the cold-start leg is beat-held too, so the tips step from frame one rather
-        // than thrashing until the stems converge. Before a grid exists the hold tracks live and
-        // this is a continuous value again, which is the honest fallback: no clock, no steps.
-        // FTR.31a — the cold-start leg reads the ARC. `fHeld` tracks LIVE until the grid is
-        // trusted (~7 s), and `beat_mid` is a saturating pulse clock that travels 1.66/s raw, so
-        // reading it there put the aggressive cold start straight back.
-        float melody = mix(fArc.beat_mid / (fArc.beat_mid + 2.2f), residueActivity, stemsAlive);
+        // ── FTR.33: THE TIPS STEP WITH THE DANCE. NO AUDIO STATISTIC AT ALL. ─────────────
+        //
+        // Matt: *"the tips of the branches appear to have no discernible connection to the
+        // music."* He was right, and the driver was the problem rather than its smoothing:
+        // `other_onset_rate` is the residue stem's onset density, which FTR.12 measured is
+        // activity in whatever the separator could not place — not an instrument, and nothing a
+        // listener is tracking. Two increments smoothed and re-latched it; neither could make an
+        // unnameable quantity nameable.
+        //
+        // The mid band was the obvious replacement and MEASUREMENT KILLED IT before it shipped:
+        // on his capture, 300 Hz–4 kHz energy correlates **+0.995** with overall loudness, so
+        // "the melody is busy" and "it got louder" are the same signal here — and loudness is
+        // the thing he already calls random. `mid_rel` was tried at FTR.3d and measured +0.038.
+        //
+        // So the tips join the one channel that reads. Matt approved the gait — *"The tree
+        // bounces to the beat - great"* — so the smallest branches now wink in on the beat and
+        // retract between, on the same locked phase the bounce uses. `payload.melody` keeps its
+        // name and its consumer: the mesh stage reads it as a threshold that sweeps outward with
+        // depth, so the tips arrive as a wave travelling trunk → tip, which is the *"motion
+        // travels outward"* half of his Fantasia brief.
+        //
+        // PRE-GRID this is a CONSTANT, not a wrong-phase accent. `DancePhase` returns 0 until a
+        // tempo exists, so `exp(-k·0)` would read 1.0 — the tips pinned wide open, then dropping
+        // when the grid lands. The `beats_per_bar` gate holds them at a mid value instead, so the
+        // cold start is a still tree that starts dancing, per the cold-start phase contract.
+        float gridLive  = step(0.5f, f.beats_per_bar);
+        float beatPulse = exp(-3.2f * fract(f.beat_phase01));
+        float melody    = mix(0.45f, beatPulse, gridLive);
 
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
@@ -580,12 +597,38 @@ void fractal_tree_object_shader(
         // branches outright and the growth is visible.
         // FTR.13 — float, like the tips below: an integer here re-quantises the count and
         // the frontier branch cannot grow in.
-        float base    = (4.0f + reach * 18.0f) * amp;
+        // ── FTR.33: THE TIER COEFFICIENTS, DERIVED TWICE AND BOTH TIMES FROM RENDERED FRAMES.
+        //
+        // First attempt kept the original coefficients and the count came out 33.9 → 45.8 (p05→p95)
+        // against the 15.2 → 32.8 Matt has been seeing — the corrected level sits high in a track
+        // where the drifting arousal/section-rank terms it replaced rarely did.
+        //
+        // ★ Second attempt matched those percentiles exactly (16.3 → 31.0) and was still wrong,
+        // which is the lesson worth keeping: **a matching p05 and p95 do not make a matching
+        // tree.** The stepper spends 68 s of the capture at its bottom tier against 53 s and 21 s
+        // above, so the DISTRIBUTION sat far lower than the drifting version's even though the
+        // extremes agreed — and the rendered sheet showed it immediately: a visibly smaller tree
+        // that had lost its finest generation of branches entirely, because the count no longer
+        // crossed the d5 > 31 threshold. Percentiles of the range are not the range the eye sees;
+        // only frames answer that.
+        //
+        // ★ THIRD derivation, and the frames caught this one too: tiers at 22 / 28 / 34 put the
+        // tree BIGGER than Matt has been seeing (rendered ink 0.027…0.044 against 0.018…0.019),
+        // because the density rank sits near 0.9 for long stretches of this track and parks the
+        // tree at its top tier — where the drifting terms only touched their maximum at a p95.
+        // Enlarging the tree is a visual change he did not ask for and did not review.
+        //
+        // So the tiers land at ~16 / 22 / 28 branches before the tips (which add 2…8), and the
+        // top of the reach/surge mapping above is compressed to 0.70/0.65 so the top tier is a
+        // full tree rather than the geometry's extreme. The finest generation is then absent at
+        // the bottom tier, winks in on beats at the middle one, and is present at the top — the
+        // depth thresholds (d4 > 15, d5 > 31) become the visible meaning of a tier.
+        float base    = (2.5f + reach * 12.5f) * amp;
         // THE NEXT LEVEL OF BRANCHES APPEARS — the other half. A tier exists only above
         // a threshold count (d4 > 15, d5 > 31), so the surge is sized to CARRY THE COUNT
         // ACROSS one of those lines rather than to nudge it: 26 branches is more than the
         // gap from a mid-verse canopy to the deepest tier.
-        float section = (lift * 8.0f + surge * 26.0f) * amp;
+        float section = surge * 15.0f * amp;
         // TIPS ARE GATED BY GROWTH. Matt, 2026-08-04: *"the tree actually grows taller
         // BEFORE this melody enters."* Measured on that session, he is exactly right and
         // the cause is this layer: at t=19 s the growth part sat at its minimum of 4
@@ -644,7 +687,11 @@ void fractal_tree_object_shader(
         // It still gates: an intro measures reach ≈ 0.001…0.06, which this maps to 0.00…0.15.
         // FTR.13 — FRACTIONAL, not rounded. The count is what pops, and the fractional part is
         // what lets the frontier branch grow in instead of appearing (see `branch_count_f`).
-        float tipsF  = melody * 26.0f * amp * smoothstep(0.03f, 0.15f, reach);
+        // SIZED TO WHAT THE OLD DRIVER ACTUALLY DID, not to what its coefficient implied. The
+        // residue term lived in 0.08…0.24, so `melody * 26` delivered 2…6 branches; a beat pulse
+        // through the same coefficient would swing 26 per beat, which is FTR.3b's *"much too
+        // active with drums"* rebuilt. 2 + 6·pulse keeps the same 2…8 branches, now beat-locked.
+        float tipsF  = (2.0f + melody * 6.0f) * amp * smoothstep(0.03f, 0.15f, reach);
         // ── FTR.32: THE CANOPY GROWS IN — it no longer snaps to full in 300 ms ────
         //
         // Matt, on the opening of every track: *"On initial playback, the preset was moving
@@ -1012,7 +1059,7 @@ void fractal_tree_mesh_shader(
 
 /// Phong-ish directional lighting with depth-dependent colour.
 /// Trunk: warm bark brown.  Branches: dark forest green.
-/// Leaf tips: hue-shifted by spectral centroid + slow time rotation.
+/// Leaf tips: a fixed per-depth palette (FTR.33) — no audio route on hue.
 /// Beat pulse: brightness flash across the whole tree, strongest at tips.
 fragment float4 fractal_tree_fragment(
     MeshVertex              in [[stage_in]],
@@ -1024,7 +1071,7 @@ fragment float4 fractal_tree_fragment(
     float along_branch = in.uv.x;        // 0 = branch base, 1 = branch tip
     float across_width = in.uv.y;        // 0 and 1 = edges, 0.5 = centre
 
-    // ── Hue ← tonal_phase_fifths ─────────────────────────────────────────
+    // ── Hue ← NOTHING. A fixed per-depth palette (FTR.33) ───────────────
     //
     // THE WALL CLOCK IS GONE. The shipped line was
     //   `0.30 - centroid * 0.12 + fract(t * 0.006)`
@@ -1053,11 +1100,32 @@ fragment float4 fractal_tree_fragment(
     // the levels become legible AS colour, which is the other half of what he asked for
     // (*"I was able to see … the different levels of branches more easily"*).
     //
-    // Harmony still moves the whole palette together, so the tree recolours with the
-    // song rather than on a timer. The relationship between levels is fixed; where the
-    // whole set sits is the music's to decide.
+    // ── FTR.33: THE HARMONY ROUTE IS RETIRED. THE PALETTE IS FIXED. ──────────────────
+    //
+    // Matt rejected harmony-driven hue three times — *"glitchy"* (FTR.29), then
+    // *"colour changes are frequent and seemingly random"* (FTR.31), then
+    // *"the colour changes are seemingly random"* (FTR.32). FTR.30 treated the third as a
+    // RATE problem and smoothed the phase with a 3 s circular EMA. That worked and did not
+    // help: measured on his 2026-08-19T14-36-23Z capture the hue's travel fell 749°/s →
+    // 38°/s, and it still read as random, because the smoother fixed the wrong property.
+    //
+    // The property that makes it unreadable is that `tonal_phase_fifths` is an UNANCHORED
+    // ANGLE. Over that capture the smoothed hue spanned 352° p05→p95 — it visits the entire
+    // colour wheel, and no position on the wheel corresponds to anything a listener is
+    // tracking. Slowing a random walk yields a slow random walk. There is no coefficient on a
+    // referent-free driver that reads as connected, which is the same lesson as the size
+    // (r = +0.863 against true loudness, still called random): legibility comes from a
+    // SHARED REFERENCE with the listener — the beat, in the gait that works — not from
+    // correlation with a signal.
+    //
+    // So colour stops being an audio channel (Matt's call, 2026-08-19). The per-depth offset
+    // stays, because that is the half he liked (*"I was able to see … the different levels of
+    // branches more easily"*) and it was never the moving part. `tonal01` is pinned at the
+    // centre of the range he has been seeing — 147° at the trunk through 327° at the tips,
+    // green → cyan → blue → violet → magenta, the psychedelic sweep he asked for at FTR.2.
+    // The tree's connection to the music now lives entirely in motion.
     float hue_bark  = 0.065f;
-    float tonal01   = fract(f.tonal_phase_fifths * (1.0f / (2.0f * M_PI_F)) + 0.5f);
+    float tonal01   = 0.705f;
     float level     = depth_norm * 5.0f;                     // 0 = trunk … 5 = leaf tier
     float hue_leaf  = fract(0.02f + tonal01 * 0.55f + level * 0.10f);
     // The trunk stays bark; everything from the second tier up takes the full palette,

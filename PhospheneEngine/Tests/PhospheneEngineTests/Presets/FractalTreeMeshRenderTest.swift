@@ -1707,68 +1707,24 @@ struct FractalTreeMeshRenderTest {
             """)
     }
 
-    /// FTR.4 — proof that the OBJECT stage reads `StemFeatures` at buffer(3).
-    ///
-    /// Binding a buffer and the GPU reading it are different claims, and only the second one
-    /// matters. This renders the SAME `FeatureVector` twice, changing nothing but
-    /// `other_onset_rate`, and requires the pixels to differ. If the object binding were
-    /// missing or landed on the wrong slot, both frames would be identical and every stem
-    /// route on every future mesh preset would be silently dead — the class of failure that
-    /// left `vocalsPitchConfidence` at 0 % for five months while closeouts claimed it worked.
-    @Test("the object stage reads StemFeatures at buffer(3) (FTR.4)")
-    func objectStageReceivesStems() throws {
-        let ctx = try MetalContext()
-        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
-                                  loadBuiltIn: true)
-        let preset = try #require(loader.presets.first { $0.descriptor.name == "Fractal Tree" })
-        let generator = MeshGenerator(
-            device: ctx.device, pipelineState: preset.pipelineState,
-            configuration: .init(maxVerticesPerMeshlet: 252, maxPrimitivesPerMeshlet: 126,
-                                 meshThreadCount: preset.descriptor.meshThreadCount))
-        let target = try Self.makeTexture(ctx)
-
-        // A frame the growth gate lets the tips through on: the tips are multiplied by
-        // `smoothstep(0, 0.35, reach)`, so with a dead canopy this test would pass for the
-        // wrong reason (both frames identically empty).
-        var features = Self.baseFeatures()
-        features.arousal = 0.65
-        features.spectralSectionRatio = 1.6
-        features.spectralSurge = 0.9
-        features.pulseAmp01 = 1
-        features.aspectRatio = Float(Self.width) / Float(Self.height)
-
-        func render(onsetRate: Float) throws -> [UInt8] {
-            var stems = StemFeatures.zero
-            // Stems must read ALIVE or the D-019 crossfade holds the tips on `beat_mid` and
-            // the guitar value never reaches the count.
-            stems.vocalsEnergy = 0.05; stems.drumsEnergy = 0.05
-            stems.bassEnergy = 0.05; stems.otherEnergy = 0.05
-            stems.otherOnsetRate = onsetRate
-            let cmd = try #require(ctx.commandQueue.makeCommandBuffer())
-            Self.encode(cmd, into: target, generator: generator, features: features, stems: stems)
-            cmd.commit()
-            cmd.waitUntilCompleted()
-            #expect(cmd.status == .completed)
-            return Self.read(target)
-        }
-
-        let quiet = try render(onsetRate: 0.3)
-        let busy = try render(onsetRate: 6.0)
-        #expect(quiet.count == busy.count && !quiet.isEmpty)
-        let differing = zip(quiet, busy).filter { $0 != $1 }.count
-        #expect(differing > 0, """
-            a 20× change in other_onset_rate produced a byte-identical frame. The object \
-            stage is not reading StemFeatures at buffer(3) — binding it is not the same as \
-            the GPU consuming it, and every mesh stem route depends on this.
-            """)
-        // And the busier guitar must produce MORE tree, not merely a different one.
-        let quietInk = quiet.enumerated().filter { $0.offset % 4 != 3 && $0.element > 24 }.count
-        let busyInk = busy.enumerated().filter { $0.offset % 4 != 3 && $0.element > 24 }.count
-        #expect(busyInk > quietInk, """
-            busy guitar drew \(busyInk) lit subpixels against quiet's \(quietInk) — the route \
-            reaches the GPU but points the wrong way.
-            """)
-    }
+    // ── FTR.33: THE buffer(3) STEM GATE IS RETIRED, because its premise is now false ──────
+    //
+    // It asserted that changing `other_onset_rate` changes the rendered pixels — proof that the
+    // OBJECT stage really reads `StemFeatures` at buffer(3), not merely that something binds it.
+    // That was the right gate for FTR.4 and it stayed honest through nine increments.
+    //
+    // Matt moved the tips onto the beat at FTR.33 (*"the tips of the branches appear to have no
+    // discernible connection to the music"*, and the mid-band alternative measured +0.995 with
+    // overall loudness, so it would have read as loudness). The tips were this preset's ONLY stem
+    // route, so `FractalTree.metal` no longer declares buffers 2, 3 or 5 at all, and the gate
+    // began failing by correctly reporting a route that is gone on purpose.
+    //
+    // ⚠ RETIRED, NOT SILENTLY DELETED, and the coverage it provided is genuinely lost: nothing
+    // now proves that a mesh preset's object stage can read `StemFeatures`. That claim belongs on
+    // `MeshGenerator`, which still binds all three slots, rather than on a preset that does not
+    // use them — if a future mesh preset wants a stem route, restore this shape there FIRST.
+    // Deleting a red gate is exactly the move that leaves a dead route looking alive
+    // (`vocalsPitchConfidence` at 0 % for five months), so the reason is recorded here in full.
 
     // MARK: - Drive
 
