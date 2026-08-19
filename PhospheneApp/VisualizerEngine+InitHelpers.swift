@@ -77,6 +77,7 @@ extension VisualizerEngine {
         Task.detached(priority: .utility) { [weak pipe, weak recorder] in
             var lastHeartbeatBucket: UInt64 = 0
             var lastStallFrame: UInt64?
+            var lastRenderTarget = ""
             var lastFailureCount: UInt64 = 0
             var lastUnpresentedCount: UInt64 = 0
 
@@ -84,6 +85,16 @@ extension VisualizerEngine {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let pipe, let recorder else { return }
                 let snapshot = pipe.drawableLifecycleSnapshot()
+
+                // Record the size the GPU is actually drawing at, whenever it changes.
+                // `frame_gpu_ms` is uninterpretable without it — see `renderTargetDescription`.
+                let target = pipe.renderTargetDescription
+                if target != lastRenderTarget {
+                    lastRenderTarget = target
+                    let message = "RENDER_TARGET \(target)"
+                    recorder.log(message)
+                    initLogger.info("\(message, privacy: .public)")
+                }
 
                 let heartbeatBucket = snapshot.commandBuffersCompleted / 600
                 if heartbeatBucket > lastHeartbeatBucket {

@@ -392,6 +392,22 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         }
     }
 
+    /// The drawable size and render scale the GPU is actually working at, for the session
+    /// record. **Not cosmetic.** Frame cost scales with pixel count, and nothing recorded the
+    /// output size until 2026-08-19 — so when Witchlight measured a steady ~60 ms GPU on one
+    /// session and ~12 ms on another (same preset, same track, same machine), the 5× could not
+    /// be attributed. A synthetic 1080p harness would have reported the cheap number and passed.
+    /// Log this on every change so `frame_gpu_ms` is interpretable after the fact.
+    public var renderTargetDescription: String {
+        let size = mvWarpDrawableSize
+        let pixelWidth = max(Int(size.width), 1)
+        let pixelHeight = max(Int(size.height), 1)
+        let megapixels = Double(pixelWidth * pixelHeight) / 1_000_000
+        let scaleText = String(format: "%.2f", directRenderScale)
+        let mpText = String(format: "%.2f", megapixels)
+        return "width=\(pixelWidth) height=\(pixelHeight) megapixels=\(mpText) render_scale=\(scaleText)"
+    }
+
     var directRenderScale: Float {
         directRenderScaleLock.withLock { _directRenderScale }
     }
