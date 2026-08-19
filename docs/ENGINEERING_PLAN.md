@@ -899,7 +899,7 @@ Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) i
 **What is actually in flight, 2026-08-03.** Each entry names its own owner section; this list is a pointer, not a second source of truth.
 
 1. **Beat-sync program (D-202)** — the largest active program. Phase TRK is ⏸ **PARKED** (D-206) and must not reopen without a changed premise about the **grid**, not the tracker. **DBN.3** is the live thread but its stated gate ("blocked on FT.1") is **satisfied-but-unresolved**: FT.1 landed 2026-07-31 with a **negative** payoff, so the block condition is met while the decision it was waiting for was never made — see the DBN.3 row for the successor state. **FT.3** and **FT.3.1** are specced and awaiting Matt (`docs/prompts/FT3_BARLINE_FROM_ACCENTS.md`, `docs/prompts/FT31_GRID_METRICAL_LEVEL.md`). Owner section: §Phase FT / §Beat-Sync Program.
-2. **Preset work in flight** — **FTR.3/.4/.5** (Fractal Tree per-branch activation → stem binding → M7+cert), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
+2. **Preset work in flight** — ~~FTR.3/.4/.5 (Fractal Tree)~~ **✅ CERTIFIED 2026-08-19, the 20th** (FTR.5; M7 on `2026-08-19T17-25-03Z`), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
 3. **CLEAN backlog** — Phases 0–5 and 7 are closed. **Phase 6** (5 open rows) and **Phase 8** (4 open rows, the XL decomposition) remain. Phase 8 is the same work as PUB **R3.5**. Authoritative queue: [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) Part C.
 4. **PUB R3 decomposition** — slices R3.1/R3.2 done; **R3.3 (analysis), R3.4 (LF transport), R3.5 (orchestrator bridge)** queued. R3.5 = CLEAN Phase 8; do not schedule them as separate efforts.
 5. **Open defects worth scheduling** *(refreshed 2026-08-07 — BUG-079 and BUG-078 are now RESOLVED and have left §Open; the working order below is the triage that replaced this line's earlier list)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
@@ -2551,6 +2551,110 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
+
+**PERF.7 — the frame-budget harness drives its first MESH preset, and the gate is checked for
+being awake.** ✅ **2026-08-19**, on Matt's instruction after FTR.5's closeout named the gap:
+*"make the harness for FT drivable."*
+
+⚠ **Numbered PERF.7, not PERF.6.** A parallel session published its own PERF.6 (the `encode_cpu_ms`
+retraction, below) to `main` while this was open; theirs landed first, so it keeps the number. Worth
+recording rather than silently renumbering: two sessions picked the same next-free ID on the same
+day from the same plan, which is a property of the ID scheme, not of either session.
+
+**What was missing.** `PresetFrameBudgetTests` (PERF.4) covers presets through
+`MultiPassRenderHarness`, which had fifteen per-preset fragment-stage paths and none for the
+mesh pipeline — so Fractal Tree, certified the same day, had **no frame-cost gate at all** while
+FTR.33 had just made its canopy fuller in dense passages.
+
+**What changed.** `renderMeshPreset` drives `PresetLoader` → `MeshGenerator` (object → mesh →
+fragment), the same objects `RenderPipeline` uses live, with `renderDeltaOverride = 1/60` so the
+glides and `DancePhase` do not advance at a rate set by how contended the timing machine is —
+timing a preset whose geometry depends on how fast it is being timed is circular (FTR.14).
+
+**★★ AND THE MEASUREMENT WOULD HAVE BEEN OF THE WRONG FRAME.** `PresetFrameBudgetTests.drive`
+builds vectors via `FeatureVector(bass:mid:treble:time:deltaTime:)`, whose **`pulseAmp01` is 0** —
+Fractal Tree's silence gate. Added naively, the gate would have timed the 7-branch figure the
+preset draws when nothing is playing: a real number for a state no listener ever sees, green
+forever while the actual canopy got arbitrarily expensive. `openTheGates` tops up the drive
+per-preset with the fields that put it in its playback state, each one documented with why.
+
+**★ Then the aliveness assertion needed a real observable, and the obvious one failed.** Whole-frame
+ink separates the two states only **1.4×** (0.0150 open vs 0.0107 shut) because the trunk and first
+two generations are in both and dominate the pixel count. The vertical profile shows where the
+difference actually lives:
+
+| state | band 4 | band 5 (canopy) | trunk bands 6–9 | total |
+|---|---|---|---|---|
+| playing | 38–55 | **1137–1168** | 600 / 504 / 252 | 3441 |
+| silent | 0 | **302** | 593 / 504 / 252 | 2470 |
+
+Upper-canopy ink (rows 0..<216 at 640×360) is a **3.9×** discriminator, so that is what
+`fractalTreeIsMeasuredAlive` gates, floor 600, between the two measured states. The silent frame is
+also bit-identical frame to frame (2470, 2470) where the playing one moves (3441, 3459) — the gait.
+
+★ **Process note against myself:** the first version of that test's comment contained
+measured-looking figures (*"4.06 % against 0.84 %"*) that I had written **before measuring**. The
+test failed, which is how I found out. The numbers above are all measured, both states, by
+temporarily neutering `openTheGates` to see what it prevents.
+
+**Measured.** Fractal Tree **3.88 / 4.07 ms** at 1920×1080 across two runs — **0.6× the median**,
+second-cheapest of the 16 covered presets. So the FTR.33 canopy was never a performance risk, and
+the certification gap is closed rather than merely reasoned about.
+
+**Coverage now 16 of 29, and the remaining 13 are SURVEYED so the next increment need not re-derive
+it: none of them is a mesh preset**, so this path unlocks exactly one. By declared pass — `direct`
+×4 (Nebula, Plasma, Spectral Cartograph, Waveform), `feedback` ×3 (Membrane, Murmuration,
+Ricercar), `staged` ×2 (Arachne, Staged Sandbox), `mv_warp` ×1 (Gossamer), `ray_march` ×1
+(Ferrofluid Ocean), and two pass-agnostic (Aurora Veil, Nimbus). **`direct` is the cheapest next
+four.**
+
+**FTR.5 — Fractal Tree CERTIFIED.** ✅ **2026-08-19**, Matt on session `2026-08-19T17-25-03Z`:
+*"Fractal Tree looks good. I think it's ready for certification finally."* The **20th certified
+preset**, and the longest road of any of them — 33 increments and roughly a dozen live rejections
+of a single complaint.
+
+⚠ **Written as "the 19th" and corrected to the 20th on merge.** A parallel session's Stave (CHR.3k)
+reached `main` first while this branch waited on CI — twice, since Stave's earlier CHR.3i
+certification had also been reverted in between. Recorded rather than quietly fixed: an ordinal is a
+race between branches, so it is only meaningful against merge order, and claiming one from inside an
+open branch is claiming something the branch cannot know.
+
+**What actually unlocked it, in one line: the tree had to DANCE, not react.** Nine increments were
+spent on WHICH SIGNAL should set the tree's size, and every one of them was answering the wrong
+question. The unblocking move was Matt's, in his own visual language, and it came from asking him
+what he PICTURED rather than which feature he wanted: *"the motion of the broomsticks in Fantasia's
+The Sorcerer's Apprentice."* A dance is a **phase**; amplitude only sets step size (FTR.28/29).
+Then the three channels still illegible afterwards were each following a quantity no listener
+holds, and all three stopped following (FTR.33).
+
+**★★★ The measurement worth carrying to every future preset:** the size followed true loudness from
+`raw_tap.wav` at **r = +0.863** and Matt still called it random. **Accuracy is not what makes an
+audio channel legible — a shared reference with the listener is.** Every "it doesn't feel connected"
+report in this arc was a reference problem misdiagnosed as a coupling problem, and in five of nine
+increments the routing was already right.
+
+**Certification basis.** `rubric_profile: lightweight` (SHADER_CRAFT §12.4 / D-067(b)) — a
+deliberately low-fidelity flat-graphic preset, so the detail-cascade and 3-material items are
+waived by profile, the same basis as Aurora Veil, Glaze and Dragon Bloom. Automated ladder
+**3/4 = a clean pass**: L1 silence fallback, L2 deviation primitives (`bass_dev`) and L3 performance
+all pass automatically, and L4 is the manual reference-frame match Matt supplied. Both halves of
+the flip land in one commit (sidecar `certified: true` + `FidelityRubricTests.certifiedPresets`).
+
+**Verified the BINARY, not just the session** (BUG-051 discipline): `ArrivalStep.o` compiled
+12:24:46, app built 12:24:50, last run 12:25:06, session log opens 12:25:04 CDT — the M7 was on the
+FTR.33 build. Measured on that session: **4 size changes in 85 s (2.8/min)**, all three tiers used
+(24 / 18 / 43 s), growth unchanged on **91 %** of samples, density rank spanning 0.09→0.93.
+
+**BUG-093 resolved** — the P1 that recorded "the tree moves plenty and still reads as disconnected"
+and correctly forbade another tuning increment without a changed premise. Two premise changes
+arrived (FTR.28, FTR.33) and both came from Matt.
+
+**⚠ One real gap in this certification, stated rather than buried:** Fractal Tree is in
+`PresetFrameBudgetTests.uncoveredPresets` because `MultiPassRenderHarness` cannot drive it, so its
+frame cost is **unguarded by any standing gate** — and FTR.33 made the canopy fuller in dense
+passages. L3 passes on the rubric's own check, but a per-preset budget row would be better. Also
+carried forward: the preset now has **no stem route at all**, and the retired FTR.4 `buffer(3)`
+gate means nothing currently proves a mesh preset's object stage can read `StemFeatures`.
 
 **FTR.33 — colour stops being an audio channel, the tips join the dance, and the size holds and
 steps.** ✅ code-complete, **pending live M7** (2026-08-19) Matt's three remaining complaints from
@@ -6300,7 +6404,18 @@ scratch file in the test target is noise the next reader has to identify and dis
 
 Suite green, lint 0.
 
-### Increment PERF.7 — VL troubleshot: expensive by construction, not by waste ✅ (2026-08-19)
+### Increment PERF.8 — VL troubleshot: expensive by construction, not by waste ✅ (2026-08-19)
+
+⚠ **Numbered PERF.8, not PERF.7, and the PERF namespace is now genuinely ambiguous.** Three
+independent uses collided on 2026-08-19: **PERF.1/PERF.3 already existed from 2026-05-28**
+(BUG-019 analysis-frame instrumentation), this rendering-performance arc took PERF.1–PERF.6
+without checking, and a parallel session shipped its own PERF.6 and then a PERF.7 renumbering
+commit. Two `[PERF.6]` commits and two `[PERF.1]`/`[PERF.3]` commits are on `main` and cannot be
+rewritten. **When reading `git log`, disambiguate PERF.1–PERF.3 by date**: 2026-05-28 is the
+BUG-019 arc, 2026-08-19 is this one (`RENDER_TARGET` → Witchlight → the frame-budget gate).
+The lesson is the same one the BUG-ID collisions taught twice today — **grep the tree for the
+next free ID at the moment of filing, not from memory** — and it applies to increment IDs, not
+just BUG numbers.
 
 **Matt: *"continue troubleshooting VL"***, after PERF.4's gate flagged it at 5.2× the median
 preset. Filed as **BUG-101**, evidence-only — every remaining lever changes what the preset

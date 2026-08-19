@@ -95,12 +95,25 @@ struct PresetFrameBudgetTests {
         "Meniscus": 5.28,
         "Glaze": 5.2,
         "Mitosis": 4.23,
+        // PERF.7 — first mesh-shader row. Measured 3.88 / 4.07 ms across two runs at 1920x1080
+        // with the canopy ALIVE (upper-canopy ink 1223 against the silent figure's 302); the
+        // minimum is recorded, per this suite's own min-of-passes reasoning.
+        "Fractal Tree": 3.88,
         "Dragon Bloom": 3.54
     ]
 
     /// Presets `MultiPassRenderHarness` cannot drive. Named, printed, and NOT counted as passing.
+    /// PERF.7 removed "Fractal Tree" — the harness now drives the mesh-shader path.
+    ///
+    /// SURVEYED so the next increment does not have to: of the 13 below, **none is a mesh preset**,
+    /// so the FTR path unlocks exactly one and there is no free win left in it. By declared pass:
+    /// `direct` ×4 (Nebula, Plasma, Spectral Cartograph, Waveform), `feedback` ×3 (Membrane,
+    /// Murmuration, Ricercar — the last two also `particles`), `staged` ×2 (Arachne, Staged
+    /// Sandbox), `mv_warp` ×1 (Gossamer), `ray_march`+`post_process` ×1 (Ferrofluid Ocean), and
+    /// two with NO declared passes (Aurora Veil, Nimbus — pass-agnostic, driven from preset state).
+    /// **`direct` is the cheapest next four**: one fullscreen fragment each, no per-preset state.
     static let uncoveredPresets = [
-        "Arachne", "Aurora Veil", "Ferrofluid Ocean", "Fractal Tree", "Gossamer", "Membrane",
+        "Arachne", "Aurora Veil", "Ferrofluid Ocean", "Gossamer", "Membrane",
         "Murmuration", "Nebula", "Nimbus", "Plasma", "Ricercar", "Spectral Cartograph",
         "Staged Sandbox", "Waveform"
     ]
@@ -163,6 +176,55 @@ struct PresetFrameBudgetTests {
             unguarded `warped_fbm` (56 Perlin evaluations) running for every pixel of the frame
             and then being multiplied by zero, measuring 84x the cheapest preset live.
             Check for per-pixel work on a fullscreen pass that is not gated by what consumes it.
+            """)
+    }
+
+    // MARK: - The measurement is of a real frame
+
+    /// ★★ THE BUDGET IS ONLY WORTH THE STATE IT MEASURED IN, and for Fractal Tree that is not
+    /// automatic. `drive` builds vectors whose `pulseAmp01` is 0 — the preset's silence gate —
+    /// which collapses it to the 7-branch figure it draws when nothing is playing. A budget
+    /// recorded from that frame would be a real number for a state no listener ever sees, and it
+    /// would read green forever while the actual canopy got arbitrarily expensive.
+    /// `MultiPassRenderHarness.openTheGates` prevents that; this asserts the outcome rather than
+    /// trusting it.
+    ///
+    /// ★ WHICH OBSERVABLE, and why the obvious one fails. Whole-frame ink barely moves: the trunk
+    /// and first two generations are present in BOTH states and dominate the pixel count, so
+    /// gate-shut lights 0.0107 of the frame against 0.0150 open — 1.4x, too thin to gate on. The
+    /// fine generations live in the upper canopy, and that is exactly what the gate removes.
+    /// Measured at 640x360, lit pixels above the mid-line (rows 0..<216):
+    ///
+    ///     gates OPEN (playing)   1175   ← 38 in band 4, 1137 in band 5
+    ///     gates SHUT (silent)     302   ← band 4 completely empty
+    ///
+    /// A 3.9x separation, so the floor below sits between the two with real margin either side.
+    /// The trunk bands (6-9) read 600/504/252 in both, which is the whole reason whole-frame ink
+    /// could not see this. The silent frame is also bit-identical frame to frame (2470, 2470)
+    /// where the playing one moves (3441, 3459) — the gait.
+    ///
+    /// If this fails, Fractal Tree's frame-budget row is timing the wrong picture.
+    /// **Fix the drive, never the floor.**
+    @MainActor
+    @Test("Fractal Tree's budget is measured on a full canopy, not its silent figure")
+    func fractalTreeIsMeasuredAlive() throws {
+        let harness = MultiPassRenderHarness(width: 640, height: 360)
+        let (features, stems) = Self.drive(frames: 4)
+        let canopy = try harness.render(preset: "Fractal Tree", features: features, stems: stems,
+                                        settle: Self.settleFrames) { bgra -> Int in
+            let rowBytes = 640 * 4
+            var count = 0
+            for row in 0..<216 {
+                for column in 0..<640 where bgra[row * rowBytes + column * 4 + 1] > 24 {
+                    count += 1
+                }
+            }
+            return count
+        }
+        let peak = canopy.max() ?? 0
+        print("[frame-budget] Fractal Tree upper-canopy ink \(peak) (silent figure ≈ 302)")
+        #expect(peak > 600, """
+            the timed frame lights only \(peak) subpixels in the upper canopy, against ≈ 302 for             the SILENT 7-branch figure and ≈ 1175 for a playing tree. The frame-budget row is             timing a state the preset never occupies. Fix `openTheGates`, not this floor.
             """)
     }
 
