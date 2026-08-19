@@ -98,16 +98,20 @@ What this preset must NOT look like:
 | Band spread (the dispersion) | `waveformOccupancy` (CHR.3c) | ~0.12 s smoothing over a 20 s per-band envelope |
 | Band colour | **not audio-driven** — fixed by physics, `centreHz → nm` | constant |
 
-⚠ **`audio_routes` is empty and that is deliberate.** The preset's driver is the waveform
-buffer, and `waveformOccupancy` — created for exactly this — cannot be asserted by QG.1. **The
-original reason (BUG-090, frozen fixtures) is now fixed and was the wrong reason**: the fixtures
-were regenerated on 2026-08-17 and carry the column, but it is **0.0000 on all three tracks with
-zero variance**, because `WaveformOccupancy` is ticked in the *render path* and
-`FixtureSessionCaptureGenerator` runs only the MIR pipeline. This is the QG.1.1 limitation
-(offline fixtures cannot reach render-path-derived values), not a fixture-staleness problem.
-Declaring a route the gate cannot prove would be worse than declaring none, so certification
-stays blocked until the generator ticks the occupancy model — a generator change, not a preset
-change.
+✅ **`audio_routes` declares one route, and QG.1 proves it** (CHR.3g, 2026-08-19):
+`band_dispersion ← waveformOccupancy`, continuous. Route coverage reads **203 routes / 21
+presets, 0 red**.
+
+It took two wrong diagnoses to get here, both recorded because the pattern repeats. First the
+route was blamed on BUG-090 (frozen fixtures); regenerating them did not help. Then it was
+blamed on the QG.1.1 limitation as if that were a law — "offline fixtures cannot reach
+render-path values". The real cause was narrower and fixable: `waveformOccupancy` is published
+by `RenderPipeline` per frame (`RenderPipeline.swift:773`), and `FixtureSessionCaptureGenerator`
+ran only the MIR half, so the column was written as a constant 0.0000 and QG.1 correctly refused
+to assert a column with no variance. **The fixture was wrong, not the gate and not the preset.**
+The generator now ticks the same `WaveformOccupancy` model from each hop's samples; the column
+measures 0.003–0.368 with 100 % nonzero across the three tracks, and exactly one column changed
+in the regenerated fixtures.
 
 ## Provenance
 

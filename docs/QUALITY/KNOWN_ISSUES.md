@@ -759,12 +759,15 @@ drifted column, is **gone from the list**: it was the regression, not drift.
 `RouteCoverageTests.columnsPostdatingFixtures` is now **empty** — every column added since
 QG.1.3 is present and covered, and the gate reads 199 routes / 20 presets, 0 red.
 
-**One thing regenerating did NOT unblock, and the reason was misdiagnosed.** Stave's
-`waveformOccupancy` route was recorded as blocked by BUG-090. It is not: the regenerated
-fixtures carry `waveform_occupancy`, but it is **0.0000 with zero variance on all three
-tracks**, because the model is ticked in the render path while the generator runs only the MIR
-pipeline. That is the **QG.1.1** limitation. Stave's certification is still blocked, and the
-fix is a generator change (tick the occupancy model during capture), not a fixture refresh.
+**One thing regenerating did NOT unblock — and the second diagnosis was wrong too.** Stave's
+`waveformOccupancy` route was first recorded as blocked by BUG-090; regenerating did not help,
+so it was then recorded as the **QG.1.1** limitation ("offline fixtures cannot reach render-path
+values"), which read as a law rather than a fixable gap. ✅ **Fixed at CHR.3g (2026-08-19):**
+the generator now ticks the same `WaveformOccupancy` model from each hop's samples, exactly as
+`RenderPipeline.swift:773` does per frame. The column measures 0.003–0.368, 100 % nonzero on all
+three tracks; exactly one column changed in the regenerated fixtures; Stave declares
+`band_dispersion ← waveformOccupancy` and route coverage reads **203 routes / 21 presets,
+0 red**. Stave's certification is no longer blocked on tooling — it needs Matt's M7.
 
 **FOLLOW-UP (CHR.3h, same day): the two failures are NOT the same kind of thing, and only one
 is a re-baseline.** Investigated separately rather than treated as one fixture chore:
