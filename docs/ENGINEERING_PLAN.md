@@ -6299,3 +6299,40 @@ CHR.3j commit by `git add -A` and reached main. Removed. It was env-gated so it 
 scratch file in the test target is noise the next reader has to identify and discard.
 
 Suite green, lint 0.
+
+### Increment PERF.7 — VL troubleshot: expensive by construction, not by waste ✅ (2026-08-19)
+
+**Matt: *"continue troubleshooting VL"***, after PERF.4's gate flagged it at 5.2× the median
+preset. Filed as **BUG-101**, evidence-only — every remaining lever changes what the preset
+looks like, so none was pulled.
+
+**The measurements.** `sceneSDF` runs ~135× per pixel (128 march steps + 4 normal taps + 3 AO
+taps) at ~10 Perlin evaluations each — ~69 % of the frame:
+
+- terrain `fbm3D(_, 4)`: **~2.7 ms/octave** (4 → 1 takes 30.59 → 22.55 ms)
+- `vl_foldDomain` warp, 2 × `fbm3D(_,3)`: **~10.4 ms** (removed: 32.07 → 21.64 ms)
+
+**The marcher is fine** — correct sphere-trace early exit, so hits leave early.
+
+**Nothing here is waste.** VL-PSY.1 already cut the warp from `warped_fbm`'s 112 evaluations to
+6, and octaves 5 → 4; **3 was tried and reverted** for dropping below SHADER_CRAFT's octave floor.
+Unlike BUG-098 there is no noise being multiplied by zero. The only lever left is
+`VL_SDF_STEP_SCALE` (0.55 → 0.70 saves 10 %) and it is **visibly different** — 74 % of channels
+differ, 12.3 % beyond 16/255. That is Matt's call, not an optimisation.
+
+**Two process notes worth more than the result.**
+
+1. **An earlier measurement of mine was simply wrong.** "Octaves 4 → 2 changes nothing" was
+   reported to Matt as a contradiction worth chasing. Re-measuring with a same-session drift
+   check (baseline 30.59 → 30.58 either side of the experiment) showed octaves cost exactly what
+   the code implies. The first reading was taken while the machine was busy. **A perf claim needs
+   its control measured in the same breath**, which is now how these are run.
+2. **The live number and the harness number still do not reconcile**, and the honest answer is
+   that the live one is untrustworthy: 16.44 ms median from **89 frames with p90 101.73 ms**,
+   spanning a preset transition — and that session has since been evicted by retention
+   (BUG-082). Recorded as an open question rather than papered over.
+
+**Also measured, and good news:** Stave holds **4.94 ms median at 3840×2160 with p90 4.97** on
+`2026-08-19T18-23-44Z` — flat, no ramp, on the build just certified.
+
+No code change.
