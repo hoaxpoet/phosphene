@@ -47,7 +47,7 @@ struct MultiPassRenderHarness {
         // cost scales with branch count rather than pixel count, which is exactly why it needs
         // its own row rather than an assumption.
         "Fractal Tree",
-        // PERF.8 — the four `direct` presets: one fullscreen fragment each, no per-preset Swift
+        // PERF.10 — the four `direct` presets: one fullscreen fragment each, no per-preset Swift
         // state, so one generic path covers all of them. PERF.7's survey named these as the
         // cheapest remaining paradigm and this is that work.
         "Nebula", "Plasma", "Spectral Cartograph", "Waveform"

@@ -2558,9 +2558,23 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
-**PERF.8 — the residue increment: coverage 16 → 20, and the gate the FTR.4 retirement left behind.**
+**PERF.10 — the residue increment: coverage 16 → 20, and the gate the FTR.4 retirement left behind.**
 ✅ **2026-08-19**, Matt: *"do the residue items"* — the three items FTR.5/PERF.7's closeouts had
 named rather than fixed.
+
+⚠ **Numbered PERF.10, and the ID scheme has now failed four times in one day.** Filed as PERF.8
+after grepping `git log` for the next free tag — which was PERF.8, and was still wrong: a parallel
+session's *commit* says `[PERF.7]` while its *plan heading* says `### Increment PERF.8`, so the two
+namespaces disagree with each other and grepping either one alone is insufficient. Their own note
+(below, under their PERF.8) draws the lesson as "grep the tree at the moment of filing"; **this
+sharpens it — grep the plan headings AND the commit tags, because a session can renumber one
+without the other.** PERF.9 was also taken by then, so this is PERF.10.
+
+**This is a scheme problem, not a discipline problem, and it is Matt's call.** Two `[PERF.1]`, two
+`[PERF.3]`, two `[PERF.6]`, two `[PERF.7]` commits are on `main` and cannot be rewritten. Any number
+of sessions picking "next free integer" from a shared document will collide whenever two are open at
+once, which is the normal state here. Options if it is worth fixing: a per-session prefix, or IDs
+allocated from something that is already unique (a date, a branch name).
 
 **1. A superseded status claim, annotated not edited.** `ENGINEERING_PLAN.md` line ~2502 (the FTR.12
 entry) reads *"Fractal Tree remains **not certified**"* in the present tense. True when written on

@@ -95,7 +95,7 @@ struct PresetFrameBudgetTests {
         "Meniscus": 5.28,
         "Glaze": 5.2,
         "Mitosis": 4.23,
-        // ── PERF.8, the four `direct` presets. Measured in a 20-preset run, where every figure
+        // ── PERF.10, the four `direct` presets. Measured in a 20-preset run, where every figure
         // above (recorded in a 16-preset run) reads roughly 2x higher — Volumetric Lithograph
         // 30.8 → 64.3 with no code change. That is the contention the header describes, and it is
         // why these are orientation only and the RATIO gates. Do not "fix" the older rows to
@@ -120,7 +120,7 @@ struct PresetFrameBudgetTests {
     /// Presets `MultiPassRenderHarness` cannot drive. Named, printed, and NOT counted as passing.
     /// PERF.7 removed "Fractal Tree" — the harness now drives the mesh-shader path.
     ///
-    /// PERF.8 took the `direct` four (Nebula, Plasma, Spectral Cartograph, Waveform), which PERF.7's
+    /// PERF.10 took the `direct` four (Nebula, Plasma, Spectral Cartograph, Waveform), which PERF.7's
     /// survey had named as the cheapest remaining paradigm. **Coverage is now 20 of 29.**
     ///
     /// What is left, and what each would cost — surveyed so the next increment does not re-derive it:

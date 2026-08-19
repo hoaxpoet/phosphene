@@ -144,7 +144,7 @@ struct MeshStemBindingTests {
         #expect(busy > quiet + 20, """
             other_onset_rate 0.3 → 6.0 moved the rendered value \\(quiet) → \\(busy). The object \
             stage is NOT reading StemFeatures at buffer(3): binding a buffer is not the same as \
-            the GPU consuming it, and every mesh stem route depends on this. Restored at PERF.8 \
+            the GPU consuming it, and every mesh stem route depends on this. Restored at PERF.10 \
             after FTR.33 retired the Fractal-Tree-shaped version of this gate.
             """)
     }
