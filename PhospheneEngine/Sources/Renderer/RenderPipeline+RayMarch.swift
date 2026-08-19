@@ -111,7 +111,14 @@ extension RenderPipeline {
         let size = view.drawableSize
         let width = Int(size.width)
         let height = Int(size.height)
-        rayMarchState.ensureAllocated(width: width, height: height)
+        // BUG-101 — the marcher may shade fewer pixels than the drawable. The composite pass
+        // samples `litTexture` by UV through a linear sampler, so a smaller source upscales
+        // with no extra pass; the post-process chain below stays at DRAWABLE size, so bloom
+        // and ACES still run at full resolution on the upscaled image.
+        let marchScale = min(max(rayMarchState.renderScale, 0.4), 1.0)
+        let marchWidth = max(Int((Float(width) * marchScale).rounded()), 1)
+        let marchHeight = max(Int((Float(height) * marchScale).rounded()), 1)
+        rayMarchState.ensureAllocated(width: marchWidth, height: marchHeight)
 
         // Update per-frame uniforms: accumulated audio time, aspect ratio, and step-count multiplier.
         // MFX.1: lightingParams.z carries the PREVIOUS frame's accumulated audio
