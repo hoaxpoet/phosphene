@@ -50,7 +50,10 @@ extension MeshGenerator {
     /// state depends on the draw cadence.
     func advanceAllHolds(_ features: FeatureVector, stems: StemFeatures, delta: Float) {
         sectionHold.offerStems(stems)
-        _ = sectionHold.update(features, renderDeltaTime: delta)
+        let section = sectionHold.update(features, renderDeltaTime: delta)
+        // FTR.33 — and the growth stepper, for the same reason: it holds state across frames, so
+        // a frame that is not drawn still has to reach it or its tier depends on the draw cadence.
+        _ = advanceGrowthStep(section: section, live: features, delta: delta)
         arcHold.offerStems(stems)
         _ = arcHold.update(features, renderDeltaTime: delta)
         beatHold.offerStems(stems)
@@ -70,14 +73,19 @@ extension MeshGenerator {
     ///     wide open in a passage where level was actually 0.515.
     /// The beat CLOCK is unaffected either way — `update` advances it from `beatPhase01`
     /// regardless of the delta.
+    ///
+    /// ★★★ FTR.33 — THIS NOW DELEGATES, and the duplication it used to carry cost an increment
+    /// for the THIRD time. This method and `advanceAllHolds` had the same body with a different
+    /// delta source, so adding the FTR.33 growth stepper to one left the other silently short of
+    /// it — and every undrawn row in the subsampled sequence harness comes through HERE. The
+    /// stepper needs ~6 s of history before it will change tier, and on an 8-frame strip it saw
+    /// 0.13 s, so it sat at its bottom tier for the whole render: the rendered sheet showed a
+    /// small, sparse tree that held perfectly still, and both of those looked exactly like a
+    /// calibration problem. One recalibration was spent on the wrong cause before the frames
+    /// stopped matching the arithmetic. Two copies of "advance everything" is the defect; there
+    /// is now one.
     public func advanceBeatHold(_ features: FeatureVector, stems: StemFeatures = .zero) {
-        let delta = renderDeltaOverride ?? Float(1.0 / 60.0)
-        arcHold.offerStems(stems)
-        _ = arcHold.update(features, renderDeltaTime: delta)
-        sectionHold.offerStems(stems)
-        _ = sectionHold.update(features, renderDeltaTime: delta)
-        beatHold.offerStems(stems)
-        _ = beatHold.update(features, renderDeltaTime: delta)
+        advanceAllHolds(features, stems: stems, delta: renderDeltaOverride ?? Float(1.0 / 60.0))
     }
 }
 
@@ -117,5 +125,57 @@ extension MeshGenerator {
         feat.barPhase01 = barDance.advance(measured: hasGrid ? live.barPhase01 : nil,
                                            periodSeconds: beatPeriod * max(live.beatsPerBar, 1),
                                            deltaTime: renderDelta)
+    }
+}
+
+// MARK: - FTR.33 the growth step
+
+extension MeshGenerator {
+
+    /// Advance the size's tier and bind it at object/mesh buffer(8).
+    ///
+    /// Slot 8 on the MESH stages is free — the ray-march path's `setDirectPresetFragmentBuffer3`
+    /// uses slot 8 of the FRAGMENT encoder, a different pipeline, the same reasoning that made
+    /// slots 4 and 5 safe at FTR.10/FTR.13.
+    func bindGrowthStep(_ encoder: MTLRenderCommandEncoder,
+                        section: FeatureVector,
+                        live: FeatureVector,
+                        delta: Float) {
+        var growth = advanceGrowthStep(section: section, live: live, delta: delta)
+        // KEPT, env-gated. This trace found the real cause of a stuck tier in one run after two
+        // recalibrations chased the wrong one; a size channel whose state is invisible is a size
+        // channel that gets debugged by guessing. `print` is deliberate — a diagnostic the
+        // developer asks for by name, not engine logging (Logging.swift stays the app's).
+        if ProcessInfo.processInfo.environment["FT_TRACE_GROWTH"] == "1" {
+            let rank = min(max(section.spectralSectionRatio * 0.5, 0), 1)
+            let numbers = String(
+                format: "t=%.1f growth=%.3f rank=%.3f rise=%.2f | ",
+                live.trackElapsedS,
+                growth,
+                rank,
+                live.spectralLevelRise
+            )
+            print("[growth] " + numbers + growthStep.debugState)
+        }
+        encoder.setObjectBytes(&growth, length: MemoryLayout<Float>.stride, index: 8)
+        encoder.setMeshBytes(&growth, length: MemoryLayout<Float>.stride, index: 8)
+    }
+
+    /// One frame of `ArrivalStep`, on the section-scale DENSITY RANK.
+    ///
+    /// `spectral_section_ratio` is DYN.2c's rank of this moment in the track's own density
+    /// distribution, so the tier edges in `ArrivalStep` can be constants — see the argument
+    /// there, and the two calibrations that had to fail first. The ×0.5 matches the convention
+    /// the drifting `fullness` term used, where 1.0 means "this track's normal".
+    ///
+    /// FTR.18's limiter correction is deliberately NOT applied here: it existed because LEVEL
+    /// dips as a band arrives on a limited master, and density is the signal that detected that
+    /// inversion rather than suffering from it.
+    @discardableResult
+    func advanceGrowthStep(section: FeatureVector, live: FeatureVector, delta: Float) -> Float {
+        let rank = min(max(section.spectralSectionRatio * 0.5, 0), 1)
+        return growthStep.update(level: rank,
+                                 arrival: live.spectralLevelRise,
+                                 deltaTime: delta)
     }
 }
