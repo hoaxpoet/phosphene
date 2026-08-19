@@ -6,6 +6,10 @@
 stack, so the full rubric's ≥3-distinct-materials gate is unreachable by construction. Same
 reclassification as Fractal Tree (D-212 / FTR.1) and the Waveform / Plasma precedent.
 **Last curated:** 2026-08-17 (CHR.3f) — **fully recurated after the CHR.3b rebuild.**
+⚠ **Framing changed at CHR.3h (2026-08-19): `zoom` 1.0 → 0.93**, Matt's M7 asking for 5–10 %
+less size in fullscreen. `01_macro_dispersed_wave.png` and `02_meso_band_separation.png` were
+captured at 1.0 and are therefore 7 % large relative to the shipped build — trust them for
+weight distribution, band order and colour, not for absolute scale, until they are recaptured.
 
 > ## ⚠ This set replaces the one curated at CHR.1.3, which described a different preset
 >

@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-100 | P2 · evidence-only, filed 2026-08-19 from an M7 session; **not a preset defect** | app.performance / sustained-load | **The app degrades under sustained 4K rendering, and it is the machine or the frame loop, not the preset that happens to be on screen.** Matt's Stave M7 (`2026-08-19T17-01-15Z`) reported *"performance slowed over time, which led to some choppiness"*. Measured over a contiguous 70 s at 3840×2160: `frame_cpu_ms` **17.4 → 43.6** and `frame_gpu_ms` **2.9 → 11.7**, while the app's OWN CPU work stayed flat — `encode_cpu_ms` 12.9 → 15.2, `renderframe_cpu_ms` 9.8 → 11.0. Same work, less delivered. **Three hypotheses were falsified before filing:** (a) Stave accumulating — an offline soak of 1920 frames at 4K is flat at 22.3 ms with no drift; (b) the dispersion fan opening over the track — `waveformOccupancy` is flat at 0.081–0.095 across the whole segment, r(GPU, occupancy) = **−0.11**; (c) preset-specific — the degradation **persists into the next preset** (Witchlight `frame_cpu` 24.4 at 4K, against Stave's own 17.4 early) and partially recovers after a 2.16 MP interlude. ⚠ **A second finding sits inside this one:** `encode_cpu_ms` is **15–16 ms at 4K** — essentially the entire 60 fps budget spent on CPU encode before any GPU work — and it scales with resolution (9.1 ms at 2.07 MP). CPU encode should not scale with pixel count; that is worth its own look and is probably the more tractable half. Thermal throttling of the Mac mini under sustained 4K is the leading remaining explanation for the rest, and cannot be confirmed from the recordings — it needs `powermetrics` or equivalent alongside a session |
 | BUG-099 | P2 · open, product decision needed | preset.witchlight / performance | **Witchlight reaches ~30 fps at 3840×2160 after BUG-098's 8.2× fix, against 60 fps at 1080p.** `CLAUDE.md` promises 60 fps **at 1080p**, which is met with headroom, so this is a decision about what the product promises at fullscreen rather than a defect against the stated target. The remaining 4K cost is **balanced** — bloom 5.4 ms, three star layers 4.9 ms, beads/particles/feedback 6.0 ms — so there is no further micro-optimisation available that does not change what the preset looks like. **Two routes, both visible to the user:** drop or cheapen a star layer (the three-layer parallax is a documented WL.2 feature and the depth read would go with it), or render below full drawable resolution — ⚠ **which the existing `setDirectRenderScale` cannot do for this preset**: that path is `drawDirect`-only and Witchlight is `feedback`+`particles`, so it needs the half-res render extended to that path first (engine work, ~4× headroom, aliasing risk concentrated in the sub-pixel starfield). ⚠ Note Witchlight is the only preset measured that is anywhere near the budget; the next most expensive at 4K is Volumetric Lithograph at 16.44 ms. Matt's call |
 | BUG-098 | **P1** · **FIXED 2026-08-19 (PERF.2 + PERF.3), 8.2× measured. ✅ 1080p target met with margin; ⚠ 4K ≈ 30 fps, still 2× over** | preset.witchlight / performance | **Witchlight's sky ran ~64 Perlin evaluations per pixel across the whole frame — most of them multiplied by zero, the rest for detail that never reached the image.** Measured live at 4K on `2026-08-19T14-25-55Z`: **273.88 ms median GPU, 11.2 fps, 16× over budget**, while six other presets in the same session held 59–60 fps (Arachne 3.27 ms … Volumetric Lithograph 16.44 ms) — 84× Arachne, so a defect and not a cost. Two causes, both fixed: **(a)** `witchlight_bloom` computed `fbm8` + `warped_fbm` for EVERY pixel then multiplied by `body = exp(-r*r*70)`, a lobe a sixth of the frame wide — ~530 M Perlin evaluations per 4K frame to produce black; fixed with an early return at `body < 1e-3` (below an 8-bit LSB: 2.4e-4 vs 3.9e-3), **151.2 → 31.8 ms**, output identical to every printed digit. **(b)** the surviving noise was still 64 evaluations for what the code's own comment calls *"low-frequency structure only … one soft mass rather than cloud detail"*; replaced with `fbm4` + a one-level `fbm4` warp (**20 evaluations**), the same remedy `VolumetricLithograph.metal:634` applies to the same function for the same reason — **31.8 → 18.4 ms**, sky luma 9.22 → 9.23 and lit share 2.49 % → 2.51 %. **Total 151.3 → 14.9 ms (10.2×), measured back to back in one thermal state.** Extrapolated to production: **~6 ms at 1800×1200 (60 fps with large headroom, target met)** and **~27 ms at 3840×2160 (≈37 fps)**. ⚠ The residual is now balanced — stars 5.3 ms, beads/particles/feedback 5.8 ms, bloom 2.1 ms — so there is no further shader win that does not change the look; closing the 4K gap needs a product decision (fewer star layers, or `setDirectRenderScale` as Nimbus already does at 0.5×), tracked as **BUG-099** |
 | BUG-097 | **P1** · **FIXED 2026-08-18, validated on three real sessions + a new gate** | preset.witchlight / frame-rate-coupling | **A frame-time clamp meant for physics stability was corrupting a MUSICAL measurement, and Witchlight dropped most of its off-beat accents on exactly the sessions where the frame rate was worst.** `WitchlightPath.advance` clamps `dt` to 1/30 s so an integrator cannot take a wild step after a stall — correct for the integrators, wrong for the four quantities that measure how long something LASTED: `timeSinceWrap` (→ `barPeriod`), `gridSilentFor`, and the two refractories. WL.9 gates the off-beat pulse on `barPeriod / beatsPerBar >= 0.55 s`, so under load a 94 BPM bar measured **1.80 s against a true 2.55 s** and the pulse was never emitted. On `2026-08-18T16-10-38Z` — 48.8 % of frames over the cap, 38 % of elapsed time discarded — the preset fired **6 off-beat pulses in 110 s** where the meter implies ~130. **Fixed** by splitting `clockDt` (real elapsed time) from `dt` (the clamped integrator step). Validated on three real sessions: 6 → **105**, 50 → **149**, and the already-healthy session 79 → **83**, i.e. every one lands at the designed ~3:1 and the healthy case barely moves — the signature of a fix rather than a re-tune. Flare alignment on the worst session also rose 36 % → 54 % within 10 % of a beat. ⚠ It was invisible to the whole suite because every committed fixture replays at a steady ~60 Hz and never approaches the cap; `offBeatPulseSurvivesHeavyFrames` now drives at 50 ms frames and **was confirmed to fail (0 pulses) on the pre-fix code** |
@@ -72,6 +73,63 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-100 — Sustained 4K rendering degrades the whole app, not the preset on screen (2026-08-19)
+
+**Status: evidence-only. Not a preset defect — three preset-side hypotheses were falsified
+before filing.**
+
+Matt's Stave M7 (`2026-08-19T17-01-15Z`): *"performance slowed over time, which led to some
+choppiness."* Measured over a contiguous 70 s window at 3840×2160:
+
+| t | frame_cpu | frame_gpu | encode_cpu | renderframe_cpu |
+|---|---|---|---|---|
+| 32 s | 17.6 ms | 3.6 ms | 13.9 ms | 9.8 ms |
+| 62 s | 19.7 ms | 3.9 ms | 15.5 ms | 12.0 ms |
+| 77 s | 37.4 ms | 6.8 ms | 16.2 ms | 12.6 ms |
+| 92 s | 44.9 ms | 12.9 ms | 15.2 ms | 11.0 ms |
+
+**The app's own CPU work is flat.** `encode_cpu_ms` and `renderframe_cpu_ms` barely move while
+total frame time rises 2.5× and GPU time 3.6×. The app is doing the same work and getting less
+back.
+
+**Falsified before filing:**
+
+1. **Stave accumulates something.** An offline soak — 1920 frames at 3840×2160 through the real
+   multi-pass path — is flat at 22.3 ms with no drift across eight blocks.
+2. **The dispersion fan opens over the track**, raising overdraw. `waveformOccupancy` is flat at
+   0.081–0.095 across the entire segment and **r(GPU, occupancy) = −0.11**.
+3. **It is preset-specific.** It is not: the degradation persists into the next preset
+   (Witchlight reads `frame_cpu` 24.4 ms at 4K, against Stave's own 17.4 ms early in the same
+   session) and partially recovers after a 2.16 MP interlude.
+
+⚠ **A "second finding" was filed here and is RETRACTED — the metric did not mean what its name
+says.** The entry originally claimed `encode_cpu_ms` was CPU work scaling with pixel count
+(9.1 ms at 2.07 MP → 16.4 ms at 8.29 MP) and called it "the more tractable half".
+
+**It is not CPU work.** `encode_cpu_ms` is wall-clock from `draw()` entry to `commit()`
+(`RenderPipeline.swift:752…822`), and `view.currentDrawable`
+(`DrawableLifecycleProbe.swift:256`) is called *inside* that window. `currentDrawable` **blocks**
+until CoreAnimation frees a drawable, so when the GPU is slower — which at 4K it is — the block
+is longer and the "CPU" number rises with it. The inflight semaphore is correctly excluded
+(waited at line 743, before `cpuDrawStart`), which is probably why the drawable wait was assumed
+excluded too. It is not.
+
+So there is **no separate CPU-encode defect**, and no fix to make there. At 4K the app is simply
+saturated: GPU 12.9 ms plus presentation waits, with `frame_cpu` (44.9 ms) measuring
+draw-start → completion and therefore carrying queue latency for a pipeline that cannot keep up.
+
+⚠ **Third time in one day** that a metric was read as its name rather than its definition —
+after `deltaTime` (vsync, not headroom) and the harness milliseconds (readback included). The
+rule that keeps holding: **read what the number is computed from before concluding anything from
+its trend.**
+
+**What cannot be settled from recordings.** Thermal throttling of the Mac mini under sustained
+4K is the leading explanation for the remainder, and nothing in the session records clock or
+temperature. Confirming it needs `powermetrics` (or equivalent) captured alongside a session —
+i.e. new instrumentation, exactly as BUG-098 needed `RENDER_TARGET` before it could be seen.
 
 ---
 
