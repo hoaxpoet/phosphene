@@ -6226,3 +6226,31 @@ worth its own entry despite changing no code: **read what a number is computed f
 concluding anything from its trend** — especially before filing it as a defect.
 
 No code change. Docs only: BUG-100's second finding retracted in place rather than deleted.
+
+### Increment CHR.3i — Stave CERTIFIED ✅ (2026-08-19)
+
+**Matt's M7: certify.** Stave is the **19th certified preset** and the first in the `waveform`
+family. `certified: true`, and added to `FidelityRubricTests.certifiedPresets` (the ground-truth
+set — per `SHADER_CRAFT.md` §12.1 the reference-frame review is load-bearing and the automated
+rubric is a sanity check).
+
+**What the certification rests on.** Matt's review the same day: *"looks good"*, with two
+qualifications, both resolved before the flip:
+
+1. *"less visually overwhelming in fullscreen if the design was reduced in size by 5-10%"* →
+   `zoom` 1.0 → 0.93 (CHR.3h).
+2. *"performance slowed over time, which led to some choppiness"* → traced to **BUG-100**, a
+   whole-app limit under sustained 4K that affects every preset, with three preset-side
+   hypotheses falsified (offline soak flat at 22.3 ms over 1920 frames; occupancy flat with
+   r = −0.11; the degradation persists into the *next* preset). Not Stave's to fix, and holding
+   Stave for it would block every future certification on the same app-level issue.
+
+⚠ **One honest caveat on the sign-off.** The 7 % size reduction landed *after* the session Matt
+reviewed, so the build he watched was at `zoom` 1.0. The change is a uniform scale on a
+composition he had already approved, and it is the change he asked for — but he has not seen it
+rendered. If it reads wrong on the next session, `zoom` is one constant and reverting is trivial.
+
+**Route coverage:** Stave declares `band_dispersion ← waveformOccupancy`, proved by QG.1 since
+CHR.3g. The roster is now 29 presets, 19 certified.
+
+Suite green, lint 0.

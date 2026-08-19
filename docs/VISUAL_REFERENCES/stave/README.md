@@ -1,5 +1,7 @@
 # Visual References — Stave
 
+**Status:** ✅ **CERTIFIED 2026-08-19 (CHR.3i)** — Matt's M7. The 19th certified preset, and the
+first in the `waveform` family.
 **Family:** waveform — spectral dispersion of the live signal
 **Render pipeline:** particles (CPU band split → one fullscreen dispersion pass) + feedback
 **Rubric:** lightweight — a 2D luminous plot with no lighting, no G-buffer and no material
