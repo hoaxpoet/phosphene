@@ -104,8 +104,20 @@ public struct StaveConfiguration: Sendable {
     /// Camera zoom-out. 1.0 = the settled framing; < 1 pulls the whole image in, both the
     /// wave amplitude and the fan offsets, exactly as backing a camera off would.
     ///
-    /// Left at 1.0: with the frame knee below doing the containment, no zoom is needed, and
-    /// Matt's requirement is that the waves keep covering most of the vertical area.
+    /// **0.93 (CHR.3h, Matt's Stave M7, 2026-08-19):** *"I think it would be less visually
+    /// overwhelming in fullscreen mode if the design was reduced in size by 5-10%."* 7 %, the
+    /// middle of the range he gave.
+    ///
+    /// Applied globally rather than only above some resolution. A size that changed with window
+    /// size would make the preset a different composition at different sizes, and the framing
+    /// this was tuned against (`01_macro_dispersed_wave.png`) would then only be correct at one
+    /// of them. The wave still covers most of the vertical area, which is his standing
+    /// requirement — the frame knee at 0.75 continues to do the containment, and this is a
+    /// composition change, not a containment one.
+    ///
+    /// Previously 1.0. Note the knee cannot substitute: at CHR.3e Matt ruled out using zoom for
+    /// CONTAINMENT because that needed 35-50 %, which would have abandoned the settled scale.
+    /// 7 % for breathing room is a different request and a different magnitude.
     public var zoom: Float
     /// Soft frame ceiling in NDC half-heights, or 0 to disable. Above it the composite y
     /// compresses through a tanh knee instead of running past the viewport.
@@ -136,7 +148,7 @@ public struct StaveConfiguration: Sendable {
         fanMax: Float = 0.40,
         fanTau: Float = 0.12,
         levelTau: Float = 20.0,
-        zoom: Float = 1.0,
+        zoom: Float = 0.93,
         frameKnee: Float = 0.75,
         sampleRate: Float
     ) {
