@@ -6158,3 +6158,71 @@ two subsequent clean full runs (1866/1866). Recorded rather than glossed: if it 
 the failing test name before assuming it is timing.
 
 Suite 1866/1866, lint 0.
+
+### Increment CHR.3h — Stave M7: the size change, and the slowdown that was not Stave's ✅ (2026-08-19)
+
+**Matt's Stave M7** (`2026-08-19T17-01-15Z`): *"looks good, but performance slowed over time,
+which led to some choppiness, and I think it would be less visually overwhelming in fullscreen
+mode if the design was reduced in size by 5-10%."*
+
+**The size change: `zoom` 1.0 → 0.93** (7 %, the middle of his range), applied globally rather
+than only above some resolution — a size that changed with window size would make Stave a
+different composition at different sizes, and the framing the reference set was tuned against
+would then be correct at only one of them. ⚠ Note this is a *different request* from CHR.3e,
+where zoom was ruled out for CONTAINMENT because that needed 35–50 %; the frame knee still does
+containment, and 7 % for breathing room is a separate, much smaller ask.
+
+**The slowdown is NOT Stave — filed as BUG-100.** Three preset-side hypotheses were falsified
+before concluding that, which is the part worth keeping:
+
+1. **Stave accumulates something.** An offline soak of 1920 frames at 3840×2160 through the real
+   path is **flat at 22.3 ms** across eight blocks.
+2. **The fan opens over the track**, raising overdraw. `waveformOccupancy` is flat at 0.081–0.095
+   for the whole segment; **r(GPU, occupancy) = −0.11**.
+3. **It is preset-specific.** It is not — the degradation **persists into the next preset** and
+   partially recovers after a low-resolution interlude.
+
+What the data does say: over 70 s at 4K, `frame_cpu_ms` 17.4 → 43.6 and `frame_gpu_ms` 2.9 →
+11.7, **while the app's own CPU work stays flat** (`encode_cpu_ms` 12.9 → 15.2,
+`renderframe_cpu_ms` 9.8 → 11.0). Same work, less delivered.
+
+⚠ **A second finding was claimed here and is RETRACTED (see PERF.6):** `encode_cpu_ms` rising
+with resolution is not CPU work — the timer spans `draw()` → `commit()` and
+`view.currentDrawable`, a BLOCKING call, sits inside it. There is no separate CPU-encode defect.
+
+**Stave is therefore still uncertified**, and correctly so: one of the two M7 items is a
+whole-app defect that no preset change can fix. The size change alone does not earn the flip.
+
+Suite 1866/1866, lint 0.
+
+### Increment PERF.6 — the `encode_cpu_ms` finding was wrong, and the reason is the day's pattern ✅ (2026-08-19)
+
+**Matt: *"troubleshoot the encode_cpu scaling."*** Troubleshot, and the answer is that there is
+nothing to fix — the metric does not mean what its name says.
+
+**What was claimed (CHR.3h / BUG-100).** `encode_cpu_ms` measured 9.1 ms at 2.07 MP and 16.4 ms
+at 8.29 MP, consistently across three different presets. Fitting that gave "~6.7 ms fixed CPU +
+1.17 ms per megapixel", and the conclusion filed was that CPU-side encoding should not scale
+with pixel count and was therefore defective — "probably the more tractable half" of BUG-100.
+
+**What it actually is.** `encode_cpu_ms` is wall-clock from `draw()` entry to `commit()`
+(`RenderPipeline.swift:752…822`). `view.currentDrawable` (`DrawableLifecycleProbe.swift:256`) is
+called **inside** that window, and it **blocks** until CoreAnimation frees a drawable. At 4K the
+GPU is slower, drawables recycle more slowly, and the block lengthens — so a wall-clock timer
+labelled "cpu" rises with GPU load.
+
+The comment above the timer says it excludes the inflight-semaphore wait (line 743, before
+`cpuDrawStart`) — true, and probably why the drawable wait was assumed excluded too. It is not.
+
+**So: no CPU-encode defect, and no fix.** At 4K the app is saturated — 12.9 ms GPU plus
+presentation waits, with `frame_cpu` (44.9 ms) spanning draw-start → completion and therefore
+carrying queue latency for a pipeline that cannot keep up. BUG-100's remaining question, the
+degradation *over time* at fixed resolution, is untouched by this and still points at thermal.
+
+⚠ **This is the third metric misread in one day**, after `deltaTime` (vsync-dominated, not
+headroom) and harness milliseconds (readback included, ~0.56× of live). Each time the number was
+real and the *name* was the trap. The rule that keeps holding, and the reason this increment is
+worth its own entry despite changing no code: **read what a number is computed from before
+concluding anything from its trend** — especially before filing it as a defect.
+
+No code change. Docs only: BUG-100's second finding retracted in place rather than deleted.
