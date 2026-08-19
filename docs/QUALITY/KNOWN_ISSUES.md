@@ -178,10 +178,18 @@ after `deltaTime` (vsync, not headroom) and the harness milliseconds (readback i
 rule that keeps holding: **read what the number is computed from before concluding anything from
 its trend.**
 
-**What cannot be settled from recordings.** Thermal throttling of the Mac mini under sustained
-4K is the leading explanation for the remainder, and nothing in the session records clock or
-temperature. Confirming it needs `powermetrics` (or equivalent) captured alongside a session —
-i.e. new instrumentation, exactly as BUG-098 needed `RENDER_TARGET` before it could be seen.
+**Instrumented 2026-08-19 (PERF.9) — the next recorded session settles it.** Sessions now log
+`THERMAL_STATE state=… low_power=… active_cpus=…` whenever it changes, plus once at the start so
+an unchanging session still records its state.
+
+⚠ **NOT `powermetrics`, which is what was asked for.** It refuses to run unprivileged —
+*"powermetrics must be invoked as the superuser"*, verified — so the app cannot sample it, and
+shipping a privileged helper to read one counter is not proportionate.
+`ProcessInfo.thermalState` is the supported unprivileged primitive for exactly this question:
+the OS's own view of whether it is shedding performance for heat. It is coarse (nominal / fair /
+serious / critical), and coarse is enough here — **`nominal` throughout a degrading session
+falsifies the thermal hypothesis just as usefully as `serious` confirms it**, and either outcome
+closes the open half of this entry.
 
 ---
 
