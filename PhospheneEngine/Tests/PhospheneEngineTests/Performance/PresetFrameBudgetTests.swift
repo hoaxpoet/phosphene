@@ -95,7 +95,7 @@ struct PresetFrameBudgetTests {
         "Meniscus": 5.28,
         "Glaze": 5.2,
         "Mitosis": 4.23,
-        // PERF.6 — first mesh-shader row. Measured 3.88 / 4.07 ms across two runs at 1920x1080
+        // PERF.7 — first mesh-shader row. Measured 3.88 / 4.07 ms across two runs at 1920x1080
         // with the canopy ALIVE (upper-canopy ink 1223 against the silent figure's 302); the
         // minimum is recorded, per this suite's own min-of-passes reasoning.
         "Fractal Tree": 3.88,
@@ -103,7 +103,7 @@ struct PresetFrameBudgetTests {
     ]
 
     /// Presets `MultiPassRenderHarness` cannot drive. Named, printed, and NOT counted as passing.
-    /// PERF.6 removed "Fractal Tree" — the harness now drives the mesh-shader path.
+    /// PERF.7 removed "Fractal Tree" — the harness now drives the mesh-shader path.
     ///
     /// SURVEYED so the next increment does not have to: of the 13 below, **none is a mesh preset**,
     /// so the FTR path unlocks exactly one and there is no free win left in it. By declared pass:

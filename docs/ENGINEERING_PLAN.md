@@ -2552,9 +2552,14 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
-**PERF.6 — the frame-budget harness drives its first MESH preset, and the gate is checked for
+**PERF.7 — the frame-budget harness drives its first MESH preset, and the gate is checked for
 being awake.** ✅ **2026-08-19**, on Matt's instruction after FTR.5's closeout named the gap:
 *"make the harness for FT drivable."*
+
+⚠ **Numbered PERF.7, not PERF.6.** A parallel session published its own PERF.6 (the `encode_cpu_ms`
+retraction, below) to `main` while this was open; theirs landed first, so it keeps the number. Worth
+recording rather than silently renumbering: two sessions picked the same next-free ID on the same
+day from the same plan, which is a property of the ID scheme, not of either session.
 
 **What was missing.** `PresetFrameBudgetTests` (PERF.4) covers presets through
 `MultiPassRenderHarness`, which had fifteen per-preset fragment-stage paths and none for the

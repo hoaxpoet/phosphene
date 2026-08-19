@@ -42,7 +42,7 @@ struct MultiPassRenderHarness {
         "Lumen Mosaic", "Dragon Bloom", "Fata Morgana", "Skein", "Nacre",
         "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Cymatic Resonance",
         "Volumetric Lithograph", "Witchlight", "Meniscus", "Stave",
-        // PERF.6 — the first MESH-SHADER preset the harness can drive (object → mesh →
+        // PERF.7 — the first MESH-SHADER preset the harness can drive (object → mesh →
         // fragment). Everything above is fragment-stage work; this one emits geometry, so its
         // cost scales with branch count rather than pixel count, which is exactly why it needs
         // its own row rather than an assumption.
