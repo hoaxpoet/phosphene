@@ -6226,3 +6226,42 @@ worth its own entry despite changing no code: **read what a number is computed f
 concluding anything from its trend** — especially before filing it as a defect.
 
 No code change. Docs only: BUG-100's second finding retracted in place rather than deleted.
+
+### Increment CHR.3j — Stave's size reduction was real and too small; a wrong theory published and retracted ✅ (2026-08-19)
+
+**Matt, after testing CHR.3h: *"Not sure that I tested with the right build - the size of the
+visual looked the same."*** He had the right build, and the change had applied. Both halves of
+that took measuring to establish.
+
+**The build was correct.** `StaveDispersionModel.o` compiled 17:50:15 UTC, the session began
+17:50:32 — 17 s later. The production call site (`VisualizerEngine.swift:1391`) constructs
+`StaveConfiguration(sampleRate:)` and takes the default, so `zoom: 0.93` was live.
+
+**A wrong theory, published and then killed by measurement.** The first explanation was that the
+frame knee absorbs the zoom: `zoom` is applied *before* the knee, and a peak of 1.5 folds to
+0.9996 at zoom 1.0 versus 0.9994 at 0.93, so the tall excursions that define the envelope are
+pinned either way. The arithmetic is correct and the conclusion was wrong. Moving `zoom` after
+the knee and A/B-ing rendered frames:
+
+| build | lit vertical extent |
+|---|---|
+| zoom 1.00 | 688 px |
+| zoom 0.93, **old** order (before knee) | 653 px (**−5.1 %**) |
+| zoom 0.93, new order (after knee) | 647 px (−6.0 %) |
+
+**The old order already worked.** The knee was not absorbing it; the reorder bought 0.9
+percentage points. It was **reverted** rather than kept for that, because it changed load-bearing
+containment logic on a justification that had just been falsified.
+
+**The actual problem was magnitude.** 0.93 gives −5.1 %, the very bottom of the 5–10 % Matt
+asked for, and below what reads as different. Swept on rendered frames: 0.93 → −5.1 %,
+0.90 → −7.6 %, 0.86 → −11.0 %, 0.82 → −14.7 %. **Shipping 0.88 → −9.2 %**, near the top of his
+range. Frame fit is unaffected: peak |y| 0.975 NDC, 0/120 frames outside the frame.
+
+**Method note.** The CPU model's `peak |y|` moved only 0.992 → 0.985 for a 7 % zoom, which is
+what suggested the knee theory in the first place — it is the wrong instrument for "how big does
+this look", because it reports the folded peak rather than the drawn image. Measuring lit pixels
+in the rendered PNGs answered it directly. **Fourth metric misread in a day**; the pattern is
+identical each time — the number was real, and what it measured was not what the question asked.
+
+Suite 1876/1876, lint 0.

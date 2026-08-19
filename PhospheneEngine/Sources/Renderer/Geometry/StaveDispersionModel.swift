@@ -104,20 +104,30 @@ public struct StaveConfiguration: Sendable {
     /// Camera zoom-out. 1.0 = the settled framing; < 1 pulls the whole image in, both the
     /// wave amplitude and the fan offsets, exactly as backing a camera off would.
     ///
-    /// **0.93 (CHR.3h, Matt's Stave M7, 2026-08-19):** *"I think it would be less visually
-    /// overwhelming in fullscreen mode if the design was reduced in size by 5-10%."* 7 %, the
-    /// middle of the range he gave.
+    /// **0.88 (CHR.3h → CHR.3j, Matt's Stave M7, 2026-08-19):** *"I think it would be less
+    /// visually overwhelming in fullscreen mode if the design was reduced in size by 5-10%."*
     ///
-    /// Applied globally rather than only above some resolution. A size that changed with window
-    /// size would make the preset a different composition at different sizes, and the framing
-    /// this was tuned against (`01_macro_dispersed_wave.png`) would then only be correct at one
-    /// of them. The wave still covers most of the vertical area, which is his standing
-    /// requirement — the frame knee at 0.75 continues to do the containment, and this is a
-    /// composition change, not a containment one.
+    /// **0.93 was tried first and he could not see it** — *"the size of the visual looked the
+    /// same"* — on a build verified to contain the change (`StaveDispersionModel.o` compiled
+    /// 17 s before his session). Measured on rendered frames rather than argued about: the lit
+    /// vertical extent goes 688 px → 653 px at zoom 0.93, a **5.1 %** reduction. That is the
+    /// bottom of the range he asked for, and below what reads as different.
     ///
-    /// Previously 1.0. Note the knee cannot substitute: at CHR.3e Matt ruled out using zoom for
-    /// CONTAINMENT because that needed 35-50 %, which would have abandoned the settled scale.
-    /// 7 % for breathing room is a different request and a different magnitude.
+    /// The relationship is linear and was swept: zoom 0.93 → −5.1 %, 0.90 → −7.6 %,
+    /// 0.86 → −11.0 %, 0.82 → −14.7 %. 0.88 lands at about −9 %, near the top of his 5–10 %.
+    /// (The extent understates the wave's own reduction because the ground contributes lit rows
+    /// and is not zoomed.)
+    ///
+    /// ⚠ **A wrong theory was published and retracted here.** CHR.3j first assumed the frame
+    /// knee was absorbing the zoom — plausible arithmetic, since a peak of 1.5 folds to 0.9996
+    /// at zoom 1.0 and 0.9994 at 0.93 — and moved the zoom to AFTER the knee to fix it. An A/B
+    /// on rendered frames killed it: the old order already gave −5.1 % and the reorder bought
+    /// only −6.0 %. The knee was not the problem; the magnitude was. The reorder was reverted
+    /// rather than kept for its 0.9 points, because it changed load-bearing containment logic
+    /// on a justification that had been falsified.
+    ///
+    /// Containment is unaffected either way: the frame knee at 0.75 still does that job, and
+    /// CHR.3e ruled zoom out for containment because that needed 35–50 %.
     public var zoom: Float
     /// Soft frame ceiling in NDC half-heights, or 0 to disable. Above it the composite y
     /// compresses through a tanh knee instead of running past the viewport.
@@ -148,7 +158,7 @@ public struct StaveConfiguration: Sendable {
         fanMax: Float = 0.40,
         fanTau: Float = 0.12,
         levelTau: Float = 20.0,
-        zoom: Float = 0.93,
+        zoom: Float = 0.88,
         frameKnee: Float = 0.75,
         sampleRate: Float
     ) {
