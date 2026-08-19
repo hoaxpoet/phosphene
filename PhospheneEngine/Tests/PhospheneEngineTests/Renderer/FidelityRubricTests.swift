@@ -307,7 +307,29 @@ struct FidelityRubricGateTests {
     // (lightweight L2: deviation primitives are consumed CPU-side in
     // SkeinState, invisible to the MSL heuristic — the Lumen Mosaic
     // precedent); Matt's M7 is the load-bearing gate per SHADER_CRAFT §12.1.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Aurora Veil", "Cymatic Resonance", "Volumetric Lithograph", "Meniscus", "Witchlight"]
+    // FRACTAL TREE — certified 2026-08-19 (FTR.5), Matt on session `2026-08-19T17-25-03Z`:
+    // *"Fractal Tree looks good. I think it's ready for certification finally."* The 19th, and
+    // the one that took longest: thirty-three increments and roughly a dozen live rejections of
+    // one complaint — *"no clear connection to the music"* — while every amplitude route measured
+    // healthy. What finally moved it was not a signal but a PREMISE: the tree needed to DANCE
+    // (FTR.28, his Fantasia broomsticks reframe), and a dance is a phase, not an amplitude. The
+    // three channels that stayed illegible after that were each following a quantity no listener
+    // holds, and the fix in every case was to stop following: colour is now a fixed palette, the
+    // tips step on the beat, and the size holds and steps (FTR.33).
+    //
+    // `rubric_profile: lightweight` — a deliberately low-fidelity flat-graphic preset, so the
+    // detail-cascade and 3-material items are waived by profile (SHADER_CRAFT §12.4 / D-067(b)),
+    // the same basis as Aurora Veil, Glaze and Dragon Bloom. It DOES satisfy the two mandatory
+    // items no profile waives: deviation primitives per D-026 (`bass_dev` gates the gait's step
+    // size and the tone) and a graceful silence fallback (`pulse_amp01` collapses it to the
+    // 7-branch figure, non-black per D-037). Not covered by `PresetFrameBudgetTests` —
+    // `MultiPassRenderHarness` cannot drive it, so it is named in `uncoveredPresets` there and
+    // its frame cost is unguarded; that is a real gap in this certification, not a clean pass.
+    //
+    // ⚠ Verified the reviewed BINARY, not just the session: `ArrivalStep.o` compiled 12:24:46,
+    // app built 12:24:50, last run 12:25:06, session log opens 12:25:04 CDT — so the M7 was on
+    // the FTR.33 build and not a stale one (the BUG-051 discipline).
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Aurora Veil", "Cymatic Resonance", "Volumetric Lithograph", "Meniscus", "Witchlight", "Fractal Tree"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

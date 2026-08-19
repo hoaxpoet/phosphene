@@ -899,7 +899,7 @@ Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) i
 **What is actually in flight, 2026-08-03.** Each entry names its own owner section; this list is a pointer, not a second source of truth.
 
 1. **Beat-sync program (D-202)** — the largest active program. Phase TRK is ⏸ **PARKED** (D-206) and must not reopen without a changed premise about the **grid**, not the tracker. **DBN.3** is the live thread but its stated gate ("blocked on FT.1") is **satisfied-but-unresolved**: FT.1 landed 2026-07-31 with a **negative** payoff, so the block condition is met while the decision it was waiting for was never made — see the DBN.3 row for the successor state. **FT.3** and **FT.3.1** are specced and awaiting Matt (`docs/prompts/FT3_BARLINE_FROM_ACCENTS.md`, `docs/prompts/FT31_GRID_METRICAL_LEVEL.md`). Owner section: §Phase FT / §Beat-Sync Program.
-2. **Preset work in flight** — **FTR.3/.4/.5** (Fractal Tree per-branch activation → stem binding → M7+cert), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
+2. **Preset work in flight** — ~~FTR.3/.4/.5 (Fractal Tree)~~ **✅ CERTIFIED 2026-08-19, the 19th** (FTR.5; M7 on `2026-08-19T17-25-03Z`), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
 3. **CLEAN backlog** — Phases 0–5 and 7 are closed. **Phase 6** (5 open rows) and **Phase 8** (4 open rows, the XL decomposition) remain. Phase 8 is the same work as PUB **R3.5**. Authoritative queue: [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) Part C.
 4. **PUB R3 decomposition** — slices R3.1/R3.2 done; **R3.3 (analysis), R3.4 (LF transport), R3.5 (orchestrator bridge)** queued. R3.5 = CLEAN Phase 8; do not schedule them as separate efforts.
 5. **Open defects worth scheduling** *(refreshed 2026-08-07 — BUG-079 and BUG-078 are now RESOLVED and have left §Open; the working order below is the triage that replaced this line's earlier list)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
@@ -2551,6 +2551,48 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
+
+**FTR.5 — Fractal Tree CERTIFIED.** ✅ **2026-08-19**, Matt on session `2026-08-19T17-25-03Z`:
+*"Fractal Tree looks good. I think it's ready for certification finally."* The **19th certified
+preset**, and the longest road of any of them — 33 increments and roughly a dozen live rejections
+of a single complaint.
+
+**What actually unlocked it, in one line: the tree had to DANCE, not react.** Nine increments were
+spent on WHICH SIGNAL should set the tree's size, and every one of them was answering the wrong
+question. The unblocking move was Matt's, in his own visual language, and it came from asking him
+what he PICTURED rather than which feature he wanted: *"the motion of the broomsticks in Fantasia's
+The Sorcerer's Apprentice."* A dance is a **phase**; amplitude only sets step size (FTR.28/29).
+Then the three channels still illegible afterwards were each following a quantity no listener
+holds, and all three stopped following (FTR.33).
+
+**★★★ The measurement worth carrying to every future preset:** the size followed true loudness from
+`raw_tap.wav` at **r = +0.863** and Matt still called it random. **Accuracy is not what makes an
+audio channel legible — a shared reference with the listener is.** Every "it doesn't feel connected"
+report in this arc was a reference problem misdiagnosed as a coupling problem, and in five of nine
+increments the routing was already right.
+
+**Certification basis.** `rubric_profile: lightweight` (SHADER_CRAFT §12.4 / D-067(b)) — a
+deliberately low-fidelity flat-graphic preset, so the detail-cascade and 3-material items are
+waived by profile, the same basis as Aurora Veil, Glaze and Dragon Bloom. Automated ladder
+**3/4 = a clean pass**: L1 silence fallback, L2 deviation primitives (`bass_dev`) and L3 performance
+all pass automatically, and L4 is the manual reference-frame match Matt supplied. Both halves of
+the flip land in one commit (sidecar `certified: true` + `FidelityRubricTests.certifiedPresets`).
+
+**Verified the BINARY, not just the session** (BUG-051 discipline): `ArrivalStep.o` compiled
+12:24:46, app built 12:24:50, last run 12:25:06, session log opens 12:25:04 CDT — the M7 was on the
+FTR.33 build. Measured on that session: **4 size changes in 85 s (2.8/min)**, all three tiers used
+(24 / 18 / 43 s), growth unchanged on **91 %** of samples, density rank spanning 0.09→0.93.
+
+**BUG-093 resolved** — the P1 that recorded "the tree moves plenty and still reads as disconnected"
+and correctly forbade another tuning increment without a changed premise. Two premise changes
+arrived (FTR.28, FTR.33) and both came from Matt.
+
+**⚠ One real gap in this certification, stated rather than buried:** Fractal Tree is in
+`PresetFrameBudgetTests.uncoveredPresets` because `MultiPassRenderHarness` cannot drive it, so its
+frame cost is **unguarded by any standing gate** — and FTR.33 made the canopy fuller in dense
+passages. L3 passes on the rubric's own check, but a per-preset budget row would be better. Also
+carried forward: the preset now has **no stem route at all**, and the retired FTR.4 `buffer(3)`
+gate means nothing currently proves a mesh preset's object stage can read `StemFeatures`.
 
 **FTR.33 — colour stops being an audio channel, the tips join the dance, and the size holds and
 steps.** ✅ code-complete, **pending live M7** (2026-08-19) Matt's three remaining complaints from
