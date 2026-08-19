@@ -711,12 +711,6 @@ entry above. BUG-085 remains open, and the next live freeze must be captured wit
 `Scripts/capture_hang.sh` before force-quit.**
 
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
-
-A full debugging round on 2026-08-04 was spent on a missing (gitignored) `PhospheneApp/Phosphene.local.xcconfig`: `SpotifyOAuthTokenProvider.resolveClientID()` found an empty `SpotifyClientID` and threw `.spotifyAuthFailure` immediately, and the connector rendered the same generic string it shows for user-denied authorization and login timeout — three causes, three different fixes, one message.
-
-- **Copy.** `SpotifyConnectionViewModel.authFailureMessage` reads `Bundle.main.infoDictionary["SpotifyClientID"]` and, when it is empty or absent, returns new copy naming the file to create and telling the developer to rebuild. **Gated `#if DEBUG`**: this is a developer-setup failure, and an end user can neither create an xcconfig nor be told about one (UX_SPEC §9.5 #4, no jargon), so shipped builds keep the generic string. No new state case — `.authFailure` still covers all causes, only the copy branches. New row in UX_SPEC §9.2; test `authFailureCopyDistinguishesMissingClientID` covers the static seam.
-- **Runbook.** Setup step 5 said to point the Debug/Release xcconfig at `Phosphene.local` in Xcode. That is stale and was the misleading half of the round: `project.pbxproj` already sets `baseConfigurationReference` to `Phosphene.xcconfig`, which ends with `#include? "Phosphene.local.xcconfig"` — creating the file is sufficient. Replaced with "build", plus a note that the file is gitignored and therefore does not survive `git clean -fdx`, a fresh clone, or a new worktree, which is how it went missing.
-
 ### Increment RECON.1–.3 — Production audit: hygiene + doc reconciliation ✅ (2026-08-03)
 ### Increment MEN.2a — Meniscus: serpentine wave surface (stub) ✅ (2026-08-03, `c0453fd9`)
 ### Increment LFS.2 / LFS.3 — reference + diagnostic images leave git (D-211) ✅ (2026-07-31 → 2026-08-03)
@@ -5724,6 +5718,19 @@ signature of a fix rather than a re-tune. Flare alignment on the worst session r
    and **was confirmed to fail (0 pulses) on the pre-fix code** rather than merely passing beside
    it. Same species as the earlier `SessionReplayHarness` misses: a harness that does not
    reproduce the production time base is not testing production.
+
+**Second M7 the same day closed the accent gap** (`2026-08-18T18-04-06Z`, Matt: *"Witchlight looks
+good"*). That session was healthy — 16.7 ms median, 0.0 % of frames over the cap — so BUG-097 was
+dormant and the accents fired at **55 : 162 (2.95:1)**. Matt has therefore approved the calm
+stroke and the working accents together. ⚠ It ran the **WL.13** binary (objects compiled 11:10:12
+against a 13:03:44 merge), so **WL.14 is still un-validated live**: it only bites under load, and
+no loaded session yet carries it. Evidenced offline only.
+
+⚠ **A frame-rate/build race worth remembering.** The app linked 5 s after the merge and 34 s
+before the session — Matt rebuilt on the merge notification, before the fast-forward reached his
+checkout, so his source had the fix and his binary did not. Merging does not reach the app, and
+neither does fast-forwarding once a build is already running. Check the changed file's `.o`
+timestamp, not the app bundle's.
 
 **Also recorded here: BUG-095's M7 came back positive** (`2026-08-18T16-10-38Z`, Matt: *"Looks
 good overall"*) — 42 heading turns against 74 pre-fix and 50 certified. ⚠ His sign-off covers the
