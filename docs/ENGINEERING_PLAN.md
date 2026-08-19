@@ -6560,3 +6560,42 @@ analysis.
 instrumentation will have earned its keep by saying so.
 
 App builds, lint 0.
+
+### Increment PERF.10 — the first instrumented session: VL is 3.5 fps, thermal is nominal ✅ (2026-08-19)
+
+Matt's session `2026-08-19T22-45-50Z`, the first carrying both `RENDER_TARGET` (PERF.1) and
+`THERMAL_STATE` (PERF.9). It answers one open question, half-answers another, and **raises the
+severity of a third**.
+
+**Measured at 3840×2160:**
+
+| preset | GPU median | fps | over time |
+|---|---|---|---|
+| **Volumetric Lithograph** | **269.89 ms** (p90 369.75) | **3.5** | 270–313 ms sustained |
+| Witchlight | 6.43 ms | 49.1 | 6.77 → 6.22 over 60 s, **flat** |
+| Stave | 2.88 ms | 51.4 | flat |
+
+**1. BUG-101 escalates to P1.** VL measures **32.56 ms/megapixel** over 905 frames. At the
+product's stated 60 fps **at 1080p** that extrapolates to ~67 ms ≈ **15 fps** — a certified
+preset missing its own target by ~4× at the promised resolution, not merely at 4K. The diagnosis
+from PERF.8 is unchanged (~69 % Perlin noise, already twice-optimised, no waste); **what changes
+is that "expensive by construction" was an acceptable answer at a presumed 16 ms and is not one
+at 3.5 fps.** The remaining lever buys 10 % against a 4× gap, so this is a scope decision — render
+scale, step budget, or accepting VL as a preset that cannot run at full resolution.
+
+**2. The 16.44 ms figure is retracted, with the mechanism now visible.** It came from 89 frames
+spanning a preset transition. This session reproduces exactly those sub-6 ms readings at segment
+boundaries (5.85, 2.72 ms) alongside a 270–313 ms body — they are frames where the preset is not
+yet rendering. A median over a short window that straddles a switch measures the switch.
+
+**3. BUG-100: thermal is `nominal` and the degradation did not reproduce.** Witchlight held flat
+across 60 s at 4K, a window comparable to the one where Stave went 2.9 → 11.7 ms, and
+`THERMAL_STATE` never left `nominal`. That supports neither the thermal hypothesis nor a general
+sustained-4K decay — **and refutes neither**, since the degrading session ran a different preset
+mix and one non-reproduction is not a falsification. What it does establish is that the
+instrument works and reports cleanly, so the next session that degrades will carry the answer.
+
+**Also confirmed: the Witchlight fix holds in production.** 6.43 ms at 4K, flat over a minute,
+against 273.88 ms before BUG-098 — and 49 fps rather than 11.
+
+No code change.
