@@ -6265,3 +6265,37 @@ in the rendered PNGs answered it directly. **Fourth metric misread in a day**; t
 identical each time — the number was real, and what it measured was not what the question asked.
 
 Suite 1876/1876, lint 0.
+
+### Increment CHR.3k — Stave CERTIFIED ✅ (2026-08-19)
+
+**Matt's M7** on `2026-08-19T18-23-44Z`: *"Looks good. I recommend we keep 0.88."* Stave is the
+**19th certified preset** and the first in the `waveform` family.
+
+**The build was verified before the pass was recorded, and that mattered — twice.** Two earlier
+sign-offs in this same sequence turned out to be on the wrong value:
+
+| session | binary's `zoom` | Matt |
+|---|---|---|
+| 17:50 | 0.93 | *"the size of the visual looked the same"* |
+| 18:16 | 0.93 (again — #128 had not merged) | *"looks good"* |
+| **18:23** | **0.88** (`.o` compiled 18:23:25 UTC, 21 s before the session) | *"Looks good. Keep 0.88."* |
+
+The 18:16 approval was of the value he had just called invisible, because the newer build had
+not reached his machine. Checking the object timestamp against the merge time is what caught it;
+the app bundle's own timestamp would not have, since the launcher relinks without recompiling.
+
+**What the certification covers.** `zoom: 0.88` (−9.2 % visible extent, measured on rendered
+frames), the CHR.3g route declaration (`band_dispersion ← waveformOccupancy`, proved by QG.1),
+and the CHR.3b concept — the visible spectrum aligned to the frequency spectrum.
+
+**What it explicitly does not cover: BUG-100.** Matt's earlier *"performance slowed over time"*
+was traced to a whole-app limit under sustained 4K that affects every preset, with three
+preset-side hypotheses falsified. Certifying Stave does not close it, and it remains open.
+
+**Roster: 29 presets, 19 certified.**
+
+Also in this increment: `TempVLPerf.swift`, a throwaway VL timing probe, was swept into the
+CHR.3j commit by `git add -A` and reached main. Removed. It was env-gated so it never ran, but a
+scratch file in the test target is noise the next reader has to identify and discard.
+
+Suite green, lint 0.
