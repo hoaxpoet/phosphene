@@ -105,11 +105,26 @@ back.
    (Witchlight reads `frame_cpu` 24.4 ms at 4K, against Stave's own 17.4 ms early in the same
    session) and partially recovers after a 2.16 MP interlude.
 
-⚠ **A second, more tractable finding inside this one.** `encode_cpu_ms` measures **15–16 ms at
-4K** — essentially the whole 60 fps budget spent on CPU-side encoding before any GPU work — and
-it **scales with resolution** (9.1 ms at 2.07 MP → 16.4 ms at 8.29 MP). CPU encode work should
-not scale with pixel count. That is worth investigating on its own and does not depend on
-resolving the thermal question.
+⚠ **A "second finding" was filed here and is RETRACTED — the metric did not mean what its name
+says.** The entry originally claimed `encode_cpu_ms` was CPU work scaling with pixel count
+(9.1 ms at 2.07 MP → 16.4 ms at 8.29 MP) and called it "the more tractable half".
+
+**It is not CPU work.** `encode_cpu_ms` is wall-clock from `draw()` entry to `commit()`
+(`RenderPipeline.swift:752…822`), and `view.currentDrawable`
+(`DrawableLifecycleProbe.swift:256`) is called *inside* that window. `currentDrawable` **blocks**
+until CoreAnimation frees a drawable, so when the GPU is slower — which at 4K it is — the block
+is longer and the "CPU" number rises with it. The inflight semaphore is correctly excluded
+(waited at line 743, before `cpuDrawStart`), which is probably why the drawable wait was assumed
+excluded too. It is not.
+
+So there is **no separate CPU-encode defect**, and no fix to make there. At 4K the app is simply
+saturated: GPU 12.9 ms plus presentation waits, with `frame_cpu` (44.9 ms) measuring
+draw-start → completion and therefore carrying queue latency for a pipeline that cannot keep up.
+
+⚠ **Third time in one day** that a metric was read as its name rather than its definition —
+after `deltaTime` (vsync, not headroom) and the harness milliseconds (readback included). The
+rule that keeps holding: **read what the number is computed from before concluding anything from
+its trend.**
 
 **What cannot be settled from recordings.** Thermal throttling of the Mac mini under sustained
 4K is the leading explanation for the remainder, and nothing in the session records clock or

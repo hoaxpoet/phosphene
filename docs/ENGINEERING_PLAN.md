@@ -6186,12 +6186,43 @@ What the data does say: over 70 s at 4K, `frame_cpu_ms` 17.4 → 43.6 and `frame
 11.7, **while the app's own CPU work stays flat** (`encode_cpu_ms` 12.9 → 15.2,
 `renderframe_cpu_ms` 9.8 → 11.0). Same work, less delivered.
 
-⚠ **A second finding inside it, and probably the more tractable half:** `encode_cpu_ms` is
-**15–16 ms at 4K** — the entire 60 fps budget spent on CPU encode before any GPU work — and it
-**scales with resolution** (9.1 ms at 2.07 MP). CPU-side encode should not scale with pixel
-count.
+⚠ **A second finding was claimed here and is RETRACTED (see PERF.6):** `encode_cpu_ms` rising
+with resolution is not CPU work — the timer spans `draw()` → `commit()` and
+`view.currentDrawable`, a BLOCKING call, sits inside it. There is no separate CPU-encode defect.
 
 **Stave is therefore still uncertified**, and correctly so: one of the two M7 items is a
 whole-app defect that no preset change can fix. The size change alone does not earn the flip.
 
 Suite 1866/1866, lint 0.
+
+### Increment PERF.6 — the `encode_cpu_ms` finding was wrong, and the reason is the day's pattern ✅ (2026-08-19)
+
+**Matt: *"troubleshoot the encode_cpu scaling."*** Troubleshot, and the answer is that there is
+nothing to fix — the metric does not mean what its name says.
+
+**What was claimed (CHR.3h / BUG-100).** `encode_cpu_ms` measured 9.1 ms at 2.07 MP and 16.4 ms
+at 8.29 MP, consistently across three different presets. Fitting that gave "~6.7 ms fixed CPU +
+1.17 ms per megapixel", and the conclusion filed was that CPU-side encoding should not scale
+with pixel count and was therefore defective — "probably the more tractable half" of BUG-100.
+
+**What it actually is.** `encode_cpu_ms` is wall-clock from `draw()` entry to `commit()`
+(`RenderPipeline.swift:752…822`). `view.currentDrawable` (`DrawableLifecycleProbe.swift:256`) is
+called **inside** that window, and it **blocks** until CoreAnimation frees a drawable. At 4K the
+GPU is slower, drawables recycle more slowly, and the block lengthens — so a wall-clock timer
+labelled "cpu" rises with GPU load.
+
+The comment above the timer says it excludes the inflight-semaphore wait (line 743, before
+`cpuDrawStart`) — true, and probably why the drawable wait was assumed excluded too. It is not.
+
+**So: no CPU-encode defect, and no fix.** At 4K the app is saturated — 12.9 ms GPU plus
+presentation waits, with `frame_cpu` (44.9 ms) spanning draw-start → completion and therefore
+carrying queue latency for a pipeline that cannot keep up. BUG-100's remaining question, the
+degradation *over time* at fixed resolution, is untouched by this and still points at thermal.
+
+⚠ **This is the third metric misread in one day**, after `deltaTime` (vsync-dominated, not
+headroom) and harness milliseconds (readback included, ~0.56× of live). Each time the number was
+real and the *name* was the trap. The rule that keeps holding, and the reason this increment is
+worth its own entry despite changing no code: **read what a number is computed from before
+concluding anything from its trend** — especially before filing it as a defect.
+
+No code change. Docs only: BUG-100's second finding retracted in place rather than deleted.
