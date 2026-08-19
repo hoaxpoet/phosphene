@@ -53,5 +53,5 @@
       "note": "CHR.3c/CHR.3g — how much signal is on screen opens and closes the spectral fan (fanMin 0.02 -> fanMax 0.40, 0.12 s smoothing over a 20 s per-band envelope)."
     }
   ],
-  "certified": true
+  "certified": false
 }
