@@ -118,7 +118,7 @@ without changing what the preset draws. **The tilt exponent is load-bearing:** d
 ratio it normalises every track to ~1 and destroys quiet-vs-dense discrimination (measured:
 Take Five 0.076–0.158 → 0.184–0.358, the wrong direction).
 
-### Increment CHR.3d — regenerate the route-coverage fixtures ⏳ PLANNED
+### Increment CHR.3d — regenerate the route-coverage fixtures ✅ (done at BUG-090 / CHR.3g)
 
 **Blocks certification of every waveform-driven preset, Stave included.** The committed
 `Fixtures/route_coverage/` CSVs carry only `spectralCentroid` and `spectralFlux` — they predate
@@ -6021,5 +6021,53 @@ it rather than trusting it:
 
 The recorded per-preset baselines are kept and printed for orientation but **do not gate** —
 they are wall-clock on one machine on one day, and asserting on them is asserting on the weather.
+
+Suite 1866/1866, lint 0.
+
+### Increment CHR.3g — Stave's route is provable: the fixture was wrong, not the gate ✅ (2026-08-19)
+
+**Matt: *"Can Stave be finished and certified before we troubleshoot VL…?"*** The blocker turned
+out to be one generator gap, and **two prior diagnoses of it were wrong**.
+
+**What was blocking.** Stave shipped with `audio_routes: []` and `certified: false`. Its one
+driver, `waveformOccupancy` (CHR.3c, built for this preset), could not be declared because QG.1
+measured the column as **0.0000 with zero variance on all three fixtures** — and QG.1 is right to
+refuse a route it cannot see move.
+
+**Diagnosis 1 (wrong):** blamed on BUG-090's frozen fixtures. Regenerating them did not help.
+**Diagnosis 2 (wrong, and worse):** recorded as the QG.1.1 limitation — *"offline fixtures cannot
+reach render-path-derived values"* — which reads as a law of the harness rather than a fixable
+gap, and would have parked Stave indefinitely.
+
+**Actual cause.** `waveformOccupancy` is published by `RenderPipeline` per frame
+(`RenderPipeline.swift:773`), and `FixtureSessionCaptureGenerator` runs only the MIR half, so it
+emitted the column as a constant zero. **The fixture was wrong** — not the gate, not the preset,
+and not an inherent property of offline capture.
+
+**Fix.** The generator now ticks the same `WaveformOccupancy` model from each hop's own samples
+(FA #66 — drive the live path, never reimplement it). `advance` wants the engine's interleaved
+stereo layout, and the fixture decode is mono, so each sample is written to both channels, which
+the downmix inside `advance` reverses exactly.
+
+| track | nonzero | range |
+|---|---|---|
+| so_what | 100 % | 0.0030 – 0.2393 |
+| there_there | 100 % | 0.0484 – 0.1850 |
+| love_rehab | 100 % | 0.0130 – 0.3677 |
+
+Matching `WaveformOccupancy`'s own documented expectation ("roughly 0…0.2 on real music",
+denser material higher). **Exactly one column changed** in the regenerated fixtures, which is the
+check that this touched nothing else.
+
+Stave now declares `band_dispersion ← waveformOccupancy` and **route coverage reads 203 routes /
+21 presets, 0 red** (was 199 / 20).
+
+**Still open: certification is Matt's M7.** Per `SHADER_CRAFT.md` §12.1 the reference-frame
+review is the load-bearing gate; the automated rubric is a sanity check. Flipping
+`certified: true` and adding Stave to `FidelityRubricTests.certifiedPresets` waits on that.
+
+⚠ **One unexplained suite failure** was seen during this increment (1 issue, not captured) with
+two subsequent clean full runs (1866/1866). Recorded rather than glossed: if it recurs, capture
+the failing test name before assuming it is timing.
 
 Suite 1866/1866, lint 0.

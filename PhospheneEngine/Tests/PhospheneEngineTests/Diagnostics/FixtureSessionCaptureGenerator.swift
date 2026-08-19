@@ -50,6 +50,7 @@ import Testing
 @testable import Audio
 @testable import DSP
 @testable import ML
+@testable import Renderer
 @testable import Session
 @testable import Shared
 
@@ -211,6 +212,21 @@ struct FixtureSessionCaptureGenerator {
         mir.setBeatGrid(grid)
         let mood = MoodClassifier()
 
+        // CHR.3g — `waveformOccupancy` is NOT produced by `MIRPipeline`. `RenderPipeline`
+        // ticks it per frame from the live waveform buffer (RenderPipeline.swift:773), so a
+        // generator that runs only the MIR half emits the column as a constant 0.0000 — which
+        // is exactly what it did, on all three tracks, and is why Stave could not declare its
+        // one route and could not be certified. QG.1 correctly refused to assert a column with
+        // zero variance; the fixture was the thing that was wrong.
+        //
+        // Ticked here from the same hop window the FFT sees, so the column carries the real
+        // signal rather than a plausible-looking reconstruction (FA #66 — drive the live path).
+        // `advance` expects the engine's INTERLEAVED stereo layout (2 x frames); the fixture
+        // decode is mono, so each sample is written to both channels, which is what the mono
+        // downmix inside `advance` then reverses exactly.
+        var occupancy = WaveformOccupancy()
+        var interleaved = [Float](repeating: 0, count: Self.hop * 2)
+
         var rows: [String] = []
         var latestValence: Float = 0
         var latestArousal: Float = 0
@@ -223,6 +239,17 @@ struct FixtureSessionCaptureGenerator {
             var fv = mir.process(
                 magnitudes: magnitudes, fps: fps,
                 time: Float(frame) * deltaTime, deltaTime: deltaTime)
+
+            // CHR.3g — the render-path primitive, ticked from this hop's samples.
+            for i in 0..<Self.hop {
+                interleaved[2 * i] = window[i]
+                interleaved[2 * i + 1] = window[i]
+            }
+            interleaved.withUnsafeBufferPointer { buffer in
+                guard let base = buffer.baseAddress else { return }
+                occupancy.advance(waveform: base, frames: Self.hop, deltaTime: deltaTime)
+            }
+            fv.waveformOccupancy = occupancy.value
 
             // Mood at the production classify cadence (analyzeMIR: every 30
             // frames, EMA-accumulated); fv carries the latest state between
