@@ -711,12 +711,6 @@ entry above. BUG-085 remains open, and the next live freeze must be captured wit
 `Scripts/capture_hang.sh` before force-quit.**
 
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
-
-A full debugging round on 2026-08-04 was spent on a missing (gitignored) `PhospheneApp/Phosphene.local.xcconfig`: `SpotifyOAuthTokenProvider.resolveClientID()` found an empty `SpotifyClientID` and threw `.spotifyAuthFailure` immediately, and the connector rendered the same generic string it shows for user-denied authorization and login timeout — three causes, three different fixes, one message.
-
-- **Copy.** `SpotifyConnectionViewModel.authFailureMessage` reads `Bundle.main.infoDictionary["SpotifyClientID"]` and, when it is empty or absent, returns new copy naming the file to create and telling the developer to rebuild. **Gated `#if DEBUG`**: this is a developer-setup failure, and an end user can neither create an xcconfig nor be told about one (UX_SPEC §9.5 #4, no jargon), so shipped builds keep the generic string. No new state case — `.authFailure` still covers all causes, only the copy branches. New row in UX_SPEC §9.2; test `authFailureCopyDistinguishesMissingClientID` covers the static seam.
-- **Runbook.** Setup step 5 said to point the Debug/Release xcconfig at `Phosphene.local` in Xcode. That is stale and was the misleading half of the round: `project.pbxproj` already sets `baseConfigurationReference` to `Phosphene.xcconfig`, which ends with `#include? "Phosphene.local.xcconfig"` — creating the file is sufficient. Replaced with "build", plus a note that the file is gitignored and therefore does not survive `git clean -fdx`, a fresh clone, or a new worktree, which is how it went missing.
-
 ### Increment RECON.1–.3 — Production audit: hygiene + doc reconciliation ✅ (2026-08-03)
 ### Increment MEN.2a — Meniscus: serpentine wave surface (stub) ✅ (2026-08-03, `c0453fd9`)
 ### Increment LFS.2 / LFS.3 — reference + diagnostic images leave git (D-211) ✅ (2026-07-31 → 2026-08-03)
@@ -2557,6 +2551,33 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
+
+**FTR.31b — the bounce was never weak; the instrument was measuring the arc.** ✅ (2026-08-18)
+Matt, on being told the build was "ready for a look" with a missing requirement attached: *"Why
+would you have me test this based on what you wrote me? Sounds like it doesn't meet my
+requirements."* Correct, and both caveats dissolved on inspection rather than on iteration.
+
+**The bounce.** Reported as unmeasurable across FTR.29→FTR.31 (R² 0.05–0.08), with a note that
+raising the spring 2.3× did not help. Both true and both irrelevant: **R² is a share of VARIANCE, and
+the tree's vertical position carries the slow growth arc** — large-amplitude, low-frequency, and by
+design unrelated to the beat. The arc owns the variance budget, so a perfectly good per-beat bob
+scores 0.08 while the LEAN scores 0.98 (nothing slow competes for horizontal position).
+
+Measured on the fast residual — the raw pose minus a 1.5-beat moving average, which is the timescale
+the bounce lives on — the same build reads **R² 0.79, in step r +0.889 against a 0.017 control.**
+The bounce has been reading since FTR.28. Now gated, so the claim cannot rot.
+
+**The trunk's beat-step.** FTR.29 claimed to "supersede Matt's FTR.10 choice" on the strength of
+BUG-096's engagement figure, which FTR.31 then retracted — leaving what looked like an unjustified
+regression. Checking the record instead of re-litigating it: **at FTR.22 Matt rejected the trunk's
+stepping in those words** — *"robotic… start-and-stop… MECHANICAL rather than organic"* — and chose
+the continuous target. The smooth-arc trunk is his own decision; the retracted number was never what
+justified it. FTR.29's write-up was sloppy in citing it, and that is all.
+
+**★ The process lesson, which is the expensive one: an "honest caveat" attached to a review request
+is often an unfinished diagnosis being outsourced.** Both caveats here were mine to close — one an
+instrument error, one a records check — and each took minutes. Matt's time is for questions only his
+eyes can answer.
 
 **FTR.31a — the cold start FTR.31 would have undone.** ✅ (2026-08-18) Caught while answering
 "is this ready for M7?" rather than by a review.

@@ -2258,9 +2258,47 @@ struct FractalTreeMeshRenderTest {
         }
         let swayR2 = Self.explainedVariance(sway, basis: basis)
         let bounceR2 = Self.explainedVariance(bounce, basis: basis)
+        // ⚠ THE BOUNCE MUST BE MEASURED ON THE FAST RESIDUAL, NOT THE RAW POSE. R² is a share of
+        // VARIANCE, and the tree's vertical position carries the slow growth arc — large-amplitude,
+        // low-frequency, and by design unrelated to the beat. That arc swamps the variance budget,
+        // so a perfectly good per-beat bob scores 0.08 while the clock explains almost all of the
+        // LEAN (0.98), whose slow component the arc does not touch. Removing a 1.5-beat moving
+        // average leaves the motion at the timescale the bounce actually lives on. This separates
+        // timescales; it does not weaken a bar — the raw figure is still printed above.
+        let beatLen = { () -> Double in
+            let bpm = rows[startRow]["grid_bpm"] ?? 0
+            return bpm > 1 ? 60.0 / bpm : 0.638
+        }()
+        let window = max(3, Int((beatLen * 1.5) / rowDT))
+        let bounceFast: [Double] = bounce.indices.map { i -> Double in
+            let lo = max(0, i - window / 2), hi = min(bounce.count - 1, i + window / 2)
+            let mean = bounce[lo...hi].reduce(0, +) / Double(hi - lo + 1)
+            return bounce[i] - mean
+        }
+        let bounceFastR2 = Self.explainedVariance(bounceFast, basis: basis)
+        let bounceFastCorr = Self.correlation(bounceFast, beatWave)
+        let bounceFastDecoy = Self.correlation(bounceFast, decoyBasis)
+        print(String(format:
+            "[fractal-tree/gait] BOUNCE on the fast residual: R² %.2f  in-step r %+.3f (decoy %+.3f)",
+            bounceFastR2, bounceFastCorr, bounceFastDecoy))
         print(String(format:
             "[fractal-tree/gait] COORDINATION (R² of pose on the clock basis): sway %.2f | bounce %.2f",
             swayR2, bounceR2))
+        // Matt asked for TWO layers — "bounces, sways" — so both get a bar. The bounce's is on the
+        // fast residual for the reason above; measured 0.79 / +0.889 against a 0.017 control, so
+        // 0.35 is a floor with room, not a bar fitted to the current build.
+        #expect(bounceFastR2 > 0.35, """
+            the per-beat BOUNCE does not survive on the fast residual: R² \(bounceFastR2), in-step \
+            r \(bounceFastCorr) against a decoy of \(bounceFastDecoy). Matt asked for a bounce AND a \
+            sway; a build with only the lean is half the gait. Note the RAW bounce R² \
+            (\(bounceR2)) is expected to be low — the slow growth arc owns most of the vertical \
+            variance by design, which is why this residual gate exists.
+            """)
+        #expect(bounceFastCorr > abs(bounceFastDecoy) * 3, """
+            the bounce's in-step correlation (\(bounceFastCorr)) is not clearly better than against \
+            an incommensurate-tempo control (\(bounceFastDecoy)).
+            """)
+
         #expect(swayR2 > 0.45, """
             the clocks explain only \(swayR2) of the tree's lean — the motion is mostly NOT the \
             music, which is Matt's "uncoordinated… does not read as a dance". Raising the gait's \
