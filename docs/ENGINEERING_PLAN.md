@@ -2502,6 +2502,12 @@ single-path. **Not invalidated:** FTR.10/FTR.11's beat-stepping, which is about 
 there is, not which stem drives it. Fractal Tree remains **not certified**, FTR.11 remains
 **unverified live**.
 
+> **⏱ Superseded 2026-08-19 — this paragraph is a record of 2026-08-12, not a status.** Fractal Tree
+> is **CERTIFIED** (FTR.5, the 20th). Annotated rather than edited because the sentence was true
+> when written and the entry is the audit trail for FTR.12; but "remains not certified" is written
+> in the present tense, so a grep for the preset's status lands on a false answer. Any dated entry
+> asserting a *current* state is a trap of this shape.
+
 **FTR.12b — the claim retired, on Matt's word.** ✅ (2026-08-12) Matt, shown the verdict:
 *"yup, retire the guitar claim."* Four surfaces, **copy and comments only — zero behaviour
 change, and the route is deliberately unchanged**: the tips still read `other_onset_rate`,
@@ -2551,6 +2557,63 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
+
+**PERF.8 — the residue increment: coverage 16 → 20, and the gate the FTR.4 retirement left behind.**
+✅ **2026-08-19**, Matt: *"do the residue items"* — the three items FTR.5/PERF.7's closeouts had
+named rather than fixed.
+
+**1. A superseded status claim, annotated not edited.** `ENGINEERING_PLAN.md` line ~2502 (the FTR.12
+entry) reads *"Fractal Tree remains **not certified**"* in the present tense. True when written on
+2026-08-12; a grep for the preset's status now lands on a false answer. Annotated in place with a
+dated supersession note, because the sentence is part of FTR.12's audit trail and editing history to
+match the present is how a plan stops being evidence. **The general trap: any dated entry that
+asserts a CURRENT state will eventually lie.**
+
+**2. The mesh/stem binding gate, restored as an ENGINE claim.** FTR.33 retired the FTR.4 gate that
+proved a mesh preset's object stage really reads `StemFeatures` — correctly, because Matt had moved
+Fractal Tree's tips onto the beat and that was the preset's only stem route. But Fractal Tree is the
+**only mesh preset in the repo**, so retiring it left nothing proving `MeshGenerator`'s buffer 2/3/5
+bindings reach the object stage: the next mesh preset wanting a stem route would find out by
+shipping a dead one (the `vocalsPitchConfidence`-at-0 %-for-five-months class).
+
+★ **The fix is to stop gating an engine claim on what a preset happens to want this week.**
+`MeshStemBindingTests` compiles a five-line probe shader **at runtime** from
+`PresetLoader.shaderPreamble` + an embedded MSL string — no `.metal` file, no bundle resource, no
+`Package.swift` change, and no preset can retire it by changing its own routing. Two tests: slot 3
+(live) and slot 5 (beat-held, which FTR.13 added and which slot 3 passing says nothing about).
+**Negative control run:** pointed at buffer(4) — a `FeatureVector` slot — both go red (rendered
+value 0 against a required +20), and green again when restored. A gate that has not been shown to
+fail is not known to be a gate. It pins the preamble's `StemFeatures` layout for free.
+
+**3. The four `direct` presets, which PERF.7 had named as the cheapest remaining paradigm.**
+`renderDirectPreset` reproduces `RenderPipeline.encodePresetVisualization` exactly — one generic path
+for all four, because a direct preset is one fullscreen fragment with no per-preset Swift state.
+**Every binding that call site makes is made here**, and that is the load-bearing part: an unbound
+buffer does not fail loudly, it samples zeros and costs less than production, so a missing binding
+records a budget for a cheaper frame than the app draws. Same hazard as PERF.7's silence gate, in a
+form no single-preset assertion catches. So FFT at 1, waveform at 2 (deterministic LCG content —
+dense, so no early-out in a spectrum-reading preset makes the frame artificially cheap), stems at 3,
+spectral history at 5, and the **real generated noise textures**, since Spectral Cartograph samples
+two and reading an unbound texture is free where sampling a real one is not.
+
+**Measured at 1920×1080:** Nebula 9.94, Waveform 9.50, Plasma 9.47, Spectral Cartograph 6.37 ms —
+all 0.5–0.8× the median, none an outlier. **Coverage 20 of 29.**
+
+**★★ AND COVERAGE ITSELF MOVES THE GATE, which is worth knowing before the next batch.** Adding four
+cheap presets lowers the median, so every expensive preset's ratio rises with no code change:
+Volumetric Lithograph went **4.6× → 5.2×** of the 8× ceiling. Widening the ceiling to compensate
+would defeat it; the honest reading is that the gate got stricter because the roster it compares
+against got more representative. Every absolute figure in this run also reads ~2× the recorded
+16-preset baselines (VL 30.8 → 64.3) — the contention the suite header documents, and precisely why
+the ratio gates and the baselines do not.
+
+**What is left, surveyed so the next increment does not re-derive it:** `feedback` ×3 (Membrane,
+Murmuration, Ricercar) need a ping-pong texture pair and a settle, since accumulation IS their
+subject; `staged` ×2 (Arachne, Staged Sandbox) need the staged pass order plus `ArachneState`;
+`mv_warp` ×1 (Gossamer) has bespoke state and `renderBespokeMVWarp` is the shape to copy;
+`ray_march` ×1 (Ferrofluid Ocean) needs the G-buffer + lighting passes; **Aurora Veil and Nimbus
+declare no passes at all** — pass-agnostic and driven from preset state, so each needs its own path.
+`feedback` is the cheapest remaining three and is a real increment, not a free win.
 
 **PERF.7 — the frame-budget harness drives its first MESH preset, and the gate is checked for
 being awake.** ✅ **2026-08-19**, on Matt's instruction after FTR.5's closeout named the gap:

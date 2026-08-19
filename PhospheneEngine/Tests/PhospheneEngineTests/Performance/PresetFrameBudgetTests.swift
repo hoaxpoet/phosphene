@@ -95,6 +95,21 @@ struct PresetFrameBudgetTests {
         "Meniscus": 5.28,
         "Glaze": 5.2,
         "Mitosis": 4.23,
+        // ── PERF.8, the four `direct` presets. Measured in a 20-preset run, where every figure
+        // above (recorded in a 16-preset run) reads roughly 2x higher — Volumetric Lithograph
+        // 30.8 → 64.3 with no code change. That is the contention the header describes, and it is
+        // why these are orientation only and the RATIO gates. Do not "fix" the older rows to
+        // match; they were honest measurements of a different run.
+        //
+        // ⚠ COVERAGE ITSELF MOVES THE GATE. Adding four cheap presets lowers the median, which
+        // raises every expensive preset's ratio: Volumetric Lithograph went 4.6x → 5.2x of the
+        // 8x ceiling without changing. Widening the ceiling to compensate would defeat it — the
+        // right reading is that the gate got stricter because the roster it compares against got
+        // more representative.
+        "Nebula": 9.94,
+        "Waveform": 9.50,
+        "Plasma": 9.47,
+        "Spectral Cartograph": 6.37,
         // PERF.7 — first mesh-shader row. Measured 3.88 / 4.07 ms across two runs at 1920x1080
         // with the canopy ALIVE (upper-canopy ink 1223 against the silent figure's 302); the
         // minimum is recorded, per this suite's own min-of-passes reasoning.
@@ -105,17 +120,21 @@ struct PresetFrameBudgetTests {
     /// Presets `MultiPassRenderHarness` cannot drive. Named, printed, and NOT counted as passing.
     /// PERF.7 removed "Fractal Tree" — the harness now drives the mesh-shader path.
     ///
-    /// SURVEYED so the next increment does not have to: of the 13 below, **none is a mesh preset**,
-    /// so the FTR path unlocks exactly one and there is no free win left in it. By declared pass:
-    /// `direct` ×4 (Nebula, Plasma, Spectral Cartograph, Waveform), `feedback` ×3 (Membrane,
-    /// Murmuration, Ricercar — the last two also `particles`), `staged` ×2 (Arachne, Staged
-    /// Sandbox), `mv_warp` ×1 (Gossamer), `ray_march`+`post_process` ×1 (Ferrofluid Ocean), and
-    /// two with NO declared passes (Aurora Veil, Nimbus — pass-agnostic, driven from preset state).
-    /// **`direct` is the cheapest next four**: one fullscreen fragment each, no per-preset state.
+    /// PERF.8 took the `direct` four (Nebula, Plasma, Spectral Cartograph, Waveform), which PERF.7's
+    /// survey had named as the cheapest remaining paradigm. **Coverage is now 20 of 29.**
+    ///
+    /// What is left, and what each would cost — surveyed so the next increment does not re-derive it:
+    /// `feedback` ×3 (Membrane, Murmuration, Ricercar — the last two also `particles`) need a
+    /// ping-pong texture pair and a settle, since their whole subject is accumulation; `staged` ×2
+    /// (Arachne, Staged Sandbox) need the staged pass order plus per-preset Swift state
+    /// (`ArachneState`); `mv_warp` ×1 (Gossamer) has bespoke state (`GossamerState`) and the
+    /// existing `renderBespokeMVWarp` is the shape to copy; `ray_march` ×1 (Ferrofluid Ocean) needs
+    /// the G-buffer + lighting passes; and Aurora Veil and Nimbus declare NO passes at all — they
+    /// are pass-agnostic and driven from preset state, so each needs its own bespoke path.
+    /// **`feedback` is the cheapest remaining three** and it is a real increment, not a free win.
     static let uncoveredPresets = [
         "Arachne", "Aurora Veil", "Ferrofluid Ocean", "Gossamer", "Membrane",
-        "Murmuration", "Nebula", "Nimbus", "Plasma", "Ricercar", "Spectral Cartograph",
-        "Staged Sandbox", "Waveform"
+        "Murmuration", "Nimbus", "Ricercar", "Staged Sandbox"
     ]
 
     // MARK: - The gate

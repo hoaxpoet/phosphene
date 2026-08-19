@@ -46,7 +46,11 @@ struct MultiPassRenderHarness {
         // fragment). Everything above is fragment-stage work; this one emits geometry, so its
         // cost scales with branch count rather than pixel count, which is exactly why it needs
         // its own row rather than an assumption.
-        "Fractal Tree"
+        "Fractal Tree",
+        // PERF.8 — the four `direct` presets: one fullscreen fragment each, no per-preset Swift
+        // state, so one generic path covers all of them. PERF.7's survey named these as the
+        // cheapest remaining paradigm and this is that work.
+        "Nebula", "Plasma", "Spectral Cartograph", "Waveform"
     ]
 
     /// Render `presetName` over `features`/`stems` (row-aligned), returning `reduce(bgra)`
@@ -76,6 +80,8 @@ struct MultiPassRenderHarness {
         case "Dragon Bloom", "Skein": return try renderMVWarp(presetName, features, stems, reduce)
         case "Fractal Tree": return try renderMeshPreset(presetName, features, stems,
                                                          settle: settle, reduce)
+        case "Nebula", "Plasma", "Spectral Cartograph", "Waveform":
+            return try renderDirectPreset(presetName, features, stems, reduce)
         default:
             throw HarnessError.presetNotFound("\(presetName) is not a multi-pass harness preset")
         }
@@ -806,6 +812,77 @@ struct MultiPassRenderHarness {
         out.bassDev = 0.3
         out.spectralFlux = 0.4
         return out
+    }
+
+    // MARK: - Render: direct (one fullscreen fragment — Nebula / Plasma / Cartograph / Waveform)
+
+    /// Render a `direct`-pass preset exactly as `RenderPipeline.encodePresetVisualization` does.
+    ///
+    /// One generic path covers all four because a direct preset is one fullscreen fragment with no
+    /// per-preset Swift state — the property that made this the cheapest paradigm to add after
+    /// PERF.7's mesh path. **Every binding that call site makes is made here**, because an
+    /// unbound buffer does not fail loudly: a preset reading slot 2 when nothing is bound there
+    /// samples zeros and costs less than it does live, and the recorded budget would quietly be a
+    /// number for a cheaper frame than production draws. That is the same hazard as timing Fractal
+    /// Tree with its silence gate shut (PERF.7), in a form no assertion on one preset can catch.
+    ///
+    /// So: FeatureVector at 0, FFT magnitudes at 1, waveform at 2, StemFeatures at 3, spectral
+    /// history at 5, and the real generated noise textures — `Spectral Cartograph` samples two of
+    /// them, and reading an unbound texture is free where sampling a real one is not.
+    private func renderDirectPreset<T>(_ presetName: String,
+                                       _ drive: [FeatureVector],
+                                       _ stems: [StemFeatures],
+                                       _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                 loadBuiltIn: true)
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == presetName }) else {
+            throw HarnessError.presetNotFound("\(presetName) did not load through PresetLoader")
+        }
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            throw HarnessError.setupFailed("fft/waveform buffers")
+        }
+        // Deterministic broadband content, same reasoning as the Stave path: a fixed LCG so the
+        // gate measures the same signal every run, and dense enough that no early-out in a
+        // spectrum-reading preset can make the frame artificially cheap.
+        var seed: UInt64 = 0x9E3779B97F4A7C15
+        func nextNoise() -> Float {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Float(Int32(truncatingIfNeeded: seed >> 33)) / Float(Int32.max)
+        }
+        let fftPtr = fft.contents().assumingMemoryBound(to: Float.self)
+        for bin in 0..<512 { fftPtr[bin] = abs(nextNoise()) * (1.0 - Float(bin) / 640.0) }
+        let wavPtr = wav.contents().assumingMemoryBound(to: Float.self)
+        for sample in 0..<2048 { wavPtr[sample] = nextNoise() * 0.6 }
+
+        let history = SpectralHistoryBuffer(device: ctx.device)
+        // The real generated textures, not placeholders — see the note above.
+        let textures = try TextureManager(context: ctx, shaderLibrary: lib)
+        let target = try makeOutputTexture(ctx)
+
+        return try renderLoop(drive, ctx, target, reduce) { frame, pixels in
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else {
+                throw HarnessError.renderFailed
+            }
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: clearRPD(target)) else {
+                throw HarnessError.renderFailed
+            }
+            var features = drive[frame]
+            var stem = stems[frame]
+            enc.setRenderPipelineState(preset.pipelineState)
+            enc.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
+            enc.setFragmentBuffer(fft, offset: 0, index: 1)
+            enc.setFragmentBuffer(wav, offset: 0, index: 2)
+            enc.setFragmentBytes(&stem, length: MemoryLayout<StemFeatures>.size, index: 3)
+            enc.setFragmentBuffer(history.gpuBuffer, offset: 0, index: 5)
+            textures.bindTextures(to: enc)
+            enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            enc.endEncoding()
+            try commit(cmd, target, into: &pixels)
+        }
     }
 
     // MARK: - Render loop / readback plumbing
