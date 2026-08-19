@@ -41,7 +41,12 @@ struct MultiPassRenderHarness {
     static let multiPassPresets = [
         "Lumen Mosaic", "Dragon Bloom", "Fata Morgana", "Skein", "Nacre",
         "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Cymatic Resonance",
-        "Volumetric Lithograph", "Witchlight", "Meniscus", "Stave"
+        "Volumetric Lithograph", "Witchlight", "Meniscus", "Stave",
+        // PERF.6 — the first MESH-SHADER preset the harness can drive (object → mesh →
+        // fragment). Everything above is fragment-stage work; this one emits geometry, so its
+        // cost scales with branch count rather than pixel count, which is exactly why it needs
+        // its own row rather than an assumption.
+        "Fractal Tree"
     ]
 
     /// Render `presetName` over `features`/`stems` (row-aligned), returning `reduce(bgra)`
@@ -69,6 +74,8 @@ struct MultiPassRenderHarness {
         case "Floret":       return try renderBespokeMVWarp("Floret", features, stems, reduce)
         case "Glaze":        return try renderBespokeMVWarp("Glaze", features, stems, reduce)
         case "Dragon Bloom", "Skein": return try renderMVWarp(presetName, features, stems, reduce)
+        case "Fractal Tree": return try renderMeshPreset(presetName, features, stems,
+                                                         settle: settle, reduce)
         default:
             throw HarnessError.presetNotFound("\(presetName) is not a multi-pass harness preset")
         }
@@ -694,6 +701,111 @@ struct MultiPassRenderHarness {
         case "triangle_strip": return .triangleStrip
         default:               return .triangle
         }
+    }
+
+    // MARK: - Render: mesh shader (Fractal Tree — object → mesh → fragment)
+
+    /// Render a mesh-shader preset through `PresetLoader` + `MeshGenerator`, the same objects
+    /// `RenderPipeline` uses live.
+    ///
+    /// ★★ WHY THIS NEEDS A LIVE DRIVE AND THE OTHER PATHS DO NOT. `PresetFrameBudgetTests.drive`
+    /// builds its vectors with `FeatureVector(bass:mid:treble:time:deltaTime:)`, whose
+    /// `pulseAmp01` is **0** — and `pulseAmp01` is Fractal Tree's silence GATE (D-037). Rendered
+    /// from that drive the preset draws its 7-branch silent figure, roughly a quarter of the
+    /// geometry it emits during playback, and the recorded budget would have been a number for a
+    /// frame nobody ever sees. A gate that measures a preset in a state it never occupies is the
+    /// same failure mode as not measuring it: it reads green and proves nothing.
+    ///
+    /// So the drive is topped up here, per preset, with the fields that put THIS preset in the
+    /// state it holds during playback. `openTheGates` documents each one and why.
+    ///
+    /// ⚠ The same hazard applies to any other gate-driven preset added to this harness later —
+    /// check what its silence gate reads before recording a baseline for it.
+    private func renderMeshPreset<T>(_ presetName: String,
+                                     _ drive: [FeatureVector],
+                                     _ stems: [StemFeatures],
+                                     settle: Int,
+                                     _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                 loadBuiltIn: true)
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == presetName }) else {
+            throw HarnessError.presetNotFound("\(presetName) did not load through PresetLoader")
+        }
+        guard preset.descriptor.passes.contains(.meshShader) else {
+            throw HarnessError.setupFailed("\(presetName) is not a mesh preset")
+        }
+        let generator = MeshGenerator(
+            device: ctx.device,
+            pipelineState: preset.pipelineState,
+            configuration: .init(maxVerticesPerMeshlet: 252,
+                                 maxPrimitivesPerMeshlet: 126,
+                                 meshThreadCount: preset.descriptor.meshThreadCount))
+        // DETERMINISTIC CLOCK. `MeshGenerator.nextRenderDelta` reads the wall clock by default,
+        // which offline is the harness's own render speed — so the glides and `DancePhase` would
+        // advance at a rate set by how contended the machine is, and a slow frame would converge
+        // a glide in one step. Timing a preset whose geometry depends on how fast it is being
+        // timed is circular; the capture's own delta is what FTR.14 established here.
+        generator.renderDeltaOverride = 1.0 / 60.0
+
+        let live = drive.map { Self.openTheGates($0) }
+        let target = try makeOutputTexture(ctx)
+
+        // Settle unTIMED and unCAPTURED, but through the real holds — the growth stepper and all
+        // three glides carry state, so a first frame drawn cold measures a sapling mid-grow-in
+        // (FTR.32) rather than the tree the gate is meant to watch.
+        for index in 0..<settle {
+            generator.advanceBeatHoldForSettling(live[index % live.count],
+                                                 stems: stems[index % stems.count])
+        }
+
+        return try renderLoop(live, ctx, target, reduce) { frame, pixels in
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else {
+                throw HarnessError.renderFailed
+            }
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: clearRPD(target)) else {
+                throw HarnessError.renderFailed
+            }
+            generator.draw(encoder: enc, features: live[frame], stems: stems[frame])
+            enc.endEncoding()
+            try commit(cmd, target, into: &pixels)
+        }
+    }
+
+    /// Put a drive vector into the state a preset holds DURING PLAYBACK.
+    ///
+    /// Each field here is one that reads zero from the shared drive and would otherwise leave the
+    /// preset in a state it never occupies on real audio:
+    ///
+    ///   - `pulseAmp01 = 1` — the silence gate. 0 means "nothing is playing" and collapses
+    ///     Fractal Tree to 7 branches. Measured live it sits at 1.000 on 98.7 % of frames
+    ///     (WL.1), so 1 is the honest steady state, not a flattering one.
+    ///   - `trackElapsedS = 60` — past FTR.32's 2.5 s canopy grow-in, so the tree is full.
+    ///   - `beatsPerBar = 4` + a `beatPhase01` ramp — `DancePhase` returns 0 until a grid exists
+    ///     (the cold-start phase contract), which would freeze the gait and the tips. The ramp
+    ///     runs at the drive's own 60 Hz so the phase advances a realistic amount per frame.
+    ///   - `spectralSectionRatio = 1.2` — the density rank FTR.33's `ArrivalStep` quantises;
+    ///     ×0.5 that is 0.6, a middle tier, so the geometry sits mid-range rather than at either
+    ///     extreme of its branch count.
+    ///   - `spectralSurge` / `spectralDensity` / `bassDev` / `spectralFlux` — the remaining
+    ///     routes (musicGate, dance gain, branch spread). Left at zero the spread sits at its
+    ///     minimum and the canopy is narrower than it ever is live.
+    ///
+    /// Deliberately NOT extreme: this is a regression baseline, so it wants the preset's typical
+    /// cost. Driving every field to 1.0 would record a worst case and then fail the gate the
+    /// first time a normal passage came in under it.
+    private static func openTheGates(_ vector: FeatureVector) -> FeatureVector {
+        var out = vector
+        out.pulseAmp01 = 1
+        out.trackElapsedS = 60
+        out.beatsPerBar = 4
+        out.beatPhase01 = (vector.time * 1.5).truncatingRemainder(dividingBy: 1.0)
+        out.spectralSectionRatio = 1.2
+        out.spectralSurge = 0.5
+        out.spectralDensity = 0.25
+        out.bassDev = 0.3
+        out.spectralFlux = 0.4
+        return out
     }
 
     // MARK: - Render loop / readback plumbing

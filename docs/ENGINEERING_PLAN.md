@@ -2552,6 +2552,57 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**PERF.6 — the frame-budget harness drives its first MESH preset, and the gate is checked for
+being awake.** ✅ **2026-08-19**, on Matt's instruction after FTR.5's closeout named the gap:
+*"make the harness for FT drivable."*
+
+**What was missing.** `PresetFrameBudgetTests` (PERF.4) covers presets through
+`MultiPassRenderHarness`, which had fifteen per-preset fragment-stage paths and none for the
+mesh pipeline — so Fractal Tree, certified the same day, had **no frame-cost gate at all** while
+FTR.33 had just made its canopy fuller in dense passages.
+
+**What changed.** `renderMeshPreset` drives `PresetLoader` → `MeshGenerator` (object → mesh →
+fragment), the same objects `RenderPipeline` uses live, with `renderDeltaOverride = 1/60` so the
+glides and `DancePhase` do not advance at a rate set by how contended the timing machine is —
+timing a preset whose geometry depends on how fast it is being timed is circular (FTR.14).
+
+**★★ AND THE MEASUREMENT WOULD HAVE BEEN OF THE WRONG FRAME.** `PresetFrameBudgetTests.drive`
+builds vectors via `FeatureVector(bass:mid:treble:time:deltaTime:)`, whose **`pulseAmp01` is 0** —
+Fractal Tree's silence gate. Added naively, the gate would have timed the 7-branch figure the
+preset draws when nothing is playing: a real number for a state no listener ever sees, green
+forever while the actual canopy got arbitrarily expensive. `openTheGates` tops up the drive
+per-preset with the fields that put it in its playback state, each one documented with why.
+
+**★ Then the aliveness assertion needed a real observable, and the obvious one failed.** Whole-frame
+ink separates the two states only **1.4×** (0.0150 open vs 0.0107 shut) because the trunk and first
+two generations are in both and dominate the pixel count. The vertical profile shows where the
+difference actually lives:
+
+| state | band 4 | band 5 (canopy) | trunk bands 6–9 | total |
+|---|---|---|---|---|
+| playing | 38–55 | **1137–1168** | 600 / 504 / 252 | 3441 |
+| silent | 0 | **302** | 593 / 504 / 252 | 2470 |
+
+Upper-canopy ink (rows 0..<216 at 640×360) is a **3.9×** discriminator, so that is what
+`fractalTreeIsMeasuredAlive` gates, floor 600, between the two measured states. The silent frame is
+also bit-identical frame to frame (2470, 2470) where the playing one moves (3441, 3459) — the gait.
+
+★ **Process note against myself:** the first version of that test's comment contained
+measured-looking figures (*"4.06 % against 0.84 %"*) that I had written **before measuring**. The
+test failed, which is how I found out. The numbers above are all measured, both states, by
+temporarily neutering `openTheGates` to see what it prevents.
+
+**Measured.** Fractal Tree **3.88 / 4.07 ms** at 1920×1080 across two runs — **0.6× the median**,
+second-cheapest of the 16 covered presets. So the FTR.33 canopy was never a performance risk, and
+the certification gap is closed rather than merely reasoned about.
+
+**Coverage now 16 of 29, and the remaining 13 are SURVEYED so the next increment need not re-derive
+it: none of them is a mesh preset**, so this path unlocks exactly one. By declared pass — `direct`
+×4 (Nebula, Plasma, Spectral Cartograph, Waveform), `feedback` ×3 (Membrane, Murmuration,
+Ricercar), `staged` ×2 (Arachne, Staged Sandbox), `mv_warp` ×1 (Gossamer), `ray_march` ×1
+(Ferrofluid Ocean), and two pass-agnostic (Aurora Veil, Nimbus). **`direct` is the cheapest next
+four.**
+
 **FTR.5 — Fractal Tree CERTIFIED.** ✅ **2026-08-19**, Matt on session `2026-08-19T17-25-03Z`:
 *"Fractal Tree looks good. I think it's ready for certification finally."* The **19th certified
 preset**, and the longest road of any of them — 33 increments and roughly a dozen live rejections
