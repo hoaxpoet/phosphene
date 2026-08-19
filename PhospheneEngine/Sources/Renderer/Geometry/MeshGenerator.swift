@@ -157,12 +157,14 @@ public final class MeshGenerator: @unchecked Sendable {
 
     /// FTR.19 — the D-209 circular smoother for `tonalPhaseFifths`, applied to the vector this
     /// generator binds. `TonalAnalyzer` emits the phase RAW; every other consumer smooths it
-    /// itself, and Fractal Tree did not (144° at p95 — Matt's *"colour changes feel glitchy"*).
-    /// Applied here, not in the engine, so consumers that already smooth are not double-smoothed.
+    /// itself, and Fractal Tree did not (144° at p95). Applied here so consumers that already
+    /// smooth are not double-smoothed.
     private var fifthsSmoother = CircularPhaseSmoother()
     /// FTR.28 — the gait's clocks. See `DancePhase` and `applyDanceClocks`.
     var beatDance = DancePhase()
     var barDance = DancePhase()
+    /// FTR.33 — the size's held tiers. See `ArrivalStep` for why the growth stopped drifting.
+    var growthStep = ArrivalStep()
 
     /// FTR.14 — render-clock state. The delta arithmetic that reads these lives in
     /// `MeshGenerator+RenderClock.swift`; see that file for why the clock is separate from
@@ -172,8 +174,7 @@ public final class MeshGenerator: @unchecked Sendable {
     /// REPLAY OVERRIDE — set by offline harnesses to the capture's own frame delta. Without it
     /// the glide is unverifiable offline: wall-clock deltas in a test are the harness's render
     /// speed, not the captured session's, and a slow harness frame converges the glide in one
-    /// frame then leaves it static — reproducing the FTR.13 staircase in the MEASUREMENT while
-    /// production glides correctly. Production leaves this `nil`.
+    /// frame then leaves it static. Production leaves this `nil`.
     public var renderDeltaOverride: Float?
 
     /// `true` while the snapshot at buffer(4) is frozen between beats. Diagnostic only — a
@@ -357,8 +358,7 @@ public final class MeshGenerator: @unchecked Sendable {
             let heldStemLength = MemoryLayout<StemFeatures>.stride
             encoder.setObjectBytes(&heldStemFeat, length: heldStemLength, index: 5)
             encoder.setMeshBytes(&heldStemFeat, length: heldStemLength, index: 5)
-            // FTR.16 — the section-scale vector at buffer(6). Same struct as buffer(0)/(4) on a
-            // ~5 s glide, for layers that answer to song structure rather than to beats.
+            // FTR.16 — buffer(6): a ~5 s glide, for layers answering to structure not beats.
             let sectionLength = MemoryLayout<FeatureVector>.stride
             encoder.setObjectBytes(&sectionFeat, length: sectionLength, index: 6)
             encoder.setMeshBytes(&sectionFeat, length: sectionLength, index: 6)
@@ -367,6 +367,7 @@ public final class MeshGenerator: @unchecked Sendable {
             encoder.setMeshBytes(&arcFeat, length: MemoryLayout<FeatureVector>.stride, index: 7)
             encoder.setObjectBytes(&arcStemFeat, length: MemoryLayout<StemFeatures>.stride, index: 2)
             encoder.setMeshBytes(&arcStemFeat, length: MemoryLayout<StemFeatures>.stride, index: 2)
+            bindGrowthStep(encoder, section: sectionFeat, live: features, delta: renderDelta)
         }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 
