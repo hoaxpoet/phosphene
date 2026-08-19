@@ -118,8 +118,28 @@ static inline float3 witchlight_bloom(float2 uv, float aspect, float t, float hu
     if (body < 1e-3) { return float3(0.0); }
     // Low-frequency structure only: the fbm is sampled at a large scale so the lobe stays
     // one soft mass rather than becoming cloud detail.
-    float structure = fbm8(float3(d * 1.5, t * 0.008), 0.62) * 0.5 + 0.5;
-    float warp = warped_fbm(float3(d * 0.9 + 4.1, t * 0.005)) * 0.5 + 0.5;
+    float structure = fbm4(float3(d * 1.5, t * 0.008), 0.62) * 0.5 + 0.5;
+    // PERF (BUG-098/BUG-099) — TWO `fbm4` calls, 8 Perlin evaluations, down from 64.
+    //
+    // What was here: `fbm8` (8 evaluations) for `structure` and `warped_fbm` (7 x fbm8 = 56)
+    // for `warp`. What that buys, measured by pixel-diffing full frames rather than reasoned
+    // about: **a maximum of 2/255 on 1.1 % of channels.** The whole domain-warp chain was
+    // moving the image by two least-significant bits.
+    //
+    // That is not surprising once the consumer is read instead of the primitive: `warp` only
+    // enters as `mix(0.75, 1.0, warp)` — a ±12.5 % modulation — on a lobe that is itself
+    // `exp(-r*r*70)`, so its effect is largest exactly where the lobe is already dim. The
+    // shader's own comment said the requirement all along: "low-frequency structure only ...
+    // one soft mass rather than cloud detail".
+    //
+    // Ladder, all vs. the 20-evaluation build, all max delta 2/255: 16 evals 0.74 % of
+    // channels, 12 evals 1.02 %, 8 evals 1.13 %. There is no knee — the term simply does not
+    // reach the image — so this takes the cheapest rung rather than a defensive middle one.
+    // (`VolumetricLithograph`'s VL-PSY.3 had to walk 2 octaves back to 3 after Matt read the
+    // result as "visual quality is lower"; the difference here is that the warp modulates
+    // BRIGHTNESS on a soft ball, not geometry, and the pixel diff says so.)
+    float3 wp = float3(d * 0.9 + 4.1, t * 0.005);
+    float warp = fbm4(wp) * 0.5 + 0.5;
     float lobe = body * mix(0.55, 1.0, structure) * mix(0.75, 1.0, warp);
 
     // Violet → indigo, with a cool teal foot in the shadows (`06`'s hue family). `valence`

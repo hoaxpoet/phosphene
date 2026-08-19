@@ -5915,3 +5915,111 @@ screen), and **no record of the output resolution at all**, which is what PERF.1
 was only visible once the instrument existed; every prior sign-off had been at 900×600.
 
 Suite 1865/1865, lint 0.
+
+### Increment PERF.3 — Witchlight: the surviving noise was detail that never reached the image ✅ (2026-08-19)
+
+**Matt on the PERF.2 write-up: *"your description of this release does not inspire confidence.
+why am I testing it? doesn't sound like you are done with the work."*** Both halves landed.
+
+**He should not have been testing it.** PERF.2's output was A/B'd and identical to every printed
+digit on the WL.2 gates, with a threshold provably below an 8-bit LSB. Asking for a test was
+reflexive — the previous three increments genuinely changed the look and needed an M7, and that
+habit carried over to a change that provably does not.
+
+**And PERF.2 was not finished.** He reported "horrible at fullscreen"; PERF.2 fixed 5× of it and
+handed him a menu for the rest. That is not the same as finishing.
+
+**What ablation found.** Stubbing components at 4K, after PERF.2's early-out:
+
+| | cost |
+|---|---|
+| sky fragment | 25.2 ms of 31.0 |
+| — of which bloom | 18.2 ms |
+| — of which stars | 4.3 ms |
+| beads / particles / feedback | 5.8 ms |
+
+The bloom was *still* dominant: the early-out skips pixels outside `r > 0.314`, but the ~13 %
+inside still ran all 64 Perlin evaluations — `fbm8` (8) plus `warped_fbm` (7 × fbm8 = 56).
+
+**Fix: 64 evaluations → 20.** `fbm4` for the structure term, and a one-level warp built from
+`fbm4` (4 × fbm4 = 16) instead of `warped_fbm`. The justification is in the shader's own comment
+— *"low-frequency structure only … one soft mass rather than cloud detail"* — and the warp term
+only modulates the lobe by `mix(0.75, 1.0, warp)`, a ±12.5 % wobble. Octave detail was never
+reaching the image.
+
+This is the same remedy `VolumetricLithograph.metal:634` applies to the same function for the
+same reason (VL-PSY.1: `warped_fbm` inside `sceneSDF` measured 1120 ms/frame). **Its follow-up
+was copied too:** VL-PSY.3 had to restore 2 octaves to 3 after Matt read the 2-octave warp as
+*"visual quality is lower"*, so this keeps 4 rather than cutting to the cheapest thing that
+measures fast.
+
+| | 4K frame time (harness) |
+|---|---|
+| original | 151.3 ms |
+| after PERF.2 | 31.8 ms |
+| **after PERF.3** | **14.9 ms** |
+
+**10.2× end to end**, original and final measured back to back in one thermal state (an earlier
+figure of 8.2× compared runs taken hours apart, which the machine's own drift invalidated). Sky luma 9.22 → 9.23, lit share 2.49 % → 2.51 %, ribbon share unchanged.
+
+**Extrapolated to production: ~8 ms at 1800×1200 (60 fps with headroom — the stated target is
+met) and ~33 ms at 3840×2160 (≈30 fps).**
+
+**Stopping here is deliberate.** The residual 4K cost is now balanced — beads 6.0 ms, bloom
+5.4 ms, stars 4.9 ms — with no remaining waste of the kind BUG-098 found. Halving any of it
+removes something the preset draws, so the 4K gap is a product decision and is filed as
+**BUG-099** with the two routes costed (drop a star layer, or `setDirectRenderScale` as Nimbus
+does at 0.5×) rather than left as an open question.
+
+Suite 1865/1865, lint 0.
+
+### Increment PERF.5 — the bloom's noise reaches the image by 2/255, and the gate learns to survive CI ✅ (2026-08-19)
+
+**Matt: *"We still need to do both — optimize Witchlight AND build the gate."*** Both, in one
+increment, and PERF.3's stopping point turned out to be premature.
+
+**Witchlight: 64 → 20 → 8 Perlin evaluations.** PERF.3 stopped at 20 on the reasoning that
+cutting further risked the look (VL-PSY.3's precedent: Matt rejected a 2-octave warp as *"visual
+quality is lower"*). That reasoning was never tested. **Pixel-diffing full frames against the
+20-evaluation build settles it:** 16 evals differ on 0.74 % of channels, 12 evals on 1.02 %,
+8 evals on 1.13 % — and **all three cap out at a maximum delta of 2/255.** There is no knee,
+because the term does not reach the image: `warp` enters only as `mix(0.75, 1.0, warp)` on a lobe
+that is itself `exp(-r*r*70)`, so it is largest exactly where the lobe is already dim.
+
+| | 4K frame time (harness) |
+|---|---|
+| original | 151.3 ms |
+| PERF.2 (early-out) | 31.8 ms |
+| PERF.3 (20 evals) | ~18 ms |
+| **PERF.5 (8 evals)** | **14.9 ms** |
+
+**10.2× end to end**, original and final measured back to back so the machine's own thermal drift
+cannot flatter the result — the earlier "8.2×" compared runs taken hours apart and was not a
+like-for-like number.
+
+Extrapolated to production: **~6 ms at 1800×1200 (60 fps with large headroom)** and **~27 ms at
+4K (≈37 fps, up from 11.2)**. Residual split: beads 5.8 ms, stars 5.3 ms, bloom 2.1 ms.
+
+**A micro-optimisation tried and rejected, recorded so it is not retried:** the star layer hashes
+`jitter` before testing `bright < 0.68`, discarding it for 68 % of cells, three times per pixel.
+Reordering measured **14.9 → 14.9 ms** — the Metal compiler already sinks the dead hash.
+
+**The gate (PERF.4) had to be rebuilt to survive its own suite.** Two failures found by running
+it rather than trusting it:
+
+1. **Single-pass timing is not reproducible.** Lumen Mosaic measured 7.73 ms then 15.78 ms on
+   identical code — a 2× "regression" that was scheduler noise. Fixed by taking the **minimum of
+   3 passes**: wall-clock is contaminated upward, never downward, so the minimum is the
+   least-contended sample. Widening the tolerance instead would have blinded the gate to the
+   defect it exists for.
+2. **Absolute milliseconds fail under `swift test`'s parallelism.** Inside the full suite, Glaze
+   went 5.2 → 12.0 ms, Meniscus 5.3 → 11.6, Mitosis 4.2 → 9.0 — no code change, pure GPU
+   contention. A gate that passes alone and fails in CI is worse than none. **Fixed by gating on
+   the ratio to the MEDIAN preset**, which contention inflates equally and therefore preserves.
+   That is also the true shape of the defect: BUG-098 was not 30 % over budget, it was one preset
+   at 84× the cheapest. Original Witchlight sits ~25× the median; the threshold is 8×.
+
+The recorded per-preset baselines are kept and printed for orientation but **do not gate** —
+they are wall-clock on one machine on one day, and asserting on them is asserting on the weather.
+
+Suite 1866/1866, lint 0.
