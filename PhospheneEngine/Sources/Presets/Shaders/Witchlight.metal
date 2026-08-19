@@ -118,8 +118,22 @@ static inline float3 witchlight_bloom(float2 uv, float aspect, float t, float hu
     if (body < 1e-3) { return float3(0.0); }
     // Low-frequency structure only: the fbm is sampled at a large scale so the lobe stays
     // one soft mass rather than becoming cloud detail.
-    float structure = fbm8(float3(d * 1.5, t * 0.008), 0.62) * 0.5 + 0.5;
-    float warp = warped_fbm(float3(d * 0.9 + 4.1, t * 0.005)) * 0.5 + 0.5;
+    float structure = fbm4(float3(d * 1.5, t * 0.008), 0.62) * 0.5 + 0.5;
+    // PERF (BUG-098) — a ONE-level warp built from `fbm4`, not `warped_fbm`.
+    // `warped_fbm` is 7 x fbm8 = 56 Perlin evaluations; this is 4 x fbm4 = 16, and the
+    // `structure` term above went 8 -> 4. The bloom's own comment says what it needs:
+    // "low-frequency structure only ... one soft mass rather than cloud detail", and this
+    // term only modulates the lobe by mix(0.75, 1.0, warp) — a +/-12.5 % wobble on a soft
+    // ball. Octave detail was never reaching the image.
+    //
+    // Exactly the remedy VolumetricLithograph applied to the same function for the same
+    // reason (VL-PSY.1: `warped_fbm` inside sceneSDF measured 1120 ms/frame; see
+    // VolumetricLithograph.metal:634). Its follow-up is the caution worth copying too —
+    // VL-PSY.3 restored 2 octaves to 3 after Matt read the 2-octave warp as "visual quality
+    // is lower", so this keeps 4 rather than cutting to the minimum that still measures fast.
+    float3 wp = float3(d * 0.9 + 4.1, t * 0.005);
+    float3 wq = float3(fbm4(wp), fbm4(wp + float3(5.2, 1.3, 7.1)), fbm4(wp + float3(3.1, 9.7, 2.9)));
+    float warp = fbm4(wp + 4.0 * wq) * 0.5 + 0.5;
     float lobe = body * mix(0.55, 1.0, structure) * mix(0.75, 1.0, warp);
 
     // Violet → indigo, with a cool teal foot in the shadows (`06`'s hue family). `valence`

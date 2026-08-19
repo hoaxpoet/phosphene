@@ -5915,3 +5915,59 @@ screen), and **no record of the output resolution at all**, which is what PERF.1
 was only visible once the instrument existed; every prior sign-off had been at 900×600.
 
 Suite 1865/1865, lint 0.
+
+### Increment PERF.3 — Witchlight: the surviving noise was detail that never reached the image ✅ (2026-08-19)
+
+**Matt on the PERF.2 write-up: *"your description of this release does not inspire confidence.
+why am I testing it? doesn't sound like you are done with the work."*** Both halves landed.
+
+**He should not have been testing it.** PERF.2's output was A/B'd and identical to every printed
+digit on the WL.2 gates, with a threshold provably below an 8-bit LSB. Asking for a test was
+reflexive — the previous three increments genuinely changed the look and needed an M7, and that
+habit carried over to a change that provably does not.
+
+**And PERF.2 was not finished.** He reported "horrible at fullscreen"; PERF.2 fixed 5× of it and
+handed him a menu for the rest. That is not the same as finishing.
+
+**What ablation found.** Stubbing components at 4K, after PERF.2's early-out:
+
+| | cost |
+|---|---|
+| sky fragment | 25.2 ms of 31.0 |
+| — of which bloom | 18.2 ms |
+| — of which stars | 4.3 ms |
+| beads / particles / feedback | 5.8 ms |
+
+The bloom was *still* dominant: the early-out skips pixels outside `r > 0.314`, but the ~13 %
+inside still ran all 64 Perlin evaluations — `fbm8` (8) plus `warped_fbm` (7 × fbm8 = 56).
+
+**Fix: 64 evaluations → 20.** `fbm4` for the structure term, and a one-level warp built from
+`fbm4` (4 × fbm4 = 16) instead of `warped_fbm`. The justification is in the shader's own comment
+— *"low-frequency structure only … one soft mass rather than cloud detail"* — and the warp term
+only modulates the lobe by `mix(0.75, 1.0, warp)`, a ±12.5 % wobble. Octave detail was never
+reaching the image.
+
+This is the same remedy `VolumetricLithograph.metal:634` applies to the same function for the
+same reason (VL-PSY.1: `warped_fbm` inside `sceneSDF` measured 1120 ms/frame). **Its follow-up
+was copied too:** VL-PSY.3 had to restore 2 octaves to 3 after Matt read the 2-octave warp as
+*"visual quality is lower"*, so this keeps 4 rather than cutting to the cheapest thing that
+measures fast.
+
+| | 4K frame time (harness) |
+|---|---|
+| original | 151.2 ms |
+| after PERF.2 | 31.8 ms |
+| **after PERF.3** | **18.4 ms** |
+
+**8.2× end to end.** Sky luma 9.22 → 9.23, lit share 2.49 % → 2.51 %, ribbon share unchanged.
+
+**Extrapolated to production: ~8 ms at 1800×1200 (60 fps with headroom — the stated target is
+met) and ~33 ms at 3840×2160 (≈30 fps).**
+
+**Stopping here is deliberate.** The residual 4K cost is now balanced — beads 6.0 ms, bloom
+5.4 ms, stars 4.9 ms — with no remaining waste of the kind BUG-098 found. Halving any of it
+removes something the preset draws, so the 4K gap is a product decision and is filed as
+**BUG-099** with the two routes costed (drop a star layer, or `setDirectRenderScale` as Nimbus
+does at 0.5×) rather than left as an open question.
+
+Suite 1865/1865, lint 0.
