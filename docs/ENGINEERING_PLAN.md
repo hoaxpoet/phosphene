@@ -5825,3 +5825,48 @@ the accents were largely absent from what he judged. Witchlight's certification 
 be re-confirmed once he has seen a session with the accents actually firing.
 
 Suite 1865/1865, lint 0.
+
+### Increment PERF.1 — Record what the GPU is actually drawing at ✅ (2026-08-19)
+
+**Matt: *"Are all presets supposed to run at 60 fps? If so, isn't this something you can
+verify?"*** The answer was no, and building the gate he asked for turned out to be the wrong
+first move.
+
+**What the question exposed.** `CLAUDE.md` sets 60 fps at 1080p as the target. The only
+performance test in the suite renders **one frame**, with no per-preset budget — 29 presets ship
+and none has one. So nothing verified the target.
+
+**Two measurement errors found on the way, both mine.**
+
+1. **`deltaTime` is the wrong column.** The first survey used it and reported three presets
+   "rock solid at 16.7 ms". 16.7 ms is vsync — it means the frame waited for the 60 Hz refresh,
+   not that it had headroom. `frame_gpu_ms` (already recorded, DM.3a) is the right column and
+   separates the same presets by ~80×.
+2. **The sample was selected by accident.** Only 4 of 29 presets have enough continuous frames
+   in the recordings to attribute, and which four depends on what Matt happened to leave on
+   screen. A preset that is slow for two seconds before switching away is invisible. Reporting
+   "three presets are solid, one is the problem" from that sample was overreach, and Matt
+   challenged it correctly.
+
+**What the right column shows — BUG-098 filed.** Witchlight: median **13.75 ms** against a
+16.7 ms budget, p90 **65.50 ms**. Nacre 1.73 ms, Stave 0.35 ms, Fractal Tree 0.16 ms. On one
+session Witchlight held a **~60 ms plateau for 85 s** (≈16 fps of GPU work).
+
+**Why the gate was NOT built yet.** The same preset plateaued at ~60 ms in one session and ~12 ms
+in another — same track, same machine — and **nothing recorded the output resolution**, so the
+obvious explanation (fullscreen high-DPI vs windowed) could not be tested. An offline 1080p
+harness would report the ~12 ms figure and pass, certifying green over a preset that runs at
+16 fps in the real case. That is the BUG-097 failure class exactly, so the instrument comes
+first.
+
+**This increment: `RENDER_TARGET width=… height=… megapixels=… render_scale=…`**, emitted to the
+session log whenever it changes, from the existing drawable-lifecycle heartbeat task. Small, and
+it makes every future session's `frame_gpu_ms` interpretable instead of ambiguous. The next
+recorded session settles the 5×.
+
+**Next**, in order: read the `RENDER_TARGET` line from a fresh session → decide the resolution
+the gate must assert → build the per-preset budget gate, declaring explicitly the three presets
+(Fractal Tree, Ricercar, Staged Sandbox) that neither existing harness can reach rather than
+omitting them silently.
+
+Suite 1865/1865, lint 0, app builds.

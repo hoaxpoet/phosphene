@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-098 | **P1** · evidence-only, filed 2026-08-19 from production telemetry; **no fix attempted** | preset.witchlight / performance | **Witchlight is over the 60 fps frame budget in production, and it is the only preset measured that is.** Per-preset `frame_gpu_ms` across 10 recorded sessions: Witchlight **median 13.75 ms** against a 16.7 ms budget (82 % of it) with **p90 65.50 ms** and p99 82.37 ms; the next most expensive measured preset is Nacre at **1.73 ms** median, then Stave 0.35 ms and Fractal Tree 0.16 ms. On `2026-08-18T16-10-38Z` it sat at a **stable ~60 ms for the whole session** (≈16 fps of GPU work) from t≈25 s onward — not a spike, a plateau. ⚠ **The 5× between sessions is UNEXPLAINED:** the same preset on the same track and machine plateaued at ~60 ms in one session and ~12 ms in another, and until BUG-098's sibling change (`RENDER_TARGET` logging, this increment) nothing recorded the drawable size, so the obvious hypothesis — fullscreen on a high-DPI display vs windowed — could not be tested. The next session with a `RENDER_TARGET` line settles it. ⚠ **Do not build an offline 1080p perf gate before that is answered:** a synthetic 1080p harness reports the ~12 ms figure and passes, which is the BUG-097 failure class (a harness that does not reproduce the production condition is not testing production). ⚠ **Coverage caveat on the whole table:** only **4 of 29** presets have enough continuous frames in the recordings to measure, and they were selected by the accident of which presets Matt left on screen — the other 25 are UNMEASURED, not passing. **Method note:** the first pass of this analysis used `deltaTime`, which is vsync-dominated (16.7 ms means "locked to 60 Hz", not "has headroom") and wrongly showed three presets as identical; `frame_gpu_ms` is the correct column and it separates them by ~80× |
 | BUG-097 | **P1** · **FIXED 2026-08-18, validated on three real sessions + a new gate** | preset.witchlight / frame-rate-coupling | **A frame-time clamp meant for physics stability was corrupting a MUSICAL measurement, and Witchlight dropped most of its off-beat accents on exactly the sessions where the frame rate was worst.** `WitchlightPath.advance` clamps `dt` to 1/30 s so an integrator cannot take a wild step after a stall — correct for the integrators, wrong for the four quantities that measure how long something LASTED: `timeSinceWrap` (→ `barPeriod`), `gridSilentFor`, and the two refractories. WL.9 gates the off-beat pulse on `barPeriod / beatsPerBar >= 0.55 s`, so under load a 94 BPM bar measured **1.80 s against a true 2.55 s** and the pulse was never emitted. On `2026-08-18T16-10-38Z` — 48.8 % of frames over the cap, 38 % of elapsed time discarded — the preset fired **6 off-beat pulses in 110 s** where the meter implies ~130. **Fixed** by splitting `clockDt` (real elapsed time) from `dt` (the clamped integrator step). Validated on three real sessions: 6 → **105**, 50 → **149**, and the already-healthy session 79 → **83**, i.e. every one lands at the designed ~3:1 and the healthy case barely moves — the signature of a fix rather than a re-tune. Flare alignment on the worst session also rose 36 % → 54 % within 10 % of a beat. ⚠ It was invisible to the whole suite because every committed fixture replays at a steady ~60 Hz and never approaches the cap; `offBeatPulseSurvivesHeavyFrames` now drives at 50 ms frames and **was confirmed to fail (0 pulses) on the pre-fix code** |
 | BUG-095 | P1 · **FIXED 2026-08-17; M7 CONFIRMED LIVE 2026-08-18, twice** (WL.13 — Witchlight keeps its second pole, locally) | dsp.tonal / cross-preset-regression | **A source-side EMA in `TonalAnalyzer` outlived the reason it was added, and all four consumers were smoothing an already-smoothed angle — cutting Witchlight's hero driver's travel by up to 4×.** Removing it was correct for Nacre, Cymatic and Fractal Tree (Matt on Nacre, 2026-08-18: *"looks fine"*) but wrong for Witchlight, which had been tuned AND certified against the cascade. `WitchlightTuning.phasePreTau` restores that second pole locally. **Live-confirmed on `2026-08-18T16-10-38Z`: Matt *"Looks good overall"*, stroke measured at 42 heading turns against 74 pre-fix and 50 on the certified build.** ⚠ Note his sign-off covers the STROKE and the ribbon, not the beat accents — that session was the worst BUG-097 case measured (6 off-beat pulses in 110 s), so the accents were largely absent from what he judged |
 | BUG-096 | **RESOLVED 2026-08-18 (FTR.31) — and the original diagnosis was WRONG** | dsp.beat / calibration | **`BeatHold` was never the problem: it was being fed a staircase, and then fed a phase whose own rate estimator was 4× too fast.** Filed claiming the hold's trust gate (8 intervals within 20 % spread) was too strict for a 14.6 Hz phase. What FTR.31 measured instead: the hold engages **instantly on a clean synthetic clock** (tempo 0.6375 s, `isStepping` true), so the gate is fine. On real captures it reported 0/3000 frames because `DancePhase`'s self-rate measured **dφ/dt per RENDER frame** on a phase that only changes on analysis updates — a 0.109 jump in one 17 ms frame reads as **6.5 cycles/s on a 1.57 Hz beat**. The lock still pulled the phase onto the beat (so the gait measured fine, in-step +0.799) but it free-ran 4× fast between corrections and crossed zero far too often; anything counting those crossings as beats saw ~0.15 s intervals, below `periodRange`'s 0.25 s floor, and discarded every one. **Fix: rate = EMA(advance)/EMA(elapsed) — a frame with no update contributes 0 to the numerator and its dt to the denominator, which is what a staircase requires.** Same capture, after: **2650/3000 frames (88 %)** at 0.2 % tempo error. ⚠ **Two claims made against this entry are retracted:** that the FTR.10 beat-step "has been engaging on ~1 frame in 8" (it was engaging on ~none, for a reason that is now fixed), and that the tolerance needed relaxing (it did not). Detail below |
@@ -70,6 +71,53 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-098 — Witchlight is over the frame budget in production, and it is the only measured preset that is (2026-08-19)
+
+**Status: evidence-only, from production telemetry. No fix attempted.** Filed after Matt asked
+the right question — *"Are all presets supposed to run at 60 fps? If so, isn't this something you
+can verify?"* — which turned out to have no instrument behind it.
+
+**Per-preset GPU cost, 10 recorded sessions, `frame_gpu_ms`:**
+
+| preset | frames | median | p90 | p99 |
+|---|---|---|---|---|
+| **Witchlight** | 12 109 | **13.75 ms** | **65.50 ms** | 82.37 ms |
+| Nacre | 1 791 | 1.73 ms | 2.84 ms | 76.82 ms |
+| Stave | 3 372 | 0.35 ms | 2.85 ms | 57.44 ms |
+| Fractal Tree | 26 887 | 0.16 ms | 1.03 ms | 11.31 ms |
+
+Witchlight's *median* consumes 82 % of the 16.7 ms budget and its p90 is 4× over. Everything else
+measured is two orders of magnitude cheaper.
+
+**It is a plateau, not a spike.** On `2026-08-18T16-10-38Z` the cost steps from 15.9 ms to ~60 ms
+at t≈25 s and holds ~60 ms for the remaining 85 s. On `2026-08-18T18-04-06Z` the same preset on
+the same track steps to ~12 ms and holds. Two stable regimes, 5× apart.
+
+⚠ **The 5× is unexplained, and the reason it is unexplained is the finding.** Nothing recorded
+the output resolution, so the obvious hypothesis — fullscreen on a high-DPI display versus
+windowed — cannot be tested against the existing recordings. This increment adds a
+`RENDER_TARGET width=… height=… megapixels=… render_scale=…` line to the session log, emitted
+whenever it changes; the next recorded session settles it.
+
+⚠ **Do NOT build an offline 1080p frame-budget gate until that is answered.** At 1080p Witchlight
+plausibly measures the cheap ~12 ms and the gate passes, while the real session ran at ~60 ms.
+That is precisely the BUG-097 failure class: a harness that does not reproduce the production
+condition is not testing production, and it would issue a green certificate over the defect.
+
+⚠ **Coverage: 4 of 29 presets.** Only four have enough continuous frames in the recordings to
+attribute, and they were selected by which presets Matt happened to leave on screen — a preset
+that is slow for two seconds before switching away is invisible to this method. **The other 25
+are unmeasured, not passing.** The only pre-existing performance test renders a *single* frame
+with no per-preset budget.
+
+**Method note worth keeping.** The first pass used `deltaTime` and concluded three presets were
+"rock solid at 16.7 ms". That is vsync: 16.7 ms means the frame waited for the 60 Hz refresh, and
+says nothing about headroom. `frame_gpu_ms` is the column that answers the question, and it
+separates the same four presets by ~80×. A metric that cannot distinguish a preset using 0.16 ms
+from one using 13.75 ms was never going to find this.
 
 ---
 
