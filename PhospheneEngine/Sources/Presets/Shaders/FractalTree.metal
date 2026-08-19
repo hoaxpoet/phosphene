@@ -565,7 +565,10 @@ void fractal_tree_object_shader(
         // FTR.31 — the cold-start leg is beat-held too, so the tips step from frame one rather
         // than thrashing until the stems converge. Before a grid exists the hold tracks live and
         // this is a continuous value again, which is the honest fallback: no clock, no steps.
-        float melody = mix(fHeld.beat_mid / (fHeld.beat_mid + 2.2f), residueActivity, stemsAlive);
+        // FTR.31a — the cold-start leg reads the ARC. `fHeld` tracks LIVE until the grid is
+        // trusted (~7 s), and `beat_mid` is a saturating pulse clock that travels 1.66/s raw, so
+        // reading it there put the aggressive cold start straight back.
+        float melody = mix(fArc.beat_mid / (fArc.beat_mid + 2.2f), residueActivity, stemsAlive);
 
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the

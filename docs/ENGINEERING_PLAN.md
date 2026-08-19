@@ -2552,6 +2552,50 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.31b — the bounce was never weak; the instrument was measuring the arc.** ✅ (2026-08-18)
+Matt, on being told the build was "ready for a look" with a missing requirement attached: *"Why
+would you have me test this based on what you wrote me? Sounds like it doesn't meet my
+requirements."* Correct, and both caveats dissolved on inspection rather than on iteration.
+
+**The bounce.** Reported as unmeasurable across FTR.29→FTR.31 (R² 0.05–0.08), with a note that
+raising the spring 2.3× did not help. Both true and both irrelevant: **R² is a share of VARIANCE, and
+the tree's vertical position carries the slow growth arc** — large-amplitude, low-frequency, and by
+design unrelated to the beat. The arc owns the variance budget, so a perfectly good per-beat bob
+scores 0.08 while the LEAN scores 0.98 (nothing slow competes for horizontal position).
+
+Measured on the fast residual — the raw pose minus a 1.5-beat moving average, which is the timescale
+the bounce lives on — the same build reads **R² 0.79, in step r +0.889 against a 0.017 control.**
+The bounce has been reading since FTR.28. Now gated, so the claim cannot rot.
+
+**The trunk's beat-step.** FTR.29 claimed to "supersede Matt's FTR.10 choice" on the strength of
+BUG-096's engagement figure, which FTR.31 then retracted — leaving what looked like an unjustified
+regression. Checking the record instead of re-litigating it: **at FTR.22 Matt rejected the trunk's
+stepping in those words** — *"robotic… start-and-stop… MECHANICAL rather than organic"* — and chose
+the continuous target. The smooth-arc trunk is his own decision; the retracted number was never what
+justified it. FTR.29's write-up was sloppy in citing it, and that is all.
+
+**★ The process lesson, which is the expensive one: an "honest caveat" attached to a review request
+is often an unfinished diagnosis being outsourced.** Both caveats here were mine to close — one an
+instrument error, one a records check — and each took minutes. Matt's time is for questions only his
+eyes can answer.
+
+**FTR.31a — the cold start FTR.31 would have undone.** ✅ (2026-08-18) Caught while answering
+"is this ready for M7?" rather than by a review.
+
+`BeatHold` tracks the LIVE value until its trust conditions hold, and even with FTR.31's rate fix
+that takes **~7 s** (1.5 s to estimate the rate, then eight beat intervals ≈ 5.7 s at 94 BPM). FTR.31
+moved the tips back onto that hold — so for the first seven seconds of every track they would have
+run at their driver's **10.2/s** again, which is precisely Matt's *"on initial playback, the preset
+was moving aggressively"*: the complaint FTR.30 fixed and FTR.31 silently reintroduced.
+
+Fixed by ORDER: the arc glide runs first and the beat hold is fed its output, so the tips are
+smoothed-only before the grid and smoothed-AND-latched after it — never live. The tips' cold-start
+`beat_mid` leg reads the arc for the same reason.
+
+**★ The lesson is about reviews, not about clocks: a change that restores a route also restores
+whatever that route's fallback does.** FTR.31's own gates were all green — the fallback path is not
+what they measure.
+
 **FTR.31 — tips on the beat, and the reason the beat machinery never worked.** ✅ code-complete,
 **pending live M7** (2026-08-18) Matt: *"tips on the beat."*
 
