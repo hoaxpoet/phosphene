@@ -96,10 +96,50 @@ static inline float3 witchlight_bloom(float2 uv, float aspect, float t, float hu
     // the darkness back without desaturating the lobe, so the bloom still reads as the
     // violet emission `06` calls for instead of fading to a grey smudge.
     float body = exp(-r * r * 70.0);
+    // PERF (BUG-098) — EARLY OUT BEFORE THE NOISE, which is the whole cost of this preset.
+    //
+    // The two calls below are ~64 Perlin evaluations per pixel (`fbm8` is 8; `warped_fbm` is
+    // 7 x fbm8 = ~56 — VolumetricLithograph.metal:635 records the same figure and avoids it
+    // for exactly this reason). They ran for EVERY pixel of the frame and were then multiplied
+    // by `body`, a Gaussian that is essentially zero outside a ball a sixth of the frame wide.
+    // At 3840x2160 that is ~530 MILLION Perlin evaluations per frame to produce black.
+    //
+    // Measured on Matt's session `2026-08-19T14-25-55Z`: Witchlight 273.88 ms median GPU at 4K
+    // — 11.2 fps, 16x over the 16.7 ms budget — while six other presets in the same session
+    // held 59-60 fps (Arachne 3.27 ms, Stave 4.94 ms, Volumetric Lithograph 16.44 ms). The cost
+    // stepped straight to ~272 ms the instant the preset became active rather than ramping, so
+    // it was never the trail or the beads: it is a fixed per-pixel cost.
+    //
+    // The branch is spatially coherent — the lobe is one compact ball, so whole tiles take the
+    // same path and the GPU keeps the win. The threshold is below what 8-bit output can show:
+    // `lobe <= body`, and the return is `hue * lobe * 0.24`, so body = 1e-3 caps this pixel's
+    // contribution at 2.4e-4 against an 8-bit LSB of 3.9e-3 — a sixteenth of the smallest
+    // representable step. Visually identical, not merely close.
+    if (body < 1e-3) { return float3(0.0); }
     // Low-frequency structure only: the fbm is sampled at a large scale so the lobe stays
     // one soft mass rather than becoming cloud detail.
-    float structure = fbm8(float3(d * 1.5, t * 0.008), 0.62) * 0.5 + 0.5;
-    float warp = warped_fbm(float3(d * 0.9 + 4.1, t * 0.005)) * 0.5 + 0.5;
+    float structure = fbm4(float3(d * 1.5, t * 0.008), 0.62) * 0.5 + 0.5;
+    // PERF (BUG-098/BUG-099) — TWO `fbm4` calls, 8 Perlin evaluations, down from 64.
+    //
+    // What was here: `fbm8` (8 evaluations) for `structure` and `warped_fbm` (7 x fbm8 = 56)
+    // for `warp`. What that buys, measured by pixel-diffing full frames rather than reasoned
+    // about: **a maximum of 2/255 on 1.1 % of channels.** The whole domain-warp chain was
+    // moving the image by two least-significant bits.
+    //
+    // That is not surprising once the consumer is read instead of the primitive: `warp` only
+    // enters as `mix(0.75, 1.0, warp)` — a ±12.5 % modulation — on a lobe that is itself
+    // `exp(-r*r*70)`, so its effect is largest exactly where the lobe is already dim. The
+    // shader's own comment said the requirement all along: "low-frequency structure only ...
+    // one soft mass rather than cloud detail".
+    //
+    // Ladder, all vs. the 20-evaluation build, all max delta 2/255: 16 evals 0.74 % of
+    // channels, 12 evals 1.02 %, 8 evals 1.13 %. There is no knee — the term simply does not
+    // reach the image — so this takes the cheapest rung rather than a defensive middle one.
+    // (`VolumetricLithograph`'s VL-PSY.3 had to walk 2 octaves back to 3 after Matt read the
+    // result as "visual quality is lower"; the difference here is that the warp modulates
+    // BRIGHTNESS on a soft ball, not geometry, and the pixel diff says so.)
+    float3 wp = float3(d * 0.9 + 4.1, t * 0.005);
+    float warp = fbm4(wp) * 0.5 + 0.5;
     float lobe = body * mix(0.55, 1.0, structure) * mix(0.75, 1.0, warp);
 
     // Violet → indigo, with a cool teal foot in the shadows (`06`'s hue family). `valence`

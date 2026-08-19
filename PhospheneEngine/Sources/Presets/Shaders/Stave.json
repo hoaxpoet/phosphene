@@ -2,7 +2,7 @@
   "name": "Stave",
   "family": "waveform",
   "duration": 40,
-  "description": "The visible light spectrum aligned to the frequency spectrum. The live waveform is split into eight bands and each is drawn in the colour of its own frequency \u2014 82 Hz at 662 nm deep red, through amber, green and cyan, to roughly 11 kHz at 404 nm violet \u2014 one pass across the visible band, compressed rather than wrapped per octave. The colour is never a label: a red curve IS low frequency, instantaneously and by construction. The bands are drawn additively, so where the whole spectrum is present the frame sums toward white exactly as mixed light does, and a sparse passage falls back to a few deep curves in the dark. Bands are offset by wavelength so the spectrum physically separates the way a prism separates light, with red deviating least and violet most, and the spacing weighted toward the red end so the bass has room to be a gesture. That separation is DRIVEN by how much signal is on screen rather than fixed: quiet material converges to a tight bright ribbon and loud material opens into full spectrum. A fixed spread was rendered and rejected \u2014 on smooth quiet material it collapsed into evenly spaced parallel stripes, a static rainbow layer cake, because the wave excursions became small next to the gaps. Driving it also gives quiet against loud a real visual difference on modern masters, which matters because a limited master can span as little as 1.4x RMS across an entire song, leaving level alone unable to carry dynamics at all. The band plan is not one per octave: five bands cover 69-550 Hz where the music's energy actually lives, and three wide ones cover everything above, because even octave spacing clumped the top into a single purple mass. Per-band level is tracked on a long 20 s envelope, so a quiet passage still draws quieter than the chorus either side of it while a track change still settles. Milkdrop-inspired (D-113); the source's traces are waveform-driven per-frame geometry and Stave's divergence is the frequency-to-wavelength colour mapping and the signal-driven dispersion, neither of which the source has.",
+  "description": "The visible light spectrum aligned to the frequency spectrum. The live waveform is split into eight bands and each is drawn in the colour of its own frequency — 82 Hz at 662 nm deep red, through amber, green and cyan, to roughly 11 kHz at 404 nm violet — one pass across the visible band, compressed rather than wrapped per octave. The colour is never a label: a red curve IS low frequency, instantaneously and by construction. The bands are drawn additively, so where the whole spectrum is present the frame sums toward white exactly as mixed light does, and a sparse passage falls back to a few deep curves in the dark. Bands are offset by wavelength so the spectrum physically separates the way a prism separates light, with red deviating least and violet most, and the spacing weighted toward the red end so the bass has room to be a gesture. That separation is DRIVEN by how much signal is on screen rather than fixed: quiet material converges to a tight bright ribbon and loud material opens into full spectrum. A fixed spread was rendered and rejected — on smooth quiet material it collapsed into evenly spaced parallel stripes, a static rainbow layer cake, because the wave excursions became small next to the gaps. Driving it also gives quiet against loud a real visual difference on modern masters, which matters because a limited master can span as little as 1.4x RMS across an entire song, leaving level alone unable to carry dynamics at all. The band plan is not one per octave: five bands cover 69-550 Hz where the music's energy actually lives, and three wide ones cover everything above, because even octave spacing clumped the top into a single purple mass. Per-band level is tracked on a long 20 s envelope, so a quiet passage still draws quieter than the chorus either side of it while a track change still settles. Milkdrop-inspired (D-113); the source's traces are waveform-driven per-frame geometry and Stave's divergence is the frequency-to-wavelength colour mapping and the signal-driven dispersion, neither of which the source has.",
   "author": "Matt",
   "inspired_by": {
     "milkdrop_filename": "Martin - charisma",
@@ -45,6 +45,13 @@
     "tier2": 0.5
   },
   "rubric_profile": "lightweight",
-  "audio_routes": [],
+  "audio_routes": [
+    {
+      "route": "band_dispersion",
+      "primitive": "waveformOccupancy",
+      "kind": "continuous",
+      "note": "CHR.3c/CHR.3g — how much signal is on screen opens and closes the spectral fan (fanMin 0.02 -> fanMax 0.40, 0.12 s smoothing over a 20 s per-band envelope)."
+    }
+  ],
   "certified": false
 }
