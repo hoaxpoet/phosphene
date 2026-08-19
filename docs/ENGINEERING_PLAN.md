@@ -2552,6 +2552,93 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**FTR.33 — colour stops being an audio channel, the tips join the dance, and the size holds and
+steps.** ✅ code-complete, **pending live M7** (2026-08-19) Matt's three remaining complaints from
+the 2026-08-19T14-36-23Z review, after *"The tree bounces to the beat - great"*: *"the color changes
+are seemingly random and the tips of the branches appear to have no discernible connection to the
+music. Tree also grows and shrinks in a seemingly random manner as well."*
+
+**★★★ THE THREE COMPLAINTS WERE ONE FINDING, AND IT IS NOT ABOUT ACCURACY.** The size already
+follows true loudness measured from `raw_tap.wav` at **r = +0.863** (FTR.15 §2) and he still calls
+it random. So a channel does not read as connected by following the audio well; it reads as
+connected when it shares a REFERENCE with the listener. The gait works because the beat is a
+reference he is already holding. Colour followed an unanchored circle-of-fifths angle (the smoothed
+hue spans **352° p05→p95** — it visits the whole wheel); the tips followed residue-stem onset
+density, which FTR.12 established is not an instrument; the size followed a rank. None of the three
+is nameable, and no coefficient makes an unnameable quantity nameable.
+
+**Matt's calls (2026-08-19).** Colour → fixed palette, retiring the harmony route after three
+rejections. Tips → the beat. Size → hold and step, which is his own FTR.11 definition (*"shoot up =
+the trunk elongates and the next level of branches appears"*) and had never been built: the clock
+reached only the bounce and sway, while growth was a continuous statistic in all five of its
+incarnations (`bass_rel` → `arousal` → `spectral_density` → `spectral_surge` → the τ20 s rank).
+
+**He also caught me re-proposing something already rejected**, which is the process note worth
+keeping. Asked whether growth was already choreographed on the phrase, the record says no — but it
+also says *"the growth is jerky - the trunk is constantly moving up and down with the beat, killing
+any concept that the tree is growing"* (FTR.3d). A phrase swell is that at a longer period, on a
+tree that already bounces. The verified record changed the recommendation; my memory would not have.
+
+**What changed.**
+- **Colour** — `tonal01` pinned at 0.705, keeping the exact palette the frames already showed
+  (147° at the trunk → 327° at the tips). The per-depth offset stays; it was never the moving part.
+- **Tips** — `other_onset_rate` out, `exp(-3.2 · beat_phase01)` in, on `DancePhase`'s locked phase,
+  gated by `beats_per_bar` so the cold start is a still tree rather than a wrong-phase accent.
+  Sized to the 2…8 branches the old driver actually delivered, not to the 26 its coefficient
+  implied — a 26-branch swing per beat is FTR.3b's *"much too active with drums"* rebuilt.
+  **The mid band was Matt's pick and MEASUREMENT KILLED IT before it shipped:** on his capture,
+  300 Hz–4 kHz energy correlates **+0.995** with overall loudness, so "the melody is busy" and "it
+  got louder" are one signal here — and loudness is what he already calls random.
+- **Size** — new `ArrivalStep` (CPU, `Renderer/Geometry/`): three held tiers on DYN.2c's per-track
+  density rank, each change committed on a `spectral_level_rise` arrival so the step lands with a
+  sound. Bound at object/mesh **buffer(8)**. The continuous density `lift` on the count is deleted —
+  it would have kept the count wandering under the new steps.
+- **BUG-092 resolved as a side effect:** the sidecar declared `growth ← arousal`, which that bug
+  measured as inert (it lost a `max()` on 0.0 % of frames). Growth now genuinely reads
+  `spectralSectionRatio`, and the sidecar says so.
+
+**Measured, on the rendered image.** Size: **88 % of frames perfectly still**, travel **0.042/s**
+against 2.03/s, median crossings **0.042/s** against 0.105/s, all three tiers used. Tips: the
+beat-resolution strip shows the finest branches extending and retracting on a **0.64 s** cycle —
+the beat period at 94.07 BPM. Colour: adjacent-frame hue step median **1.06°**.
+
+**★★ FOUR WRONG CALIBRATIONS, EACH CAUGHT BY FRAMES OR A TRACE, AND THE PATTERN IS THE POINT.**
+(1) Keeping the old coefficients put the count at 33.9→45.8 against Matt's 15.2→32.8. (2) Matching
+those percentiles exactly *still* rendered a visibly smaller tree that had lost its finest
+generation — **a matching p05 and p95 do not make a matching tree**, because the tier distribution
+sat far lower than the drifting version's. (3) A stuck-at-zero tier turned out to be a plain EMA
+seeded from one sample: traced, the running mean read **0.691 against a level of 0.445** and never
+converged in time. The offline simulation that predicted 12 clean steps had modelled the section
+glide as an EMA when production glides it on `BeatHold` — *a metric is a model of the pipeline*.
+(4) Fixed edges on the level left the tree in one tier for 130 of 142 s. The fix for (3) and (4)
+together was to stop inventing a normaliser and use the rank the engine already computes.
+
+**★★★ AND THE FTR.18/FTR.30 TRAP FIRED A THIRD TIME.** `advanceBeatHold` and `advanceAllHolds` were
+two copies of "advance every hold" differing only in delta source, so the new stepper reached one of
+them. Every undrawn row of the subsampled harness goes through the other, so on an 8-frame strip the
+stepper saw 0.13 s of history and never left its bottom tier — rendering a small, still tree that
+looked exactly like a calibration error, and costing one recalibration aimed at the wrong cause.
+`advanceBeatHold` now delegates; there is one copy.
+
+**Tests.** `ArrivalStepTests` — 10 tests: holds still on a steady passage, ignores arrivals at a
+settled tier, waits for an arrival then commits, commits on timeout without one, steps down on dwell
+only, respects the cooldown, does not oscillate on a boundary, per-frame change bounded, resets on a
+track change. One of them found a real defect (a two-frame edge touch could commit) → `minDwell`.
+One had a **wrong premise** — it called a constant level "the bottom tier" when a constant level
+settles at the MIDDLE tier by construction — and is corrected in place with the reason recorded.
+
+**Open / honest limits.**
+- The arrival trigger does real but partial work: **42 %** of size changes land within 0.35 s of an
+  audible arrival, against **24 %** for matched-count random timing and **17 %** for a null build
+  with the arrivals shuffled. The majority still commit on the 3 s timeout. Raising the timeout
+  would buy specificity at the cost of the tree lagging the music; not tuned blind.
+- **The tree reads fuller in dense passages than the old build did there** (rendered ink 0.024…0.038
+  against 0.018…0.019 over the same eight frames). That is the feature working — the rank says this
+  passage is near the top of the track's density distribution — but it is a size change Matt has not
+  reviewed, and matching the old distribution would mean reproducing what he called random. **His
+  eye, not a coefficient.**
+- Certification (FTR.5) remains Matt's separate call. The preset is not certified.
+
 **FTR.32 — the canopy grows in, and the cold start finally diagnosed by LOOKING.** ✅
 code-complete, **pending live M7** (2026-08-19) Matt's opening complaint, unfixed across two
 increments that both blamed the wrong thing: *"On initial playback, the preset was moving
