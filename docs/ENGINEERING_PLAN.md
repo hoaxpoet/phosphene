@@ -684,32 +684,7 @@ Correction to the filing: `swift test -c release` alone still fails, and that is
 `swift test -c release -Xswiftc -enable-testing --package-path PhospheneEngine`.
 
 ### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
-
-HANG.1's lifecycle probe ran through two visible Witchlight/local-file controls: one full
-6 min 50 s track (24,866 frames) and one 10 min 36 s soak through two track transitions
-(35,297 frames at the final snapshot). Both passed the original ~3.6-minute / 12,911-frame
-failure point. The final durable heartbeat balanced 34,811 unique acquisitions with 34,811
-presentations, with zero failures, unpresented acquisitions, stalls, or imbalances; memory
-remained stable. This refutes a deterministic per-frame drawable leak and a fixed ~3.6-minute
-exhaustion time. **BUG-085 remains OPEN and intermittent: no freeze means no owner was
-identified and no fix is justified.** Evidence:
-`docs/diagnostics/BUG085_HANG2_SOAK_2026-08-05.md`. Next live freeze: leave the process
-running and execute `Scripts/capture_hang.sh` before force-quit.
-
 ### Increment HANG.1 — BUG-085 drawable lifecycle instrumentation ✅ (2026-08-05)
-
-The captured BUG-085 stack proves the main thread blocks inside `CAMetalLayer.nextDrawable`,
-but not which drawable escaped recycling. HANG.1 adds observation only: every drawable-facing
-render path now records request begin/end, unique drawable identity, scheduled presentation,
-command-buffer commit/completion/failure, and unpresented acquisitions in a lock-protected
-`DrawableLifecycleProbe`. An independent watchdog persists a balanced snapshot every 600
-completed frames and writes a `DRAWABLE_LIFECYCLE STALL` line with the exact pending call site
-after 500 ms, so evidence survives even though the render/main thread is blocked. The state
-machine is unit-tested; the app build is green. **No hang fix or new root-cause claim.
-HANG.2 subsequently completed the planned soak as a clean non-reproduction; see the HANG.2
-entry above. BUG-085 remains open, and the next live freeze must be captured with
-`Scripts/capture_hang.sh` before force-quit.**
-
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
 ### Increment RECON.1–.3 — Production audit: hygiene + doc reconciliation ✅ (2026-08-03)
 ### Increment MEN.2a — Meniscus: serpentine wave surface (stub) ✅ (2026-08-03, `c0453fd9`)
@@ -2557,6 +2532,73 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
+
+**PERF.11 — the two 4K questions, answered together: the 4K problem was mostly the instrument, and
+the one real breach is fixed.** ✅ **2026-08-20**, Matt: *"address the two 4K questions together"*
+(BUG-099 + BUG-100).
+
+**★★★ THE HEADLINE: THERE IS NO 4K SHADER-COST PROBLEM.** `MultiPassRenderHarness` reads every
+rendered frame back to the CPU — ~8 MB at 1080p, **~33 MB at 3840×2160** — and production never
+does. That cost follows PIXELS, not what a preset draws, so it lands on the 4K column far harder
+and a resolution sweep including it measures the harness as much as the roster. Removing it:
+
+| | readback ON | readback OFF |
+|---|---|---|
+| Witchlight at 4K | 18.6 ms | **5.6 ms** |
+| median 4K readback overhead | — | **11.4 ms** |
+| presets within 16.7 ms at 4K | 6 of 20 | **20 of 20** |
+
+So **BUG-099 is resolved by measurement and needs no product decision** — neither the star-layer cut
+nor the half-res extension it proposed. Both were sized against a number more than 3× too high.
+**Fourth time in one day** a performance metric did not mean what its name suggested, after
+`deltaTime`, the harness milliseconds generally, and `encode_cpu_ms`. The specific error here:
+reusing a harness built to COMPARE presets to answer an ABSOLUTE question about one.
+
+**★★ THE ONE REAL BREACH WAS AT 1080p, NOT 4K, AND NOTHING WAS CHECKING FOR IT.** Volumetric
+Lithograph measured **31.9 ms at 1080p — about 31 fps against a stated 60 fps at 1080p**, 2.8× the
+next most expensive preset, in a **certified** preset. The gate could not see it: it asserts a
+RATIO (no preset above 8× the median), which VL passed at 5.9×, and the `absoluteCeilingMs` its own
+header describes as "a second, deliberately loose net" **appeared exactly once in the file — in that
+comment. It was never implemented.**
+
+**Matt's two calls (2026-08-19), both taken:**
+
+1. **Render VL below display resolution.** `PresetDescriptor.maxRenderMegapixels` (sidecar
+   `max_render_megapixels`) — a **per-preset property, not an engine policy**, because the trade is
+   visible and belongs to whoever owns the preset's look. VL declares 0.92. One rule,
+   `RenderPipeline.presetRenderScale`, is read by BOTH the direct and ray-march paths, because two
+   copies of "what scale are we rendering at" is precisely how the direct path came to have a
+   half-res mode the ray-march path silently did not.
+
+   ★ **Only the G-BUFFER is scaled, and that is the whole trick.** `raymarch_lighting_fragment`
+   samples the G-buffer through `float2 uv = in.uv` with a `filter::linear` sampler, so a smaller
+   G-buffer is upscaled **by the pass that already runs** — no extra blit, no second fullscreen
+   pass, and lighting, IBL and bloom keep running at full output resolution. The softening lands
+   only on marched geometry (~69 % of the frame per BUG-101) while shading stays sharp. That fell
+   out of READING what the existing pass does; my first implementation added an upscale pass next
+   to it and was deleted once the sampler was checked.
+
+   **1080p 31.9 → 13.4–15.4 ms. 4K 111.5 → 14.8 ms (7.5×).** Rendered side by side the two are
+   nearly indistinguishable; a 3× crop shows a slightly softer contour edge.
+
+2. **Add the absolute gate.** `absoluteCeilingMs = 60 ms`, always on — the "arriving already broken"
+   net the header always promised (original Witchlight 273.9 ms and original VL 111.5 ms both trip
+   it). ⚠ **It cannot be 16.7 ms**: `swift test` runs suites in parallel and inflates timings 2–3×,
+   so a 16.7 ms assertion would fail the roster in CI and pass locally — worse than no gate. The
+   real promise is `FRAME_BUDGET_STRICT=1`, isolation-only, and **it now passes: 20 of 20 covered
+   presets within 16.7 ms at 1080p AND at 4K.** First time the 60 fps promise has been verified
+   rather than assumed. Matt chose "let it ship red for VL"; sequencing the fix first means it
+   ships green instead.
+
+**BUG-100 is untouched and is the live question.** A 24-frame cost measurement cannot see a drift
+over 70 seconds, and none of the above explains what Matt saw — his own capture had the app's CPU
+work flat while total frame time rose 2.5×. PERF.9's `THERMAL_STATE` logging settles it, and **the
+next recorded 4K session is the whole remaining action**: `nominal` throughout falsifies the thermal
+hypothesis as usefully as `serious` confirms it.
+
+**Also:** `renderTargetDescription` now logs the EFFECTIVE scale including the cap — it would
+otherwise have recorded `render_scale=1.00` for a preset rendering at 0.33, and that line exists
+precisely so `frame_gpu_ms` is interpretable after the fact.
 
 **PERF.10 — the residue increment: coverage 16 → 20, and the gate the FTR.4 retirement left behind.**
 ✅ **2026-08-19**, Matt: *"do the residue items"* — the three items FTR.5/PERF.7's closeouts had

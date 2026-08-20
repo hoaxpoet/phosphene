@@ -39,8 +39,18 @@ struct PresetFrameBudgetTests {
     /// Cost scales with pixel count, so a budget asserted at a smaller size proves nothing —
     /// every pre-2026-08-19 performance judgement was made at 900x600 (0.54 MP) against a
     /// 1080p promise, which is why Witchlight's 16x overrun went unseen for weeks.
-    static let width = 1920
-    static let height = 1080
+    /// Overridable so the roster can be measured at a panel's real resolution without editing the
+    /// gate: `FRAME_BUDGET_RES=3840x2160`. The GATE always runs at the default — a threshold that
+    /// moves with an environment variable is not a threshold — but the same code answers "what can
+    /// this machine hold at fullscreen", which is what BUG-099 and BUG-100 both turn on.
+    static let (width, height): (Int, Int) = {
+        guard let spec = ProcessInfo.processInfo.environment["FRAME_BUDGET_RES"] else {
+            return (1920, 1080)
+        }
+        let parts = spec.lowercased().split(separator: "x").compactMap { Int($0) }
+        guard parts.count == 2, parts[0] > 0, parts[1] > 0 else { return (1920, 1080) }
+        return (parts[0], parts[1])
+    }()
 
     /// Frames timed per preset, after `settleFrames` warm frames that are not timed.
     static let timedFrames = 24
@@ -76,6 +86,28 @@ struct PresetFrameBudgetTests {
     /// gate — they are wall-clock on one machine on one day, and asserting on them would be
     /// asserting on the weather.
     static let outlierFactorOverMedian = 8.0
+
+    /// ★★ THE ABSOLUTE NET THIS FILE'S HEADER HAS ALWAYS DESCRIBED AND NEVER HAD.
+    ///
+    /// Until PERF.11 `absoluteCeilingMs` appeared exactly once in this file — in that comment. So
+    /// nothing checked the 60 fps promise in milliseconds, and Volumetric Lithograph sat at
+    /// **31.9 ms at 1080p (~31 fps)** while reading green at 5.9× the median, comfortably inside
+    /// the 8× ratio.
+    ///
+    /// ⚠ **WHY IT IS THIS LOOSE, AND WHY IT CANNOT BE 16.7.** `swift test` runs suites in parallel,
+    /// which inflates every timing 2–3× (measured, and documented in this file's header: Glaze
+    /// 5.2 → 12.0 ms, no code change). A 16.7 ms assertion would therefore fail nearly the whole
+    /// roster in CI and pass locally — worse than no gate. **This net catches "arriving already
+    /// broken"**, which is what the header always claimed for it: original Witchlight at 273.9 ms
+    /// and original VL at 111.5 ms (4K) both trip it, and nothing healthy comes close.
+    ///
+    /// **The real 60 fps check is `FRAME_BUDGET_STRICT=1`** below — it must be run in ISOLATION,
+    /// and it is the thing to run before certifying a preset.
+    static let absoluteCeilingMs = 60.0
+
+    /// The product's actual promise: 60 fps at 1080p. Only asserted under `FRAME_BUDGET_STRICT=1`,
+    /// because it is only meaningful in an uncontended run.
+    static let strictBudgetMs = 16.7
 
     /// Per-preset harness cost at 1920x1080, recorded 2026-08-19 (post BUG-098 fix).
     /// These are HARNESS numbers including readback — see the header. Update deliberately,
@@ -142,8 +174,13 @@ struct PresetFrameBudgetTests {
     @MainActor
     @Test("Every reachable preset stays within its recorded frame cost at 1080p")
     func presetFrameCost() throws {
-        let harness = MultiPassRenderHarness(width: Self.width, height: Self.height)
+        // ★ READBACK OFF FOR TIMING. It is ~8 MB per frame at 1080p and ~33 MB at 4K, it scales
+        // with pixels rather than with the preset, and production never does it — measured, it cost
+        // a median 11.4 ms per frame at 3840×2160, which is most of what made the 4K column look
+        // catastrophic and produced BUG-099's "~30 fps" figure for a preset that renders in 8.4 ms.
+        let harness = MultiPassRenderHarness(width: Self.width, height: Self.height, readback: false)
         let (features, stems) = Self.drive(frames: Self.timedFrames)
+        let strict = ProcessInfo.processInfo.environment["FRAME_BUDGET_STRICT"] == "1"
 
         var measured: [(name: String, ms: Double)] = []
         var failures: [String] = []
@@ -175,6 +212,21 @@ struct PresetFrameBudgetTests {
         for row in measured where median > 0 && row.ms > median * Self.outlierFactorOverMedian {
             failures.append(String(format: "%@: %.1f ms = %.1fx the median preset (%.1f ms)",
                                    row.name, row.ms, row.ms / median, median))
+        }
+        // The loose absolute net — see `absoluteCeilingMs`.
+        for row in measured where row.ms > Self.absoluteCeilingMs {
+            failures.append(String(format: "%@: %.1f ms exceeds the absolute ceiling (%.0f ms). "
+                                   + "A preset this far over is broken rather than expensive.",
+                                   row.name, row.ms, Self.absoluteCeilingMs))
+        }
+        // The real promise, opt-in and isolation-only.
+        if strict {
+            for row in measured where row.ms > Self.strictBudgetMs {
+                failures.append(String(format: "%@: %.1f ms exceeds the 60 fps budget (%.1f ms) "
+                                       + "at %dx%d.",
+                                       row.name, row.ms, Self.strictBudgetMs,
+                                       Self.width, Self.height))
+            }
         }
 
         for row in measured.sorted(by: { $0.ms > $1.ms }) {

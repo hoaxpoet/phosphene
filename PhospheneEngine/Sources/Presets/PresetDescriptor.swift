@@ -309,6 +309,23 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to false (no blending).
     public let meshAdditiveBlend: Bool
 
+    /// ★ PERF.11 — the largest area this preset may RENDER, in megapixels, before upscaling.
+    ///
+    /// `nil` (the default, and every preset but one) renders at the drawable's full size. A value
+    /// caps the render: the engine renders to `min(1, sqrt(budget / drawablePixels))` of the
+    /// drawable and bilinearly upscales, so the cap binds harder the larger the display gets and
+    /// does nothing at all on a small one.
+    ///
+    /// Exists because Volumetric Lithograph measures **31.9 ms at 1080p — roughly 31 fps against a
+    /// stated 60 fps at 1080p, 2.8× the next most expensive preset**, and BUG-101 established that
+    /// every remaining lever changes what it looks like. Matt's call (2026-08-19) was to render it
+    /// below display resolution rather than cut its detail or retire it.
+    ///
+    /// **This is a per-preset property, not an engine policy**, because the trade it makes is
+    /// visible and belongs to whoever owns the preset's look. Declaring it says: this preset would
+    /// rather be soft than slow.
+    public let maxRenderMegapixels: Double?
+
     // MARK: - Scene Configuration (Ray March Presets)
 
     /// Camera configuration for ray march presets. Nil uses `SceneUniforms` defaults.
@@ -648,6 +665,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case passes
         case meshThreadCount = "mesh_thread_count"
         case meshAdditiveBlend = "additive_blend"
+        case maxRenderMegapixels = "max_render_megapixels"
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
         case environment
@@ -712,6 +730,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         beatSensitivity  = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
         meshThreadCount  = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
         meshAdditiveBlend = try container.decodeIfPresent(Bool.self, forKey: .meshAdditiveBlend) ?? false
+        maxRenderMegapixels = try container.decodeIfPresent(Double.self, forKey: .maxRenderMegapixels)
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
         environment      = try container.decodeIfPresent(String.self, forKey: .environment)
