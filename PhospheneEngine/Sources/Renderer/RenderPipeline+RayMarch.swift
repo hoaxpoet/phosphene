@@ -142,7 +142,13 @@ extension RenderPipeline {
         let ppChain = postProcessLock.withLock { postProcessChain }
         let chainForBloom: PostProcessChain? = passesIncludePostProcess ? ppChain : nil
         if let chain = chainForBloom {
-            chain.ensureAllocated(width: width, height: height)
+            // BUG-101 — the chain renders at the SAME scale as the marcher. `runComposite`
+            // writes into the drawable texture, so its internal scene/bloom targets being
+            // smaller means one upscale at the final step rather than a full-resolution bloom
+            // over an upscaled image. PERF.12 measured the cost of not doing this: with the
+            // marcher alone scaled, VL only improved 1.5x live because the chain kept running
+            // at full drawable size and did not shrink with it.
+            chain.ensureAllocated(width: marchWidth, height: marchHeight)
         }
 
         // Enable SSGI when the active passes array includes .ssgi.
