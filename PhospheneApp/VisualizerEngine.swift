@@ -293,8 +293,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// buffer drawn as beaded sprites + a thread (D-097, WL.2). Built eagerly like Filigree.
     var witchlightGeometry: (any ParticleGeometry)?
 
-    /// Fluid dye simulation + glow ribbons for the Ricercar preset (Fantasia rebuild)
-    /// — Stam stable-fluids `ParticleGeometry` (D-097, RICERCAR-FL.5).
+    /// Onset-driven gestural marks for the Ricercar preset — `RicercarEchoGeometry`
+    /// (D-097, RICERCAR-ECHO; replaced the FL.10 flow-field at RICERCAR-WIRE.1).
+    ///
+    /// ⚠ The doc comment here read "Fluid dye simulation + glow ribbons … RICERCAR-FL.5" until
+    /// RICERCAR-WIRE.1 — two whole paradigms out of date, since FL.10 had already replaced the
+    /// dye field with a particle flow-field. Kept accurate now; update it with the geometry.
     var ricercarGeometry: (any ParticleGeometry)?
 
     /// Spectral dispersion of the live waveform for the Stave preset — the visible light
@@ -1289,22 +1293,39 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         return cells
     }
 
-    /// Build the audio-reactive glowing particle flow-field geometry for the Ricercar
-    /// preset (Fantasia rebuild — `RicercarFlowGeometry` + `RicercarFlow.metal`,
-    /// RICERCAR-FL.10). Returns `any ParticleGeometry` (D-097, siblings not subclasses).
+    /// Build the fugue-echo gestural-marks geometry for the Ricercar preset
+    /// (`RicercarEchoGeometry` + `RicercarEcho.metal`, RICERCAR-ECHO).
+    /// Returns `any ParticleGeometry` (D-097, siblings not subclasses).
+    ///
+    /// **This replaced `RicercarFlowGeometry` at RICERCAR-WIRE.1, on Matt's call.** The
+    /// flow-field (FL.10, Magnetosphere lineage) earned a *"fucking brilliant"* and was then
+    /// walked back through FL.11–FL.14, every one of which broke the connection to the music
+    /// and was reverted. The echo prototype solved the part that kept failing — **sync** — and
+    /// Matt's live read was *"Wonderful. Looks good (finally)"* (2026-07-10). It then sat in a
+    /// test harness for six weeks because it was never wired in.
+    ///
+    /// ⚠ **Sync is solved and is not a tuning surface.** Marks fire ONLY on note onsets —
+    /// nothing on a timer, rate, or sustain-fill; any fill "puts marks where there are no
+    /// notes". The detector is a RELATIVE local transient on the AGC band levels. Do not touch
+    /// `advance()`'s onset block without Matt asking for it.
+    ///
+    /// Colour is the instrument section actually playing, read from the PANNs family activity
+    /// the pipeline already writes into `StemFeatures` (D-177 / IFC.4) — so this preset is the
+    /// first consumer of that capability in the app.
     private static func makeRicercarGeometry(
         context: MetalContext,
         library: Renderer.ShaderLibrary
     ) -> (any ParticleGeometry)? {
-        guard let flow = try? RicercarFlowGeometry(
+        guard let echo = try? RicercarEchoGeometry(
             device: context.device,
             library: library.library,
+            configuration: RicercarEchoConfiguration(),
             pixelFormat: context.pixelFormat
         ) else {
             return nil
         }
-        logger.info("Ricercar created: audio-reactive glowing particle flow-field (Magnetosphere lineage)")
-        return flow
+        logger.info("Ricercar created: fugue-echo gestural marks, onset-driven (RICERCAR-ECHO)")
+        return echo
     }
 
     /// Resolve a particle-preset name to the geometry conformer the engine
