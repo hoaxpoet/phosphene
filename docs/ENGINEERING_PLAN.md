@@ -63,6 +63,191 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment PERF.16 — the ray-march cost model: no step, a mildly sublinear curve ✅ (2026-08-20)
+
+**Settles the 5.6× conflict PERF.15 flagged and could not close.** PERF.14 read Volumetric
+Lithograph at 175 ms for `render_scale` 0.5 at 3840×2160 and ≤ 15 ms at 0.4, concluded that
+ray-march cost is a **STEP not a curve**, declared "ms per megapixel" falsified, and capped
+marched pixels at 1536×864 on that basis. PERF.15 measured the same nominal configuration at
+**31.16 ms** — with `render_scale=0.50` in the log for the first time — and flagged the conflict
+as not its own to settle.
+
+**Neither live reading could close it, for reasons visible in the commits themselves.**
+PERF.14's cheap datapoint sits on the ~15.3 ms vsync floor **that PERF.14 itself documents**, so
+its magnitude is unmeasured — 175→15 and 175→2 read identically through that instrument. Its
+0.25 and 0.35 probes both silently clamped to 0.4, so three sweep points are one measurement.
+And its session is past retention, so its `render_scale=` line cannot be read back. PERF.15's
+own explanation — *"their build predates the effective-scale logging"* — is **falsified here**:
+the logging commit `0971315f` (09:21) is an ancestor of PERF.14's `03f60816` (11:37).
+
+**So the question was moved off the live path entirely.** A step is a *shape*, and the harness
+reading a constant fraction of live GPU time can shift a curve but cannot manufacture or erase a
+cliff in it. `RayMarchCostCurveTests` sweeps VL's marched pixels with readback **off** (it is a
+common-mode cost that scales with pixels — the sweep variable) and samples the disputed band
+four times, because a cliff between two points and a curve between two points are the same
+picture. Ascending, with the first size repeated last as a thermal control.
+
+| marched MP | ms | ms/MP |
+|---|---|---|
+| 0.52 | 8.44 | 16.27 |
+| 0.92 | 13.78 | 14.95 |
+| **1.33** ← PERF.14's cap | 18.88 | 14.23 |
+| 1.56 | 22.51 | 14.45 |
+| 1.81 | 24.84 | 13.75 |
+| **2.07** ← PERF.15's live 4K reading | 28.19 | 13.59 |
+| 2.66 | 35.30 | 13.25 |
+| 3.33 | 43.27 | 13.01 |
+
+**No step anywhere.** Every neighbour pair's cost-ratio is 0.92–1.02× its area-ratio; across
+PERF.14's claimed cliff (1.33 → 2.07 MP) cost rises **1.49× for 1.56× the area**, where PERF.14
+reports 11.7× for the same span. Thermal control 1.3 %, reproduced in a second full run within
+1–4 % at every point. Cost is mildly **sub**linear in area — ms/MP *falls* 16.3 → 13.0 as area
+grows 6.4×, the opposite of PERF.15's reconstructed "mildly superlinear".
+
+**The cross-validation is the strongest single datapoint.** At 2.07 MP marched the harness reads
+**28.19 ms** and PERF.15's live 4K session reads **31.16 ms** — 10 % apart, two independent
+instruments on the same marched pixel count. PERF.15's reading is corroborated; PERF.14's 175 ms
+for that configuration is the outlier, and it is not rescued by reading its scale as 1.0 either,
+since 8.29 MP extrapolates to ~100 ms on this curve, not 175.
+
+**Product consequence, and it is Matt's call, not taken here.** `RenderPipeline.marchScale`
+still caps 4K to 0.4, so VL marches 1536×864 where the evidence says 1920×1080 costs ~31 ms live
+— the 32 fps Matt already accepted. The cap is buying softness nobody measured a need for. It is
+harmless in the sense that it only ever lowers a scale, and it is justified by a model that no
+longer stands. Removing it is a one-line change to a certified preset's sharpness at fullscreen;
+the decision belongs with him.
+
+**Not claimed:** that no cliff exists anywhere. The sweep covers 0.52–3.33 MP marched. A step
+above that is untested — but it would be above the range the cap operates in, so it cannot be
+what justified the cap.
+
+Diagnostic, not a gate: `RAYMARCH_COST_SWEEP=1 swift test --filter RayMarchCostCurveTests`.
+Lint 0/519, `RayMarchScaleBudgetTests` + `PresetFrameBudgetTests` green.
+
+
+> **Restored at PERF.16 (2026-08-20).** The four entries below were written by their own
+> increments and lost in a merge — `git show` confirms CHR.3h/3j/3k each committed 35–40 lines
+> to this file, while only their code half (`Stave.json`, `FidelityRubricTests`) survived to
+> `main`. Stave was therefore **certified in the tree and uncertified in the plan** for a day,
+> with the narrative still ending "Next: CHR.4 — Matt's live M7". Recovered verbatim from
+> `4dcbcb01`, `96da79d6`, `5dbd7e2b`. CHR.3i is deliberately absent: it was reverted
+> (`34c6e672`) and superseded by CHR.3k.
+>
+> ⚠ **ID collision, left for Matt.** `CHR.3j` names two different increments — Stave's zoom
+> (below) and Witchlight's BUG-095 EMA fix (§Phase WL). Parallel branches numbered
+> independently. Renumbering either rewrites a commit-message reference, so neither is
+> renamed here.
+
+### Increment CHR.3k — Stave CERTIFIED ✅ (2026-08-19)
+
+**Matt's M7** on `2026-08-19T18-23-44Z`: *"Looks good. I recommend we keep 0.88."* Stave is the
+**19th certified preset** and the first in the `waveform` family.
+
+**The build was verified before the pass was recorded, and that mattered — twice.** Two earlier
+sign-offs in this same sequence turned out to be on the wrong value:
+
+| session | binary's `zoom` | Matt |
+|---|---|---|
+| 17:50 | 0.93 | *"the size of the visual looked the same"* |
+| 18:16 | 0.93 (again — #128 had not merged) | *"looks good"* |
+| **18:23** | **0.88** (`.o` compiled 18:23:25 UTC, 21 s before the session) | *"Looks good. Keep 0.88."* |
+
+The 18:16 approval was of the value he had just called invisible, because the newer build had
+not reached his machine. Checking the object timestamp against the merge time is what caught it;
+the app bundle's own timestamp would not have, since the launcher relinks without recompiling.
+
+**What the certification covers.** `zoom: 0.88` (−9.2 % visible extent, measured on rendered
+frames), the CHR.3g route declaration (`band_dispersion ← waveformOccupancy`, proved by QG.1),
+and the CHR.3b concept — the visible spectrum aligned to the frequency spectrum.
+
+**What it explicitly does not cover: BUG-100.** Matt's earlier *"performance slowed over time"*
+was traced to a whole-app limit under sustained 4K that affects every preset, with three
+preset-side hypotheses falsified. Certifying Stave does not close it, and it remains open.
+
+**Roster: 29 presets, 19 certified.**
+
+Also in this increment: `TempVLPerf.swift`, a throwaway VL timing probe, was swept into the
+CHR.3j commit by `git add -A` and reached main. Removed. It was env-gated so it never ran, but a
+scratch file in the test target is noise the next reader has to identify and discard.
+
+Suite green, lint 0.
+
+### Increment CHR.3j — Stave's size reduction was real and too small; a wrong theory published and retracted ✅ (2026-08-19)
+
+**Matt, after testing CHR.3h: *"Not sure that I tested with the right build - the size of the
+visual looked the same."*** He had the right build, and the change had applied. Both halves of
+that took measuring to establish.
+
+**The build was correct.** `StaveDispersionModel.o` compiled 17:50:15 UTC, the session began
+17:50:32 — 17 s later. The production call site (`VisualizerEngine.swift:1391`) constructs
+`StaveConfiguration(sampleRate:)` and takes the default, so `zoom: 0.93` was live.
+
+**A wrong theory, published and then killed by measurement.** The first explanation was that the
+frame knee absorbs the zoom: `zoom` is applied *before* the knee, and a peak of 1.5 folds to
+0.9996 at zoom 1.0 versus 0.9994 at 0.93, so the tall excursions that define the envelope are
+pinned either way. The arithmetic is correct and the conclusion was wrong. Moving `zoom` after
+the knee and A/B-ing rendered frames:
+
+| build | lit vertical extent |
+|---|---|
+| zoom 1.00 | 688 px |
+| zoom 0.93, **old** order (before knee) | 653 px (**−5.1 %**) |
+| zoom 0.93, new order (after knee) | 647 px (−6.0 %) |
+
+**The old order already worked.** The knee was not absorbing it; the reorder bought 0.9
+percentage points. It was **reverted** rather than kept for that, because it changed load-bearing
+containment logic on a justification that had just been falsified.
+
+**The actual problem was magnitude.** 0.93 gives −5.1 %, the very bottom of the 5–10 % Matt
+asked for, and below what reads as different. Swept on rendered frames: 0.93 → −5.1 %,
+0.90 → −7.6 %, 0.86 → −11.0 %, 0.82 → −14.7 %. **Shipping 0.88 → −9.2 %**, near the top of his
+range. Frame fit is unaffected: peak |y| 0.975 NDC, 0/120 frames outside the frame.
+
+**Method note.** The CPU model's `peak |y|` moved only 0.992 → 0.985 for a 7 % zoom, which is
+what suggested the knee theory in the first place — it is the wrong instrument for "how big does
+this look", because it reports the folded peak rather than the drawn image. Measuring lit pixels
+in the rendered PNGs answered it directly. **Fourth metric misread in a day**; the pattern is
+identical each time — the number was real, and what it measured was not what the question asked.
+
+Suite 1876/1876, lint 0.
+
+### Increment CHR.3h — Stave M7: the size change, and the slowdown that was not Stave's ✅ (2026-08-19)
+
+**Matt's Stave M7** (`2026-08-19T17-01-15Z`): *"looks good, but performance slowed over time,
+which led to some choppiness, and I think it would be less visually overwhelming in fullscreen
+mode if the design was reduced in size by 5-10%."*
+
+**The size change: `zoom` 1.0 → 0.93** (7 %, the middle of his range), applied globally rather
+than only above some resolution — a size that changed with window size would make Stave a
+different composition at different sizes, and the framing the reference set was tuned against
+would then be correct at only one of them. ⚠ Note this is a *different request* from CHR.3e,
+where zoom was ruled out for CONTAINMENT because that needed 35–50 %; the frame knee still does
+containment, and 7 % for breathing room is a separate, much smaller ask.
+
+**The slowdown is NOT Stave — filed as BUG-100.** Three preset-side hypotheses were falsified
+before concluding that, which is the part worth keeping:
+
+1. **Stave accumulates something.** An offline soak of 1920 frames at 3840×2160 through the real
+   path is **flat at 22.3 ms** across eight blocks.
+2. **The fan opens over the track**, raising overdraw. `waveformOccupancy` is flat at 0.081–0.095
+   for the whole segment; **r(GPU, occupancy) = −0.11**.
+3. **It is preset-specific.** It is not — the degradation **persists into the next preset** and
+   partially recovers after a low-resolution interlude.
+
+What the data does say: over 70 s at 4K, `frame_cpu_ms` 17.4 → 43.6 and `frame_gpu_ms` 2.9 →
+11.7, **while the app's own CPU work stays flat** (`encode_cpu_ms` 12.9 → 15.2,
+`renderframe_cpu_ms` 9.8 → 11.0). Same work, less delivered.
+
+⚠ **A second finding inside it, and probably the more tractable half:** `encode_cpu_ms` is
+**15–16 ms at 4K** — the entire 60 fps budget spent on CPU encode before any GPU work — and it
+**scales with resolution** (9.1 ms at 2.07 MP). CPU-side encode should not scale with pixel
+count.
+
+**Stave is therefore still uncertified**, and correctly so: one of the two M7 items is a
+whole-app defect that no preset change can fix. The size change alone does not earn the flip.
+
+Suite 1866/1866, lint 0.
+
 ### Increment CHR.3f — recurate the Stave reference set ✅ (2026-08-17)
 
 The CHR.1.3 set was five renders of the Milkdrop source (beaded cyan traces on a ruled field)
@@ -874,7 +1059,7 @@ Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) i
 **What is actually in flight, 2026-08-03.** Each entry names its own owner section; this list is a pointer, not a second source of truth.
 
 1. **Beat-sync program (D-202)** — the largest active program. Phase TRK is ⏸ **PARKED** (D-206) and must not reopen without a changed premise about the **grid**, not the tracker. **DBN.3** is the live thread but its stated gate ("blocked on FT.1") is **satisfied-but-unresolved**: FT.1 landed 2026-07-31 with a **negative** payoff, so the block condition is met while the decision it was waiting for was never made — see the DBN.3 row for the successor state. **FT.3 is COMPLETE** (tasks 1–3 2026-07-31, tasks 4–6 2026-08-19 — `BarLineEstimator` built, parity 1.6e-7, **not wired**); **FT.3.1 ran 2026-08-19 and STOPPED AT ITS PREMISE** — the two wrong-level positives are `metrical_review` ground truth that both reference backends contradict, so `AMLt − CMLt` measures grid-vs-tap disagreement, not a grid error. **The live question is now a ground-truth arbitration, not an engine increment — BUG-102.** Owner section: §Phase FT / §Beat-Sync Program.
-2. **Preset work in flight** — ~~FTR.3/.4/.5 (Fractal Tree)~~ **✅ CERTIFIED 2026-08-19, the 20th** (FTR.5; M7 on `2026-08-19T17-25-03Z`), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
+2. **Preset work in flight** *(corrected 2026-08-20 at PERF.16 — this row named two presets as in-flight that had already certified)*. ~~FTR.3/.4/.5 (Fractal Tree)~~ **✅ CERTIFIED 2026-08-19, the 20th** (FTR.5; M7 on `2026-08-19T17-25-03Z`); ~~**MEN.2b/.3/.4** (Meniscus)~~ **✅ CERTIFIED 2026-08-05** (MEN.5 / D-214 — the row below had been stale for two weeks); ~~**CHR.3/.4** (Stave)~~ **✅ CERTIFIED 2026-08-19, the 19th** (CHR.3k — certified in the tree while this file still read "Next: CHR.4"; the plan entries were lost in a merge and are restored under §Recently Completed). Genuinely open: **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
 3. **CLEAN backlog** — Phases 0–5 and 7 are closed. **Phase 6** (5 open rows) and **Phase 8** (4 open rows, the XL decomposition) remain. Phase 8 is the same work as PUB **R3.5**. Authoritative queue: [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) Part C.
 4. **PUB R3 decomposition** — slices R3.1/R3.2 done; **R3.3 (analysis), R3.4 (LF transport), R3.5 (orchestrator bridge)** queued. R3.5 = CLEAN Phase 8; do not schedule them as separate efforts.
 5. **Open defects worth scheduling** *(refreshed 2026-08-07 — BUG-079 and BUG-078 are now RESOLVED and have left §Open; the working order below is the triage that replaced this line's earlier list)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
