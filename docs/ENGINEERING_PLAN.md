@@ -2597,6 +2597,14 @@ blunt summary that *"every offline VL number has disagreed with live by 2–4×"
 this increment measured from the other side, and it is why the live read is the next action rather
 than another offline sweep.
 
+❌ **Both claims above were falsified by PERF.14 the same day. VL runs 3840×2160 fullscreen at 60 fps.**
+"4K/60 remains out of reach" and the **32.56 ms per marched megapixel** it rests on are wrong, and they
+are wrong in the same way: ms-per-megapixel is a *linear* model, and VL's cost is a **step**. Dropping
+the marched size from 1920×1080 to 1536×864 — a 1.56× pixel cut — took the live frame from **175 ms to
+≤ 15 ms**, an 11.7× drop no linear extrapolation can produce. The paragraph is left standing because the
+reasoning was sound given a model everyone here shared; what it demonstrates is that the model was the
+defect. See PERF.14 below.
+
 **What survives from this increment, all of it about measurement:**
 - **`readback:` flag** and timing with it off. Their own commit notes *"the harness gain understates
   production: it still pays … per-frame readback"* — this is the fix for exactly that.
