@@ -140,9 +140,15 @@ be worth settling in the same pass.
 ### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
 
 **Status: ✅ FIXED 2026-08-20 — by rendering fewer pixels, not by cutting detail. ✅ M7-approved
-(*"VL looks good"*, `2026-08-20T13-50-18Z`). ⚠ Fullscreen is NOT closed: 104 ms / 9.6 fps live at
-2884×1662 — see `docs/prompts/VL_HANDOFF_2026-08-20.md`, and note Matt's requirement that it must
-"run fullscreen even if not optimal".**
+(*"VL looks good"*, `2026-08-20T13-50-18Z`). ✅ FULLSCREEN MEASURED LIVE (PERF.15): 31.16 ms p50 at
+3840×2160 with `render_scale=0.50` logged — 32 fps, flat over 172 s, thermal nominal, against the
+9.6 fps this entry was opened on.**
+
+Matt's requirement was *"it needs to run fullscreen even if not optimal"* — **32 fps is running**
+where 9.6 fps was not, so the fullscreen half closes against the stated bar. It is **not** 60 fps at
+4K, and whether that matters is a product call he has not been asked to make. PERF.14 (local `main`)
+reduces it further by capping marched pixels, ⚠ **but its key datapoint conflicts with this
+measurement by 5.6× — see PERF.15 for the arithmetic and the one-session discriminator.**
 
 Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
 `VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
@@ -299,6 +305,19 @@ neither the thermal hypothesis nor a general sustained-4K decay. ⚠ It does not
 either: the degrading session ran a different preset mix, and one non-reproduction is not a
 falsification. **What it does establish is that the instrument works and reports cleanly**, so
 the next session that DOES degrade will carry the answer. Keep BUG-100 open pending that.
+
+**⚠ SECOND INDEPENDENT NON-REPRODUCTION, 2026-08-20 (PERF.15).** Session
+`2026-08-20T16-38-27Z`: **Volumetric Lithograph — the most expensive preset in the roster — flat
+across 172 s at 3840×2160 fullscreen**, `frame_gpu_ms` p50 30.92…31.28 over seven consecutive
+buckets, thermal `nominal` with no state change, 6,815 frames. Same reading as the Witchlight
+non-reproduction above: it does not falsify this entry, but two clean runs on two different presets
+at 4K make the general "sustained 4K decays" form less likely.
+
+⚠ **One contrary signal in the same window, and it is worth re-reading rather than filing:** the
+`2026-08-20T15-53-59Z` session shows VL rising ~175 → ~295 ms across its final two buckets — a real
+within-session degradation. **That is also the session whose 175 ms baseline PERF.15 disputes by
+5.6×**, so its trend should be re-derived once that conflict is settled; a ramp measured on a
+baseline that may be misattributed is not yet evidence for this entry.
 
 **Instrumented 2026-08-19 (PERF.9).** Sessions now log
 `THERMAL_STATE state=… low_power=… active_cpus=…` whenever it changes, plus once at the start so
