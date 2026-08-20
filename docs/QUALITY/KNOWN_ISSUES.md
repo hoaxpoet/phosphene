@@ -93,10 +93,20 @@ runs** — no extra blit, no second fullscreen pass. The softening lands only on
 side by side at 1080p the two are nearly indistinguishable; a 3× crop shows a slightly softer
 contour edge.
 
-| | before | after |
+| harness, 24-frame drive | before | after |
 |---|---|---|
-| 1920×1080 | 31.9 ms (~31 fps) | **13.4–15.4 ms** |
-| 3840×2160 | 111.5 ms (~9 fps) | **14.8 ms** |
+| 1920×1080 | 31.9 ms | **13.4–15.4 ms** |
+| 3840×2160 | 111.5 ms | **14.8 ms** |
+
+⚠ **THOSE ARE HARNESS FIGURES AND THE LIVE COST IS HIGHER.** The first instrumented session
+(PERF.10, `2026-08-19T22-45-50Z`) measured the *uncapped* VL at **269.89 ms at 4K — 3.5 fps**, and
+**32.56 ms per marched megapixel**, against this harness's 111.5 ms: the harness is **2.4× low** on
+this preset because its 24-frame drive starts the terrain flight from a standing start, which is the
+cheapest part of it. Taking the live ms/MP, a 0.92 MP cap predicts roughly **30 ms ≈ 30 fps, not
+60**. So the cap is a large, real improvement that probably does **not** reach the target live.
+**Do not tighten it against this extrapolation** — that is calibrating to a measurement of the build
+before the fix. One live session with the cap in place makes the number real; it is the same
+instrument that settles BUG-100.
 
 **Original analysis retained — it is still correct about where the cost is:**
 

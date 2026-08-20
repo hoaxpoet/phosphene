@@ -2590,11 +2590,50 @@ comment. It was never implemented.**
    rather than assumed. Matt chose "let it ship red for VL"; sequencing the fix first means it
    ships green instead.
 
+**★★★ RECONCILED WITH THE FIRST LIVE INSTRUMENTED SESSION (their PERF.10, `2026-08-19T22-45-50Z`),
+which landed on `main` while this was open. It corroborates the central claim and corrects one of
+my numbers — both matter:**
+
+| preset at 4K | this harness (readback off) | live | agreement |
+|---|---|---|---|
+| Witchlight | 5.6 ms | **6.43 ms, 49 fps, flat over 60 s** | within 13 % ✅ |
+| Stave | 13.53 ms | **2.88 ms** | harness **4.7× HIGH** |
+| VL (uncapped) | 111.5 ms | **269.89 ms, 3.5 fps** | harness **2.4× LOW** |
+
+**The Witchlight retraction is confirmed in production** — 6.43 ms at 4K against 273.88 ms before
+BUG-098, 49 fps rather than 11. BUG-099 is settled.
+
+⚠ **But the harness is NOT a fixed multiple of live — it is 4.7× high on one preset and 2.4× low on
+another.** So *"20 of 20 within 16.7 ms at 4K"* is a **harness** statement and must not be read as a
+production one, and I have marked it so. The mechanism is the same class as PERF.10's silence-gate
+finding, now shown to cut BOTH ways: **each harness path drives its preset with a synthetic 24-frame
+drive, and that drive can sit far from the preset's typical state.** VL is the clear case — its cost
+depends on where the camera is in a terrain flight, and 24 frames from a standing start is the
+cheapest part of it, where a live session is minutes into denser ground.
+
+**Consequence for the VL cap, stated rather than glossed:** the 2.2×/7.5× reductions are harness
+figures. Applied to the live 269.89 ms, and taking their **32.56 ms per marched megapixel**, a
+0.92 MP cap predicts roughly **30 ms — about 30 fps, not 60.** So the cap is a large, real
+improvement that probably does **not** reach the target in production. Tightening it further would
+mean tuning against an extrapolation from a session that measured the *uncapped* build, which is how
+three of today's four wrong calibrations happened. **The next action is one live session with the
+cap in place** — exactly the same instrument that settles BUG-100, and the number becomes real
+instead of inferred.
+
 **BUG-100 is untouched and is the live question.** A 24-frame cost measurement cannot see a drift
 over 70 seconds, and none of the above explains what Matt saw — his own capture had the app's CPU
 work flat while total frame time rose 2.5×. PERF.9's `THERMAL_STATE` logging settles it, and **the
 next recorded 4K session is the whole remaining action**: `nominal` throughout falsifies the thermal
 hypothesis as usefully as `serious` confirms it.
+
+⚠ **One intermittent failure seen and recorded, not silenced.** On the first full-suite run after
+merging FT.3's new tests, `ProgressiveReadiness.startNow_atThreshold_transitions_to_ready` failed on
+a wall-clock wait (`SessionReadyWait.swift:51`) after 220 s; isolated it passes in **0.222 s**, and
+the next full run was green (1887 tests / 288 suites). It is GPU/CPU contention starving a waiter,
+and this increment contributes to that load — the frame-budget suite now times 20 presets × 3 passes
+across two tests. **No budget was widened** (the rule is to assert ordering, not to ratchet
+wall-clock); flagged because a perf suite sharing a run with functional tests both starves them and
+inflates its own numbers 2–3×, and the real answer is to stop running them in the same pass.
 
 **Also:** `renderTargetDescription` now logs the EFFECTIVE scale including the cap — it would
 otherwise have recorded `render_scale=1.00` for a preset rendering at 0.33, and that line exists
