@@ -151,6 +151,32 @@ reduces it further by capping marched pixels, ⚠ **but its key datapoint confli
 measurement by 5.6×, and the conflict is UNEXPLAINED — a proposed mechanism was checked and
 falsified. See PERF.15 for what is established and the one-session discriminator.**
 
+> **Update PERF.16 (2026-08-20) — fullscreen closes, and the cost model behind the cap does not
+> survive.** Two things landed after the status line above was written. **(1)** PERF.15's live
+> capture `2026-08-20T16-38-27Z` measured VL fullscreen at 3840×2160 with `render_scale=0.50`
+> **in the log** at **31.16 / 32.30 ms p50/p90 → 32 fps**, flat across seven 10 s buckets,
+> thermal nominal, 0.45 % of frames near the floor. Against Matt's stated bar — *"run fullscreen
+> even if not optimal"* — 9.6 → 32 fps clears it, so **the fullscreen half of this entry closes**.
+> **(2)** PERF.14 had meanwhile capped marched pixels at 1536×864 on the finding that ray-march
+> cost is a *step*: 175 ms at 0.5 and ≤ 15 ms at 0.4 at 4K. That is 5.6× from PERF.15's reading of
+> the same nominal configuration. **PERF.16 settled it offline** with a marched-pixel sweep
+> (`RayMarchCostCurveTests`, readback off, thermal-controlled, reproduced): the curve is smooth
+> and mildly **sub**linear — every neighbour pair's cost-ratio is 0.92–1.02× its area-ratio, and
+> across the disputed band cost rises **1.49× for 1.56× the area** where PERF.14 reports 11.7×.
+> The harness reads **28.19 ms** at the same 2.07 MP marched that PERF.15 measured live at
+> **31.16 ms** — 10 % apart, which corroborates the live reading and leaves 175 ms unexplained at
+> any scale interpretation. **⚠ Open, and Matt's:** the cap is still active, so VL marches
+> 1536×864 at 4K where 1920×1080 measures ~31 ms live. It is buying softness on a falsified
+> model. Removing it is a one-line change to a certified preset's fullscreen sharpness. Full
+> reasoning: `ENGINEERING_PLAN.md` §Increment PERF.16.
+>
+> **Matt's call, same day: remove the cap.** `RenderPipeline.marchScale` now returns the
+> declared scale clamped to [0.4, 1.0] and nothing else, so VL marches 1920×1080 at 4K —
+> the configuration measured live at 31.16 ms — instead of 1536×864. `marchedPixelBudget`
+> is gone. ⚠ **Pending Matt's live M7:** the expected read is sharper at fullscreen at
+> ~32 fps. If the frame rate does not hold there, this entry reopens rather than the cap
+> returning by default.
+
 Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
 `VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
 and lighting allocate at half linear scale and the composite pass upscales for free, post-process
