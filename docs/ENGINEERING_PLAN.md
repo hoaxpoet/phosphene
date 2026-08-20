@@ -2570,10 +2570,11 @@ or preset code, and VL's sidecar reads `render_scale: 0.5` in both); not thermal
 both 10 active CPUs); not a straddled preset switch (my window is single-preset by diagnostic hold);
 not the display floor.
 
-**What fits.** Their build predates the effective-scale logging, so its log printed
-`render_scale=1.00` and could not report what the ray-march path was actually doing — the 0.5 was
-inferred from the sidecar. If their VL was in fact marching unscaled, every datapoint lands on one
-smooth curve:
+**A MECHANISM WAS PROPOSED AND THEN FALSIFIED — recorded because the falsification is the useful
+part.** The proposal: their build predates the effective-scale logging, so its log printed
+`render_scale=1.00`, the 0.5 was inferred from the sidecar, and their VL may have been marching
+unscaled. It was attractive because the arithmetic lines up — read as unscaled, every datapoint
+lands on one mildly superlinear curve with no step in it:
 
 | source | marched | ms | ms per marched MP |
 |---|---|---|---|
@@ -2581,15 +2582,21 @@ smooth curve:
 | **mine 0.5 (logged)** | 2.07 MP | **31.2** | **15.0** |
 | their "0.5", read as 1.0 | 8.29 MP | 175.0 | 21.1 |
 
-11.3 → 15.0 → 21.1 is a mildly superlinear **curve with no step in it**. Read the other way — their
-0.5 as applied — the same two sessions sit at **84.4 vs 15.0 ms/MP**, which nothing explains.
+…and it had a candidate cause: the two sessions applied VL and went fullscreen in **opposite
+orders** (theirs VL-then-4K, mine 4K-then-VL), which would matter if the scale were captured at
+preset-apply.
 
-⚠ **This is a hypothesis with arithmetic behind it, not a finding, and it is not mine to settle** —
-PERF.14 is another session's work and its author has context I do not. If it holds, the "step" is an
-artefact of comparing a scaled run against an unscaled one, "ms per megapixel" is not falsified, and
-the 1536×864 cap is tighter than the evidence requires (my session shows 1920×1080 marched running
-at 32 fps, not 5.7). **The cap is harmless either way** — it only ever lowers a scale — so nothing
-is on fire; the model is what is at stake, because the next preset will be reasoned about with it.
+**It is not.** `RenderPipeline+RayMarch.swift:118` recomputes `marchScale` **every frame** from
+`view.drawableSize` and `rayMarchState.renderScale`, so a resize is handled whatever order it
+happens in. ⚠ **The mechanism is dead, and with it my confidence in the "unscaled" reading** — the
+curve fit is a coincidence unless something else explains it, and *"their build could not log the
+scale"* is an absence of evidence, not evidence of absence.
+
+**So the 5.6× conflict stands UNEXPLAINED.** What is established: two live sessions, nominally
+identical configuration, no renderer or preset code difference between the builds
+(`git diff 4daf71cc..30d4cce6` is empty for both trees), both thermal `nominal`, neither floored,
+mine single-preset by diagnostic hold. One of the two measurements is not measuring what its label
+says, and I cannot say which from here.
 
 **The discriminator is one session and costs nothing:** PERF.14's build inherits the effective-scale
 logging, so a 4K fullscreen VL capture on it will *state* the scale it used. If it logs 0.40 at

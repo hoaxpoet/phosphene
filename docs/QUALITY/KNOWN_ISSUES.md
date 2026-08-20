@@ -146,9 +146,10 @@ be worth settling in the same pass.
 
 Matt's requirement was *"it needs to run fullscreen even if not optimal"* — **32 fps is running**
 where 9.6 fps was not, so the fullscreen half closes against the stated bar. It is **not** 60 fps at
-4K, and whether that matters is a product call he has not been asked to make. PERF.14 (local `main`)
+4K, and whether that matters is a product call he has not been asked to make. PERF.14 (now on `main`)
 reduces it further by capping marched pixels, ⚠ **but its key datapoint conflicts with this
-measurement by 5.6× — see PERF.15 for the arithmetic and the one-session discriminator.**
+measurement by 5.6×, and the conflict is UNEXPLAINED — a proposed mechanism was checked and
+falsified. See PERF.15 for what is established and the one-session discriminator.**
 
 Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
 `VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
