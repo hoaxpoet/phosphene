@@ -21,6 +21,9 @@ struct RicercarEchoConfig {
     var width: UInt32
     var height: UInt32
     var penCount: UInt32
+    /// Pens per gesture. The stroke shader needs it to find segment endpoints within a gesture's
+    /// block and, crucially, to avoid connecting the last pen of one gesture to the first of the next.
+    var subSteps: UInt32
     var decay: Float
     var exposure: Float
     var aspect: Float
@@ -142,8 +145,8 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         self.decayPSO = try device.makeRenderPipelineState(descriptor: dec)
 
         let dep = MTLRenderPipelineDescriptor()
-        dep.vertexFunction = try fn("ricercar_echo_point_vertex")
-        dep.fragmentFunction = try fn("ricercar_echo_point_fragment")
+        dep.vertexFunction = try fn("ricercar_echo_seg_vertex")
+        dep.fragmentFunction = try fn("ricercar_echo_seg_fragment")
         dep.colorAttachments[0].pixelFormat = fmt
         dep.colorAttachments[0].isBlendingEnabled = true
         dep.colorAttachments[0].rgbBlendOperation = .add
@@ -210,7 +213,10 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             enc.setRenderPipelineState(depositPSO)
             enc.setVertexBuffer(penBuffer, offset: 0, index: 0)
             enc.setVertexBytes(&cfg, length: MemoryLayout<RicercarEchoConfig>.stride, index: 1)
-            enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: configuration.maxGestures * Self.subSteps)
+            // RICERCAR-WIRE.3 — one quad per pen-to-pen SEGMENT, not a point sprite per pen.
+            // Segments stay inside a gesture's block, so a stroke never joins the next gesture.
+            let segments = configuration.maxGestures * (Self.subSteps - 1)
+            enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: segments * 6)
             enc.endEncoding()
         }
         cur = 1 - cur
@@ -384,6 +390,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             width: UInt32(configuration.width),
             height: UInt32(configuration.height),
             penCount: UInt32(configuration.maxGestures * Self.subSteps),
+            subSteps: UInt32(Self.subSteps),
             decay: 0.945,          // FAST fade → each spark is transient (pops and vanishes, no smear/lag)
             exposure: 1.25,        // modest — painterly, keep the marks' COLOUR (readable over the ground, not neon)
             aspect: Float(configuration.width) / Float(configuration.height),

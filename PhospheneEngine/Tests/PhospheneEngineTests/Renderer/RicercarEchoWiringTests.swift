@@ -173,10 +173,21 @@ struct RicercarEchoWiringTests {
 
         // Compare the colour BALANCE rather than pixel equality: mark placement is driven by the
         // same deterministic onset stream in both runs, so a colour difference shows up as a
-        // channel-ratio difference across the whole frame.
+        // channel-ratio difference.
+        //
+        // ⚠ Measured over MARK pixels only, not the whole frame. The first version of this summed
+        // every pixel and passed comfortably — until RICERCAR-WIRE.3 replaced fat point sprites
+        // with thin stroke ribbons, at which point the painterly GROUND (identical in both runs)
+        // dominated the sums and the separation collapsed to 0.002. The test had been measuring
+        // the background's contribution to a claim about the marks, and only a change in the
+        // marks' footprint exposed it. Threshold picked above the ground's brightest cloud.
         func balance(_ px: [UInt8]) -> Double {
             var r = 0.0, b = 0.0
-            for i in stride(from: 0, to: px.count, by: 4) { b += Double(px[i]); r += Double(px[i + 2]) }
+            for i in stride(from: 0, to: px.count, by: 4) {
+                let lum = 0.299 * Double(px[i + 2]) + 0.587 * Double(px[i + 1]) + 0.114 * Double(px[i])
+                guard lum > 120 else { continue }
+                b += Double(px[i]); r += Double(px[i + 2])
+            }
             return b > 0 ? r / b : 0
         }
         let bs = balance(strings), bb = balance(brass)
