@@ -487,7 +487,15 @@ struct MultiPassRenderHarness {
             throw HarnessError.setupFailed("Volumetric Lithograph rayMarchPipelineState missing")
         }
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
-        pipeline.allocateTextures(width: width, height: height)
+        // BUG-101 — honour the preset's `render_scale`, as `RenderPipeline+RayMarch` does in
+        // production. Without this the gate would keep measuring VL at full drawable
+        // resolution while the app renders it at half, and report a cost the user never pays —
+        // the harness-fidelity failure that hid BUG-097 and BUG-098.
+        let marchScale = min(max(preset.descriptor.rayMarchRenderScale, 0.4), 1.0)
+        let marchW = max(Int((Float(width) * marchScale).rounded()), 1)
+        let marchH = max(Int((Float(height) * marchScale).rounded()), 1)
+        pipeline.renderScale = marchScale
+        pipeline.allocateTextures(width: marchW, height: marchH)
         var scene = preset.descriptor.makeSceneUniforms()
         scene.sceneParamsA.y = Float(width) / Float(height)
         pipeline.sceneUniforms = scene

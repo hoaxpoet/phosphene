@@ -6576,3 +6576,48 @@ instrument works and reports cleanly, so the next session that degrades will car
 against 273.88 ms before BUG-098 — and 49 fps rather than 11.
 
 No code change.
+
+### Increment PERF.11 — VL renders fewer pixels: a render scale that does NOT need MetalFX ✅ (2026-08-19)
+
+**Matt: *"If MetalFX is needed to improve VL, then you should use it"* → then, on the estimate,
+*"do the simple one first"*.** This is the simple one, and it turned out to be most of the win.
+
+**Why not MetalFX.** Any preset opting into MetalFX Temporal must define `scenePrevPosition` —
+where each world point was last frame — and **no preset has ever defined it** (`PresetLoader`
+refuses to build the motion pass without it). For VL that is genuinely hard: the camera flies,
+the kaleidoscope fold rotates, *and* the terrain morphs as the noise sweeps. Rigid motion is
+derivable; the morph is not representable as a position delta, and the failure mode is ghosting
+— worse than softness. ⚠ It would also revive MFX.1, which Matt decided to delete on 2026-08-03
+as a zero-consumer capability (RECON queue).
+
+**What shipped instead: `render_scale` decoupled from MetalFX.** `PresetDescriptor` already had
+`effectiveRenderScale`, gated on `usesMetalFXTemporal` because MFX.1 built the two together.
+They are separable. `rayMarchRenderScale` applies the same clamp \\[0.4, 1.0] with no upscaler
+attached: the G-buffer and lighting allocate at `scale × drawable`, and the composite pass —
+which already samples `litTexture` by UV through a linear sampler — upscales for free. **No new
+pass, no motion vectors, no ghosting.** The post-process chain stays at drawable size so bloom
+and ACES still run at full resolution on the upscaled image.
+
+| render_scale | harness cost at 1080p | vs median preset |
+|---|---|---|
+| 1.0 (before) | 30.96 ms | 4.6× |
+| **0.5 (shipped)** | **17.43 ms** | 2.5× |
+| 0.4 (floor) | 11.72 ms | 1.6× |
+
+The harness gain (1.8×) understates production: it still pays full-resolution post-process,
+composite and per-frame readback, none of which the marcher dominates the way it does live.
+Live, VL measured 32.56 ms/megapixel — ~67 ms at 1080p — so quartering the marched pixels should
+land it near the 16.7 ms budget, and ~70 ms at 4K (from 270).
+
+⚠ **The harness was taught the same scale**, so the PERF.4 gate measures what the app renders.
+Without that it would have kept reporting VL at full resolution while production ran at half —
+the harness-fidelity failure that hid BUG-097 and BUG-098.
+
+⚠ **This is a visible change to a CERTIFIED preset and needs Matt's M7.** The suite passes
+(1878/1878) and the acceptance gates confirm the render is not degenerate, but "not degenerate"
+is not "still looks right". VL is a hazy atmospheric flight, which is the most forgiving subject
+for an upscale — that is the reason to expect this to work, not evidence that it does. 0.4 is
+available if 0.5 reads fine and more headroom is wanted; **4K/60 remains out of reach either
+way** (~45 ms at 0.4).
+
+Suite 1878/1878, lint 0, app builds.

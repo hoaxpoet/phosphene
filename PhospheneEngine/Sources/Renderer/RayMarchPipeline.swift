@@ -154,6 +154,15 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Default `1.0` = 128 steps (full quality). `0.75` = 96 steps (reduced quality).
     public var stepCountMultiplier: Float = 1.0
 
+    /// Resolution scale for the G-buffer + lighting targets (BUG-101). 1.0 = drawable size.
+    ///
+    /// Independent of `metalFXRenderScale`, which only applies when MetalFX Temporal is on.
+    /// The composite pass already samples `litTexture` by UV through a linear sampler, so a
+    /// smaller source upscales with no extra pass — the marcher simply shades fewer pixels.
+    /// The post-process chain stays at drawable size so bloom and ACES still run at full
+    /// resolution on the upscaled image.
+    public var renderScale: Float = 1.0
+
     // MARK: - SSGI State
 
     /// When `true`, `render(...)` runs the SSGI accumulation and blend passes between
