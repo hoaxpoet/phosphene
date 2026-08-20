@@ -2502,6 +2502,12 @@ single-path. **Not invalidated:** FTR.10/FTR.11's beat-stepping, which is about 
 there is, not which stem drives it. Fractal Tree remains **not certified**, FTR.11 remains
 **unverified live**.
 
+> **⏱ Superseded 2026-08-19 — this paragraph is a record of 2026-08-12, not a status.** Fractal Tree
+> is **CERTIFIED** (FTR.5, the 20th). Annotated rather than edited because the sentence was true
+> when written and the entry is the audit trail for FTR.12; but "remains not certified" is written
+> in the present tense, so a grep for the preset's status lands on a false answer. Any dated entry
+> asserting a *current* state is a trap of this shape.
+
 **FTR.12b — the claim retired, on Matt's word.** ✅ (2026-08-12) Matt, shown the verdict:
 *"yup, retire the guitar claim."* Four surfaces, **copy and comments only — zero behaviour
 change, and the route is deliberately unchanged**: the tips still read `other_onset_rate`,
@@ -2551,6 +2557,77 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
+
+**PERF.10 — the residue increment: coverage 16 → 20, and the gate the FTR.4 retirement left behind.**
+✅ **2026-08-19**, Matt: *"do the residue items"* — the three items FTR.5/PERF.7's closeouts had
+named rather than fixed.
+
+⚠ **Numbered PERF.10, and the ID scheme has now failed four times in one day.** Filed as PERF.8
+after grepping `git log` for the next free tag — which was PERF.8, and was still wrong: a parallel
+session's *commit* says `[PERF.7]` while its *plan heading* says `### Increment PERF.8`, so the two
+namespaces disagree with each other and grepping either one alone is insufficient. Their own note
+(below, under their PERF.8) draws the lesson as "grep the tree at the moment of filing"; **this
+sharpens it — grep the plan headings AND the commit tags, because a session can renumber one
+without the other.** PERF.9 was also taken by then, so this is PERF.10.
+
+**This is a scheme problem, not a discipline problem, and it is Matt's call.** Two `[PERF.1]`, two
+`[PERF.3]`, two `[PERF.6]`, two `[PERF.7]` commits are on `main` and cannot be rewritten. Any number
+of sessions picking "next free integer" from a shared document will collide whenever two are open at
+once, which is the normal state here. Options if it is worth fixing: a per-session prefix, or IDs
+allocated from something that is already unique (a date, a branch name).
+
+**1. A superseded status claim, annotated not edited.** `ENGINEERING_PLAN.md` line ~2502 (the FTR.12
+entry) reads *"Fractal Tree remains **not certified**"* in the present tense. True when written on
+2026-08-12; a grep for the preset's status now lands on a false answer. Annotated in place with a
+dated supersession note, because the sentence is part of FTR.12's audit trail and editing history to
+match the present is how a plan stops being evidence. **The general trap: any dated entry that
+asserts a CURRENT state will eventually lie.**
+
+**2. The mesh/stem binding gate, restored as an ENGINE claim.** FTR.33 retired the FTR.4 gate that
+proved a mesh preset's object stage really reads `StemFeatures` — correctly, because Matt had moved
+Fractal Tree's tips onto the beat and that was the preset's only stem route. But Fractal Tree is the
+**only mesh preset in the repo**, so retiring it left nothing proving `MeshGenerator`'s buffer 2/3/5
+bindings reach the object stage: the next mesh preset wanting a stem route would find out by
+shipping a dead one (the `vocalsPitchConfidence`-at-0 %-for-five-months class).
+
+★ **The fix is to stop gating an engine claim on what a preset happens to want this week.**
+`MeshStemBindingTests` compiles a five-line probe shader **at runtime** from
+`PresetLoader.shaderPreamble` + an embedded MSL string — no `.metal` file, no bundle resource, no
+`Package.swift` change, and no preset can retire it by changing its own routing. Two tests: slot 3
+(live) and slot 5 (beat-held, which FTR.13 added and which slot 3 passing says nothing about).
+**Negative control run:** pointed at buffer(4) — a `FeatureVector` slot — both go red (rendered
+value 0 against a required +20), and green again when restored. A gate that has not been shown to
+fail is not known to be a gate. It pins the preamble's `StemFeatures` layout for free.
+
+**3. The four `direct` presets, which PERF.7 had named as the cheapest remaining paradigm.**
+`renderDirectPreset` reproduces `RenderPipeline.encodePresetVisualization` exactly — one generic path
+for all four, because a direct preset is one fullscreen fragment with no per-preset Swift state.
+**Every binding that call site makes is made here**, and that is the load-bearing part: an unbound
+buffer does not fail loudly, it samples zeros and costs less than production, so a missing binding
+records a budget for a cheaper frame than the app draws. Same hazard as PERF.7's silence gate, in a
+form no single-preset assertion catches. So FFT at 1, waveform at 2 (deterministic LCG content —
+dense, so no early-out in a spectrum-reading preset makes the frame artificially cheap), stems at 3,
+spectral history at 5, and the **real generated noise textures**, since Spectral Cartograph samples
+two and reading an unbound texture is free where sampling a real one is not.
+
+**Measured at 1920×1080:** Nebula 9.94, Waveform 9.50, Plasma 9.47, Spectral Cartograph 6.37 ms —
+all 0.5–0.8× the median, none an outlier. **Coverage 20 of 29.**
+
+**★★ AND COVERAGE ITSELF MOVES THE GATE, which is worth knowing before the next batch.** Adding four
+cheap presets lowers the median, so every expensive preset's ratio rises with no code change:
+Volumetric Lithograph went **4.6× → 5.2×** of the 8× ceiling. Widening the ceiling to compensate
+would defeat it; the honest reading is that the gate got stricter because the roster it compares
+against got more representative. Every absolute figure in this run also reads ~2× the recorded
+16-preset baselines (VL 30.8 → 64.3) — the contention the suite header documents, and precisely why
+the ratio gates and the baselines do not.
+
+**What is left, surveyed so the next increment does not re-derive it:** `feedback` ×3 (Membrane,
+Murmuration, Ricercar) need a ping-pong texture pair and a settle, since accumulation IS their
+subject; `staged` ×2 (Arachne, Staged Sandbox) need the staged pass order plus `ArachneState`;
+`mv_warp` ×1 (Gossamer) has bespoke state and `renderBespokeMVWarp` is the shape to copy;
+`ray_march` ×1 (Ferrofluid Ocean) needs the G-buffer + lighting passes; **Aurora Veil and Nimbus
+declare no passes at all** — pass-agnostic and driven from preset state, so each needs its own path.
+`feedback` is the cheapest remaining three and is a real increment, not a free win.
 
 **PERF.7 — the frame-budget harness drives its first MESH preset, and the gate is checked for
 being awake.** ✅ **2026-08-19**, on Matt's instruction after FTR.5's closeout named the gap:
@@ -6404,3 +6481,122 @@ CHR.3j commit by `git add -A` and reached main. Removed. It was env-gated so it 
 scratch file in the test target is noise the next reader has to identify and discard.
 
 Suite green, lint 0.
+
+### Increment PERF.8 — VL troubleshot: expensive by construction, not by waste ✅ (2026-08-19)
+
+⚠ **Numbered PERF.8, not PERF.7, and the PERF namespace is now genuinely ambiguous.** Three
+independent uses collided on 2026-08-19: **PERF.1/PERF.3 already existed from 2026-05-28**
+(BUG-019 analysis-frame instrumentation), this rendering-performance arc took PERF.1–PERF.6
+without checking, and a parallel session shipped its own PERF.6 and then a PERF.7 renumbering
+commit. Two `[PERF.6]` commits and two `[PERF.1]`/`[PERF.3]` commits are on `main` and cannot be
+rewritten. **When reading `git log`, disambiguate PERF.1–PERF.3 by date**: 2026-05-28 is the
+BUG-019 arc, 2026-08-19 is this one (`RENDER_TARGET` → Witchlight → the frame-budget gate).
+The lesson is the same one the BUG-ID collisions taught twice today — **grep the tree for the
+next free ID at the moment of filing, not from memory** — and it applies to increment IDs, not
+just BUG numbers.
+
+**Matt: *"continue troubleshooting VL"***, after PERF.4's gate flagged it at 5.2× the median
+preset. Filed as **BUG-101**, evidence-only — every remaining lever changes what the preset
+looks like, so none was pulled.
+
+**The measurements.** `sceneSDF` runs ~135× per pixel (128 march steps + 4 normal taps + 3 AO
+taps) at ~10 Perlin evaluations each — ~69 % of the frame:
+
+- terrain `fbm3D(_, 4)`: **~2.7 ms/octave** (4 → 1 takes 30.59 → 22.55 ms)
+- `vl_foldDomain` warp, 2 × `fbm3D(_,3)`: **~10.4 ms** (removed: 32.07 → 21.64 ms)
+
+**The marcher is fine** — correct sphere-trace early exit, so hits leave early.
+
+**Nothing here is waste.** VL-PSY.1 already cut the warp from `warped_fbm`'s 112 evaluations to
+6, and octaves 5 → 4; **3 was tried and reverted** for dropping below SHADER_CRAFT's octave floor.
+Unlike BUG-098 there is no noise being multiplied by zero. The only lever left is
+`VL_SDF_STEP_SCALE` (0.55 → 0.70 saves 10 %) and it is **visibly different** — 74 % of channels
+differ, 12.3 % beyond 16/255. That is Matt's call, not an optimisation.
+
+**Two process notes worth more than the result.**
+
+1. **An earlier measurement of mine was simply wrong.** "Octaves 4 → 2 changes nothing" was
+   reported to Matt as a contradiction worth chasing. Re-measuring with a same-session drift
+   check (baseline 30.59 → 30.58 either side of the experiment) showed octaves cost exactly what
+   the code implies. The first reading was taken while the machine was busy. **A perf claim needs
+   its control measured in the same breath**, which is now how these are run.
+2. **The live number and the harness number still do not reconcile**, and the honest answer is
+   that the live one is untrustworthy: 16.44 ms median from **89 frames with p90 101.73 ms**,
+   spanning a preset transition — and that session has since been evicted by retention
+   (BUG-082). Recorded as an open question rather than papered over.
+
+**Also measured, and good news:** Stave holds **4.94 ms median at 3840×2160 with p90 4.97** on
+`2026-08-19T18-23-44Z` — flat, no ramp, on the build just certified.
+
+No code change.
+
+### Increment PERF.9 — thermal instrumentation for BUG-100 (not `powermetrics`) ✅ (2026-08-19)
+
+**Matt: *"add powermetrics instrumentation."*** Built the capability he asked for, with a
+different tool, and the substitution is the increment's one interesting decision.
+
+**`powermetrics` cannot be used.** Verified rather than assumed: `powermetrics -n 1 --samplers
+thermal` returns *"powermetrics must be invoked as the superuser"*. The app cannot sample it, and
+shipping a privileged helper — a separate installed binary, with the security surface that
+implies — to read one thermal counter is not proportionate to the question.
+
+**`ProcessInfo.thermalState` is the supported unprivileged primitive**, and it is a closer fit
+than `powermetrics` for what BUG-100 actually asks. The question is not "what temperature is the
+die" but "is the OS shedding performance for heat", which is exactly what this reports. It is
+coarse — four levels — and coarse is sufficient: **`nominal` throughout a degrading session
+falsifies the thermal hypothesis just as usefully as `serious` confirms it.** Either result
+closes the open half of BUG-100.
+
+Logged as `THERMAL_STATE state=… low_power=… active_cpus=…` from the existing drawable-lifecycle
+heartbeat, on CHANGE so transition timestamps line up against `frame_gpu_ms`, plus once at the
+start — otherwise a session with no line is ambiguous between "nominal throughout" and "not
+instrumented", which is the ambiguity `RENDER_TARGET` was added to remove for resolution.
+
+`isLowPowerModeEnabled` and `activeProcessorCount` ride along: both change what the hardware will
+deliver, both are free, and both would otherwise be invisible confounders in exactly this
+analysis.
+
+**What it does not do.** It will not give GPU clock, die temperature, or per-domain power. If
+`thermalState` stays `nominal` through a degradation, the cause is something else and this
+instrumentation will have earned its keep by saying so.
+
+App builds, lint 0.
+
+### Increment PERF.10 — the first instrumented session: VL is 3.5 fps, thermal is nominal ✅ (2026-08-19)
+
+Matt's session `2026-08-19T22-45-50Z`, the first carrying both `RENDER_TARGET` (PERF.1) and
+`THERMAL_STATE` (PERF.9). It answers one open question, half-answers another, and **raises the
+severity of a third**.
+
+**Measured at 3840×2160:**
+
+| preset | GPU median | fps | over time |
+|---|---|---|---|
+| **Volumetric Lithograph** | **269.89 ms** (p90 369.75) | **3.5** | 270–313 ms sustained |
+| Witchlight | 6.43 ms | 49.1 | 6.77 → 6.22 over 60 s, **flat** |
+| Stave | 2.88 ms | 51.4 | flat |
+
+**1. BUG-101 escalates to P1.** VL measures **32.56 ms/megapixel** over 905 frames. At the
+product's stated 60 fps **at 1080p** that extrapolates to ~67 ms ≈ **15 fps** — a certified
+preset missing its own target by ~4× at the promised resolution, not merely at 4K. The diagnosis
+from PERF.8 is unchanged (~69 % Perlin noise, already twice-optimised, no waste); **what changes
+is that "expensive by construction" was an acceptable answer at a presumed 16 ms and is not one
+at 3.5 fps.** The remaining lever buys 10 % against a 4× gap, so this is a scope decision — render
+scale, step budget, or accepting VL as a preset that cannot run at full resolution.
+
+**2. The 16.44 ms figure is retracted, with the mechanism now visible.** It came from 89 frames
+spanning a preset transition. This session reproduces exactly those sub-6 ms readings at segment
+boundaries (5.85, 2.72 ms) alongside a 270–313 ms body — they are frames where the preset is not
+yet rendering. A median over a short window that straddles a switch measures the switch.
+
+**3. BUG-100: thermal is `nominal` and the degradation did not reproduce.** Witchlight held flat
+across 60 s at 4K, a window comparable to the one where Stave went 2.9 → 11.7 ms, and
+`THERMAL_STATE` never left `nominal`. That supports neither the thermal hypothesis nor a general
+sustained-4K decay — **and refutes neither**, since the degrading session ran a different preset
+mix and one non-reproduction is not a falsification. What it does establish is that the
+instrument works and reports cleanly, so the next session that degrades will carry the answer.
+
+**Also confirmed: the Witchlight fix holds in production.** 6.43 ms at 4K, flat over a minute,
+against 273.88 ms before BUG-098 — and 49 fps rather than 11.
+
+No code change.
