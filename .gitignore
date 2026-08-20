@@ -102,6 +102,8 @@ docs/VISUAL_REFERENCES/**/*.jpg
 docs/VISUAL_REFERENCES/**/*.jpeg
 docs/VISUAL_REFERENCES/**/*.png
 docs/VISUAL_REFERENCES/**/*.gif
+docs/VISUAL_REFERENCES/**/*.mov
+docs/VISUAL_REFERENCES/**/*.mp4
 docs/diagnostics/**/*.jpg
 docs/diagnostics/**/*.jpeg
 docs/diagnostics/**/*.png
