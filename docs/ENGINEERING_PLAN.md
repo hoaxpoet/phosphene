@@ -6653,3 +6653,37 @@ image through the upscale rather than just the marched part), `render_scale` 0.4
 or accept VL as a preset that does not run fullscreen.
 
 No code change; measurement and M7 record.
+
+### Increment PERF.13 — the post-process chain renders at the marcher's scale ⏳ awaiting live measurement (2026-08-20)
+
+**Matt: *"It needs to run fullscreen even if not optimal."*** PERF.12 left VL at ~9.6 fps in a
+near-4K window, which is not "runs". This closes the obvious remaining gap and asks for one more
+measurement, because the offline instrument cannot answer this one.
+
+**Change.** The PostProcessChain now allocates at the marcher's scaled size rather than the full
+drawable. `runComposite` writes into the drawable texture, so its internal scene/bloom targets
+being smaller means **one upscale at the final step** instead of a full-resolution bloom applied
+over an already-upscaled image. PERF.11 deliberately left the chain at full size as the
+conservative choice; PERF.12 measured the cost of that conservatism.
+
+⚠ **In the harness this barely helps — 27.43 → 26.28 ms — and that is not evidence it will not
+help live.** The harness has never reproduced VL's production cost: 30.6 ms against 67 ms live
+at 1080p, and **26 ms against 104 ms live at 2884×1662, at the same render scale**. The gap is
+2–4× and widening, and it is precisely where the fullscreen problem lives. Nothing offline can
+see it, which is why this ships for a live read rather than on a harness result.
+
+| harness | 2884×1662 | 3840×2160 |
+|---|---|---|
+| scale 0.5 | 26.28 ms | 44.34 ms |
+| scale 0.4 | 21.29 ms | 35.85 ms |
+
+**`render_scale` stays at 0.5** — the value Matt's M7 approved. 0.4 buys ~1.25× and would change
+a look he has already signed off; it is not worth spending that before knowing whether the live
+gap closes.
+
+**What the next session decides.** If live VL at a near-4K window drops from 104 ms toward the
+harness's ~26 ms, the full-resolution chain was the missing cost and fullscreen becomes viable.
+If it stays near 104 ms, the cost is somewhere neither instrument has looked yet, and the next
+step is per-pass GPU timing in production rather than more offline sweeps.
+
+Suite 1887/1887, lint 0, app builds.
