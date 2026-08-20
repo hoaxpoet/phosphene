@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
 | BUG-101 | **P1** · **half-fixed and M7'd 2026-08-20 — good at normal window sizes, still unusable near 4K** | preset.volumetriclithograph / performance | **VL now renders its G-buffer and lighting at 0.5× drawable (PERF.11) and Matt's M7 passed it — *"VL looks good"*.** Live on `2026-08-20T13-50-18Z`: **6.93 ms at 900×600** (was ~7 ms/frame equivalent at 12.8 ms/MP — comfortably inside budget) and **104 ms at 2884×1662**, stable across eight consecutive 10 s buckets with no ramp. Cost per megapixel at the large window went **32.56 → 21.8**, a **1.5×** improvement. ⚠ **The projected 4× did not materialise, and the reason is the finding:** quartering the marched pixels only quarters the marcher, and a large share of VL's frame does not scale with it — the post-process chain (bloom + ACES) is deliberately left at full drawable size, and the harness reproduces the same shape (71.20 → 27.43 ms at 2884×1662, 2.6×). **My "the harness understates production" claim in PERF.11 was wrong**: the harness predicted this correctly and I discounted it. **Where it stands:** VL is fixed for ordinary window sizes and still ~9.6 fps at a near-4K window. Further levers, in order of size: scale the post-process chain too (bigger win, more softness — it would put the entire image through the upscale rather than just the marched part), `render_scale` 0.4 (~1.25× more), or accept VL as a preset that does not run at fullscreen. All three are visible trades and none is mine to pick |
 | BUG-100 | P2 · evidence-only, filed 2026-08-19 from an M7 session; **not a preset defect** | app.performance / sustained-load | **The app degrades under sustained 4K rendering, and it is the machine or the frame loop, not the preset that happens to be on screen.** Matt's Stave M7 (`2026-08-19T17-01-15Z`) reported *"performance slowed over time, which led to some choppiness"*. Measured over a contiguous 70 s at 3840×2160: `frame_cpu_ms` **17.4 → 43.6** and `frame_gpu_ms` **2.9 → 11.7**, while the app's OWN CPU work stayed flat — `encode_cpu_ms` 12.9 → 15.2, `renderframe_cpu_ms` 9.8 → 11.0. Same work, less delivered. **Three hypotheses were falsified before filing:** (a) Stave accumulating — an offline soak of 1920 frames at 4K is flat at 22.3 ms with no drift; (b) the dispersion fan opening over the track — `waveformOccupancy` is flat at 0.081–0.095 across the whole segment, r(GPU, occupancy) = **−0.11**; (c) preset-specific — the degradation **persists into the next preset** (Witchlight `frame_cpu` 24.4 at 4K, against Stave's own 17.4 early) and partially recovers after a 2.16 MP interlude. ⚠ **A second finding sits inside this one:** `encode_cpu_ms` is **15–16 ms at 4K** — essentially the entire 60 fps budget spent on CPU encode before any GPU work — and it scales with resolution (9.1 ms at 2.07 MP). CPU encode should not scale with pixel count; that is worth its own look and is probably the more tractable half. Thermal throttling of the Mac mini under sustained 4K is the leading remaining explanation for the rest, and cannot be confirmed from the recordings — it needs `powermetrics` or equivalent alongside a session |
 | BUG-099 | P2 · open, product decision needed | preset.witchlight / performance | **Witchlight reaches ~30 fps at 3840×2160 after BUG-098's 8.2× fix, against 60 fps at 1080p.** `CLAUDE.md` promises 60 fps **at 1080p**, which is met with headroom, so this is a decision about what the product promises at fullscreen rather than a defect against the stated target. The remaining 4K cost is **balanced** — bloom 5.4 ms, three star layers 4.9 ms, beads/particles/feedback 6.0 ms — so there is no further micro-optimisation available that does not change what the preset looks like. **Two routes, both visible to the user:** drop or cheapen a star layer (the three-layer parallax is a documented WL.2 feature and the depth read would go with it), or render below full drawable resolution — ⚠ **which the existing `setDirectRenderScale` cannot do for this preset**: that path is `drawDirect`-only and Witchlight is `feedback`+`particles`, so it needs the half-res render extended to that path first (engine work, ~4× headroom, aliasing risk concentrated in the sub-pixel starfield). ⚠ Note Witchlight is the only preset measured that is anywhere near the budget; the next most expensive at 4K is Volumetric Lithograph at 16.44 ms. Matt's call |
@@ -77,6 +78,65 @@ read the crash reports already on disk.**)*
 
 ---
 
+### BUG-102 — BeatBench's reference for money and bleed is at an untrusted metrical level (2026-08-19)
+
+**Status: open. Not a code defect — a ground-truth defect that caps what the beat-sync
+program can measure. Cannot be fixed by editing the JSON.**
+
+Found while running FT.3.1, which existed to detect a wrong *grid* metrical level on exactly
+these two tracks. The label set did not survive contact with its own ground truth.
+
+**What the ground truth says about itself.** Both tracks carry `status: metrical_review` — the
+GT.2 pipeline's flag for an unresolved metrical disagreement — against `confirmed` for
+billie_jean, solsbury_hill and take_five. On both, *both* independent reference annotators
+agree the taps are the octave-off side:
+
+| track | status | tap BPM | librosa | madmom | Phosphene grid |
+|---|---|---|---|---|---|
+| money | `metrical_review` | 60.97 | METRICAL — "reference is double the tapped pulse (×2.01)" | METRICAL ×2.01 | 116.19 (×1.91) |
+| bleed | `metrical_review` | 226.72 | METRICAL — "reference is half the tapped pulse (×0.51)" | METRICAL ×0.51 | 115.00 (×0.51) |
+
+`money.groundtruth.json`'s own `meter_note` reads *"ratio 3.54 — beats tapped at HALF the bar
+pulse, so the bar is 7"*. On bleed, Phosphene's 115.00 sits between the backends' 114.80 and
+115.38.
+
+**Matt, 2026-08-19:** *"I would not trust my tapping on these tracks, especially Bleed."*
+
+**The repo already contradicts itself, and nobody had noticed.** BUG-076's body — filed against
+bleed, still open — states that bleed's ~115 BPM reading is **"correct — matches madmom 115.0,
+librosa 115.0, drums-stem 115.1"**. That is a *third* independent source at 115. Meanwhile
+`bleed.groundtruth.json` asserts 226.72 and `BEATBENCH_BASELINE_2026-07-30.md` scores bleed at
+F 0.61 / CMLt 0.03 / AMLt 0.84 against it. Both statements are live in the repo and they cannot
+both be right.
+
+**What this contaminates.** Anything scored against these two references at the metrical level:
+
+- **BeatBench suites 2 and 4.** money is one of five suite-2 tracks; **bleed is the only suite-4
+  track**, so suite 4's entire score rests on an untrusted reference. D-205 ratified `AMLt ≥ 0.80`
+  for suite 4 against exactly that number.
+- **`AMLt − CMLt` as a "wrong grid level" signal.** It measures grid-vs-tap *disagreement* and is
+  silent about which side is wrong. D-210's evidence table reads the gap as the grid being wrong;
+  that reading is not established. D-210's *decision* (decline the bar, keep the beat) does not
+  depend on it and stands.
+- **FT.3's phase result** (money 0 %, bleed 16 %) was scored against these downbeat taps, so
+  FT.3's "phase 3/6" headline needs a recheck once the level is settled — as do the FT.3 tasks 4–6
+  bar-correctness labels and the 1.24 decline threshold derived from them.
+- **D-208 / MDL.1's bleed judgment** ("BPM doubles 115.00 → 259.43, meter 4 ✓ → 2 ✗") used the
+  tap-derived truth. 259.43 is not a clean octave of either candidate (2.25× of 115, 1.14× of 227),
+  so the *conclusion* likely survives — but it has not been re-derived and should not be quoted as
+  settled until it is.
+
+**What it does NOT contaminate.** billie_jean, solsbury_hill and take_five are `confirmed` with
+gap 0.00, so suite-1 F 0.97 and the tracks FT.3 got right are unaffected.
+
+**Fix path — re-annotation, not an edit.** The `beatbench` skill is explicit that ground truth
+changes only through the tap + reconcile pipeline; hand-editing the JSON destroys provenance.
+Either re-tap both tracks (`TapCapture --calibrate`, both passes) with the metrical level chosen
+deliberately, or arbitrate them to the backends' level through `reconcile.py` and record the
+arbitration. Until then, **suite-4 numbers and any money/bleed metrical claim should be quoted
+with this caveat**. solsbury_hill's separate ground-truth inconsistency (`meter_from_taps: 7`
+with downbeat taps ~12 tapped beats apart, flagged at FT.3 tasks 1–3) is still open and would
+be worth settling in the same pass.
 ### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
 
 **Status: investigated, no fix applied. Every remaining lever changes what the preset looks
