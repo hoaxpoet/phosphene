@@ -2533,6 +2533,124 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**PERF.12 — the 4K questions answered, and half of this increment deleted as duplicate work.**
+✅ **2026-08-20**, Matt: *"address the two 4K questions together"* (BUG-099 + BUG-100), then
+*"strip it and re-measure"*.
+
+**★★★ THERE IS NO 4K SHADER-COST PROBLEM, AND THE INSTRUMENT WAS THE PROBLEM.**
+`MultiPassRenderHarness` reads every rendered frame back to the CPU — ~8 MB at 1080p, **~33 MB at
+3840×2160** — and production never does. That cost follows PIXELS, not what a preset draws, so it
+lands on the 4K column hardest and a resolution sweep including it measures the harness as much as
+the roster. Measured, the readback costs a median **11.4 ms/frame at 4K** against 3.0 ms at 1080p.
+
+| | readback ON | readback OFF |
+|---|---|---|
+| Witchlight at 4K | 18.6 ms | **5.6 ms** |
+| presets within 16.7 ms at 4K | 6 of 20 | **20 of 20** |
+
+**BUG-099 is resolved by measurement** and needed no product decision — neither the star-layer cut
+nor the half-res extension it proposed; both were sized against a number more than 3× too high.
+**Confirmed live** by the first instrumented session: Witchlight **6.43 ms at 4K, 49 fps, flat over
+60 s**, against 273.88 ms before BUG-098 — harness and live agree within **13 %**. Fourth time in one
+day a performance metric did not mean what its name suggested; the specific error was reusing a
+harness built to COMPARE presets to answer an ABSOLUTE question about one.
+
+**★★★ AND HALF OF THIS INCREMENT WAS BUILT TWICE, IN PARALLEL, ON THE SAME DAY.** I implemented a
+per-preset render cap for Volumetric Lithograph (`max_render_megapixels`, a new descriptor field,
+scaling the G-buffer). While it was in review a parallel session shipped the same feature to `main` —
+also numbered PERF.11 — as `rayMarchRenderScale`, and **theirs is better informed on the point that
+matters: `PresetDescriptor.effectiveRenderScale` had existed since MFX.1 (2026-07-23)**, gated behind
+`usesMetalFXTemporal`. They found it and separated it; I added a parallel field without discovering
+it, having grepped the DIRECT path's scale and stopped there.
+
+**Matt's call: strip mine, keep theirs.** Deleted from this increment: the `maxRenderMegapixels`
+descriptor field and sidecar key, `RenderPipeline.presetRenderScale`, and my ray-march scaling. The
+shipped mechanism is theirs (VL at `render_scale: 0.5`, G-buffer **and** lighting scaled,
+post-process at full resolution). ★ The one thing worth carrying from mine: it also scaled only the
+G-buffer and reached the same conclusion independently — the composite pass samples through a linear
+sampler and upscales for free, so no MetalFX and no extra pass is needed. Two sessions converging on
+that is reassurance about the mechanism, not about the process.
+
+**RE-MEASURED, which is what my half of the work is actually for.** Their commit estimated the
+shipped scale *"should land near the 16.7 ms budget"*. With the readback removed the harness says
+better than that:
+
+| VL at 1920×1080 | ms |
+|---|---|
+| before (full scale, readback off) | 31.9 |
+| **their 0.5 scale, readback off** | **8.65 – 8.92** |
+| their own figure (readback ON) | 17.43 |
+
+⚠ **Re-confirmed after PERF.13** (which moved the post-process chain to the marcher's scale, after
+the measurement above): **8.50 / 8.58 / 8.75 ms** across three runs on the merged tree, so the figure
+describes `main` and not a superseded pipeline. ✅ **And Matt has since M7-approved the 0.5 look**
+(*"VL looks good"*, session `2026-08-20T13-50-18Z`), which discharges the certified-preset caveat
+this entry raised.
+
+⚠ **And the live number is still higher than any of these.** The harness is **2.4× low** on VL — its
+24-frame drive starts the terrain flight from a standing start, the cheapest part of it. Taking their
+live **32.56 ms per marched megapixel**, the 0.5 scale predicts roughly **20 ms at 1080p (~50 fps)**
+— a large gain from ~15 fps, still short of 60 — and **~70 ms at 4K**, which their commit says too.
+**4K/60 remains out of reach for VL either way** — and the VL handoff (`docs/prompts/VL_HANDOFF_2026-08-20.md`)
+now reports **104 ms / 9.6 fps live at 2884×1662**, worse than any offline extrapolation, with the
+blunt summary that *"every offline VL number has disagreed with live by 2–4×"*. That is the same gap
+this increment measured from the other side, and it is why the live read is the next action rather
+than another offline sweep.
+
+**What survives from this increment, all of it about measurement:**
+- **`readback:` flag** and timing with it off. Their own commit notes *"the harness gain understates
+  production: it still pays … per-frame readback"* — this is the fix for exactly that.
+- **`absoluteCeilingMs = 60 ms`**, always on: the "arriving already broken" net this file's header
+  had described since PERF.4 while **the constant appeared exactly once, in that comment — never
+  implemented.** VL sat at ~31 fps at 1080p reading green at 5.9× the median.
+- **`FRAME_BUDGET_STRICT=1`**, the real 60 fps check, isolation-only, now passing **20/20 at 1080p
+  and at 4K in the harness**. ⚠ It cannot live in the default suite: parallel `swift test` inflates
+  timings 2–3×, so a 16.7 ms assertion would fail in CI and pass locally — worse than no gate.
+- **`FRAME_BUDGET_RES`**, so the roster can be measured at a panel's real resolution.
+
+★★ **AND THIS INCREMENT MADE THE SAME MISTAKE IT WAS DIAGNOSING, ONCE.** My first version timed
+*everything* with the readback off — right for an absolute claim, wrong for the ratio gate, and it
+went red on the closeout run: the readback is a **common-mode** cost (it scales with pixels, not with
+the preset), so removing it halved the median to 3.5 ms and with it the absolute headroom under the
+8× ceiling. One contended sample of Stave — genuinely the second most expensive preset — read
+**34.7 ms = 9.9×** and failed a gate that had been stable all day. **A ratio partly cancels a
+common-mode term, and that cancellation is what made the recorded baselines and the 8× factor mean
+anything.** Fixed by giving the two questions two instruments: the ratio runs on the harness it was
+calibrated with, and the readback comes off only for the strict check, which is opt-in, isolation-only
+and pays for its own timing loop. Caught by the closeout gate rather than by me, which is the gate
+earning its place.
+- **`renderTargetDescription` logs the effective scale** — `min(directRenderScale,
+  rayMarchRenderScale)`. It would otherwise record `render_scale=1.00` for VL rendering at 0.5, and
+  that line exists so `frame_gpu_ms` is interpretable after the fact.
+
+**BUG-100 remains the live question.** A 24-frame cost measurement cannot see a 70-second drift.
+The instrumented session reports thermal **`nominal` with the degradation NOT reproducing** —
+Witchlight flat across 60 s at 4K, in a window comparable to the one where Stave went 2.9 → 11.7 ms.
+That supports neither hypothesis and refutes neither; one non-reproduction on a different preset mix
+is not a falsification. The instrument reports cleanly, so the next *degrading* session carries it.
+
+⚠ **FIFTH ID COLLISION TODAY AND THE FIRST DUPLICATED BUILD.** Both increments were numbered
+PERF.11; this one is renumbered PERF.12. The cost stopped being cosmetic — two sessions each spent an
+increment on one feature, and the duplicate was only caught because the merge conflicted. Numbering
+is the visible symptom; **the real gap is that nothing tells a session what another is currently
+building.** Matt's call, flagged now with a concrete price attached.
+
+⚠ **TWO intermittent failures recorded, not silenced, and one of them was investigated as a
+possible deadlock rather than waved through.** `SessionLifecycleChurnTests.routerChurn_startStop
+LocalFilePlayback_neverHangs` failed once in-suite — and a **hang-class test that hangs is normally
+catching a deadlock** (BUG-059), which mattered here because this increment adds an `NSLock` acquire
+(`rayMarchRenderScale`) inside `renderTargetDescription`, a property the app polls four times a
+second. Checked rather than assumed: the property takes its three locks **sequentially, never
+nested**, so no lock-order inversion is constructible; its only caller is a standalone polling task,
+not a path that already holds `rayMarchLock`; and the test passes isolated in **2.79 s**. Two
+subsequent full runs were green. Contention, not a deadlock — but the check was the point.
+
+⚠ Also recorded: `ProgressiveReadiness.startNow_atThreshold_transitions_to_ready` failed once on a wall-clock wait
+after 220 s; isolated it passes in **0.222 s**, and the following full runs were green. Contention
+starving a waiter — load average was **11** during these measurements, with parallel sessions
+building. **No budget was widened.** It is also why the VL re-measurement above spans 8.65 → 29.57 ms
+across four runs and the minimum is the honest figure, per this suite's own min-of-passes reasoning.
+
 **PERF.10 — the residue increment: coverage 16 → 20, and the gate the FTR.4 retirement left behind.**
 ✅ **2026-08-19**, Matt: *"do the residue items"* — the three items FTR.5/PERF.7's closeouts had
 named rather than fixed.

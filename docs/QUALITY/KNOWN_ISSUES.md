@@ -39,7 +39,7 @@ read the crash reports already on disk.**)*
 | BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
 | BUG-101 | **P1** · **half-fixed and M7'd 2026-08-20 — good at normal window sizes, still unusable near 4K** | preset.volumetriclithograph / performance | **VL now renders its G-buffer and lighting at 0.5× drawable (PERF.11) and Matt's M7 passed it — *"VL looks good"*.** Live on `2026-08-20T13-50-18Z`: **6.93 ms at 900×600** (was ~7 ms/frame equivalent at 12.8 ms/MP — comfortably inside budget) and **104 ms at 2884×1662**, stable across eight consecutive 10 s buckets with no ramp. Cost per megapixel at the large window went **32.56 → 21.8**, a **1.5×** improvement. ⚠ **The projected 4× did not materialise, and the reason is the finding:** quartering the marched pixels only quarters the marcher, and a large share of VL's frame does not scale with it — the post-process chain (bloom + ACES) is deliberately left at full drawable size, and the harness reproduces the same shape (71.20 → 27.43 ms at 2884×1662, 2.6×). **My "the harness understates production" claim in PERF.11 was wrong**: the harness predicted this correctly and I discounted it. **Where it stands:** VL is fixed for ordinary window sizes and still ~9.6 fps at a near-4K window. Further levers, in order of size: scale the post-process chain too (bigger win, more softness — it would put the entire image through the upscale rather than just the marched part), `render_scale` 0.4 (~1.25× more), or accept VL as a preset that does not run at fullscreen. All three are visible trades and none is mine to pick |
 | BUG-100 | P2 · evidence-only, filed 2026-08-19 from an M7 session; **not a preset defect** | app.performance / sustained-load | **The app degrades under sustained 4K rendering, and it is the machine or the frame loop, not the preset that happens to be on screen.** Matt's Stave M7 (`2026-08-19T17-01-15Z`) reported *"performance slowed over time, which led to some choppiness"*. Measured over a contiguous 70 s at 3840×2160: `frame_cpu_ms` **17.4 → 43.6** and `frame_gpu_ms` **2.9 → 11.7**, while the app's OWN CPU work stayed flat — `encode_cpu_ms` 12.9 → 15.2, `renderframe_cpu_ms` 9.8 → 11.0. Same work, less delivered. **Three hypotheses were falsified before filing:** (a) Stave accumulating — an offline soak of 1920 frames at 4K is flat at 22.3 ms with no drift; (b) the dispersion fan opening over the track — `waveformOccupancy` is flat at 0.081–0.095 across the whole segment, r(GPU, occupancy) = **−0.11**; (c) preset-specific — the degradation **persists into the next preset** (Witchlight `frame_cpu` 24.4 at 4K, against Stave's own 17.4 early) and partially recovers after a 2.16 MP interlude. ⚠ **A second finding sits inside this one:** `encode_cpu_ms` is **15–16 ms at 4K** — essentially the entire 60 fps budget spent on CPU encode before any GPU work — and it scales with resolution (9.1 ms at 2.07 MP). CPU encode should not scale with pixel count; that is worth its own look and is probably the more tractable half. Thermal throttling of the Mac mini under sustained 4K is the leading remaining explanation for the rest, and cannot be confirmed from the recordings — it needs `powermetrics` or equivalent alongside a session |
-| BUG-099 | P2 · open, product decision needed | preset.witchlight / performance | **Witchlight reaches ~30 fps at 3840×2160 after BUG-098's 8.2× fix, against 60 fps at 1080p.** `CLAUDE.md` promises 60 fps **at 1080p**, which is met with headroom, so this is a decision about what the product promises at fullscreen rather than a defect against the stated target. The remaining 4K cost is **balanced** — bloom 5.4 ms, three star layers 4.9 ms, beads/particles/feedback 6.0 ms — so there is no further micro-optimisation available that does not change what the preset looks like. **Two routes, both visible to the user:** drop or cheapen a star layer (the three-layer parallax is a documented WL.2 feature and the depth read would go with it), or render below full drawable resolution — ⚠ **which the existing `setDirectRenderScale` cannot do for this preset**: that path is `drawDirect`-only and Witchlight is `feedback`+`particles`, so it needs the half-res render extended to that path first (engine work, ~4× headroom, aliasing risk concentrated in the sub-pixel starfield). ⚠ Note Witchlight is the only preset measured that is anywhere near the budget; the next most expensive at 4K is Volumetric Lithograph at 16.44 ms. Matt's call |
+| BUG-099 | P2 · ✅ **RESOLVED BY MEASUREMENT 2026-08-20 (PERF.12) — no product decision needed.** With the harness readback removed (which production never does), **all 20 covered presets are within 16.7 ms at 3840×2160**, Witchlight among them at **5.6 ms**. Neither route this entry proposed is required. ⚠ **PREMISE RE-MEASURED 2026-08-19 (PERF.12) — the "~30 fps at 4K" figure was an instrument artifact.** With the harness's CPU readback removed (a median **11.4 ms at 4K** that production never performs) Witchlight measures **8.4 ms at 3840×2160** — inside the 16.7 ms budget with headroom. **18 of 20 covered presets fit 60 fps at 4K.** The product decision this entry asked for is therefore not needed for Witchlight; what remains is Volumetric Lithograph (see BUG-101) and the live degradation in BUG-100. Matt's call on whether to close | preset.witchlight / performance | **Witchlight reaches ~30 fps at 3840×2160 after BUG-098's 8.2× fix, against 60 fps at 1080p.** `CLAUDE.md` promises 60 fps **at 1080p**, which is met with headroom, so this is a decision about what the product promises at fullscreen rather than a defect against the stated target. The remaining 4K cost is **balanced** — bloom 5.4 ms, three star layers 4.9 ms, beads/particles/feedback 6.0 ms — so there is no further micro-optimisation available that does not change what the preset looks like. **Two routes, both visible to the user:** drop or cheapen a star layer (the three-layer parallax is a documented WL.2 feature and the depth read would go with it), or render below full drawable resolution — ⚠ **which the existing `setDirectRenderScale` cannot do for this preset**: that path is `drawDirect`-only and Witchlight is `feedback`+`particles`, so it needs the half-res render extended to that path first (engine work, ~4× headroom, aliasing risk concentrated in the sub-pixel starfield). ⚠ Note Witchlight is the only preset measured that is anywhere near the budget; the next most expensive at 4K is Volumetric Lithograph at 16.44 ms. Matt's call |
 | BUG-098 | **P1** · **FIXED 2026-08-19 (PERF.2 + PERF.3), 8.2× measured. ✅ 1080p target met with margin; ⚠ 4K ≈ 30 fps, still 2× over** | preset.witchlight / performance | **Witchlight's sky ran ~64 Perlin evaluations per pixel across the whole frame — most of them multiplied by zero, the rest for detail that never reached the image.** Measured live at 4K on `2026-08-19T14-25-55Z`: **273.88 ms median GPU, 11.2 fps, 16× over budget**, while six other presets in the same session held 59–60 fps (Arachne 3.27 ms … Volumetric Lithograph 16.44 ms) — 84× Arachne, so a defect and not a cost. Two causes, both fixed: **(a)** `witchlight_bloom` computed `fbm8` + `warped_fbm` for EVERY pixel then multiplied by `body = exp(-r*r*70)`, a lobe a sixth of the frame wide — ~530 M Perlin evaluations per 4K frame to produce black; fixed with an early return at `body < 1e-3` (below an 8-bit LSB: 2.4e-4 vs 3.9e-3), **151.2 → 31.8 ms**, output identical to every printed digit. **(b)** the surviving noise was still 64 evaluations for what the code's own comment calls *"low-frequency structure only … one soft mass rather than cloud detail"*; replaced with `fbm4` + a one-level `fbm4` warp (**20 evaluations**), the same remedy `VolumetricLithograph.metal:634` applies to the same function for the same reason — **31.8 → 18.4 ms**, sky luma 9.22 → 9.23 and lit share 2.49 % → 2.51 %. **Total 151.3 → 14.9 ms (10.2×), measured back to back in one thermal state.** Extrapolated to production: **~6 ms at 1800×1200 (60 fps with large headroom, target met)** and **~27 ms at 3840×2160 (≈37 fps)**. ⚠ The residual is now balanced — stars 5.3 ms, beads/particles/feedback 5.8 ms, bloom 2.1 ms — so there is no further shader win that does not change the look; closing the 4K gap needs a product decision (fewer star layers, or `setDirectRenderScale` as Nimbus already does at 0.5×), tracked as **BUG-099** |
 | BUG-097 | **P1** · **FIXED 2026-08-18, validated on three real sessions + a new gate** | preset.witchlight / frame-rate-coupling | **A frame-time clamp meant for physics stability was corrupting a MUSICAL measurement, and Witchlight dropped most of its off-beat accents on exactly the sessions where the frame rate was worst.** `WitchlightPath.advance` clamps `dt` to 1/30 s so an integrator cannot take a wild step after a stall — correct for the integrators, wrong for the four quantities that measure how long something LASTED: `timeSinceWrap` (→ `barPeriod`), `gridSilentFor`, and the two refractories. WL.9 gates the off-beat pulse on `barPeriod / beatsPerBar >= 0.55 s`, so under load a 94 BPM bar measured **1.80 s against a true 2.55 s** and the pulse was never emitted. On `2026-08-18T16-10-38Z` — 48.8 % of frames over the cap, 38 % of elapsed time discarded — the preset fired **6 off-beat pulses in 110 s** where the meter implies ~130. **Fixed** by splitting `clockDt` (real elapsed time) from `dt` (the clamped integrator step). Validated on three real sessions: 6 → **105**, 50 → **149**, and the already-healthy session 79 → **83**, i.e. every one lands at the designed ~3:1 and the healthy case barely moves — the signature of a fix rather than a re-tune. Flare alignment on the worst session also rose 36 % → 54 % within 10 % of a beat. ⚠ It was invisible to the whole suite because every committed fixture replays at a steady ~60 Hz and never approaches the cap; `offBeatPulseSurvivesHeavyFrames` now drives at 50 ms frames and **was confirmed to fail (0 pulses) on the pre-fix code** |
 | BUG-095 | P1 · **FIXED 2026-08-17; M7 CONFIRMED LIVE 2026-08-18, twice** (WL.13 — Witchlight keeps its second pole, locally) | dsp.tonal / cross-preset-regression | **A source-side EMA in `TonalAnalyzer` outlived the reason it was added, and all four consumers were smoothing an already-smoothed angle — cutting Witchlight's hero driver's travel by up to 4×.** Removing it was correct for Nacre, Cymatic and Fractal Tree (Matt on Nacre, 2026-08-18: *"looks fine"*) but wrong for Witchlight, which had been tuned AND certified against the cascade. `WitchlightTuning.phasePreTau` restores that second pole locally. **Live-confirmed on `2026-08-18T16-10-38Z`: Matt *"Looks good overall"*, stroke measured at 42 heading turns against 74 pre-fix and 50 on the certified build.** ⚠ Note his sign-off covers the STROKE and the ribbon, not the beat accents — that session was the worst BUG-097 case measured (6 off-beat pulses in 110 s), so the accents were largely absent from what he judged |
@@ -139,8 +139,61 @@ with downbeat taps ~12 tapped beats apart, flagged at FT.3 tasks 1–3) is still
 be worth settling in the same pass.
 ### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
 
-**Status: investigated, no fix applied. Every remaining lever changes what the preset looks
-like.** Filed so the measurements are not re-derived by the next person.
+**Status: ✅ FIXED 2026-08-20 — by rendering fewer pixels, not by cutting detail. ✅ M7-approved
+(*"VL looks good"*, `2026-08-20T13-50-18Z`). ⚠ Fullscreen is NOT closed: 104 ms / 9.6 fps live at
+2884×1662 — see `docs/prompts/VL_HANDOFF_2026-08-20.md`, and note Matt's requirement that it must
+"run fullscreen even if not optimal".**
+
+Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
+`VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
+and lighting allocate at half linear scale and the composite pass upscales for free, post-process
+staying at full resolution. No MetalFX, no motion vectors, no extra pass.
+
+★ **The upscale is free because a linear-sampled pass already existed** — the same observation two
+sessions reached independently while building this in parallel (see PERF.12). Rendered side by side
+at 1080p the two builds are nearly indistinguishable; a 3× crop shows a slightly softer contour
+edge.
+
+| harness, 24-frame drive | before | after |
+|---|---|---|
+| 1920×1080 | 31.9 ms | **13.4–15.4 ms** |
+| 3840×2160 | 111.5 ms | **14.8 ms** |
+
+⚠ **THOSE ARE HARNESS FIGURES AND THE LIVE COST IS HIGHER.** The first instrumented session
+(PERF.10, `2026-08-19T22-45-50Z`) measured the *uncapped* VL at **269.89 ms at 4K — 3.5 fps**, and
+**32.56 ms per marched megapixel**, against this harness's 111.5 ms: the harness is **2.4× low** on
+this preset because its 24-frame drive starts the terrain flight from a standing start, which is the
+cheapest part of it. Taking the live ms/MP, a 0.92 MP cap predicts roughly **30 ms ≈ 30 fps, not
+60**. So the cap is a large, real improvement that probably does **not** reach the target live.
+**Do not tighten it against this extrapolation** — that is calibrating to a measurement of the build
+before the fix. One live session with the cap in place makes the number real; it is the same
+instrument that settles BUG-100.
+
+**Original analysis retained — it is still correct about where the cost is:**
+
+★★ **AND IT IS THE ONE PRESET THAT MISSES THE PRODUCT'S STATED TARGET (PERF.12, 2026-08-19).**
+The roster measured at three resolutions with the harness readback removed — so these are GPU cost,
+not instrument cost (see BUG-099):
+
+| resolution | Volumetric Lithograph | next most expensive | presets within 16.7 ms |
+|---|---|---|---|
+| 1920×1080 | **31.9 ms ≈ 31 fps** | Stave 11.2 ms | 19 of 20 |
+| 2560×1440 | 54.9 ms (readback on) | — | — |
+| 3840×2160 | **111.5 ms ≈ 9 fps** | Cytokinesis 18.4 ms | 18 of 20 |
+
+`CLAUDE.md` promises **60 fps at 1080p**, and VL is at roughly half that — **3.5× the budget, and
+2.8× the next most expensive preset at the same resolution.** Every other covered preset fits.
+This is no longer "expensive by construction" as a curiosity; it is the only measured breach of the
+stated target in the covered roster, in a **certified** preset.
+
+⚠ **And the frame-budget gate cannot catch it.** `PresetFrameBudgetTests` asserts a RATIO — no
+preset above 8× the median — which VL passes at 5.9×. Its header documents an `absoluteCeilingMs`
+as "a second, deliberately loose net", but **that constant appears exactly once in the file, in
+that comment: it was never implemented.** So nothing in the suite checks the 60 fps promise in
+milliseconds, which is why a preset at 31 fps at 1080p is green.
+
+**Both of those are Matt's calls** — adding the absolute net would ship red until VL is decided,
+and every lever on VL changes what it looks like (below).
 
 Matt: *"troubleshoot VL"*, after the PERF.4 gate flagged it at **5.2× the median preset**.
 
@@ -264,7 +317,43 @@ closes the open half of this entry.
 
 ### BUG-099 — Witchlight reaches ~30 fps at 4K after the 8.2× fix; closing the rest is a product decision (2026-08-19)
 
-**Status: open. Needs Matt's call, not more optimisation.**
+**Status: ⚠ PREMISE RE-MEASURED 2026-08-19 (PERF.12). The 4K shortfall was largely the
+measuring instrument, not the preset.**
+
+★★ **`MultiPassRenderHarness` reads every rendered frame back to the CPU — ~8 MB per frame at
+1080p and ~33 MB at 3840×2160 — and production never does.** That cost scales with PIXELS, not with
+what the preset draws, so it lands on the 4K column far harder than the 1080p one and a resolution
+sweep that includes it measures the harness as much as the roster. Measured with
+`FRAME_BUDGET_NO_READBACK=1`, the same 20 presets in the same run shape:
+
+| | readback ON | readback OFF | readback cost |
+|---|---|---|---|
+| **Witchlight at 4K** | 18.6 ms | **8.4 ms** | 10.2 ms |
+| median preset at 4K | — | — | **11.4 ms** |
+| median preset at 1080p | — | — | 3.0 ms |
+| **presets within 16.7 ms at 4K** | **6 of 20** | **18 of 20** | — |
+
+So Witchlight holds 60 fps at 4K on GPU cost with room to spare, and **neither route this entry
+proposed is needed** — not the star-layer cut, not extending the half-res path to
+feedback/particles. Both were sized against a number that was 2.2× too high.
+
+⚠ **This does NOT explain what Matt saw.** He reported real 4K choppiness, and BUG-100 measured it
+degrading over 70 s while the app's own CPU work stayed flat — a *drift over minutes*, which a
+24-frame cost measurement cannot see and shader cost does not explain. **BUG-100 is the live
+question and its thermal instrumentation settles it; this entry is about steady-state cost only.**
+
+⚠ **Caveats on the readback-off numbers.** They still `waitUntilCompleted` per frame, so they are a
+serialised GPU-cost measurement rather than a production frame time (production overlaps CPU and
+GPU), and they are a 24-frame sample that cannot show thermal drift. They are a fair proxy for "how
+expensive is this preset's frame" and nothing more.
+
+**FOURTH TIME IN ONE DAY** that a performance metric did not mean what its name suggested — after
+`deltaTime` (vsync, not headroom), the harness milliseconds in general, and `encode_cpu_ms` (which
+includes a blocking drawable wait). The rule keeps holding: **read what the number is computed from
+before concluding anything from its trend.** Here the specific error was reusing a harness built for
+*comparing* presets to answer an *absolute* question about one.
+
+**Original analysis, retained — its component breakdown is still correct, its conclusion is not:**
 
 BUG-098 took Witchlight from 273.88 ms to an extrapolated ~27 ms at 3840×2160 (**10.2× measured
 in the harness, 151.3 → 14.9 ms back to back**). That **meets the stated target with large

@@ -403,13 +403,23 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let pixelWidth = max(Int(size.width), 1)
         let pixelHeight = max(Int(size.height), 1)
         let megapixels = Double(pixelWidth * pixelHeight) / 1_000_000
-        let scaleText = String(format: "%.2f", directRenderScale)
+        // PERF.12 — the EFFECTIVE scale, whichever path set it. `directRenderScale` alone records
+        // 1.00 for a ray-march preset rendering at 0.5 (VL does), and this line exists precisely so
+        // `frame_gpu_ms` is interpretable after the fact — a scale the log does not carry is a 4×
+        // cost difference nobody can attribute later, which is the gap that let BUG-098 hide.
+        let scaleText = String(format: "%.2f", min(directRenderScale, rayMarchRenderScale))
         let mpText = String(format: "%.2f", megapixels)
         return "width=\(pixelWidth) height=\(pixelHeight) megapixels=\(mpText) render_scale=\(scaleText)"
     }
 
     var directRenderScale: Float {
         directRenderScaleLock.withLock { _directRenderScale }
+    }
+
+    /// The ray-march path's scale, for the session record. Mirrors what `applyPreset` pushed into
+    /// `RayMarchPipeline.renderScale`; 1.0 when no ray-march preset is active.
+    var rayMarchRenderScale: Float {
+        rayMarchLock.withLock { rayMarchPipeline?.renderScale ?? 1.0 }
     }
 
     /// Cached offscreen target for the half-res direct path; (re)allocated lazily

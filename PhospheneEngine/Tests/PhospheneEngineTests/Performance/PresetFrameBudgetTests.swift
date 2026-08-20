@@ -39,8 +39,18 @@ struct PresetFrameBudgetTests {
     /// Cost scales with pixel count, so a budget asserted at a smaller size proves nothing —
     /// every pre-2026-08-19 performance judgement was made at 900x600 (0.54 MP) against a
     /// 1080p promise, which is why Witchlight's 16x overrun went unseen for weeks.
-    static let width = 1920
-    static let height = 1080
+    /// Overridable so the roster can be measured at a panel's real resolution without editing the
+    /// gate: `FRAME_BUDGET_RES=3840x2160`. The GATE always runs at the default — a threshold that
+    /// moves with an environment variable is not a threshold — but the same code answers "what can
+    /// this machine hold at fullscreen", which is what BUG-099 and BUG-100 both turn on.
+    static let (width, height): (Int, Int) = {
+        guard let spec = ProcessInfo.processInfo.environment["FRAME_BUDGET_RES"] else {
+            return (1920, 1080)
+        }
+        let parts = spec.lowercased().split(separator: "x").compactMap { Int($0) }
+        guard parts.count == 2, parts[0] > 0, parts[1] > 0 else { return (1920, 1080) }
+        return (parts[0], parts[1])
+    }()
 
     /// Frames timed per preset, after `settleFrames` warm frames that are not timed.
     static let timedFrames = 24
@@ -76,6 +86,28 @@ struct PresetFrameBudgetTests {
     /// gate — they are wall-clock on one machine on one day, and asserting on them would be
     /// asserting on the weather.
     static let outlierFactorOverMedian = 8.0
+
+    /// ★★ THE ABSOLUTE NET THIS FILE'S HEADER HAS ALWAYS DESCRIBED AND NEVER HAD.
+    ///
+    /// Until PERF.12 `absoluteCeilingMs` appeared exactly once in this file — in that comment. So
+    /// nothing checked the 60 fps promise in milliseconds, and Volumetric Lithograph sat at
+    /// **31.9 ms at 1080p (~31 fps)** while reading green at 5.9× the median, comfortably inside
+    /// the 8× ratio.
+    ///
+    /// ⚠ **WHY IT IS THIS LOOSE, AND WHY IT CANNOT BE 16.7.** `swift test` runs suites in parallel,
+    /// which inflates every timing 2–3× (measured, and documented in this file's header: Glaze
+    /// 5.2 → 12.0 ms, no code change). A 16.7 ms assertion would therefore fail nearly the whole
+    /// roster in CI and pass locally — worse than no gate. **This net catches "arriving already
+    /// broken"**, which is what the header always claimed for it: original Witchlight at 273.9 ms
+    /// and original VL at 111.5 ms (4K) both trip it, and nothing healthy comes close.
+    ///
+    /// **The real 60 fps check is `FRAME_BUDGET_STRICT=1`** below — it must be run in ISOLATION,
+    /// and it is the thing to run before certifying a preset.
+    static let absoluteCeilingMs = 60.0
+
+    /// The product's actual promise: 60 fps at 1080p. Only asserted under `FRAME_BUDGET_STRICT=1`,
+    /// because it is only meaningful in an uncontended run.
+    static let strictBudgetMs = 16.7
 
     /// Per-preset harness cost at 1920x1080, recorded 2026-08-19 (post BUG-098 fix).
     /// These are HARNESS numbers including readback — see the header. Update deliberately,
@@ -142,8 +174,25 @@ struct PresetFrameBudgetTests {
     @MainActor
     @Test("Every reachable preset stays within its recorded frame cost at 1080p")
     func presetFrameCost() throws {
+        // ★★ THE RATIO GATE KEEPS THE READBACK, AND THAT IS A CORRECTION TO THIS INCREMENT.
+        //
+        // My first version timed everything with `readback: false` — correct for an ABSOLUTE claim,
+        // wrong here, and it went red immediately: the readback is a common-mode cost (it scales
+        // with pixels, not with the preset), so removing it **halved the median to 3.5 ms** and with
+        // it the absolute headroom under the 8× ceiling. One contended sample of Stave — genuinely
+        // the second most expensive preset — then read 34.7 ms = 9.9× and failed a gate that had
+        // been stable for a day. A ratio partly cancels a common-mode term; that is what made the
+        // recorded baselines and the 8× factor mean anything.
+        //
+        // So: the RATIO runs on the same instrument it was calibrated with, and the readback comes
+        // off only for the STRICT check, which is opt-in and isolation-only and pays for its own
+        // timing loop. Two questions, two instruments — the whole lesson of this increment applied
+        // to itself.
         let harness = MultiPassRenderHarness(width: Self.width, height: Self.height)
+        let strictHarness = MultiPassRenderHarness(width: Self.width, height: Self.height,
+                                                  readback: false)
         let (features, stems) = Self.drive(frames: Self.timedFrames)
+        let strict = ProcessInfo.processInfo.environment["FRAME_BUDGET_STRICT"] == "1"
 
         var measured: [(name: String, ms: Double)] = []
         var failures: [String] = []
@@ -175,6 +224,31 @@ struct PresetFrameBudgetTests {
         for row in measured where median > 0 && row.ms > median * Self.outlierFactorOverMedian {
             failures.append(String(format: "%@: %.1f ms = %.1fx the median preset (%.1f ms)",
                                    row.name, row.ms, row.ms / median, median))
+        }
+        // The loose absolute net — see `absoluteCeilingMs`.
+        for row in measured where row.ms > Self.absoluteCeilingMs {
+            failures.append(String(format: "%@: %.1f ms exceeds the absolute ceiling (%.0f ms). "
+                                   + "A preset this far over is broken rather than expensive.",
+                                   row.name, row.ms, Self.absoluteCeilingMs))
+        }
+        // The real promise, opt-in and isolation-only — and timed WITHOUT the readback, because
+        // production never performs it and 16.7 ms is an absolute claim about the app's frame.
+        if strict {
+            for preset in MultiPassRenderHarness.multiPassPresets {
+                var best = Double.infinity
+                for _ in 0..<Self.timingPasses {
+                    let start = ProcessInfo.processInfo.systemUptime
+                    guard (try? strictHarness.render(preset: preset, features: features,
+                                                    stems: stems, settle: 0) { _ in 0 }) != nil
+                    else { break }
+                    best = min(best, (ProcessInfo.processInfo.systemUptime - start)
+                               * 1000 / Double(Self.timedFrames))
+                }
+                guard best.isFinite, best > Self.strictBudgetMs else { continue }
+                failures.append(String(format: "%@: %.1f ms exceeds the 60 fps budget (%.1f ms) "
+                                       + "at %dx%d, readback excluded.",
+                                       preset, best, Self.strictBudgetMs, Self.width, Self.height))
+            }
         }
 
         for row in measured.sorted(by: { $0.ms > $1.ms }) {

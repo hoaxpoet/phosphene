@@ -29,9 +29,24 @@ struct MultiPassRenderHarness {
     let width: Int
     let height: Int
 
-    init(width: Int = 320, height: Int = 180) {
+    /// ★★ SKIP THE CPU READBACK — TIMING ONLY. Every measurement that READS pixels needs it on.
+    ///
+    /// The readback is ~8 MB per frame at 1080p and **~33 MB at 3840×2160**, it scales with PIXELS
+    /// rather than with what the preset draws, and **production never does it**. Timing with it on
+    /// is what produced BUG-099's phantom "Witchlight ~30 fps at 4K" for a preset that renders in
+    /// 5.6 ms — measured, the readback costs a median **11.4 ms/frame at 4K** against 3.0 ms at
+    /// 1080p, so it lands on the 4K column hardest and a resolution sweep including it measures the
+    /// harness as much as the roster.
+    let readback: Bool
+
+    init(width: Int = 320, height: Int = 180, readback: Bool = true) {
         self.width = width
         self.height = height
+        // The env var is an ad-hoc override for one-off sweeps; the PARAMETER is what the
+        // frame-budget gate uses, because a threshold that depends on an environment variable
+        // being set is not a threshold.
+        self.readback = readback
+            && ProcessInfo.processInfo.environment["FRAME_BUDGET_NO_READBACK"] != "1"
     }
 
     /// The certified presets this harness renders through their real multi-pass path.
@@ -923,6 +938,7 @@ struct MultiPassRenderHarness {
         cmd.commit()
         cmd.waitUntilCompleted()
         guard cmd.status == .completed else { throw HarnessError.renderFailed }
+        guard readback else { return }   // see `readback` — timing runs skip this
         outTex.getBytes(&pixels, bytesPerRow: width * 4,
                         from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
     }
