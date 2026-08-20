@@ -6773,7 +6773,7 @@ or accept VL as a preset that does not run fullscreen.
 
 No code change; measurement and M7 record.
 
-### Increment PERF.13 — the post-process chain renders at the marcher's scale ⏳ awaiting live measurement (2026-08-20)
+### Increment PERF.13 — the post-process chain renders at the marcher's scale ✅ measured, no live gain (2026-08-20)
 
 **Matt: *"It needs to run fullscreen even if not optimal."*** PERF.12 left VL at ~9.6 fps in a
 near-4K window, which is not "runs". This closes the obvious remaining gap and asks for one more
@@ -6806,3 +6806,64 @@ If it stays near 104 ms, the cost is somewhere neither instrument has looked yet
 step is per-pass GPU timing in production rather than more offline sweeps.
 
 Suite 1887/1887, lint 0, app builds.
+
+**MEASURED (PERF.14, 2026-08-20, session `2026-08-20T15-53-59Z`): no live gain.** 175 ms at
+3840×2160 against 104 ms at 2884×1662 — 21.1 vs 21.8 ms per megapixel, a 3 % move that is inside
+the noise. The full-resolution bloom was not the missing cost. The fork resolved to its second
+branch, and PERF.14 found the answer somewhere neither instrument had looked: a **cliff**, not a
+curve. The change is kept — it is correct on its own terms and costs nothing — but it is not what
+made fullscreen work.
+
+
+---
+
+### Increment PERF.14 — the marched-pixel budget: VL runs fullscreen, and the cost is a cliff ✅ (2026-08-20)
+
+**Done-when:** VL renders at 3840×2160 fullscreen without falling below the frame budget, and the
+mechanism that gets it there is measured live rather than projected from the harness.
+
+**Result: 5.7 fps → 60 fps at 4K fullscreen.** Three live sessions, VL the whole way, one
+resolution each, thermal nominal throughout.
+
+| render_scale | marched at 3840×2160 | live `frame_gpu_ms` |
+|---|---|---|
+| 0.5 | 1920×1080 | 175 ms (5.7 fps) |
+| 0.4 | 1536×864 | ≤ 15 ms (60 fps, vsync-floored) |
+
+**The finding: ray-march cost is a STEP, not a curve.** A 1.56× cut in marched pixels produced an
+**11.7×** cut in cost. No shading model predicts that, and "ms per megapixel" — the model PERF.11
+through PERF.13 all reasoned with — is falsified by it. Something falls over between 1536×864 and
+1920×1080 marched on an M2 Pro; PERF.14 did not chase what, because VL is now well clear of it.
+This also explains why the harness kept mispredicting: it never crosses the step, which is why it
+projected 0.4 would buy ~1.25× when live it bought ≥11×.
+
+**Change.** `RenderPipeline.marchScale(declared:width:height:)` caps *marched pixels* at
+`marchedPixelBudget` (1536×864 — the largest size measured below the step) instead of scaling the
+drawable by a constant. The budget only ever lowers a scale, and applies only to presets that
+**declare** a `render_scale`, so the full-resolution catalog keeps the looks it was certified at.
+VL's sidecar stays at **0.5**, unchanged: it resolves to 0.5 at 1080p, 0.5 in the 2884×1662 window
+Matt certified it in, and 0.4 at 4K automatically. Nothing Matt has approved changes appearance.
+
+⚠ **`render_scale` has a silent floor of 0.4** (`RenderPipeline+RayMarch.swift`). Probes at 0.25
+and 0.35 both ran at 0.4 and returned identical timings (p5 15.29 / 15.29, p50 15.99 / 15.91)
+before the clamp was noticed — a published "0.35 holds, its tail is worse" comparison had to be
+retracted mid-session, because it was two runs of the same build. The clamp is now documented at
+the call site, and the identical results stand as an accidental repeatability control.
+
+**Instrument.** `Scripts/read_frame_gpu.sh` reads `frame_gpu_ms` from a session in eight buckets
+rather than one median — the short-window/straddled-switch artefact that produced PERF.10's
+retracted 16.44 ms is only visible as a bucket disagreement. Validated by reproducing PERF.12's
+6.88 → 105 ms ramp exactly.
+
+⚠ **`frame_gpu_ms` has a floor at ~15.3 ms.** Zero frames of 11,000 landed below 15.0 across two
+sessions. The command buffer includes the wait on the display, so at 60 fps the column measures
+presentation, not work. VL's true cost at 0.4/4K is ≤ 15 ms by an unknown margin — enough to know
+it runs, not enough to price further quality. Any future headroom question needs an unclamped
+instrument.
+
+**Follow-ups.** The cliff itself is unexplained and Witchlight at 4K (BUG-099, 37 fps) may sit near
+the same edge. Live stem separation runs ~70 % GPU duty (1.2–1.5 s inference per 2 s period) and is
+entirely absent from the harness — an unproven but structurally-sized candidate for the residual
+2–4× harness/live gap.
+
+Suite 1892/1892, lint 0, app builds.
