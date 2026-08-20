@@ -22,29 +22,51 @@ private let rmLogger = Logger(subsystem: "com.phosphene.renderer", category: "Re
 
 extension RenderPipeline {
 
-    // MARK: - Marched-pixel scale
+    // MARK: - Marched-pixel budget (PERF.14)
 
-    /// Ray-march scale for the drawable — the preset's declared scale, clamped, and nothing else.
+    /// Marched-pixel ceiling. **Kept on Matt's call (PERF.16): it is worth ~2× the frame rate
+    /// at 4K.** Do not remove it without a live measurement of what that costs.
     ///
-    /// PERF.14 additionally capped marched pixels at 1536×864, on the finding that ray-march cost
-    /// is a STEP: Volumetric Lithograph read 175 ms at `render_scale` 0.5 at 3840×2160 and ≤ 15 ms
-    /// at 0.4. **PERF.16 falsified that model and Matt removed the cap.** An offline marched-pixel
-    /// sweep (`RayMarchCostCurveTests`) found a smooth, mildly sublinear curve with no
-    /// discontinuity anywhere — every neighbour pair's cost-ratio 0.92–1.02× its area-ratio, and
-    /// 1.49× cost for 1.56× area across the band the cliff was claimed in. PERF.14's cheap
-    /// datapoint sat on the ~15.3 ms vsync floor, so its magnitude was never measured. The harness
-    /// reads 28.19 ms at the same 2.07 MP marched that PERF.15 measured **live** at 31.16 ms.
+    /// ⚠ **The justification here was rewritten once; read this before touching it.** PERF.14
+    /// introduced this budget on the finding that ray-march cost is a **STEP** — VL reading
+    /// 175 ms at `render_scale` 0.5 at 3840×2160 and ≤ 15 ms at 0.4, an 11.7× drop from a 1.56×
+    /// pixel cut — and concluded "ms per megapixel" was falsified. **That model is falsified,
+    /// not this budget.** PERF.16 swept marched pixels offline (`RayMarchCostCurveTests`) and
+    /// found a smooth, mildly sublinear curve: every neighbour pair's cost-ratio 0.92–1.02× its
+    /// area-ratio, no discontinuity anywhere, thermal-controlled and reproduced. PERF.14's cheap
+    /// datapoint sat on the ~15.3 ms vsync floor, so its magnitude was never measured, and its
+    /// 0.25/0.35 probes both clamped to 0.4, making three sweep points one measurement.
     ///
-    /// The cap therefore cost fullscreen sharpness (VL marched 1536×864 where 1920×1080 runs at
-    /// ~32 fps) to buy headroom nothing needed. Do not reintroduce a pixel budget without a
-    /// measured cliff; if one is ever found, `RayMarchCostCurveTests` is the instrument that
-    /// would show it.
+    /// **What actually justifies the budget is the frame rate, measured live on both sides:**
     ///
-    /// The [0.4, 1.0] clamp stays: below 0.4 the upscale stops being softness and starts being a
-    /// different image. It is redundant with `PresetDescriptor.rayMarchRenderScale` today, and
-    /// kept because `RayMarchPipeline.renderScale` is settable directly.
-    static func marchScale(declared: Float) -> Float {
-        min(max(declared, 0.4), 1.0)
+    /// | marched | live p50 | delivered | session |
+    /// |---|---|---|---|
+    /// | 1536×864 (this budget) | 15.88 ms | **56 fps** | `2026-08-20T18-17-43Z` |
+    /// | 1920×1080 (uncapped) | 31.16 ms | **32 fps** | `2026-08-20T16-38-27Z` (PERF.15) |
+    ///
+    /// ~2× cost for 1.56× area — no cliff, but steeper than the offline curve predicts, so the
+    /// harness understates the 4K penalty and must not be used for an absolute 4K estimate.
+    /// The trade is real and Matt chose frame rate over sharpness: VL is softer at fullscreen
+    /// and runs at 60 fps rather than 32.
+    static let marchedPixelBudget = 1536 * 864
+
+    /// Ray-march scale for a drawable of `width` × `height`.
+    ///
+    /// A `declared` scale of 1.0 means the preset never opted into scaled marching; it is
+    /// returned untouched so the catalog's full-resolution presets keep the looks they were
+    /// certified at. A lower value is reduced further when needed to stay inside
+    /// ``marchedPixelBudget``, then clamped to the [0.4, 1.0] floor — below 0.4 the upscale
+    /// stops being softness and starts being a different image.
+    ///
+    /// The budget only ever lowers the scale, so a preset declaring 0.5 keeps 0.5 at 1080p
+    /// and in the 2884×1662 window VL was certified in, and gets 0.4 at 4K automatically.
+    ///
+    /// ponytail: one budget for the whole catalog. Per-preset budgets when a preset needs a
+    /// different one, which none does today.
+    static func marchScale(declared: Float, width: Int, height: Int) -> Float {
+        guard declared < 1.0, width > 0, height > 0 else { return min(max(declared, 0.4), 1.0) }
+        let budgetScale = (Float(marchedPixelBudget) / Float(width * height)).squareRoot()
+        return min(max(min(declared, budgetScale), 0.4), 1.0)
     }
 }
 
@@ -146,9 +168,8 @@ extension RenderPipeline {
         //
         // The 0.4 floor is a HARD CLAMP, not a suggestion: a sidecar declaring a smaller
         // render_scale silently gets 0.4. PERF.14 probes at 0.25 and 0.35 both ran at 0.4 and
-        // returned identical timings before anyone noticed — which is also how three points of
-        // its sweep became one measurement. If you lower it, check here first.
-        let marchScale = Self.marchScale(declared: rayMarchState.renderScale)
+        // returned identical timings before anyone noticed. If you lower it, check here first.
+        let marchScale = Self.marchScale(declared: rayMarchState.renderScale, width: width, height: height)
         let marchWidth = max(Int((Float(width) * marchScale).rounded()), 1)
         let marchHeight = max(Int((Float(height) * marchScale).rounded()), 1)
         rayMarchState.ensureAllocated(width: marchWidth, height: marchHeight)

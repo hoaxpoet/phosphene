@@ -176,6 +176,32 @@ falsified. See PERF.15 for what is established and the one-session discriminator
 > is gone. ⚠ **Pending Matt's live M7:** the expected read is sharper at fullscreen at
 > ~32 fps. If the frame rate does not hold there, this entry reopens rather than the cap
 > returning by default.
+>
+> ⚠ **CORRECTION, same day — the cap was NOT buying softness for nothing, and I told Matt it
+> was.** He ran the fullscreen M7 on session `2026-08-20T18-17-43Z`, which — verified by binary,
+> not assumed — ran the **capped** build: the session started 18:17:45Z, the cap-removal merge
+> landed 18:22:04Z, and the running binary (atime 13:17:47 local) was built from the primary
+> checkout at `f2f2b15f`, whose source still contains `marchedPixelBudget`. **Capped VL at 4K
+> fullscreen: p50 15.88 ms, p90 20.87 ms, 56 fps delivered over 165 s, with 5.3 % of frames
+> below the 15.3 ms vsync floor** — real headroom, not a floored reading. Against PERF.15's
+> uncapped 31.16 ms / 32 fps, **the cap is worth roughly double the frame rate at 4K.** The
+> recommendation to remove it was made without that number and is retracted as stated; the
+> decision is a genuine trade — 1920×1080 marched at ~32 fps, or 1536×864 at ~60 — and Matt has
+> now seen only the second one. **Reverting is one commit.**
+>
+> ⚠ **And a caveat on PERF.16's curve.** The two live points (≤15.88 at 1.33 MP, 31.16 at
+> 2.07 MP) give **~2× cost for 1.56× area** where the harness gave 1.49×. That does not restore
+> PERF.14's 11.7× step — the finding that there is no cliff stands — but **live is steeper than
+> the harness in this band, so the harness curve understates the 4K penalty.** Do not use it to
+> predict an absolute 4K cost without a live check.
+>
+> ✅ **DECIDED (Matt, 2026-08-20): *"I would rather keep 60 fps."*** The cap is restored;
+> `marchScale(declared:width:height:)` and `marchedPixelBudget` are back, and VL marches
+> 1536×864 at 4K. **The fullscreen half of BUG-101 closes at 56 fps delivered**, well past the
+> *"run fullscreen even if not optimal"* bar. VL is softer at fullscreen than it could be, by
+> choice. The doc comment at the call site was rewritten so the budget is justified by the
+> measured 2× frame-rate difference rather than by PERF.14's falsified step — the next reader
+> must not re-derive the step model from a surviving cap.
 
 Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
 `VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer

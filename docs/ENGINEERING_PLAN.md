@@ -110,6 +110,29 @@ instruments on the same marched pixel count. PERF.15's reading is corroborated; 
 for that configuration is the outlier, and it is not rescued by reading its scale as 1.0 either,
 since 8.29 MP extrapolates to ~100 ms on this curve, not 175.
 
+> ⚠ **CORRECTED the same day, after Matt's fullscreen M7 (`2026-08-20T18-17-43Z`).** The
+> paragraph below says the cap "is buying softness nobody measured a need for". **That was
+> wrong, and it reached Matt as a recommendation before the measurement existed.** His session
+> ran the **capped** build — verified by binary, not assumed: session start 18:17:45Z, merge
+> 18:22:04Z, running binary built from the primary checkout at `f2f2b15f`, whose source still
+> contains `marchedPixelBudget`. **Capped VL at 4K fullscreen reads p50 15.88 ms / p90 20.87 ms,
+> 56 fps delivered over 165 s, 5.3 % of frames below the 15.3 ms vsync floor** — headroom, not a
+> floored reading. So the cap is worth **roughly double the frame rate at 4K** (≈60 vs PERF.15's
+> 32), and removing it is a real trade rather than a free win. Matt has seen the capped picture
+> and not the uncapped one; reverting is one commit. **Also a caveat on the curve below:** the
+> two live points give ~2× cost for 1.56× area where the harness gave 1.49×. No cliff — the
+> finding stands — but **live is steeper than the harness here, so this curve understates the 4K
+> penalty and must not be used for an absolute 4K prediction.**
+
+> ✅ **DECIDED the same day — Matt: *"I would rather keep 60 fps."*** The cap stays. VL marches
+> 1536×864 at 4K and delivers 56 fps; the uncapped 1920×1080 would be sharper at 32. He has now
+> seen the capped picture live and chose the frame rate. **The call site's doc comment and
+> `RayMarchScaleBudgetTests` were rewritten rather than simply reverted**, so the budget is
+> justified by the measured 2× frame-rate difference instead of PERF.14's falsified step — a
+> surviving cap with a falsified rationale attached is how the step model would come back.
+> `RayMarchCostCurveTests` is retained: it is the instrument that would detect a real cliff, and
+> it is what keeps the rationale honest.
+
 **Product consequence, and it is Matt's call, not taken here.** `RenderPipeline.marchScale`
 still caps 4K to 0.4, so VL marches 1536×864 where the evidence says 1920×1080 costs ~31 ms live
 — the 32 fps Matt already accepted. The cap is buying softness nobody measured a need for. It is
