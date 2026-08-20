@@ -51,11 +51,16 @@ public struct RicercarEchoConfiguration: Sendable {
 public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
 
     public var activeParticleFraction: Float = 1.0
-    public let configuration: RicercarEchoConfiguration
 
+    /// The trail's CURRENT size. `var`, not `let`: it follows the drawable via
+    /// ``ensureAllocated(width:height:)``. The initialiser's value is only a starting size —
+    /// treat it as a placeholder, never as the resolution the preset renders at.
+    public internal(set) var configuration: RicercarEchoConfiguration
+
+    internal let device: MTLDevice
     private let penBuffer: MTLBuffer
-    private let trail: [MTLTexture]
-    private var cur = 0
+    internal var trail: [MTLTexture]
+    internal var cur = 0
     private let depositPSO: MTLRenderPipelineState?
     private let decayPSO: MTLRenderPipelineState?
     private let displayPSO: MTLRenderPipelineState?
@@ -107,6 +112,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     public init(device: MTLDevice, library: MTLLibrary,
                 configuration: RicercarEchoConfiguration = .init(), pixelFormat: MTLPixelFormat? = nil) throws {
         self.configuration = configuration
+        self.device = device
         self.gestures = Array(repeating: Gesture(), count: configuration.maxGestures)
 
         let penSlots = configuration.maxGestures * Self.subSteps
@@ -157,19 +163,6 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         } else { self.displayPSO = nil }
 
         Self.clear(trail: texs, device: device)
-    }
-
-    private static func clear(trail: [MTLTexture], device: MTLDevice) {
-        guard let queue = device.makeCommandQueue(), let cmd = queue.makeCommandBuffer() else { return }
-        for tex in trail {
-            let rpd = MTLRenderPassDescriptor()
-            rpd.colorAttachments[0].texture = tex
-            rpd.colorAttachments[0].loadAction = .clear
-            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-            rpd.colorAttachments[0].storeAction = .store
-            cmd.makeRenderCommandEncoder(descriptor: rpd)?.endEncoding()
-        }
-        cmd.commit(); cmd.waitUntilCompleted()
     }
 
     // MARK: Test hooks
@@ -356,22 +349,26 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
                 // strings glide, brass stabs blocky, woodwinds twirl, percussion sparks. Taper = full middle,
                 // thin ends (a bowed mark). Articulation set the length/duration per voice in spawnSubject.
                 let taper = 0.24 + 0.76 * sinf(ph * .pi)
+                // RICERCAR-WIRE.2 — the sz constants are PIXELS, tuned at the 720p trail this
+                // geometry used to be pinned to, so they must scale with the drawable or the
+                // stroke breaks into beads (the FL.10 "deposit step <= point size" rule).
+                let resScale = Float(configuration.height) / 720.0
                 var square: Float = 0
                 switch ges.colorIndex {
                 case 1:                                        // BRASS — a bold BLOCKY slab (square sprites)
                     world = ges.origin + SIMD2(cs, sn) * ((ph - 0.5) * 0.10 * ges.scale)
-                    sz = 22; square = 1
+                    sz = 22 * resScale; square = 1
                 case 2:                                        // WOODWINDS — a quick twirly CURL (a little loop)
                     let th = ph * 2.3 * .pi, rad = (0.02 + 0.06 * ph) * ges.scale
                     let lx = cosf(th) * rad, ly = sinf(th) * rad * ges.flipY
                     world = ges.origin + SIMD2(lx * cs - ly * sn, lx * sn + ly * cs)
-                    sz = 11 * taper
+                    sz = 11 * taper * resScale
                 case 3:                                        // PERCUSSION — a bright SPARK dot
-                    world = ges.origin; sz = 15
+                    world = ges.origin; sz = 15 * resScale
                 default:                                       // STRINGS — a flowing tapered ARC
                     var loc = Self.subject(ph, ges.variant); loc.y *= ges.flipY
                     world = ges.origin + SIMD2(loc.x * cs - loc.y * sn, loc.x * sn + loc.y * cs) * ges.scale
-                    sz = 16 * taper
+                    sz = 16 * taper * resScale
                 }
                 // Soft attack/release along the draw; a dot/dab pops sharper (its whole life is short anyway).
                 let env = min(1, ph * 6) * min(1, (1 - ph) * 6)

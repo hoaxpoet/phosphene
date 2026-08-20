@@ -113,6 +113,40 @@ struct RicercarEchoWiringTests {
         #expect(peak > 200, "no marks drawn over 240 frames of onsets — peak lit \(peak); either RicercarEcho.metal stopped compiling or the onset path is dead")
     }
 
+    /// RICERCAR-WIRE.2 — the trail follows the drawable, and marks still draw after a resize.
+    ///
+    /// The defect this guards: the trail was allocated once at the configuration's 1280×720 and
+    /// never moved, so at 3840×2160 every mark went through a 3× linear upscale. A test that only
+    /// checked the initial size would have passed throughout.
+    @Test("the trail follows the drawable size, and drawing survives a resize")
+    func trailFollowsDrawableSize() throws {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try RicercarEchoGeometry(
+            device: ctx.device, library: lib.library,
+            configuration: RicercarEchoConfiguration(width: 1280, height: 720),
+            pixelFormat: ctx.pixelFormat)
+
+        #expect(geo.configuration.width == 1280)
+
+        geo.ensureAllocated(width: 1920, height: 1080)
+        #expect(geo.configuration.width == 1920 && geo.configuration.height == 1080,
+                "trail did not follow the drawable — marks would be upscaled and blurry")
+
+        // A resize drops the trail, so the geometry must still draw afterwards rather than
+        // rendering into a released or stale-size texture.
+        let tex = try target(ctx)
+        var peak = 0
+        for f in drive(frames: 180, onsetEvery: 20) {
+            peak = max(peak, litPixels(try frame(geo, f, stem(strings: 0.8), tex, ctx)))
+        }
+        #expect(peak > 200, "nothing drawn after a resize — peak lit \(peak)")
+
+        // Unchanged size must not thrash the allocation.
+        geo.ensureAllocated(width: 1920, height: 1080)
+        #expect(geo.configuration.width == 1920)
+    }
+
     /// 3. The instrument-family colour path reaches the picture. Two runs identical except for
     /// WHICH family is active must not render the same pixels — if they do, `StemFeatures`
     /// activity is being read and then dropped somewhere before the colour, which is exactly
