@@ -124,6 +124,15 @@ since 8.29 MP extrapolates to ~100 ms on this curve, not 175.
 > finding stands — but **live is steeper than the harness here, so this curve understates the 4K
 > penalty and must not be used for an absolute 4K prediction.**
 
+> ✅ **DECIDED the same day — Matt: *"I would rather keep 60 fps."*** The cap stays. VL marches
+> 1536×864 at 4K and delivers 56 fps; the uncapped 1920×1080 would be sharper at 32. He has now
+> seen the capped picture live and chose the frame rate. **The call site's doc comment and
+> `RayMarchScaleBudgetTests` were rewritten rather than simply reverted**, so the budget is
+> justified by the measured 2× frame-rate difference instead of PERF.14's falsified step — a
+> surviving cap with a falsified rationale attached is how the step model would come back.
+> `RayMarchCostCurveTests` is retained: it is the instrument that would detect a real cliff, and
+> it is what keeps the rationale honest.
+
 **Product consequence, and it is Matt's call, not taken here.** `RenderPipeline.marchScale`
 still caps 4K to 0.4, so VL marches 1536×864 where the evidence says 1920×1080 costs ~31 ms live
 — the 32 fps Matt already accepted. The cap is buying softness nobody measured a need for. It is

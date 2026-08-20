@@ -194,6 +194,14 @@ falsified. See PERF.15 for what is established and the one-session discriminator
 > PERF.14's 11.7× step — the finding that there is no cliff stands — but **live is steeper than
 > the harness in this band, so the harness curve understates the 4K penalty.** Do not use it to
 > predict an absolute 4K cost without a live check.
+>
+> ✅ **DECIDED (Matt, 2026-08-20): *"I would rather keep 60 fps."*** The cap is restored;
+> `marchScale(declared:width:height:)` and `marchedPixelBudget` are back, and VL marches
+> 1536×864 at 4K. **The fullscreen half of BUG-101 closes at 56 fps delivered**, well past the
+> *"run fullscreen even if not optimal"* bar. VL is softer at fullscreen than it could be, by
+> choice. The doc comment at the call site was rewritten so the budget is justified by the
+> measured 2× frame-rate difference rather than by PERF.14's falsified step — the next reader
+> must not re-derive the step model from a surviving cap.
 
 Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
 `VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
