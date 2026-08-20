@@ -2787,6 +2787,17 @@ says, and I cannot say which from here.
 logging, so a 4K fullscreen VL capture on it will *state* the scale it used. If it logs 0.40 at
 ~15 ms, and a forced 0.5 logs 0.50 at ~31 ms, the curve stands and the step does not.
 
+> ⚠ **RESOLVED at PERF.16 (2026-08-20), and it took no session at all — see §Increment PERF.16.**
+> The curve stands; the step does not. An offline marched-pixel sweep found no discontinuity
+> anywhere (every neighbour pair 0.92–1.02× its area-ratio, thermal-controlled, reproduced), and
+> the harness reads 28.19 ms at the same 2.07 MP marched that this session measured live at
+> 31.16 ms. **Two corrections to the paragraphs above.** The hypothesis offered here — *"their
+> build predates the effective-scale logging"* — is **false**: `0971315f` (09:21) is an ancestor
+> of PERF.14's `03f60816` (11:37). And the reconstruction that put every datapoint on one *mildly
+> superlinear* curve has the slope backwards; measured cost is mildly **sub**linear (ms/MP falls
+> 16.3 → 13.0 as area grows 6.4×), which is also why reading PERF.14's 175 ms as an unscaled
+> 8.29 MP does not rescue it — that extrapolates to ~100 ms, not 175.
+
 **PERF.12 — the 4K questions answered, and half of this increment deleted as duplicate work.**
 ✅ **2026-08-20**, Matt: *"address the two 4K questions together"* (BUG-099 + BUG-100), then
 *"strip it and re-measure"*.
