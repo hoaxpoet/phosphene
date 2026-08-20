@@ -113,6 +113,40 @@ struct RicercarEchoWiringTests {
         #expect(peak > 200, "no marks drawn over 240 frames of onsets — peak lit \(peak); either RicercarEcho.metal stopped compiling or the onset path is dead")
     }
 
+    /// RICERCAR-WIRE.2 — the trail follows the drawable, and marks still draw after a resize.
+    ///
+    /// The defect this guards: the trail was allocated once at the configuration's 1280×720 and
+    /// never moved, so at 3840×2160 every mark went through a 3× linear upscale. A test that only
+    /// checked the initial size would have passed throughout.
+    @Test("the trail follows the drawable size, and drawing survives a resize")
+    func trailFollowsDrawableSize() throws {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try RicercarEchoGeometry(
+            device: ctx.device, library: lib.library,
+            configuration: RicercarEchoConfiguration(width: 1280, height: 720),
+            pixelFormat: ctx.pixelFormat)
+
+        #expect(geo.configuration.width == 1280)
+
+        geo.ensureAllocated(width: 1920, height: 1080)
+        #expect(geo.configuration.width == 1920 && geo.configuration.height == 1080,
+                "trail did not follow the drawable — marks would be upscaled and blurry")
+
+        // A resize drops the trail, so the geometry must still draw afterwards rather than
+        // rendering into a released or stale-size texture.
+        let tex = try target(ctx)
+        var peak = 0
+        for f in drive(frames: 180, onsetEvery: 20) {
+            peak = max(peak, litPixels(try frame(geo, f, stem(strings: 0.8), tex, ctx)))
+        }
+        #expect(peak > 200, "nothing drawn after a resize — peak lit \(peak)")
+
+        // Unchanged size must not thrash the allocation.
+        geo.ensureAllocated(width: 1920, height: 1080)
+        #expect(geo.configuration.width == 1920)
+    }
+
     /// 3. The instrument-family colour path reaches the picture. Two runs identical except for
     /// WHICH family is active must not render the same pixels — if they do, `StemFeatures`
     /// activity is being read and then dropped somewhere before the colour, which is exactly
@@ -139,10 +173,21 @@ struct RicercarEchoWiringTests {
 
         // Compare the colour BALANCE rather than pixel equality: mark placement is driven by the
         // same deterministic onset stream in both runs, so a colour difference shows up as a
-        // channel-ratio difference across the whole frame.
+        // channel-ratio difference.
+        //
+        // ⚠ Measured over MARK pixels only, not the whole frame. The first version of this summed
+        // every pixel and passed comfortably — until RICERCAR-WIRE.3 replaced fat point sprites
+        // with thin stroke ribbons, at which point the painterly GROUND (identical in both runs)
+        // dominated the sums and the separation collapsed to 0.002. The test had been measuring
+        // the background's contribution to a claim about the marks, and only a change in the
+        // marks' footprint exposed it. Threshold picked above the ground's brightest cloud.
         func balance(_ px: [UInt8]) -> Double {
             var r = 0.0, b = 0.0
-            for i in stride(from: 0, to: px.count, by: 4) { b += Double(px[i]); r += Double(px[i + 2]) }
+            for i in stride(from: 0, to: px.count, by: 4) {
+                let lum = 0.299 * Double(px[i + 2]) + 0.587 * Double(px[i + 1]) + 0.114 * Double(px[i])
+                guard lum > 120 else { continue }
+                b += Double(px[i]); r += Double(px[i + 2])
+            }
             return b > 0 ? r / b : 0
         }
         let bs = balance(strings), bb = balance(brass)

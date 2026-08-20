@@ -120,6 +120,9 @@ extension RenderPipeline {
         }
 
         // Compute pass: update particles before any render pass.
+        // RICERCAR-WIRE.2 — size any geometry-owned offscreen target to the drawable BEFORE the
+        // compute/deposit pass writes into it. No-op for every conformer that owns none.
+        particles?.ensureAllocated(width: Int(drawableSize.width), height: Int(drawableSize.height))
         particles?.update(features: features, stemFeatures: stemFeatures, commandBuffer: commandBuffer)
 
         // Tick mesh preset world-state (e.g. ArachneState) before rendering.

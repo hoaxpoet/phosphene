@@ -61,6 +61,25 @@ public protocol ParticleGeometry: AnyObject, Sendable {
         commandBuffer: MTLCommandBuffer
     )
 
+    /// Size the geometry's own offscreen targets to the drawable, if it has any.
+    ///
+    /// Default no-op: most conformers draw straight into the caller's encoder and own no
+    /// resolution-dependent textures, so they need nothing here. Conformers that DO keep an
+    /// internal target (a trail, an accumulation buffer) must implement this, because a fixed
+    /// internal size is not a smaller version of the picture — it is a BLURRIER one.
+    ///
+    /// **This exists because of a real defect (RICERCAR-WIRE.2).** `RicercarEchoGeometry`
+    /// allocated its trail once at the configuration's default 1280×720 and never followed the
+    /// drawable. Matt ran it at 3840×2160, and every thin calligraphic mark went through a 3×
+    /// linear upscale — his M7 was *"looks good … blurry, should be substantially more clear and
+    /// crisp."* The same fixed size also made the display pass's bloom radius, computed in TRAIL
+    /// texels, 3× too wide on screen, and pinned the ground's aspect at 1.78 while the window was
+    /// 1.13. One wrong number, three visible symptoms.
+    ///
+    /// Called once per frame immediately before ``update(features:stemFeatures:commandBuffer:)``,
+    /// with the current drawable size. Implementations must be cheap when the size is unchanged.
+    func ensureAllocated(width: Int, height: Int)
+
     /// Render pass: draw all particles into the active render encoder.
     ///
     /// Called from `RenderPipeline.drawDirect(...)` and
@@ -76,4 +95,12 @@ public protocol ParticleGeometry: AnyObject, Sendable {
         encoder: MTLRenderCommandEncoder,
         features: FeatureVector
     )
+}
+
+// MARK: - Default
+
+public extension ParticleGeometry {
+
+    /// No-op for the conformers that own no resolution-dependent target.
+    func ensureAllocated(width: Int, height: Int) {}
 }
