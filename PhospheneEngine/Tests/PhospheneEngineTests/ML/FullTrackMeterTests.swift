@@ -117,14 +117,19 @@ struct FullTrackMeterTests {
             // can work from REAL beats (the good axis, F 0.97) rather than ground-truth
             // taps, which are sparse and on money/solsbury_hill are half-time.
             if let dumpDir {
-                let beats = BeatGridResolver.resolve(
-                    beatProbs: fullAct.beats, downbeatProbs: fullAct.downbeats, frameRate: 50.0
-                ).beats
+                // FT.3: the incumbent resolver's own full-track output ships alongside the
+                // beats, so the task-6 A/B compares BarLineEstimator against the resolver on
+                // the SAME grid rather than against the 30 s baseline table — otherwise the
+                // comparison would fold FT.1's window change in with FT.3's method change.
                 let payload: [String: Any] = [
                     "track": entry.name,
                     "truth_meter": entry.meter as Any,
                     "frames": frames,
-                    "beats": beats
+                    "beats": fullGrid.beats,
+                    "resolver_downbeats": fullGrid.downbeats,
+                    "resolver_beats_per_bar": fullGrid.beatsPerBar,
+                    "resolver_bar_confidence": fullGrid.barConfidence,
+                    "resolver_bpm": fullGrid.bpm
                 ]
                 let url = URL(fileURLWithPath: dumpDir)
                     .appendingPathComponent("\(entry.name).beats.json")
