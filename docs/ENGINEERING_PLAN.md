@@ -6620,3 +6620,36 @@ available if 0.5 reads fine and more headroom is wanted; **4K/60 remains out of 
 way** (~45 ms at 0.4).
 
 Suite 1878/1878, lint 0, app builds.
+
+### Increment PERF.12 — VL at half render scale, live-measured: 1.5×, not the projected 4× ✅ (2026-08-20)
+
+**Matt's M7 passed — *"VL looks good"*** — so the visual cost of the upscale is acceptable. The
+performance result is real but smaller than PERF.11 projected, and the gap is the lesson.
+
+**Live, `2026-08-20T13-50-18Z`** (build verified: `RenderPipeline+RayMarch.o` compiled 13:49:28
+UTC, 52 s before the session and after the merge):
+
+| window | frames | GPU median | ms/megapixel |
+|---|---|---|---|
+| 900×600 | 598 | **6.93 ms** | 12.8 |
+| 2884×1662 | ~1300 | **104 ms** | **21.8** (was 32.56) |
+
+The 2884×1662 figure is stable across eight consecutive 10 s buckets — no ramp. An
+intermediate 1800×1200 bucket reading 7.58 ms was transitional and discarded, the same
+short-window artefact that produced the bogus 16.44 ms in PERF.10.
+
+**1.5× live. PERF.11 projected ~4×, and that projection was wrong** — it assumed the marcher
+dominated the frame. Quartering the marched pixels only quarters the marcher; the post-process
+chain (bloom + ACES) is deliberately left at full drawable size and does not shrink. ⚠ **The
+harness said so and I discounted it:** PERF.11 recorded "the harness gain (1.8×) understates
+production", when the harness was in fact predicting the live result. Re-measured at the live
+resolution it reads 71.20 → 27.43 ms (2.6×), bracketing the 1.5× seen live. **Trusting the
+instrument over the story would have produced the right number first time.**
+
+**Where VL stands.** Fixed for ordinary window sizes — 6.93 ms at 900×600 is comfortable — and
+still ~9.6 fps at a near-4K window. Three levers remain, all visible trades and none of them
+mine to pick: scale the post-process chain as well (the largest, and it would put the whole
+image through the upscale rather than just the marched part), `render_scale` 0.4 (~1.25× more),
+or accept VL as a preset that does not run fullscreen.
+
+No code change; measurement and M7 record.
