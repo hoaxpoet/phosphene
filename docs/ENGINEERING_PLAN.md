@@ -63,6 +63,67 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RICERCAR-WIRE.1 — the echo prototype becomes a selectable preset ✅ (2026-08-20)
+
+**Matt's call after watching a rendered clip: wire it in.** Ricercar's app geometry goes
+`RicercarFlowGeometry` (FL.10 particle flow-field) → `RicercarEchoGeometry` (onset-driven
+gestural marks). One line at the construction site; both conform to `ParticleGeometry` (D-097),
+so the swap is drop-in.
+
+**Why this was worth doing at all, and it is not what the prior status said.** The rows for
+Ricercar read "consistently failed to render anything of value" and "three increments
+code-complete-pending-Matt's-eye" — true of the FL arc, and wrong about where the preset
+actually stood. The echo prototype **solved the thing that kept failing** (sync) and Matt's live
+read on 2026-07-10 was *"Wonderful. Looks good (finally)."* It then sat in a test harness for
+six weeks, env-gated behind `RICERCAR_ECHO=1`, because nobody wired it in. **A positively-reviewed
+prototype behind an env gate is indistinguishable from abandoned work**, and it very nearly was:
+the branch memory recorded as UNPUSHED (`claude/ricercar-fl14-prompt-7de805`) no longer exists.
+The work survived only because it had been continued on `claude/ricercar-echo-look-prompt-bd7993`.
+
+**Six weeks of main cost nothing.** The geometry compiled against current `main` unmodified —
+no `FeatureVector` layout breakage, no API drift. The isolation that made it feel abandoned is
+also what made it portable.
+
+**⚠ The failure this increment actually found — the preset's core feature was silently off.**
+The first render printed `family: 0 windows (empty = PANNs unavailable → colour falls back)`.
+The PANNs weights are 146 gitignored `.bin` files, so a worktree without them renders **fallback
+colour with no error** — and *colour = the instrument section playing* is the preset's concept.
+Every render made in a worktree predating `link_fixtures.sh`'s Weights entry (BUG-080/RECON.13)
+had this hole, and each one looked plausible. After linking: **58 windows**, colour live.
+`link_fixtures.sh` on `main` already covers this; the disposition worktree was cut from a branch
+that predates the fix. **Nothing was mechanized here because the mechanism already exists** —
+what was missing was a test that would notice, which is the next paragraph.
+
+**`RicercarEchoWiringTests` — the gate the harness could not be.** `RicercarFluidVideoHarness`
+is env-gated, so it runs in CI exactly never; wiring the geometry in behind it would have kept
+that property, and the first sign of a broken shader would have been Matt selecting Ricercar and
+getting nothing. Three assertions through the **production** `ShaderLibrary`: the pipelines
+build, onsets put lit pixels on screen, and — the one that matters — **strings and brass render
+a different colour balance**. That last is deliberately a claim about the PICTURE, not the
+inputs: family activity arriving in `StemFeatures` and never reaching a pixel is precisely the
+silent-fallback failure above, and an input-side assertion would have passed straight through it.
+
+**The manifest was describing a deleted mechanism.** `Ricercar.json` still declared
+`flow_vigour` / `strings_ribbon` / `brass_ribbon` — routes belonging to the flow-field — and
+`RouteCoverageTests` passed anyway, which is BUG-088's class exactly. Rewritten to what the echo
+geometry reads: `mark_onset ← bass/mid/treble`, `mark_sharpness ← bass/mid/trebDev`,
+`voice_colour ← {strings,brass,woodwinds,percussion}ActivityDev`. Description rewritten too.
+
+**`RicercarFlowGeometry` + `RicercarFlow.metal` are RETAINED and now have no consumer.** This is
+a deliberate exception to D-097/FA-#58 hygiene, recorded so it is not mistaken for an oversight:
+FL.10 is the build that earned a live *"fucking brilliant"*, and it is the fallback if the echo
+concept does not survive its own M7. **If the echo preset certifies, delete the flow geometry in
+that increment** — the exception expires there, not silently.
+
+**⚠ Not yet answered, and both need Matt's eye:** the cream staccato marks read as flat
+hard-edged bars against curves and spirals that read genuinely painterly; and the articulation
+split on a Beethoven *allegro con brio* is **legato 230 / staccato 13 / pizz 9** — 91 % legato,
+which resembles the all-legato calibration miss that killed FL.14. Neither is a wiring defect;
+both are look/tuning questions for the live M7.
+
+`certified: false`. Engine suite green, app builds, lint 0, `RouteCoverageTests` green.
+
+
 ### Increment PERF.16 — the ray-march cost model: no step, a mildly sublinear curve ✅ (2026-08-20)
 
 **Settles the 5.6× conflict PERF.15 flagged and could not close.** PERF.14 read Volumetric

@@ -2,9 +2,12 @@
   "name": "Ricercar",
   "duration": 45,
   "family": "painterly",
-  "description": "Fantasia: a visual fantasia set to music — an audio-reactive glowing particle flow-field (Robert Hodgin Magnetosphere lineage). Thousands of light particles are advected through curl-noise turbulence and audio force fields, each carrying an instrument-family colour (strings blue-violet, brass gold, woodwinds amber, percussion cyan), deposited as additive glowing sprites into an HDR light-trail that decays each frame — the deposit-and-fade trail is the glowing weaving ribbon of light, luminous over a deep/dark ground. Zero-lag band energy drives flow vigour and turbulence; beats scatter the particles outward; instrument-family capture colours them. See docs/presets/RICERCAR_DESIGN.md §FANTASIA REBUILD.",
+  "description": "Fantasia: a visual fantasia set to music. A fugue is repetition with variation, so the drawing answers itself — a note ATTACK in the music births a small luminous gestural mark, which echoes and imitates itself as the music repeats, over a soft painterly colour-shifting ground. Marks fire ONLY on real note onsets, never on a timer or a sustain-fill, which is what keeps the drawing locked to what is actually being played. Each mark's colour is the instrument SECTION playing it (PANNs family activity, D-177/IFC.4) and its FORM is the articulation: legato a long flowing line, staccato a short clip, pizzicato a dot. See docs/presets/RICERCAR_DESIGN.md. RICERCAR-ECHO; wired into the app at RICERCAR-WIRE.1, replacing the FL.10 particle flow-field.",
   "author": "Matt",
-  "passes": ["feedback", "particles"],
+  "passes": [
+    "feedback",
+    "particles"
+  ],
   "beat_source": "composite",
   "beat_zoom": 0.0,
   "beat_rot": 0.0,
@@ -15,24 +18,75 @@
   "fragment_function": "ricercar_ground_fragment",
   "visual_density": 0.55,
   "motion_intensity": 0.5,
-  "color_temperature_range": [0.4, 0.6],
+  "color_temperature_range": [
+    0.4,
+    0.6
+  ],
   "fatigue_risk": "low",
-  "transition_affordances": ["crossfade"],
-  "section_suitability": ["ambient", "bridge", "comedown"],
-  "complexity_cost": { "tier1": 1.2, "tier2": 0.6 },
+  "transition_affordances": [
+    "crossfade"
+  ],
+  "section_suitability": [
+    "ambient",
+    "bridge",
+    "comedown"
+  ],
+  "complexity_cost": {
+    "tier1": 1.2,
+    "tier2": 0.6
+  },
   "rubric_profile": "lightweight",
   "certified": false,
   "audio_routes": [
-    { "route": "flow_vigour", "primitive": "bassDev", "kind": "continuous" },
-    { "route": "flow_vigour", "primitive": "midDev", "kind": "continuous" },
-    { "route": "flow_vigour", "primitive": "trebDev", "kind": "continuous" },
-    { "route": "strings_ribbon", "primitive": "vocalsEnergyDev", "kind": "continuous" },
-    { "route": "strings_ribbon", "primitive": "stringsActivityDev", "kind": "continuous" },
-    { "route": "brass_ribbon", "primitive": "bassEnergyDev", "kind": "continuous" },
-    { "route": "brass_ribbon", "primitive": "brassActivityDev", "kind": "continuous" },
-    { "route": "woodwinds_ribbon", "primitive": "otherEnergyDev", "kind": "continuous" },
-    { "route": "woodwinds_ribbon", "primitive": "woodwindsActivityDev", "kind": "continuous" },
-    { "route": "percussion_ribbon", "primitive": "drumsEnergyDev", "kind": "continuous" },
-    { "route": "percussion_ribbon", "primitive": "percussionActivityDev", "kind": "continuous" }
+    {
+      "route": "mark_onset",
+      "primitive": "bass",
+      "kind": "continuous"
+    },
+    {
+      "route": "mark_onset",
+      "primitive": "mid",
+      "kind": "continuous"
+    },
+    {
+      "route": "mark_onset",
+      "primitive": "treble",
+      "kind": "continuous"
+    },
+    {
+      "route": "mark_sharpness",
+      "primitive": "bassDev",
+      "kind": "continuous"
+    },
+    {
+      "route": "mark_sharpness",
+      "primitive": "midDev",
+      "kind": "continuous"
+    },
+    {
+      "route": "mark_sharpness",
+      "primitive": "trebDev",
+      "kind": "continuous"
+    },
+    {
+      "route": "voice_colour",
+      "primitive": "stringsActivityDev",
+      "kind": "continuous"
+    },
+    {
+      "route": "voice_colour",
+      "primitive": "brassActivityDev",
+      "kind": "continuous"
+    },
+    {
+      "route": "voice_colour",
+      "primitive": "woodwindsActivityDev",
+      "kind": "continuous"
+    },
+    {
+      "route": "voice_colour",
+      "primitive": "percussionActivityDev",
+      "kind": "continuous"
+    }
   ]
 }
