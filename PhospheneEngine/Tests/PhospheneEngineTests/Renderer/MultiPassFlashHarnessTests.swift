@@ -129,6 +129,22 @@ struct MultiPassFlashHarnessTests {
                         luma: try flashLuma("Witchlight", frames: 1800, harmonicMotion: true))
     }
 
+    @Test("Ricercar is flash-safe (worst-case onset rate, real headless render)")
+    func ricercar_isFlashSafe() throws {
+        // Wired at AUTHORING time, not at certification — the Meniscus lesson. Ricercar was
+        // `certified: false` when this was written and runs anyway.
+        //
+        // Ricercar's onset detector fires from a RELATIVE local transient
+        // (levFast-levMed)/levMed with a refractory period — it cannot fire faster than the
+        // refractory allows regardless of input, so the worst-case beat train (the shared
+        // train's densest, highest-contrast signal) drives it at its own ceiling rate rather
+        // than at the train's rate. That ceiling, not the train's beat rate, is the thing this
+        // gate needs to find, which is why `frames` is generous — long enough to sample many
+        // refractory cycles at whatever rate the detector actually settles into.
+        assertFlashSafe(name: "Ricercar",
+                        luma: try flashLuma("Ricercar", settle: 60, frames: 1800))
+    }
+
     @Test("Stave is flash-safe (spectral dispersion of the waveform, real headless render)")
     func stave_isFlashSafe() throws {
         // Wired at AUTHORING time, not at certification — the Meniscus lesson. Stave is

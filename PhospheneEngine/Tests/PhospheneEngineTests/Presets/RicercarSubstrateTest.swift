@@ -1,12 +1,17 @@
-// RicercarSubstrateTest — RICERCAR-FL.10: Ricercar is the particle flow-field preset.
+// RicercarSubstrateTest — Ricercar is a particles-pass preset over a deep-ground backdrop.
 //
 // History: the IFC.6 marks failed live M7 (lag + boring); the RW Skein-recolour was rejected ("just
 // Skein — I want Fantasia"); FL.1–FL.9 tried a fluid dye sim + drawn voices (rejected); FL.10 replaced
-// the whole medium with an audio-reactive glowing particle flow-field (`RicercarFlowGeometry`,
-// docs/presets/RICERCAR_DESIGN.md §FANTASIA REBUILD). This file guards the preset wiring (particles pass
-// + deep-ground backdrop + registry membership). Test 2 still guards the SkeinState `colorFromFamily`
-// engine feature (no longer used by any preset after FL.10 — a follow-up removal candidate). The flow
-// field itself is covered by RicercarFlowRenderTests + RicercarFluidVideoHarness (live dispatch path).
+// the whole medium with an audio-reactive glowing particle flow-field (`RicercarFlowGeometry`). That
+// geometry earned a live "fucking brilliant" but was superseded at RICERCAR-WIRE.1 by the fugue-echo
+// onset-driven marks (`RicercarEchoGeometry`, docs/presets/RICERCAR_DESIGN.md §FANTASIA REBUILD), which
+// certified at RICERCAR-CERT.1 — RicercarFlowGeometry was DELETED there per the exception recorded at
+// WIRE.1 ("if the echo preset certifies, delete the flow geometry in that increment"). This file guards
+// the preset wiring (particles pass + deep-ground backdrop + registry membership), which is unchanged by
+// which geometry backs it. Test 2 still guards the SkeinState `colorFromFamily` engine feature (used by
+// neither FL.10 nor ECHO — a pre-existing, unrelated removal candidate, not touched here). The current
+// geometry is covered by RicercarEchoWiringTests (production ShaderLibrary + wiring) and
+// MultiPassRenderHarness's "Ricercar" case (RICERCAR-CERT.1, frame-budget + flash-safety gates).
 
 import Testing
 import Metal
@@ -15,7 +20,7 @@ import Foundation
 @testable import Presets
 @testable import Shared
 
-@Suite("Ricercar-FL — particle flow-field preset + SkeinState family-colour mode")
+@Suite("Ricercar — particles preset wiring + SkeinState family-colour mode")
 @MainActor
 struct RicercarSubstrateTest {
 
@@ -26,10 +31,10 @@ struct RicercarSubstrateTest {
         SIMD3(0.76, 0.38, 0.18), SIMD3(0.13, 0.60, 0.66)
     ]
 
-    // MARK: - 1. The sidecar is the particle flow-field preset (FL.10)
+    // MARK: - 1. The sidecar is a particles-pass preset with the deep-ground backdrop
 
-    @Test("Ricercar loads as a particles preset backed by the flow-field geometry registry entry")
-    func test_ricercar_isFlowParticlePreset() throws {
+    @Test("Ricercar loads as a particles preset backed by a ParticleGeometry registry entry")
+    func test_ricercar_isParticlePreset() throws {
         guard MTLCreateSystemDefaultDevice() != nil else {
             print("RicercarSubstrateTest: no Metal device — skipping"); return
         }
@@ -37,7 +42,7 @@ struct RicercarSubstrateTest {
             _acceptanceFixture.presets.first { $0.descriptor.name == "Ricercar" },
             "Ricercar preset not loaded")
         #expect(preset.descriptor.passes.contains(.particles),
-                "Ricercar must declare the particles pass (flow field renders through ParticleGeometry)")
+                "Ricercar must declare the particles pass (marks render through ParticleGeometry)")
         #expect(preset.descriptor.fragmentFunction == "ricercar_ground_fragment",
                 "Ricercar's backdrop must be the deep-ground fragment (the light-trail covers it)")
         #expect(preset.mvWarpPipelines == nil,

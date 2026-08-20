@@ -273,11 +273,11 @@ struct PresetAcceptanceTests {
         // `mitosis_ground_fragment` is the intentionally flat dark ground.
         // Coverage: MitosisSketchRenderTests (multi-frame field render + spot metric).
         guard preset.descriptor.name != "Mitosis" else { return }
-        // Ricercar (RICERCAR-FL.10): same as Mitosis — the readable content is the
-        // `RicercarFlowGeometry` glowing particle flow-field (particles pass); the standalone
-        // `ricercar_ground_fragment` is the intentionally flat DEEP ground (the light-trail covers it),
-        // so the fragment-alone render is exempted here. Multi-frame coverage: RicercarFlowRenderTests
-        // + RicercarFluidVideoHarness (the flow field through the live ParticleGeometry path).
+        // Ricercar (RICERCAR-CERT.1, certified): same as Mitosis — the readable content is
+        // `RicercarEchoGeometry`'s onset-driven marks (particles pass); the standalone
+        // `ricercar_ground_fragment` is the intentionally flat DEEP ground (the marks + their trail
+        // cover it), so the fragment-alone render is exempted here. Multi-frame coverage:
+        // RicercarEchoWiringTests + MultiPassRenderHarness's "Ricercar" case (frame-budget, flash-safety).
         guard preset.descriptor.name != "Ricercar" else { return }
         // Cytokinesis (MITOSIS-G2.1): same as Mitosis — the readable content is the
         // `MitosisGen2Geometry` cell field; the standalone `mitosisgen2_ground_fragment`

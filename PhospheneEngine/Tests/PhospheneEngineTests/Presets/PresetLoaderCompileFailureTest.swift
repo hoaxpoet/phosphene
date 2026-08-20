@@ -73,6 +73,10 @@ struct PresetLoaderCompileFailureTest {
     /// lineage, family `painterly`, `RicercarFlowGeometry` conformer; the marks/Skein + fluid-dye
     /// paradigms were rejected. Uncertified — FL.10 look + M7 pending). See docs/presets/RICERCAR_DESIGN.md
     /// §FANTASIA REBUILD.
+    /// ⚠ True when written (FL.10, 2026-07-08). `RicercarFlowGeometry` was superseded by the
+    /// fugue-echo onset-driven marks (`RicercarEchoGeometry`) at RICERCAR-WIRE.1 (2026-08-20) and
+    /// then DELETED at RICERCAR-CERT.1 (2026-08-20) once the echo preset certified. Annotated
+    /// rather than rewritten — the sentence was a true record of that increment.
     /// 27 → 26 at GBRETIRE.1 (Glass Brutalist retired — ray-march "brutalist corridor"
     /// concept fails the viability gate: D-020 makes the concrete deliberately audio-static
     /// so the hero subject can never be an instrument. See docs/DECISIONS.md D-186.)

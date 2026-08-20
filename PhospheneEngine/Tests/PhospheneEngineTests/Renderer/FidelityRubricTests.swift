@@ -333,7 +333,7 @@ struct FidelityRubricGateTests {
     // ⚠ Verified the reviewed BINARY, not just the session: `ArrivalStep.o` compiled 12:24:46,
     // app built 12:24:50, last run 12:25:06, session log opens 12:25:04 CDT — so the M7 was on
     // the FTR.33 build and not a stale one (the BUG-051 discipline).
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Aurora Veil", "Cymatic Resonance", "Volumetric Lithograph", "Meniscus", "Witchlight", "Stave", "Fractal Tree"]
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Aurora Veil", "Cymatic Resonance", "Volumetric Lithograph", "Meniscus", "Witchlight", "Stave", "Fractal Tree", "Ricercar"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

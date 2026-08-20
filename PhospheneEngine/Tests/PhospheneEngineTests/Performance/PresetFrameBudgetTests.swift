@@ -166,7 +166,7 @@ struct PresetFrameBudgetTests {
     /// **`feedback` is the cheapest remaining three** and it is a real increment, not a free win.
     static let uncoveredPresets = [
         "Arachne", "Aurora Veil", "Ferrofluid Ocean", "Gossamer", "Membrane",
-        "Murmuration", "Nimbus", "Ricercar", "Staged Sandbox"
+        "Murmuration", "Nimbus", "Staged Sandbox"
     ]
 
     // MARK: - The gate
