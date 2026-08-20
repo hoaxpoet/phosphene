@@ -2533,6 +2533,75 @@ geometry — before FTR.14's render-rate glide existed to smooth any driver.
 **DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
 consequences, so no code was changed.
 
+**PERF.15 — the live fullscreen read PERF.13 was shipped for; and a 5.6× conflict with PERF.14's
+key datapoint.** ✅ **2026-08-20**, Matt's capture `2026-08-20T16-38-27Z`, taken at my request.
+
+**THE MEASUREMENT.** VL, fullscreen **3840×2160**, `render_scale=0.50` **recorded in the log for the
+first time** (the effective-scale fix from PERF.12 is what makes this checkable at all), diagnostic
+hold on so no preset switch can straddle the window, 172 s, 6,815 frames:
+
+| | value |
+|---|---|
+| `frame_gpu_ms` p50 / p90 | **31.16 / 32.30 ms** |
+| implied fps | **32.1** |
+| drift, buckets 2–8 | 30.92 · 31.17 · 31.15 · 31.28 · 30.99 · 31.16 · 30.97 — **flat** |
+| thermal | `nominal`, no state change |
+| frames below the 15.3 ms display floor | 31 of 6,815 (0.45 %) — not floored |
+
+**This answers the fork the VL handoff posed.** It asked whether the number drops toward ~26 ms
+(→ the full-resolution post-process was the missing cost) or stays near ~104 ms (→ look somewhere
+neither instrument has). **It dropped to 31 ms.** Against the handoff's own 104 ms / 9.6 fps,
+fullscreen went **9.6 → 32 fps**.
+
+**BUG-100 did not reproduce — second independent non-reproduction.** Flat across 172 s on the most
+expensive preset in the roster, at 4K, thermal `nominal` throughout. Not a falsification (the
+degradation has only ever been seen once), but the hypothesis is thinning. **BUG-091 did not
+reproduce either**: `bass`/`mid`/`treble` carry 1,000–2,300 distinct values and `pulse_amp01` sits
+at 1.0.
+
+**★★★ AND IT CONFLICTS WITH PERF.14's LOAD-BEARING DATAPOINT — flagged, not resolved.** PERF.14
+(on local `main`, not yet on `origin/main`) reports *"VL at render_scale 0.5 cost 175 ms at
+3840×2160"* and concludes from the 0.4-vs-0.5 gap that **ray-march cost is a STEP, not a curve**,
+that *"ms per megapixel … is falsified"*, and caps marched pixels at 1536×864. My session measures
+the same nominal configuration at **31.16 ms — 5.6× apart.**
+
+**Ruled out as explanations:** not the build (`git diff 4daf71cc..30d4cce6` touches **no** renderer
+or preset code, and VL's sidecar reads `render_scale: 0.5` in both); not thermal (both `nominal`,
+both 10 active CPUs); not a straddled preset switch (my window is single-preset by diagnostic hold);
+not the display floor.
+
+**A MECHANISM WAS PROPOSED AND THEN FALSIFIED — recorded because the falsification is the useful
+part.** The proposal: their build predates the effective-scale logging, so its log printed
+`render_scale=1.00`, the 0.5 was inferred from the sidecar, and their VL may have been marching
+unscaled. It was attractive because the arithmetic lines up — read as unscaled, every datapoint
+lands on one mildly superlinear curve with no step in it:
+
+| source | marched | ms | ms per marched MP |
+|---|---|---|---|
+| their 0.4 | 1.33 MP | 15.0 | 11.3 |
+| **mine 0.5 (logged)** | 2.07 MP | **31.2** | **15.0** |
+| their "0.5", read as 1.0 | 8.29 MP | 175.0 | 21.1 |
+
+…and it had a candidate cause: the two sessions applied VL and went fullscreen in **opposite
+orders** (theirs VL-then-4K, mine 4K-then-VL), which would matter if the scale were captured at
+preset-apply.
+
+**It is not.** `RenderPipeline+RayMarch.swift:118` recomputes `marchScale` **every frame** from
+`view.drawableSize` and `rayMarchState.renderScale`, so a resize is handled whatever order it
+happens in. ⚠ **The mechanism is dead, and with it my confidence in the "unscaled" reading** — the
+curve fit is a coincidence unless something else explains it, and *"their build could not log the
+scale"* is an absence of evidence, not evidence of absence.
+
+**So the 5.6× conflict stands UNEXPLAINED.** What is established: two live sessions, nominally
+identical configuration, no renderer or preset code difference between the builds
+(`git diff 4daf71cc..30d4cce6` is empty for both trees), both thermal `nominal`, neither floored,
+mine single-preset by diagnostic hold. One of the two measurements is not measuring what its label
+says, and I cannot say which from here.
+
+**The discriminator is one session and costs nothing:** PERF.14's build inherits the effective-scale
+logging, so a 4K fullscreen VL capture on it will *state* the scale it used. If it logs 0.40 at
+~15 ms, and a forced 0.5 logs 0.50 at ~31 ms, the curve stands and the step does not.
+
 **PERF.12 — the 4K questions answered, and half of this increment deleted as duplicate work.**
 ✅ **2026-08-20**, Matt: *"address the two 4K questions together"* (BUG-099 + BUG-100), then
 *"strip it and re-measure"*.
