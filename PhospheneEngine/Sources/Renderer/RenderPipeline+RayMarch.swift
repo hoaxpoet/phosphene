@@ -22,34 +22,29 @@ private let rmLogger = Logger(subsystem: "com.phosphene.renderer", category: "Re
 
 extension RenderPipeline {
 
-    // MARK: - Marched-pixel budget (PERF.14)
+    // MARK: - Marched-pixel scale
 
-    /// Largest marched pixel count measured on the fast side of the PERF.14 cliff.
+    /// Ray-march scale for the drawable — the preset's declared scale, clamped, and nothing else.
     ///
-    /// Volumetric Lithograph at `render_scale` 0.5 cost **175 ms** at 3840×2160 — 1920×1080
-    /// marched — and **≤ 15 ms** at 0.4, which marches 1536×864. An 11.7× drop from a 1.56×
-    /// pixel cut, live, same build, same preset. Ray-march cost is a STEP here, not a curve,
-    /// so "ms per megapixel" does not predict it and a constant scale walks off the step as
-    /// soon as the window grows. 1536×864 is the largest size measured below it.
-    static let marchedPixelBudget = 1536 * 864
-
-    /// Ray-march scale for a drawable of `width` × `height`.
+    /// PERF.14 additionally capped marched pixels at 1536×864, on the finding that ray-march cost
+    /// is a STEP: Volumetric Lithograph read 175 ms at `render_scale` 0.5 at 3840×2160 and ≤ 15 ms
+    /// at 0.4. **PERF.16 falsified that model and Matt removed the cap.** An offline marched-pixel
+    /// sweep (`RayMarchCostCurveTests`) found a smooth, mildly sublinear curve with no
+    /// discontinuity anywhere — every neighbour pair's cost-ratio 0.92–1.02× its area-ratio, and
+    /// 1.49× cost for 1.56× area across the band the cliff was claimed in. PERF.14's cheap
+    /// datapoint sat on the ~15.3 ms vsync floor, so its magnitude was never measured. The harness
+    /// reads 28.19 ms at the same 2.07 MP marched that PERF.15 measured **live** at 31.16 ms.
     ///
-    /// A `declared` scale of 1.0 means the preset never opted into scaled marching; it is
-    /// returned untouched so the catalog's full-resolution presets keep the looks they were
-    /// certified at. A lower value is reduced further when needed to stay inside
-    /// ``marchedPixelBudget``, then clamped to the [0.4, 1.0] floor — below 0.4 the upscale
-    /// stops being softness and starts being a different image.
+    /// The cap therefore cost fullscreen sharpness (VL marched 1536×864 where 1920×1080 runs at
+    /// ~32 fps) to buy headroom nothing needed. Do not reintroduce a pixel budget without a
+    /// measured cliff; if one is ever found, `RayMarchCostCurveTests` is the instrument that
+    /// would show it.
     ///
-    /// The budget only ever lowers the scale, so a preset declaring 0.5 keeps 0.5 at 1080p
-    /// and in the 2884×1662 window VL was certified in, and gets 0.4 at 4K automatically.
-    ///
-    /// ponytail: one budget for the whole catalog. Per-preset budgets when a preset needs a
-    /// different one, which none does today.
-    static func marchScale(declared: Float, width: Int, height: Int) -> Float {
-        guard declared < 1.0, width > 0, height > 0 else { return min(max(declared, 0.4), 1.0) }
-        let budgetScale = (Float(marchedPixelBudget) / Float(width * height)).squareRoot()
-        return min(max(min(declared, budgetScale), 0.4), 1.0)
+    /// The [0.4, 1.0] clamp stays: below 0.4 the upscale stops being softness and starts being a
+    /// different image. It is redundant with `PresetDescriptor.rayMarchRenderScale` today, and
+    /// kept because `RayMarchPipeline.renderScale` is settable directly.
+    static func marchScale(declared: Float) -> Float {
+        min(max(declared, 0.4), 1.0)
     }
 }
 
@@ -151,8 +146,9 @@ extension RenderPipeline {
         //
         // The 0.4 floor is a HARD CLAMP, not a suggestion: a sidecar declaring a smaller
         // render_scale silently gets 0.4. PERF.14 probes at 0.25 and 0.35 both ran at 0.4 and
-        // returned identical timings before anyone noticed. If you lower it, check here first.
-        let marchScale = Self.marchScale(declared: rayMarchState.renderScale, width: width, height: height)
+        // returned identical timings before anyone noticed — which is also how three points of
+        // its sweep became one measurement. If you lower it, check here first.
+        let marchScale = Self.marchScale(declared: rayMarchState.renderScale)
         let marchWidth = max(Int((Float(width) * marchScale).rounded()), 1)
         let marchHeight = max(Int((Float(height) * marchScale).rounded()), 1)
         rayMarchState.ensureAllocated(width: marchWidth, height: marchHeight)

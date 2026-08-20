@@ -169,6 +169,13 @@ falsified. See PERF.15 for what is established and the one-session discriminator
 > 1536×864 at 4K where 1920×1080 measures ~31 ms live. It is buying softness on a falsified
 > model. Removing it is a one-line change to a certified preset's fullscreen sharpness. Full
 > reasoning: `ENGINEERING_PLAN.md` §Increment PERF.16.
+>
+> **Matt's call, same day: remove the cap.** `RenderPipeline.marchScale` now returns the
+> declared scale clamped to [0.4, 1.0] and nothing else, so VL marches 1920×1080 at 4K —
+> the configuration measured live at 31.16 ms — instead of 1536×864. `marchedPixelBudget`
+> is gone. ⚠ **Pending Matt's live M7:** the expected read is sharper at fullscreen at
+> ~32 fps. If the frame rate does not hold there, this entry reopens rather than the cap
+> returning by default.
 
 Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
 `VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer

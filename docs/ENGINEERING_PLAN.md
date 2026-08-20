@@ -117,6 +117,13 @@ harmless in the sense that it only ever lowers a scale, and it is justified by a
 longer stands. Removing it is a one-line change to a certified preset's sharpness at fullscreen;
 the decision belongs with him.
 
+**Matt's decision (2026-08-20): remove the cap.** `RenderPipeline.marchScale` reduces to the
+[0.4, 1.0] clamp; `marchedPixelBudget` and the width/height parameters are gone.
+`RayMarchScaleBudgetTests` was rewritten to guard the property the cap kept breaking — a preset
+marches at the scale its sidecar declares, at every window size, so a look certified in one
+window is the same look fullscreen. ⚠ **Pending his live M7**: expected sharper at fullscreen at
+~32 fps. If the frame rate does not hold, BUG-101 reopens rather than the cap returning.
+
 **Not claimed:** that no cliff exists anywhere. The sweep covers 0.52–3.33 MP marched. A step
 above that is untested — but it would be above the range the cap operates in, so it cannot be
 what justified the cap.
