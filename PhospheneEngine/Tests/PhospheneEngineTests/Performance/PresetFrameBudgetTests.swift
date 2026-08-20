@@ -89,7 +89,7 @@ struct PresetFrameBudgetTests {
 
     /// ★★ THE ABSOLUTE NET THIS FILE'S HEADER HAS ALWAYS DESCRIBED AND NEVER HAD.
     ///
-    /// Until PERF.11 `absoluteCeilingMs` appeared exactly once in this file — in that comment. So
+    /// Until PERF.12 `absoluteCeilingMs` appeared exactly once in this file — in that comment. So
     /// nothing checked the 60 fps promise in milliseconds, and Volumetric Lithograph sat at
     /// **31.9 ms at 1080p (~31 fps)** while reading green at 5.9× the median, comfortably inside
     /// the 8× ratio.

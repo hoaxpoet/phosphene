@@ -2,7 +2,7 @@
   "name": "Volumetric Lithograph",
   "family": "geometric",
   "duration": 35,
-  "description": "Psychedelic linocut terrain \u2014 forward-dollying flight over an infinite audio-reactive landscape. v9.4 routing: continuous terrain depth driven by stems.vocals_energy (AGC stem) only; peak lift fires on drum-stem kicks + snap/snare transients via drums_beat and drums_attack_ratio (MIR-invariant); camera dolly scales with features.bass continuously. Palette hue tracks energy-weighted stem composition; peak polish reads onset density. CSP.4 audit (2026-05-28) confirmed structurally clean of the FFO antipatterns BUG-019 fixed. No atmospheric fog (printmaking has no aerial perspective).",
+  "description": "Psychedelic linocut terrain — forward-dollying flight over an infinite audio-reactive landscape. v9.4 routing: continuous terrain depth driven by stems.vocals_energy (AGC stem) only; peak lift fires on drum-stem kicks + snap/snare transients via drums_beat and drums_attack_ratio (MIR-invariant); camera dolly scales with features.bass continuously. Palette hue tracks energy-weighted stem composition; peak polish reads onset density. CSP.4 audit (2026-05-28) confirmed structurally clean of the FFO antipatterns BUG-019 fixed. No atmospheric fog (printmaking has no aerial perspective).",
   "author": "Matt",
   "passes": [
     "ray_march",
@@ -42,7 +42,7 @@
   "_comment_scene_fog": "0 disables fog (was actually MAXIMUM fog in pre-v3 due to PresetDescriptor+SceneUniforms fallback bug; fixed alongside v3)",
   "scene_far_plane": 80.0,
   "scene_dolly_speed": 5.0,
-  "_comment_scene_dolly_speed": "VL's identity is the forward flight. 5.0 u/s (\u00d7 the ~0.78 measured bass factor \u2248 3.9 u/s) crosses a 20-unit fold cell every ~5 s. Moved out of the app-side switch (VL-PSY.4) so the engine-side SessionReplayHarness renders the flight \u2014 BUG-074 replay-harness parity gap.",
+  "_comment_scene_dolly_speed": "VL's identity is the forward flight. 5.0 u/s (× the ~0.78 measured bass factor ≈ 3.9 u/s) crosses a 20-unit fold cell every ~5 s. Moved out of the app-side switch (VL-PSY.4) so the engine-side SessionReplayHarness renders the flight — BUG-074 replay-harness parity gap.",
   "stem_affinity": {
     "bass": "terrain_height_adaptive+palette_warm",
     "vocals": "terrain_height_adaptive+palette_teal+peak_polish",
@@ -74,7 +74,7 @@
     "hero_specular": true,
     "dust_motes": false
   },
-  "_comment_scene_camera": "VL-PSY.1: from [0,7.2,-8.5]->[0,0,7] fov 55 (the superseded naturalistic pose, which put a pale sky band across the top). Round 2 went to y=14 looking steeply down, which killed the sky but framed only ONE fold cell \u2014 no repetition visible. Round 3 backs off to y=10 / fov 52: several cells in frame so the symmetry can read, sky still out.",
+  "_comment_scene_camera": "VL-PSY.1: from [0,7.2,-8.5]->[0,0,7] fov 55 (the superseded naturalistic pose, which put a pale sky band across the top). Round 2 went to y=14 looking steeply down, which killed the sky but framed only ONE fold cell — no repetition visible. Round 3 backs off to y=10 / fov 52: several cells in frame so the symmetry can read, sky still out.",
   "_comment_complexity_cost": "VL-PSY.3: measured, not declared-by-hope. p95 = 11.4 ms @1067x750 / ~18 ms @1080p on M2 Pro (VLBudgetProbeTests). VL is the catalog's most expensive preset; the scheduler should know it.",
   "rubric_profile": "full",
   "audio_routes": [
@@ -109,6 +109,6 @@
       "route": "fold_downbeat_ratchet"
     }
   ],
-  "_comment_audio_routes": "QG.1 manifest. The identity coupling \u2014 fold ROTATION SPEED and terrain morph, both off accumulatedAudioTime \u2014 is the animation time base and reads constant on offline fixtures (QG.1.1 boundary, FD/VL precedent), so it is documented not declared. Declared routes are the offline-testable ones: bass->dolly speed, per-stem energies->palette hue, downbeat->fold ratchet.",
-  "max_render_megapixels": 0.92
+  "_comment_audio_routes": "QG.1 manifest. The identity coupling — fold ROTATION SPEED and terrain morph, both off accumulatedAudioTime — is the animation time base and reads constant on offline fixtures (QG.1.1 boundary, FD/VL precedent), so it is documented not declared. Declared routes are the offline-testable ones: bass->dolly speed, per-stem energies->palette hue, downbeat->fold ratchet.",
+  "render_scale": 0.5
 }

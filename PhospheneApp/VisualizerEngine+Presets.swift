@@ -146,7 +146,6 @@ extension VisualizerEngine {
         // Reset all active passes and subsystems before applying the new preset.
         // This prevents stale subsystem state from the previous preset bleeding through.
         pipeline.setActivePasses([])
-        pipeline.setMaxRenderMegapixels(nil)   // PERF.11: cleared here AND set below — see there
         pipeline.setMeshGenerator(nil)
         pipeline.setMeshPresetTick(nil)
         pipeline.setMVWarpWetnessDecay(1.0)   // Skein.ENGINE.2: reset to "held" (only Skein decays A)
@@ -261,6 +260,9 @@ extension VisualizerEngine {
                     // Presets that don't opt in are byte-identical to pre-MFX.
                     rmPipeline.metalFXEnabled = desc.usesMetalFXTemporal
                     rmPipeline.metalFXRenderScale = desc.effectiveRenderScale
+                    // BUG-101 — resolution scale WITHOUT MetalFX. Applies whenever a ray-march
+                    // preset declares `render_scale`, whether or not it opts into upscaling.
+                    rmPipeline.renderScale = desc.rayMarchRenderScale
                     rmPipeline.motionPipelineState = preset.motionPipelineState
                     rmPipeline.resetTemporalHistory()
 
@@ -564,11 +566,6 @@ extension VisualizerEngine {
                 logger.error("DynamicTextOverlay: init failed for preset '\(desc.name)' — text overlay disabled")
             }
         }
-
-        // PERF.11 — the preset's render-area cap, set alongside the passes and cleared for every
-        // preset that does not declare one (so a cap cannot leak across a switch, which is the
-        // `@Published`-style staleness CLAUDE.md warns about applied to a render setting).
-        pipeline.setMaxRenderMegapixels(desc.maxRenderMegapixels)
 
         // Activate the passes after all subsystems are configured.
         pipeline.setActivePasses(desc.passes)

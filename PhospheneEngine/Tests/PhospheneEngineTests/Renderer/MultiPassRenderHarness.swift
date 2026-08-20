@@ -29,16 +29,24 @@ struct MultiPassRenderHarness {
     let width: Int
     let height: Int
 
-    /// Skip the CPU readback. TIMING ONLY — every measurement that READS pixels needs it.
+    /// ★★ SKIP THE CPU READBACK — TIMING ONLY. Every measurement that READS pixels needs it on.
+    ///
+    /// The readback is ~8 MB per frame at 1080p and **~33 MB at 3840×2160**, it scales with PIXELS
+    /// rather than with what the preset draws, and **production never does it**. Timing with it on
+    /// is what produced BUG-099's phantom "Witchlight ~30 fps at 4K" for a preset that renders in
+    /// 5.6 ms — measured, the readback costs a median **11.4 ms/frame at 4K** against 3.0 ms at
+    /// 1080p, so it lands on the 4K column hardest and a resolution sweep including it measures the
+    /// harness as much as the roster.
     let readback: Bool
 
     init(width: Int = 320, height: Int = 180, readback: Bool = true) {
         self.width = width
         self.height = height
-        // The env var stays as an ad-hoc override for one-off sweeps; the parameter is what the
+        // The env var is an ad-hoc override for one-off sweeps; the PARAMETER is what the
         // frame-budget gate uses, because a threshold that depends on an environment variable
         // being set is not a threshold.
-        self.readback = readback && !Self.skipReadbackEnv
+        self.readback = readback
+            && ProcessInfo.processInfo.environment["FRAME_BUDGET_NO_READBACK"] != "1"
     }
 
     /// The certified presets this harness renders through their real multi-pass path.
@@ -428,19 +436,8 @@ struct MultiPassRenderHarness {
         guard let gbufferState = preset.rayMarchPipelineState else {
             throw HarnessError.setupFailed("Lumen Mosaic rayMarchPipelineState missing")
         }
-        // ★★ PERF.11 — HONOUR THE PRESET'S DECLARED RENDER CAP, exactly as production does.
-        //
-        // Volumetric Lithograph declares `max_render_megapixels`, so `RenderPipeline` allocates its
-        // G-buffer at the scaled size and upscales. A harness that allocated at the full drawable
-        // would time a frame the app no longer draws — and the frame-budget gate would then report
-        // a preset as over budget after the fix that brought it under. The G-buffer size is the
-        // thing that matters: the march, the normal taps, the AO taps and the lighting pass all run
-        // per G-buffer pixel, so this is where the saving is or is not.
-        let capScale = Self.renderScale(for: preset.descriptor, width: width, height: height)
-        let renderWidth = max(Int(Float(width) * capScale), 1)
-        let renderHeight = max(Int(Float(height) * capScale), 1)
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
-        pipeline.allocateTextures(width: renderWidth, height: renderHeight)
+        pipeline.allocateTextures(width: width, height: height)
         var scene = preset.descriptor.makeSceneUniforms()          // sceneParamsB.z default 1.0 ⇒ 128 steps
         scene.sceneParamsA.y = Float(width) / Float(height)
         pipeline.sceneUniforms = scene
@@ -451,9 +448,6 @@ struct MultiPassRenderHarness {
         let postChain: PostProcessChain?
         if preset.descriptor.passes.contains(.postProcess) {
             let chain = try PostProcessChain(context: ctx, shaderLibrary: lib)
-            // FULL size, not the scaled render size: production allocates the bloom chain from the
-            // drawable and only the G-buffer is scaled (PERF.11), so scaling it here would time a
-            // cheaper post-process than the app runs.
             chain.allocateTextures(width: width, height: height)
             postChain = chain
         } else {
@@ -507,18 +501,17 @@ struct MultiPassRenderHarness {
         guard let gbufferState = preset.rayMarchPipelineState else {
             throw HarnessError.setupFailed("Volumetric Lithograph rayMarchPipelineState missing")
         }
-        // PERF.11 — honour the preset's declared render cap exactly as production does: the
-        // G-BUFFER is allocated scaled and the lighting pass upscales it through its own linear
-        // sampler. A harness that allocated full-size would time a frame the app no longer draws,
-        // and the budget gate would then report a preset over budget after the fix that brought it
-        // under.
-        let capScale = Self.renderScale(for: preset.descriptor, width: width, height: height)
-        let renderWidth = max(Int(Float(width) * capScale), 1)
-        let renderHeight = max(Int(Float(height) * capScale), 1)
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
-        pipeline.allocateTextures(width: renderWidth, height: renderHeight)
+        // BUG-101 — honour the preset's `render_scale`, as `RenderPipeline+RayMarch` does in
+        // production. Without this the gate would keep measuring VL at full drawable
+        // resolution while the app renders it at half, and report a cost the user never pays —
+        // the harness-fidelity failure that hid BUG-097 and BUG-098.
+        let marchScale = min(max(preset.descriptor.rayMarchRenderScale, 0.4), 1.0)
+        let marchW = max(Int((Float(width) * marchScale).rounded()), 1)
+        let marchH = max(Int((Float(height) * marchScale).rounded()), 1)
+        pipeline.renderScale = marchScale
+        pipeline.allocateTextures(width: marchW, height: marchH)
         var scene = preset.descriptor.makeSceneUniforms()
-        // Aspect from the OUTPUT, not the render size — the lighting pass restores the shape.
         scene.sceneParamsA.y = Float(width) / Float(height)
         pipeline.sceneUniforms = scene
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
@@ -529,9 +522,6 @@ struct MultiPassRenderHarness {
         let postChain: PostProcessChain?
         if preset.descriptor.passes.contains(.postProcess) {
             let chain = try PostProcessChain(context: ctx, shaderLibrary: lib)
-            // FULL size, not the scaled render size: production allocates the bloom chain from the
-            // drawable and only the G-buffer is scaled (PERF.11), so scaling it here would time a
-            // cheaper post-process than the app runs.
             chain.allocateTextures(width: width, height: height)
             postChain = chain
         } else {
@@ -543,8 +533,6 @@ struct MultiPassRenderHarness {
             throw HarnessError.setupFailed("audio buffers")
         }
         let outTex = try makeOutputTexture(ctx)
-        // The scaled intermediate the march actually writes into. `nil` when no cap applies, and
-        // the whole upscale below is then skipped.
         var audioTime: Float = 0
         return try renderLoop(drive, ctx, outTex, reduce) { i, pixels in
             var fv = drive[i]
@@ -920,16 +908,6 @@ struct MultiPassRenderHarness {
         }
     }
 
-    /// PERF.11 — the preset's declared render-area cap as a linear scale for THIS size.
-    /// Mirrors `RenderPipeline.presetRenderScale`; kept here rather than reaching into the
-    /// renderer so the harness has no dependency on a live pipeline instance.
-    static func renderScale(for descriptor: PresetDescriptor, width: Int, height: Int) -> Float {
-        guard let cap = descriptor.maxRenderMegapixels, width > 0, height > 0 else { return 1 }
-        let megapixels = Double(width * height) / 1_000_000
-        guard megapixels > cap else { return 1 }
-        return max(Float((cap / megapixels).squareRoot()), 0.25)
-    }
-
     // MARK: - Render loop / readback plumbing
 
     private func renderLoop<T>(
@@ -956,20 +934,11 @@ struct MultiPassRenderHarness {
         return rpd
     }
 
-    /// ★ `FRAME_BUDGET_NO_READBACK=1` skips the CPU readback, for TIMING ONLY.
-    ///
-    /// The readback is ~8 MB per frame at 1080p and ~33 MB at 3840×2160, so it does not scale with
-    /// the preset's cost — it scales with pixels, and at 4K it can dominate. A resolution sweep
-    /// that includes it therefore measures the harness as much as the roster. Every measurement
-    /// that READS pixels (the aliveness gate, the coupling report, every A/B) must keep it.
-    private static let skipReadbackEnv =
-        ProcessInfo.processInfo.environment["FRAME_BUDGET_NO_READBACK"] == "1"
-
     private func commit(_ cmd: MTLCommandBuffer, _ outTex: MTLTexture, into pixels: inout [UInt8]) throws {
         cmd.commit()
         cmd.waitUntilCompleted()
         guard cmd.status == .completed else { throw HarnessError.renderFailed }
-        guard readback else { return }
+        guard readback else { return }   // see `readback` — timing runs skip this
         outTex.getBytes(&pixels, bytesPerRow: width * 4,
                         from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
     }

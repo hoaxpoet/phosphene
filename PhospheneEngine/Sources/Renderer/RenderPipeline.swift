@@ -403,12 +403,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let pixelWidth = max(Int(size.width), 1)
         let pixelHeight = max(Int(size.height), 1)
         let megapixels = Double(pixelWidth * pixelHeight) / 1_000_000
-        // PERF.11 — the EFFECTIVE scale, including a preset's declared megapixel cap. Logging
-        // `directRenderScale` alone would record 1.00 for a preset that is rendering at 0.33, and
-        // this line exists precisely so `frame_gpu_ms` is interpretable after the fact.
-        let scaleText = String(format: "%.2f",
-                               presetRenderScale(drawableWidth: pixelWidth,
-                                                 drawableHeight: pixelHeight))
+        // PERF.12 — the EFFECTIVE scale, whichever path set it. `directRenderScale` alone records
+        // 1.00 for a ray-march preset rendering at 0.5 (VL does), and this line exists precisely so
+        // `frame_gpu_ms` is interpretable after the fact — a scale the log does not carry is a 4×
+        // cost difference nobody can attribute later, which is the gap that let BUG-098 hide.
+        let scaleText = String(format: "%.2f", min(directRenderScale, rayMarchRenderScale))
         let mpText = String(format: "%.2f", megapixels)
         return "width=\(pixelWidth) height=\(pixelHeight) megapixels=\(mpText) render_scale=\(scaleText)"
     }
@@ -417,45 +416,10 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         directRenderScaleLock.withLock { _directRenderScale }
     }
 
-    /// ★ PERF.11 — the preset's declared render-area cap, in megapixels. `nil` = render full size.
-    /// Set from `PresetDescriptor.maxRenderMegapixels` at `applyPreset`, alongside the passes.
-    private var _maxRenderMegapixels: Double?
-    private let maxRenderMegapixelsLock = NSLock()
-
-    /// Declare (or clear) the active preset's render-area cap. Pass `nil` for full resolution.
-    public func setMaxRenderMegapixels(_ megapixels: Double?) {
-        maxRenderMegapixelsLock.withLock { _maxRenderMegapixels = megapixels }
-    }
-
-    var maxRenderMegapixels: Double? {
-        maxRenderMegapixelsLock.withLock { _maxRenderMegapixels }
-    }
-
-    /// ★★ THE ONE RENDER-SCALE RULE, read by BOTH the direct and ray-march paths.
-    ///
-    /// Two inputs, and the smaller wins:
-    ///   - `setDirectRenderScale` — a fixed fraction, Nimbus's explicit 0.5 (NB.8);
-    ///   - `maxRenderMegapixels` — a preset's declared area cap, which converts to a fraction
-    ///     against THIS drawable. That is the property that makes it scale: the cap does nothing
-    ///     on a small display and binds hard on a large one, which is the actual shape of the
-    ///     problem (cost follows pixels).
-    ///
-    /// ⚠ ONE function, deliberately, because two copies of "what scale are we rendering at" is
-    /// how the direct path came to have a half-res mode that the ray-march path silently did not
-    /// (BUG-099 proposed extending it and priced the work; this is that extension). Any future
-    /// path must call this rather than reading either field.
-    func presetRenderScale(drawableWidth: Int, drawableHeight: Int) -> Float {
-        var scale = directRenderScale
-        if let cap = maxRenderMegapixels, drawableWidth > 0, drawableHeight > 0 {
-            let drawableMegapixels = Double(drawableWidth * drawableHeight) / 1_000_000
-            if drawableMegapixels > cap {
-                scale = min(scale, Float((cap / drawableMegapixels).squareRoot()))
-            }
-        }
-        // Below ~0.25 the upscale is 4:1 and the image stops being the preset. A preset that
-        // cannot fit its own budget at that point is too expensive for the display, and the
-        // honest outcome is a slow frame rather than a smeared one.
-        return max(min(scale, 1.0), 0.25)
+    /// The ray-march path's scale, for the session record. Mirrors what `applyPreset` pushed into
+    /// `RayMarchPipeline.renderScale`; 1.0 when no ray-march preset is active.
+    var rayMarchRenderScale: Float {
+        rayMarchLock.withLock { rayMarchPipeline?.renderScale ?? 1.0 }
     }
 
     /// Cached offscreen target for the half-res direct path; (re)allocated lazily

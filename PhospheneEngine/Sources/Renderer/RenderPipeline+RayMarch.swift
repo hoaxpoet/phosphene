@@ -109,27 +109,16 @@ extension RenderPipeline {
             : nil
 
         let size = view.drawableSize
-        let fullWidth = Int(size.width)
-        let fullHeight = Int(size.height)
-
-        // ★★ PERF.11 — MARCH AT REDUCED RESOLUTION, SHADE AT FULL, for a preset that declares a
-        // render cap. BUG-099 proposed extending the direct path's half-res mode here and priced it
-        // as engine work; Matt's call on BUG-101 asked for it. Volumetric Lithograph measures
-        // ~31.9 ms at 1080p — about 31 fps against a stated 60 fps at 1080p, and 2.8× the next most
-        // expensive preset — while every remaining lever on it changes what it looks like.
-        //
-        // ★ ONLY THE G-BUFFER IS SCALED, and that is the whole trick. `raymarch_lighting_fragment`
-        // samples the G-buffer through `float2 uv = in.uv` with a `filter::linear` sampler, so a
-        // smaller G-buffer is upscaled BILINEARLY BY THE PASS THAT ALREADY RUNS — no extra blit, no
-        // second fullscreen pass, and the lighting, IBL and bloom keep running at full output
-        // resolution. So the softening lands on marched geometry (~135 `sceneSDF` evaluations per
-        // pixel, ~69 % of the frame per BUG-101) while shading and bloom stay sharp. That is a
-        // better trade than scaling the whole image, and it fell out of reading what the existing
-        // pass does rather than adding machinery next to it.
-        let scale = presetRenderScale(drawableWidth: fullWidth, drawableHeight: fullHeight)
-        let width = max(Int(Float(fullWidth) * scale), 1)
-        let height = max(Int(Float(fullHeight) * scale), 1)
-        rayMarchState.ensureAllocated(width: width, height: height)
+        let width = Int(size.width)
+        let height = Int(size.height)
+        // BUG-101 — the marcher may shade fewer pixels than the drawable. The composite pass
+        // samples `litTexture` by UV through a linear sampler, so a smaller source upscales
+        // with no extra pass; the post-process chain below stays at DRAWABLE size, so bloom
+        // and ACES still run at full resolution on the upscaled image.
+        let marchScale = min(max(rayMarchState.renderScale, 0.4), 1.0)
+        let marchWidth = max(Int((Float(width) * marchScale).rounded()), 1)
+        let marchHeight = max(Int((Float(height) * marchScale).rounded()), 1)
+        rayMarchState.ensureAllocated(width: marchWidth, height: marchHeight)
 
         // Update per-frame uniforms: accumulated audio time, aspect ratio, and step-count multiplier.
         // MFX.1: lightingParams.z carries the PREVIOUS frame's accumulated audio
