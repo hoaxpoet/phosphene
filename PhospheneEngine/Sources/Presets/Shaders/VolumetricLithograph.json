@@ -109,5 +109,6 @@
       "route": "fold_downbeat_ratchet"
     }
   ],
-  "_comment_audio_routes": "QG.1 manifest. The identity coupling — fold ROTATION SPEED and terrain morph, both off accumulatedAudioTime — is the animation time base and reads constant on offline fixtures (QG.1.1 boundary, FD/VL precedent), so it is documented not declared. Declared routes are the offline-testable ones: bass->dolly speed, per-stem energies->palette hue, downbeat->fold ratchet."
+  "_comment_audio_routes": "QG.1 manifest. The identity coupling — fold ROTATION SPEED and terrain morph, both off accumulatedAudioTime — is the animation time base and reads constant on offline fixtures (QG.1.1 boundary, FD/VL precedent), so it is documented not declared. Declared routes are the offline-testable ones: bass->dolly speed, per-stem energies->palette hue, downbeat->fold ratchet.",
+  "render_scale": 0.5
 }

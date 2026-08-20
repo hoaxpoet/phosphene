@@ -260,6 +260,9 @@ extension VisualizerEngine {
                     // Presets that don't opt in are byte-identical to pre-MFX.
                     rmPipeline.metalFXEnabled = desc.usesMetalFXTemporal
                     rmPipeline.metalFXRenderScale = desc.effectiveRenderScale
+                    // BUG-101 — resolution scale WITHOUT MetalFX. Applies whenever a ray-march
+                    // preset declares `render_scale`, whether or not it opts into upscaling.
+                    rmPipeline.renderScale = desc.rayMarchRenderScale
                     rmPipeline.motionPipelineState = preset.motionPipelineState
                     rmPipeline.resetTemporalHistory()
 

@@ -362,6 +362,26 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         return min(max(scale, 0.4), 1.0)
     }
 
+    /// Ray-march render scale, applied WITHOUT requiring MetalFX (BUG-101).
+    ///
+    /// `effectiveRenderScale` above is gated on `usesMetalFXTemporal`, because MFX.1 built the
+    /// two together. They are separable, and the cheap half is worth having on its own: render
+    /// the G-buffer and lighting at `scale × drawable` and let the composite pass upscale it
+    /// with its existing linear sampler. No motion vectors, so no `scenePrevPosition` and no
+    /// ghosting — the failure mode is softness, which is legible and bounded.
+    ///
+    /// Volumetric Lithograph needs this: measured live at **32.56 ms/megapixel**, it costs
+    /// ~67 ms at 1080p (15 fps) against a 16.7 ms budget, and no shader change spans a 4× gap —
+    /// ~69 % of its frame is Perlin noise that has already been optimised twice (BUG-101).
+    /// Pixels are the only lever with the right magnitude.
+    ///
+    /// Clamped to the same [0.4, 1.0] floor as the MetalFX path: below 0.4 the upscale stops
+    /// being softness and starts being a different image.
+    public var rayMarchRenderScale: Float {
+        guard let scale = renderScale else { return 1.0 }
+        return min(max(scale, 0.4), 1.0)
+    }
+
     /// Ferrofluid Ocean-specific material detail parameters (V.9 Session 4 / D-124).
     ///
     /// Optional block under the `"ferrofluid"` JSON key. When present, declares
