@@ -507,7 +507,7 @@ struct MultiPassRenderHarness {
         let postChain: PostProcessChain?
         if preset.descriptor.passes.contains(.postProcess) {
             let chain = try PostProcessChain(context: ctx, shaderLibrary: lib)
-            chain.allocateTextures(width: width, height: height)
+            chain.allocateTextures(width: marchW, height: marchH)
             postChain = chain
         } else {
             postChain = nil
