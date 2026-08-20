@@ -22,6 +22,39 @@ private let rmLogger = Logger(subsystem: "com.phosphene.renderer", category: "Re
 
 extension RenderPipeline {
 
+    // MARK: - Marched-pixel budget (PERF.14)
+
+    /// Largest marched pixel count measured on the fast side of the PERF.14 cliff.
+    ///
+    /// Volumetric Lithograph at `render_scale` 0.5 cost **175 ms** at 3840×2160 — 1920×1080
+    /// marched — and **≤ 15 ms** at 0.4, which marches 1536×864. An 11.7× drop from a 1.56×
+    /// pixel cut, live, same build, same preset. Ray-march cost is a STEP here, not a curve,
+    /// so "ms per megapixel" does not predict it and a constant scale walks off the step as
+    /// soon as the window grows. 1536×864 is the largest size measured below it.
+    static let marchedPixelBudget = 1536 * 864
+
+    /// Ray-march scale for a drawable of `width` × `height`.
+    ///
+    /// A `declared` scale of 1.0 means the preset never opted into scaled marching; it is
+    /// returned untouched so the catalog's full-resolution presets keep the looks they were
+    /// certified at. A lower value is reduced further when needed to stay inside
+    /// ``marchedPixelBudget``, then clamped to the [0.4, 1.0] floor — below 0.4 the upscale
+    /// stops being softness and starts being a different image.
+    ///
+    /// The budget only ever lowers the scale, so a preset declaring 0.5 keeps 0.5 at 1080p
+    /// and in the 2884×1662 window VL was certified in, and gets 0.4 at 4K automatically.
+    ///
+    /// ponytail: one budget for the whole catalog. Per-preset budgets when a preset needs a
+    /// different one, which none does today.
+    static func marchScale(declared: Float, width: Int, height: Int) -> Float {
+        guard declared < 1.0, width > 0, height > 0 else { return min(max(declared, 0.4), 1.0) }
+        let budgetScale = (Float(marchedPixelBudget) / Float(width * height)).squareRoot()
+        return min(max(min(declared, budgetScale), 0.4), 1.0)
+    }
+}
+
+extension RenderPipeline {
+
     /// Attach noise textures that will be bound on every preset render encoder.
     ///
     /// Call once after app startup.  Pass `nil` to detach (noise textures will
@@ -113,9 +146,13 @@ extension RenderPipeline {
         let height = Int(size.height)
         // BUG-101 — the marcher may shade fewer pixels than the drawable. The composite pass
         // samples `litTexture` by UV through a linear sampler, so a smaller source upscales
-        // with no extra pass; the post-process chain below stays at DRAWABLE size, so bloom
-        // and ACES still run at full resolution on the upscaled image.
-        let marchScale = min(max(rayMarchState.renderScale, 0.4), 1.0)
+        // with no extra pass; PERF.13 moved the post-process chain to march size too, so bloom
+        // and ACES run at the marcher's scale and the single upscale happens at composite.
+        //
+        // The 0.4 floor is a HARD CLAMP, not a suggestion: a sidecar declaring a smaller
+        // render_scale silently gets 0.4. PERF.14 probes at 0.25 and 0.35 both ran at 0.4 and
+        // returned identical timings before anyone noticed. If you lower it, check here first.
+        let marchScale = Self.marchScale(declared: rayMarchState.renderScale, width: width, height: height)
         let marchWidth = max(Int((Float(width) * marchScale).rounded()), 1)
         let marchHeight = max(Int((Float(height) * marchScale).rounded()), 1)
         rayMarchState.ensureAllocated(width: marchWidth, height: marchHeight)
