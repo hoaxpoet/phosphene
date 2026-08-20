@@ -2581,12 +2581,21 @@ better than that:
 | **their 0.5 scale, readback off** | **8.65 – 8.92** |
 | their own figure (readback ON) | 17.43 |
 
+⚠ **Re-confirmed after PERF.13** (which moved the post-process chain to the marcher's scale, after
+the measurement above): **8.50 / 8.58 / 8.75 ms** across three runs on the merged tree, so the figure
+describes `main` and not a superseded pipeline. ✅ **And Matt has since M7-approved the 0.5 look**
+(*"VL looks good"*, session `2026-08-20T13-50-18Z`), which discharges the certified-preset caveat
+this entry raised.
+
 ⚠ **And the live number is still higher than any of these.** The harness is **2.4× low** on VL — its
 24-frame drive starts the terrain flight from a standing start, the cheapest part of it. Taking their
 live **32.56 ms per marched megapixel**, the 0.5 scale predicts roughly **20 ms at 1080p (~50 fps)**
 — a large gain from ~15 fps, still short of 60 — and **~70 ms at 4K**, which their commit says too.
-**4K/60 remains out of reach for VL either way.** Their change is also a visible change to a
-certified preset and needs an M7.
+**4K/60 remains out of reach for VL either way** — and the VL handoff (`docs/prompts/VL_HANDOFF_2026-08-20.md`)
+now reports **104 ms / 9.6 fps live at 2884×1662**, worse than any offline extrapolation, with the
+blunt summary that *"every offline VL number has disagreed with live by 2–4×"*. That is the same gap
+this increment measured from the other side, and it is why the live read is the next action rather
+than another offline sweep.
 
 **What survives from this increment, all of it about measurement:**
 - **`readback:` flag** and timing with it off. Their own commit notes *"the harness gain understates
@@ -2626,8 +2635,17 @@ increment on one feature, and the duplicate was only caught because the merge co
 is the visible symptom; **the real gap is that nothing tells a session what another is currently
 building.** Matt's call, flagged now with a concrete price attached.
 
-⚠ **One intermittent failure recorded, not silenced:**
-`ProgressiveReadiness.startNow_atThreshold_transitions_to_ready` failed once on a wall-clock wait
+⚠ **TWO intermittent failures recorded, not silenced, and one of them was investigated as a
+possible deadlock rather than waved through.** `SessionLifecycleChurnTests.routerChurn_startStop
+LocalFilePlayback_neverHangs` failed once in-suite — and a **hang-class test that hangs is normally
+catching a deadlock** (BUG-059), which mattered here because this increment adds an `NSLock` acquire
+(`rayMarchRenderScale`) inside `renderTargetDescription`, a property the app polls four times a
+second. Checked rather than assumed: the property takes its three locks **sequentially, never
+nested**, so no lock-order inversion is constructible; its only caller is a standalone polling task,
+not a path that already holds `rayMarchLock`; and the test passes isolated in **2.79 s**. Two
+subsequent full runs were green. Contention, not a deadlock — but the check was the point.
+
+⚠ Also recorded: `ProgressiveReadiness.startNow_atThreshold_transitions_to_ready` failed once on a wall-clock wait
 after 220 s; isolated it passes in **0.222 s**, and the following full runs were green. Contention
 starving a waiter — load average was **11** during these measurements, with parallel sessions
 building. **No budget was widened.** It is also why the VL re-measurement above spans 8.65 → 29.57 ms

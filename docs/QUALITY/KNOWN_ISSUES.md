@@ -139,8 +139,10 @@ with downbeat taps ~12 tapped beats apart, flagged at FT.3 tasks 1–3) is still
 be worth settling in the same pass.
 ### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
 
-**Status: ✅ FIXED 2026-08-20 — by rendering fewer pixels, not by cutting detail. ⚠ Needs an M7:
-it is a visible change to a certified preset.**
+**Status: ✅ FIXED 2026-08-20 — by rendering fewer pixels, not by cutting detail. ✅ M7-approved
+(*"VL looks good"*, `2026-08-20T13-50-18Z`). ⚠ Fullscreen is NOT closed: 104 ms / 9.6 fps live at
+2884×1662 — see `docs/prompts/VL_HANDOFF_2026-08-20.md`, and note Matt's requirement that it must
+"run fullscreen even if not optimal".**
 
 Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
 `VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
