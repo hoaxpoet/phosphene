@@ -36,7 +36,8 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
-| BUG-101 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md` |
+| BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
+| BUG-101 | **P1** (was P2) · **live-confirmed 2026-08-19: 3.5 fps at 4K, ~15 fps extrapolated at 1080p — a CERTIFIED preset that misses the product target by ~4×** | preset.volumetriclithograph / performance | **Volumetric Lithograph costs 269.89 ms median GPU at 3840×2160 — 3.5 fps** — measured live on `2026-08-19T22-45-50Z` over **905 frames** (p90 369.75 ms, 32.56 ms/megapixel). In the same session Witchlight held 6.43 ms and Stave 2.88 ms. At `CLAUDE.md`'s stated 60 fps **at 1080p** the extrapolation is 32.56 × 2.07 ≈ **67 ms ≈ 15 fps**, so VL misses its own target by roughly 4× at the resolution the product promises, not merely at 4K. ⚠ **The earlier 16.44 ms live median is now explained and retracted:** it came from 89 frames spanning a preset transition, and this session reproduces those same sub-6 ms readings at segment boundaries (5.85, 2.72 ms) alongside a 270–313 ms body — transition frames, not the preset rendering. **Cause is unchanged and is not waste** (PERF.8): ~69 % of the frame is Perlin noise inside `sceneSDF`, evaluated ~135× per pixel, and both terms are already twice-optimised — VL-PSY.1 cut the warp from 112 evaluations to 6, and 3 octaves was tried and reverted for going soft. **What changes is the severity, not the diagnosis:** "expensive by construction" was an acceptable answer at a presumed 16 ms; at 3.5 fps it is not. The remaining levers all alter the render — `VL_SDF_STEP_SCALE` 0.55 → 0.70 buys only 10 % against a 4× gap — so this needs a product decision about VL's scope (render scale, step budget, or accepting it as a preset that cannot run at full resolution), not another optimisation pass |
 | BUG-100 | P2 · evidence-only, filed 2026-08-19 from an M7 session; **not a preset defect** | app.performance / sustained-load | **The app degrades under sustained 4K rendering, and it is the machine or the frame loop, not the preset that happens to be on screen.** Matt's Stave M7 (`2026-08-19T17-01-15Z`) reported *"performance slowed over time, which led to some choppiness"*. Measured over a contiguous 70 s at 3840×2160: `frame_cpu_ms` **17.4 → 43.6** and `frame_gpu_ms` **2.9 → 11.7**, while the app's OWN CPU work stayed flat — `encode_cpu_ms` 12.9 → 15.2, `renderframe_cpu_ms` 9.8 → 11.0. Same work, less delivered. **Three hypotheses were falsified before filing:** (a) Stave accumulating — an offline soak of 1920 frames at 4K is flat at 22.3 ms with no drift; (b) the dispersion fan opening over the track — `waveformOccupancy` is flat at 0.081–0.095 across the whole segment, r(GPU, occupancy) = **−0.11**; (c) preset-specific — the degradation **persists into the next preset** (Witchlight `frame_cpu` 24.4 at 4K, against Stave's own 17.4 early) and partially recovers after a 2.16 MP interlude. ⚠ **A second finding sits inside this one:** `encode_cpu_ms` is **15–16 ms at 4K** — essentially the entire 60 fps budget spent on CPU encode before any GPU work — and it scales with resolution (9.1 ms at 2.07 MP). CPU encode should not scale with pixel count; that is worth its own look and is probably the more tractable half. Thermal throttling of the Mac mini under sustained 4K is the leading remaining explanation for the rest, and cannot be confirmed from the recordings — it needs `powermetrics` or equivalent alongside a session |
 | BUG-099 | P2 · open, product decision needed | preset.witchlight / performance | **Witchlight reaches ~30 fps at 3840×2160 after BUG-098's 8.2× fix, against 60 fps at 1080p.** `CLAUDE.md` promises 60 fps **at 1080p**, which is met with headroom, so this is a decision about what the product promises at fullscreen rather than a defect against the stated target. The remaining 4K cost is **balanced** — bloom 5.4 ms, three star layers 4.9 ms, beads/particles/feedback 6.0 ms — so there is no further micro-optimisation available that does not change what the preset looks like. **Two routes, both visible to the user:** drop or cheapen a star layer (the three-layer parallax is a documented WL.2 feature and the depth read would go with it), or render below full drawable resolution — ⚠ **which the existing `setDirectRenderScale` cannot do for this preset**: that path is `drawDirect`-only and Witchlight is `feedback`+`particles`, so it needs the half-res render extended to that path first (engine work, ~4× headroom, aliasing risk concentrated in the sub-pixel starfield). ⚠ Note Witchlight is the only preset measured that is anywhere near the budget; the next most expensive at 4K is Volumetric Lithograph at 16.44 ms. Matt's call |
 | BUG-098 | **P1** · **FIXED 2026-08-19 (PERF.2 + PERF.3), 8.2× measured. ✅ 1080p target met with margin; ⚠ 4K ≈ 30 fps, still 2× over** | preset.witchlight / performance | **Witchlight's sky ran ~64 Perlin evaluations per pixel across the whole frame — most of them multiplied by zero, the rest for detail that never reached the image.** Measured live at 4K on `2026-08-19T14-25-55Z`: **273.88 ms median GPU, 11.2 fps, 16× over budget**, while six other presets in the same session held 59–60 fps (Arachne 3.27 ms … Volumetric Lithograph 16.44 ms) — 84× Arachne, so a defect and not a cost. Two causes, both fixed: **(a)** `witchlight_bloom` computed `fbm8` + `warped_fbm` for EVERY pixel then multiplied by `body = exp(-r*r*70)`, a lobe a sixth of the frame wide — ~530 M Perlin evaluations per 4K frame to produce black; fixed with an early return at `body < 1e-3` (below an 8-bit LSB: 2.4e-4 vs 3.9e-3), **151.2 → 31.8 ms**, output identical to every printed digit. **(b)** the surviving noise was still 64 evaluations for what the code's own comment calls *"low-frequency structure only … one soft mass rather than cloud detail"*; replaced with `fbm4` + a one-level `fbm4` warp (**20 evaluations**), the same remedy `VolumetricLithograph.metal:634` applies to the same function for the same reason — **31.8 → 18.4 ms**, sky luma 9.22 → 9.23 and lit share 2.49 % → 2.51 %. **Total 151.3 → 14.9 ms (10.2×), measured back to back in one thermal state.** Extrapolated to production: **~6 ms at 1800×1200 (60 fps with large headroom, target met)** and **~27 ms at 3840×2160 (≈37 fps)**. ⚠ The residual is now balanced — stars 5.3 ms, beads/particles/feedback 5.8 ms, bloom 2.1 ms — so there is no further shader win that does not change the look; closing the 4K gap needs a product decision (fewer star layers, or `setDirectRenderScale` as Nimbus already does at 0.5×), tracked as **BUG-099** |
@@ -77,7 +78,7 @@ read the crash reports already on disk.**)*
 
 ---
 
-### BUG-101 — BeatBench's reference for money and bleed is at an untrusted metrical level (2026-08-19)
+### BUG-102 — BeatBench's reference for money and bleed is at an untrusted metrical level (2026-08-19)
 
 **Status: open. Not a code defect — a ground-truth defect that caps what the beat-sync
 program can measure. Cannot be fixed by editing the JSON.**
@@ -136,6 +137,54 @@ arbitration. Until then, **suite-4 numbers and any money/bleed metrical claim sh
 with this caveat**. solsbury_hill's separate ground-truth inconsistency (`meter_from_taps: 7`
 with downbeat taps ~12 tapped beats apart, flagged at FT.3 tasks 1–3) is still open and would
 be worth settling in the same pass.
+### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
+
+**Status: investigated, no fix applied. Every remaining lever changes what the preset looks
+like.** Filed so the measurements are not re-derived by the next person.
+
+Matt: *"troubleshoot VL"*, after the PERF.4 gate flagged it at **5.2× the median preset**.
+
+**Where the cost is.** `sceneSDF` is evaluated ~135× per pixel — 128 march steps plus 4
+tetrahedral normal taps and 3 AO taps — and carries ~10 Perlin evaluations each:
+
+| term | evaluations | measured |
+|---|---|---|
+| terrain `fbm3D(_, VL_FBM_OCTAVES=4)` | 4 | ~2.7 ms/octave (4 → 1: **30.59 → 22.55 ms**) |
+| `vl_foldDomain` warp, 2 × `fbm3D(_,3)` | 6 | **~10.4 ms** (removed: 32.07 → 21.64 ms) |
+
+Together ~69 % of the frame. A same-session drift check re-measured the baseline at 30.58 ms
+against 30.59 — the rig is stable, and an **earlier contradictory reading** (octaves 4 → 2
+showing no change) was simply a bad measurement taken while the machine was busy.
+
+**The marcher is not at fault.** It sphere-traces with a correct early exit
+(`d < 0.001 · t → break`) and a `t < farPlane` bound, so rays that hit leave early rather than
+burning the full 128 steps.
+
+⚠ **Both noise terms are already twice-optimised, and the code says so.** VL-PSY.1 cut the warp
+from `warped_fbm` (112 evaluations; 1120 ms/frame at the time) down to 6, and took octaves 5 → 4.
+**3 octaves was tried and reverted** — below SHADER_CRAFT's ≥4-octave floor the render "went soft
+and airbrushed", a quality regression traded for ~1 ms. There is no multiply-by-zero waste of the
+BUG-098 kind here; this is what the preset costs to draw.
+
+**The one remaining lever, and why it is not mine to pull.** `VL_SDF_STEP_SCALE` is 0.55 (itself
+already re-reasoned up from 0.35, which was "buying safety at ~1.6× the frame time"). Raising it
+marches further per step:
+
+| step scale | frame time | vs 0.55, pixel-diffed |
+|---|---|---|
+| 0.55 | 31.8 ms | — |
+| 0.70 | 28.6 ms (−10 %) | 74 % of channels differ, 12.3 % beyond 16/255, mean 9.4 |
+| 0.80 | 26.9 ms (−16 %) | 74 % differ, **48.8 %** beyond 16/255, mean 14.3 |
+
+Unlike the Witchlight bloom (max delta 2/255, invisible), this is a visible change to a certified
+preset. Whether the render still reads correctly at 0.70 is Matt's judgement, not a measurement.
+
+⚠ **No trustworthy live figure exists for VL.** The single 4K session that carried it reported a
+median of 16.44 ms — but from **89 frames with a p90 of 101.73 ms**, a short sample spanning a
+preset transition, and that session has since been evicted by retention (BUG-082). The harness
+figure (30.6–31.2 ms at 1080p, five runs across two days) is the reliable one, and it does not
+reconcile with 16.44 ms at four times the pixels. A fresh session with VL held on screen would
+settle it.
 
 ---
 
@@ -189,10 +238,27 @@ after `deltaTime` (vsync, not headroom) and the harness milliseconds (readback i
 rule that keeps holding: **read what the number is computed from before concluding anything from
 its trend.**
 
-**What cannot be settled from recordings.** Thermal throttling of the Mac mini under sustained
-4K is the leading explanation for the remainder, and nothing in the session records clock or
-temperature. Confirming it needs `powermetrics` (or equivalent) captured alongside a session —
-i.e. new instrumentation, exactly as BUG-098 needed `RENDER_TARGET` before it could be seen.
+⚠ **FIRST INSTRUMENTED SESSION (2026-08-19T22-45-50Z): thermal stayed `nominal`, and the
+degradation did not reproduce.** `THERMAL_STATE state=nominal low_power=false active_cpus=10`
+logged once and never changed, and Witchlight held **6.77 → 6.22 ms across 60 s at 4K — flat**,
+in a window comparable to the one where Stave degraded 2.9 → 11.7 ms. So this session supports
+neither the thermal hypothesis nor a general sustained-4K decay. ⚠ It does not refute them
+either: the degrading session ran a different preset mix, and one non-reproduction is not a
+falsification. **What it does establish is that the instrument works and reports cleanly**, so
+the next session that DOES degrade will carry the answer. Keep BUG-100 open pending that.
+
+**Instrumented 2026-08-19 (PERF.9).** Sessions now log
+`THERMAL_STATE state=… low_power=… active_cpus=…` whenever it changes, plus once at the start so
+an unchanging session still records its state.
+
+⚠ **NOT `powermetrics`, which is what was asked for.** It refuses to run unprivileged —
+*"powermetrics must be invoked as the superuser"*, verified — so the app cannot sample it, and
+shipping a privileged helper to read one counter is not proportionate.
+`ProcessInfo.thermalState` is the supported unprivileged primitive for exactly this question:
+the OS's own view of whether it is shedding performance for heat. It is coarse (nominal / fair /
+serious / critical), and coarse is enough here — **`nominal` throughout a degrading session
+falsifies the thermal hypothesis just as usefully as `serious` confirms it**, and either outcome
+closes the open half of this entry.
 
 ---
 

@@ -224,7 +224,7 @@ shown to exist.
 
 Note what this does **not** license. Matt distrusting the taps is not the same as the backends
 being right; the correct status for money's and bleed's metrical level is **unknown**, pending
-re-annotation. Filed as **BUG-101** (P1, `test.groundtruth / dsp.beat`), which carries the list
+re-annotation. Filed as **BUG-102** (P1, `test.groundtruth / dsp.beat`), which carries the list
 of contaminated numbers and the fix path. Ground truth changes only through the tap + reconcile
 pipeline — no JSON was edited.
 

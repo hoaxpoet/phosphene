@@ -73,11 +73,32 @@ extension VisualizerEngine {
     /// HANG.1 watchdog. The render thread cannot log after `nextDrawable` blocks, so this
     /// independent task snapshots the lock-protected probe and persists the blocked call site.
     /// It also writes a low-rate balance heartbeat for healthy-session comparison.
+    /// The OS's own view of whether it is shedding performance for heat, plus the two other
+    /// unprivileged state flags that change what the hardware will deliver.
+    ///
+    /// `ProcessInfo.thermalState` is deliberately coarse (four levels) and is the only thermal
+    /// signal available without root — see the BUG-100 note at the call site for why
+    /// `powermetrics` is not an option.
+    static func thermalDescription() -> String {
+        let info = ProcessInfo.processInfo
+        let state: String
+        switch info.thermalState {
+        case .nominal:  state = "nominal"
+        case .fair:     state = "fair"
+        case .serious:  state = "serious"
+        case .critical: state = "critical"
+        @unknown default: state = "unknown"
+        }
+        return "state=\(state) low_power=\(info.isLowPowerModeEnabled) "
+             + "active_cpus=\(info.activeProcessorCount)"
+    }
+
     func setupDrawableLifecycleWatchdog(pipe: RenderPipeline, recorder: SessionRecorder) {
         Task.detached(priority: .utility) { [weak pipe, weak recorder] in
             var lastHeartbeatBucket: UInt64 = 0
             var lastStallFrame: UInt64?
             var lastRenderTarget = ""
+            var lastThermalState = ""
             var lastFailureCount: UInt64 = 0
             var lastUnpresentedCount: UInt64 = 0
 
@@ -92,6 +113,33 @@ extension VisualizerEngine {
                 if target != lastRenderTarget {
                     lastRenderTarget = target
                     let message = "RENDER_TARGET \(target)"
+                    recorder.log(message)
+                    initLogger.info("\(message, privacy: .public)")
+                }
+
+                // BUG-100 — is the machine throttling, or is the app slower?
+                //
+                // The open half of BUG-100 is a 2.5x frame-time degradation over 70 s at 4K
+                // while the app's own CPU work stayed flat (encode 12.9 -> 15.2 ms) — same work,
+                // less delivered. Thermal throttling is the leading explanation and nothing in
+                // the session recorded it, so it could not be confirmed or ruled out.
+                //
+                // ⚠ NOT `powermetrics`, which is what was asked for: it refuses to run without
+                // root ("powermetrics must be invoked as the superuser"), so the app cannot
+                // sample it, and shipping a privileged helper to read one counter is not
+                // proportionate. `ProcessInfo.thermalState` is the supported unprivileged
+                // primitive for exactly this question — the OS's own view of whether it is
+                // shedding performance for heat — and `nominal` throughout a degrading session
+                // would falsify the thermal hypothesis just as usefully as `serious` confirms it.
+                //
+                // Logged on CHANGE, so the transition timestamps line up against `frame_gpu_ms`,
+                // plus once at the start so a session that never changes still records its state
+                // (absence of a line would otherwise be ambiguous between "nominal" and "not
+                // instrumented").
+                let thermal = Self.thermalDescription()
+                if thermal != lastThermalState {
+                    lastThermalState = thermal
+                    let message = "THERMAL_STATE \(thermal)"
                     recorder.log(message)
                     initLogger.info("\(message, privacy: .public)")
                 }
