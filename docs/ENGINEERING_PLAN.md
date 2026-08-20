@@ -2598,6 +2598,18 @@ certified preset and needs an M7.
   and at 4K in the harness**. ⚠ It cannot live in the default suite: parallel `swift test` inflates
   timings 2–3×, so a 16.7 ms assertion would fail in CI and pass locally — worse than no gate.
 - **`FRAME_BUDGET_RES`**, so the roster can be measured at a panel's real resolution.
+
+★★ **AND THIS INCREMENT MADE THE SAME MISTAKE IT WAS DIAGNOSING, ONCE.** My first version timed
+*everything* with the readback off — right for an absolute claim, wrong for the ratio gate, and it
+went red on the closeout run: the readback is a **common-mode** cost (it scales with pixels, not with
+the preset), so removing it halved the median to 3.5 ms and with it the absolute headroom under the
+8× ceiling. One contended sample of Stave — genuinely the second most expensive preset — read
+**34.7 ms = 9.9×** and failed a gate that had been stable all day. **A ratio partly cancels a
+common-mode term, and that cancellation is what made the recorded baselines and the 8× factor mean
+anything.** Fixed by giving the two questions two instruments: the ratio runs on the harness it was
+calibrated with, and the readback comes off only for the strict check, which is opt-in, isolation-only
+and pays for its own timing loop. Caught by the closeout gate rather than by me, which is the gate
+earning its place.
 - **`renderTargetDescription` logs the effective scale** — `min(directRenderScale,
   rayMarchRenderScale)`. It would otherwise record `render_scale=1.00` for VL rendering at 0.5, and
   that line exists so `frame_gpu_ms` is interpretable after the fact.

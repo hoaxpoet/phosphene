@@ -174,11 +174,23 @@ struct PresetFrameBudgetTests {
     @MainActor
     @Test("Every reachable preset stays within its recorded frame cost at 1080p")
     func presetFrameCost() throws {
-        // ★ READBACK OFF FOR TIMING. It is ~8 MB per frame at 1080p and ~33 MB at 4K, it scales
-        // with pixels rather than with the preset, and production never does it — measured, it cost
-        // a median 11.4 ms per frame at 3840×2160, which is most of what made the 4K column look
-        // catastrophic and produced BUG-099's "~30 fps" figure for a preset that renders in 8.4 ms.
-        let harness = MultiPassRenderHarness(width: Self.width, height: Self.height, readback: false)
+        // ★★ THE RATIO GATE KEEPS THE READBACK, AND THAT IS A CORRECTION TO THIS INCREMENT.
+        //
+        // My first version timed everything with `readback: false` — correct for an ABSOLUTE claim,
+        // wrong here, and it went red immediately: the readback is a common-mode cost (it scales
+        // with pixels, not with the preset), so removing it **halved the median to 3.5 ms** and with
+        // it the absolute headroom under the 8× ceiling. One contended sample of Stave — genuinely
+        // the second most expensive preset — then read 34.7 ms = 9.9× and failed a gate that had
+        // been stable for a day. A ratio partly cancels a common-mode term; that is what made the
+        // recorded baselines and the 8× factor mean anything.
+        //
+        // So: the RATIO runs on the same instrument it was calibrated with, and the readback comes
+        // off only for the STRICT check, which is opt-in and isolation-only and pays for its own
+        // timing loop. Two questions, two instruments — the whole lesson of this increment applied
+        // to itself.
+        let harness = MultiPassRenderHarness(width: Self.width, height: Self.height)
+        let strictHarness = MultiPassRenderHarness(width: Self.width, height: Self.height,
+                                                  readback: false)
         let (features, stems) = Self.drive(frames: Self.timedFrames)
         let strict = ProcessInfo.processInfo.environment["FRAME_BUDGET_STRICT"] == "1"
 
@@ -219,13 +231,23 @@ struct PresetFrameBudgetTests {
                                    + "A preset this far over is broken rather than expensive.",
                                    row.name, row.ms, Self.absoluteCeilingMs))
         }
-        // The real promise, opt-in and isolation-only.
+        // The real promise, opt-in and isolation-only — and timed WITHOUT the readback, because
+        // production never performs it and 16.7 ms is an absolute claim about the app's frame.
         if strict {
-            for row in measured where row.ms > Self.strictBudgetMs {
+            for preset in MultiPassRenderHarness.multiPassPresets {
+                var best = Double.infinity
+                for _ in 0..<Self.timingPasses {
+                    let start = ProcessInfo.processInfo.systemUptime
+                    guard (try? strictHarness.render(preset: preset, features: features,
+                                                    stems: stems, settle: 0) { _ in 0 }) != nil
+                    else { break }
+                    best = min(best, (ProcessInfo.processInfo.systemUptime - start)
+                               * 1000 / Double(Self.timedFrames))
+                }
+                guard best.isFinite, best > Self.strictBudgetMs else { continue }
                 failures.append(String(format: "%@: %.1f ms exceeds the 60 fps budget (%.1f ms) "
-                                       + "at %dx%d.",
-                                       row.name, row.ms, Self.strictBudgetMs,
-                                       Self.width, Self.height))
+                                       + "at %dx%d, readback excluded.",
+                                       preset, best, Self.strictBudgetMs, Self.width, Self.height))
             }
         }
 
