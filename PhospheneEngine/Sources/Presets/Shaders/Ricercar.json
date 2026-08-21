@@ -36,7 +36,7 @@
     "tier2": 0.6
   },
   "rubric_profile": "lightweight",
-  "certified": false,
+  "certified": true,
   "audio_routes": [
     {
       "route": "mark_onset",

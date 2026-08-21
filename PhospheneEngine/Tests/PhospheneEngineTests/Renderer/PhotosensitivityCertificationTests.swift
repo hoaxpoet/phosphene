@@ -74,8 +74,13 @@ struct PhotosensitivityCertificationTests {
         "Cymatic Resonance",  // particles (CymaticSandGeometry vibrating-sand — geometry-driven, black backdrop) — CR.2/D-199,
         "Witchlight",      // feedback + particles; the CPU bead ring + bounded head flare
         "Stave",           // feedback + particles; beaded history-ring traces + the 8 s stem tint wash — CHR.3
-        "Meniscus"         // feedback + particles; the wave surface is CPU geometry, the
+        "Meniscus",        // feedback + particles; the wave surface is CPU geometry, the
                            // fragment pass is only the ground/sky backdrop — MEN.5 / D-214
+        "Ricercar"         // feedback + particles; the onset-driven marks are CPU geometry
+                           // (RicercarEchoGeometry.advance()), the fragment pass is only the
+                           // deep-ground backdrop. Measured for real by
+                           // MultiPassFlashHarnessTests.ricercar_isFlashSafe: 0.00 flashes/s
+                           // peak, Δluma 0.019 (6.3× the responsiveness floor) — RICERCAR-CERT.1
     ]
 
     // MARK: - Gate

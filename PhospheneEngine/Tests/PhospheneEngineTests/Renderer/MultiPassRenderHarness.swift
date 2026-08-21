@@ -65,7 +65,12 @@ struct MultiPassRenderHarness {
         // PERF.10 — the four `direct` presets: one fullscreen fragment each, no per-preset Swift
         // state, so one generic path covers all of them. PERF.7's survey named these as the
         // cheapest remaining paradigm and this is that work.
-        "Nebula", "Plasma", "Spectral Cartograph", "Waveform"
+        "Nebula", "Plasma", "Spectral Cartograph", "Waveform",
+        // RICERCAR-CERT.1 — the fifth ParticleGeometry preset the harness reaches, and the
+        // first with a geometry-owned resolution-dependent target (ensureAllocated). Absent
+        // until this increment: PresetFrameBudgetTests carried "Ricercar" in its UNVERIFIED
+        // list, so its mandatory performance and D-157 flash gates had never actually run.
+        "Ricercar"
     ]
 
     /// Render `presetName` over `features`/`stems` (row-aligned), returning `reduce(bgra)`
@@ -83,6 +88,7 @@ struct MultiPassRenderHarness {
         case "Cymatic Resonance": return try renderCymaticSand(features, stems, settle: settle, reduce)
         case "Witchlight":   return try renderWitchlight(features, stems, settle: settle, reduce)
         case "Meniscus":     return try renderMeniscus(features, stems, settle: settle, reduce)
+        case "Ricercar":     return try renderRicercar(features, stems, settle: settle, reduce)
         case "Stave":        return try renderStave(features, stems, settle: settle, reduce)
         case "Mitosis":      return try renderMitosis(features, stems, reduce)
         case "Cytokinesis":  return try renderCytokinesis(features, stems, reduce)
@@ -295,6 +301,41 @@ struct MultiPassRenderHarness {
     /// the preset triangle, then the surface. The settle window matters here — the wave
     /// field integrates, so the first frames are a field growing from flat rather than the
     /// steady surface whose flash behaviour is the question.
+    private func renderRicercar<T>(_ drive: [FeatureVector], _ stems: [StemFeatures],
+                                   settle: Int, _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try RicercarEchoGeometry(device: ctx.device, library: lib.library,
+                                           pixelFormat: ctx.pixelFormat)
+        // RICERCAR-CERT.1 — the geometry owns a resolution-dependent trail (RICERCAR-WIRE.2);
+        // size it to the harness's output before the first update, exactly as
+        // RenderPipeline+Draw does per frame in production.
+        geo.ensureAllocated(width: width, height: height)
+
+        let tex = try makeOutputTexture(ctx)
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        for i in 0..<settle {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: drive[i % drive.count], stemFeatures: stems[i % stems.count],
+                       commandBuffer: cmd)
+            cmd.commit(); cmd.waitUntilCompleted()
+        }
+        var out: [T] = []
+        out.reserveCapacity(drive.count)
+        for i in 0..<drive.count {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            let features = drive[i]
+            geo.update(features: features, stemFeatures: stems[i], commandBuffer: cmd)
+            let rpd = clearRPD(tex)
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
+            geo.render(encoder: enc, features: features)
+            enc.endEncoding()
+            try commit(cmd, tex, into: &pixels)
+            out.append(reduce(pixels))
+        }
+        return out
+    }
+
     private func renderMeniscus<T>(_ drive: [FeatureVector], _ stems: [StemFeatures],
                                    settle: Int, _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
         let ctx = try MetalContext()
