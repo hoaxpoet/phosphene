@@ -413,7 +413,7 @@ without changing what the preset draws. **The tilt exponent is load-bearing:** d
 ratio it normalises every track to ~1 and destroys quiet-vs-dense discrimination (measured:
 Take Five 0.076–0.158 → 0.184–0.358, the wrong direction).
 
-### Increment CHR.3d — regenerate the route-coverage fixtures ✅ (done at BUG-090 / CHR.3g)
+### Increment CHR.3d — regenerate the route-coverage fixtures ✅ (2026-08-19; done at BUG-090 / CHR.3g)
 
 **Blocks certification of every waveform-driven preset, Stave included.** The committed
 `Fixtures/route_coverage/` CSVs carry only `spectralCentroid` and `spectralFlux` — they predate
@@ -859,125 +859,11 @@ Wiring it would not have been a cleanup — it would have meant *building* six t
 **Not addressed:** the three FLY/FD entries dated 2026-07-23 that the script reports for manual triage on every run — they carry 🔨 and no ✅/⏳ marker, so the predicate correctly skips them. They need a closing status marker whenever Fractal Fly-By's retirement under D-201 is written up.
 
 ### Increment QG.7 — An unrecognised sidecar key is a failure, not a silent no-op ✅ (2026-08-09)
-
-Closes the unknown-key half of D-215's carry-forward. `PresetSidecarKeyGateTests` asserts that every top-level key in every preset sidecar is either decoded by `PresetDescriptor` or explicitly allow-listed **with a reason**, and that every `inspired_by` block matches the D-215 §13.3 union schema.
-
-**The failure it prevents, which already happened twice.** Synthesized `Codable` ignores keys it does not know, so a sidecar field can look authoritative, read as live to anyone opening the file, and be decoded by nothing. D-123 reverted `concept_tags` / `motion_paradigm` cleanly — the CA.4 audit's 2026-05-20 grep was correct — and both reappeared **months later** in `CymaticResonance.json` (2026-07-22) and `Meniscus.json` (2026-08-03), authored from design docs that still prescribed them. One level down, `Witchlight.json` grew a bespoke `sha256_subject` that no schema knew about. Neither was caught by anything; MD.0 found both by hand.
-
-**The allow-list is the point, not a loophole.** The gate does not decide what an unknown key *should* be — it forces the decision to be explicit: decode it, allow-list it with a reason, or delete it. Two entries today: `inspired_by` (documentation-only by decision, D-215 §13.3) and `lumen_mosaic` (below). `_comment_*` is a prefix convention for inline JSON commentary.
-
-**Known keys are parsed from `PresetDescriptor.CodingKeys`, not restated.** Same technique and same reason as `CommonLayoutTest` parsing `Common.metal` — a hard-coded copy would need lockstep updates, and forgetting would make the gate reject legitimate new fields.
-
-**Finding surfaced by writing it: `lumen_mosaic` is a manual-sync trap.** `LumenMosaic.json` carries a nine-value tuning block that nothing decodes; the operative values are Swift constants in `LumenPatternEngine.swift`, and the sync obligation exists only in a doc comment (`"LM.2 keeps the value matched to LumenMosaic.json#lumen_mosaic.ambient_floor_intensity = 0.04"`). `ambient_floor_intensity` and `light_agent_count` currently agree with Swift; the rest have no counterpart. Allow-listed with the trap named rather than silently deleted — whether the block should be decoded, or removed as decoration, is a Lumen call.
-
-**Both directions exercised.** Green on the catalog as it stands. Re-injecting the exact historical regressions — `concept_tags` + `motion_paradigm` into `CymaticResonance.json`, `sha256_subject` into `Witchlight.json`'s `inspired_by` — turns it **red, naming each offending key and file**. Sidecars restored; `git status` clean.
-
-**Still open (D-215):** whether `PresetDescriptor` should *decode* `inspired_by` rather than merely tolerate it. This increment deliberately does not settle that — it makes the tolerance explicit and auditable instead of accidental.
-
 ### Increment QG.6 — The GPU-contract gate could not fail to find its own sources ✅ (2026-08-09)
-
-`CommonLayoutTest`'s MSL parity check — the gate whose own doc comment says it exists because a broken buffer(0) contract shipped to `main` — printed `"MSL sources not reachable — skipping"` and **returned green** whenever either declaration site was unreadable. A wrong `repoRoot` was therefore indistinguishable from a pass: the same silent-success shape the gate exists to prevent, one level up.
-
-**Two defects, one cause.** FTR.6 had just fixed `repoRoot` from a name search (walking up to a directory literally named `phosphene`, which from a worktree at `phosphene/.claude/worktrees/<name>/` sails past onto the PRIMARY checkout) to a fixed component count. That fixes worktrees and re-breaks the moment the file moves — and either way the skip swallowed the evidence.
-
-**Fix:** ascend to the nearest ancestor containing `PhospheneEngine/Package.swift`. Self-validating — a worktree root matches before the primary comes into range — and the result is either provably the enclosing checkout or `nil`. `nil` now means exactly one thing, "not a source checkout", which is the only legitimate skip; past that point both files are `try #require`d with a diagnostic naming the path and stating that an unverified GPU contract is never a pass. A new assertion pins the FTR.6 bug directly: the resolved root must contain `#filePath`.
-
-**Both paths exercised, not assumed.** Normal run 2/2 green. With `Common.metal` moved aside, the gate **fails** (it previously passed) with `Common.metal unreadable at … This is a source checkout … so the GPU contract is unverified — never a pass`, and the message confirms the root resolved to the worktree rather than the primary. File restored byte-identical.
-
-**Left alone deliberately:** the print-and-skip pattern in `DocIntegrityTests` and `DocsExampleCompileTests`. Those gate on an explicit `docsPresent`-style predicate first — "a MISSING doc in a real checkout is itself a failure, so distinguish" — which is the convention this change brings `CommonLayoutTest` into line with, not a defect to remove.
-
 ### Increment MD.0 — Phase MD reconciled to the work that actually happened ✅ (2026-08-07)
-
-Docs + 8 JSON sidecars; no preset authored, no `.metal` opened, no Swift changed. `MILKDROP_STRATEGY.md` had not been touched since 2026-05-12 while seven Milkdrop-inspired presets shipped and certified past it, so MD.5's done-when instructed an author to create a family, a directory and a Settings toggle that D-123 deleted the day after the strategy landed. Filed as **D-215**: `MILKDROP_STRATEGY.md` §13 appended (§12 left intact), §Phase MD rewritten, MD.1 retired, amendment blocks on D-105/D-106/D-110/D-112/D-115, `inspired_by` normalised across all seven sidecars, D-120 residue stripped, D-122 trigger verdict recorded (trigger 4 fired at 27 % roster / 39 % certified, reviewed, outcome `proceed`). **Matt resolved both open decisions the same day and both landed here: the dead Milkdrop Settings toggle is deleted (app tests 407 → 404), and D-115 is C' (10 + 10) — three more uplifts to the D-114 first-release threshold.** Full detail in §Phase MD → Increment MD.0.
 ### Increment BUG051.1/.2 — m3u entry allow-list + canonicalization at the parser boundary ✅ (2026-08-07)
-
-Closes **BUG-051**, filed by CLEAN.2.4's GAP-10 threat model in June and the last unblocked,
-bounded item on the defect board. `M3UParser` now canonicalizes every resolved entry
-(`standardizedFileURL` on all three resolve branches, not just the relative one; `file://`
-strings that aren't file URLs rejected) and filters against `allowedAudioExtensions`
-(`m4a`/`mp3`/`flac`) **at the parser boundary**, so a hostile playlist naming `~/.ssh/id_rsa`
-or `../../etc/passwd` resolves to zero entries and throws `noEntriesResolved` — never stat'd,
-never handed onward. `LocalFileMenuCommands.allowedExtensions` aliases the engine constant so
-the app- and engine-side lists cannot drift.
-
-**Deliberately not built: containment to an expected root.** The filing proposed rejecting
-entries that don't resolve "under an expected root". Absolute and `../`-relative entries
-pointing outside the playlist's own directory are how exported playlists (iTunes, foobar2000)
-address a music library, so containment would break normal use to close nothing — both attack
-examples in the filing are extensionless and the extension check already catches them.
-`parse_allowsTraversalToRealAudioOutsidePlaylistDir` pins that traversal-to-real-audio still
-resolves, so the guard is not re-added by reflex.
-
-**Correction to the original filing.** It stated the resolved path was "handed to AVFoundation"
-with "no allow-list short-circuits it first". Both app entry points already filtered the
-parser's output by extension, so the decoder never saw a non-audio path. The real residual was
-narrower — an `isReadableFile` stat of an attacker-named path plus that path in
-`skippedLines`/logs — and the guarantee depended on every future caller remembering to filter.
-The caller filters stay as belt-and-braces.
-
-**Method note worth keeping (BUG051.2).** The manual criterion took two live runs. The first
-(`2026-08-07T20-12-09Z`) looked clean and proved nothing: the launched app was built from a
-*parallel worktree* whose source contains zero occurrences of `allowedAudioExtensions`. Because
-this fix is invisible at the UI by construction, a no-op and a pass produce identical logs — so
-the log is not the evidence, **which binary ran is**. The closing run
-(`2026-08-07T20-20-07Z`, fixed build confirmed by app access time vs. session start and
-`M3UParser.o` compile time vs. the source edit) queued and played all three formats:
-`cached=3 failed=0 total=3`, both advances `ok=true`, `CHAIN_HEALTH: verdict=clean`, tap healthy
-at −2.03 dBFS. The wrong-build run is retained as the pre-fix control.
-
-**Done-when:** met. Automated (`M3UParserTests`, 11/11) + manual (Matt, above). Not visually
-verifiable — no renderer, shader, or preset surface touched, so no capability-registry row
-changes and no comparison sheet applies.
-
 ### Increment BUG078.1 — `AVAudioPlayerNode` teardown trap root-caused and fixed ✅ (2026-08-07)
-
-The intermittent `EXC_BREAKPOINT` / "dispatch_sync called on queue already owned by current
-thread" that has been taking down the engine test process since 2026-07-26 is a
-**concurrent-`start()` overwrite** in `LocalFilePlaybackProvider`, not the completion-block
-retain the entry had hypothesised. `start()` tears down before taking the lock (BUG-021), so
-two racing starts can interleave such that the second `_startLocked()` overwrites a live,
-playing engine/player. The orphan's last strong reference is the one AVFAudio holds inside
-the pending `scheduleFile` completion block, so the node is released on its own `CommandQueue`,
-where `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue.
-
-**Fix:** `start()` snapshots the existing refs under the lock (pointer copy only — BUG-021's
-lock-free-teardown constraint holds) and tears them down after unlocking, holding a strong
-reference across `player.stop()`. Closes the orphaned-engine leak by the same change.
-
-**Gate:** `LocalFilePlaybackStartRaceTests` counts adopted instances against teardowns over 24
-racing double-starts — **48 adopted / 25 torn down (23 orphans) pre-fix, equal post-fix** —
-converting a 1-in-3 full-suite lottery into a 3-second deterministic check.
-
-**Method note worth keeping:** 25 matching `.ips` reports were already on disk, 19 naming the
-in-flight test and both racing threads. The bug stalled for a week on "nobody has captured the
-trap" while the capture sat in `~/Library/Logs/DiagnosticReports/`.
-
-**Manual criterion met, BUG-078 CLOSED** — Matt's session `2026-08-07T19-10-25Z`: 19 adopted
-instances / 18 teardowns in strict `I(EXI)*` alternation (the unpaired one is still playing at
-log end), clean chain health, no hang, through two rapid-Next bursts. Limit recorded in
-KNOWN_ISSUES: the live run never took the new stale-teardown branch, because the app serialises
-`start()` on the MainActor — it proves no-regression and the orphan invariant on the shipped
-path, while the deterministic gate is what covers the race itself. Merged in `f68efb67` (PR #62).
-
 ### Increment BUG079.1 — release test build unblocked; DBN.2 budget measured ✅ (2026-08-07)
-
-`ArachneState.forceActivateForTest(at:)` was declared inside `#if DEBUG` while its three
-test-target call sites were not, so `swift test -c release` could not compile the engine test
-module (BUG-079). Dropped the gate rather than guarding the call sites — the smaller fix would
-have removed the Arachne spider render coverage from release runs, which trades coverage for a
-build. The doc comment now records why it is ungated.
-
-**The budget the block was hiding: 17.9 ms** for a 30 s activation window in release, against
-BEAT_SYNC_PROGRAM_PLAN §DBN.2's 50 ms — met, with no design change. Debug measures 1403 ms, a
-**78× config gap**, confirming that scaling the debug figure (which the spec forbade) would
-have been meaningless either way.
-`DSPPerformanceTests.test_beatActivationDecoder_30sWindow_performance` now asserts 50 ms under
-release and keeps the 4000 ms regression ceiling under debug.
-
-Correction to the filing: `swift test -c release` alone still fails, and that is not a defect —
-`@testable import` requires testability, which release does not enable. Use
-`swift test -c release -Xswiftc -enable-testing --package-path PhospheneEngine`.
-
 ### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
 ### Increment HANG.1 — BUG-085 drawable lifecycle instrumentation ✅ (2026-08-05)
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
@@ -988,27 +874,7 @@ Correction to the filing: `swift test -c release` alone still fails, and that is
 ### Increment BUG-080 fix — manifest-driven `link_fixtures.sh` ✅ (2026-08-03, `2b36c34d`)
 ### Increment FDYRETIRE.1 — Faraday retired; harness audit kept (D-204) ✅ (2026-07-27)
 ### Increment HARNESS.1 — the replay harness carried almost none of the routes it replayed ✅ (2026-07-27)
-### Increment FDY.1 — Faraday: a Swift–Hohenberg sea wired into the engine (D-203) 🔨 (2026-07-27)
-
-An iridescent liquid sea the music physically drives, built to exercise MFX.1 + RMPERF.1. A
-Swift–Hohenberg simulation of parametrically-driven surface waves runs on the GPU every frame and is
-ray-marched as a liquid heightfield with MetalFX temporal AA. Loudness crossing the Faraday
-threshold is a real supercritical bifurcation (glassy below, cells erupting above); timbre selects
-the cell wavelength; the dish's plate modes gate the drive so cells organise into large-scale
-figures. Colour is thin-film interference off the wave itself — the standing wave IS the film
-thickness. Sibling to Cymatic Resonance: sound causes the image.
-
-- **Engine:** new `setRayMarchPreRenderCompute` per-frame hook (Ferrofluid bakes its slot-10 field
-  once; a live PDE must step on the render's own command buffer). State on `RayMarchPipeline`.
-- **No SceneUniforms lanes added** — phase derives from `accumulatedAudioTime`, so the 240-byte
-  D-187 contract is untouched (FLY.12's byte regression not repeated).
-- **`SessionReplayHarness` steps simulated slot-10 fields** — without it it renders a FLAT
-  placeholder (the FLY.6 divergence; the first production render hit exactly this).
-- Removes the abandoned Molten Gyroid look-spike. Roster 26 → 27. Gates: lint 0, engine + app build,
-  43 gate tests green incl. the byte contract. **`certified:false` — pending Matt's live M7.**
-- **Honest residuals:** cell walls ring where fringes outrun the pixel (`sceneMaterial` gets no
-  slope); backdrop is a dark strip because the engine offers only `env` (grey studio) or `dark`.
-
+### Increment FDY.1 — Faraday: a Swift–Hohenberg sea wired into the engine (D-203) — RETIRED same day (FDYRETIRE.1, D-204) ✅ (2026-07-27)
 ### Increment VL.CERT — Volumetric Lithograph certified ✅ (2026-07-26)
 ### Increment VL-PSY.6 — Volumetric Lithograph: per-cell variety (spatial repetition) ✅ (2026-07-25)
 ### Increment FLY.14 — Fractal Fly-By RETIRED (BUG-071 closed wontfix; D-201) ✅ (2026-07-25)
@@ -1021,23 +887,10 @@ thickness. Sibling to Cymatic Resonance: sound causes the image.
 ### Increment FD.2 — Fractal Descent look pass (jewel palette + materials + flash fix) 🔨 (2026-07-23)
 
 ### Increment BUG072.1 — app test runner launch failure diagnosed; merge gate re-armed ✅ (2026-07-23)
-### Increment FLY.1 — Fractal Fly-By reframed as a FLY-THROUGH + enclosed backdrop 🔨 (2026-07-23; Matt's call after the 3rd live M7)
-
-**Concept pivot.** The original identity trait was "an unending fall INTO the fractal" and the design declared it untradeable. Three live tests said the mechanic does not deliver it: a scale traversal converges on a fixed target, so it reads as *approaching a place*, not dropping through a world. Matt's call: **abandon the fall, adopt a fly-through** — travel between and past towering recursive architecture. This is also what the cited reference (Horsthuis) actually does. **The mechanic is unchanged; the target moved to match what the geometry is genuinely good at.** ★ The general lesson: when three M7s miss on the same axis, the concept was fighting the substrate — re-aim the concept rather than keep tuning the mechanism (contrast KS / Truchet / Kleinian, which were cut instead).
-
-**FLY.1 engine capability — `scene_backdrop`.** Miss/sky rays can now render a near-black enclosed void (`"dark"`) instead of the RMENV.3 IBL backdrop, **decoupled from `environment`** so a preset can take bright ambient + reflections from the gallery env while still being visually enclosed. `lightingParams.w`; default 0 → byte-identical for every existing preset. Matt picked enclosed: openings read as darkness receding, never an exit.
-
-**Also fixed (BUG-071 round 2):** a `fract()` hue discontinuity feeding the cosine palette. `palette()` is already periodic AND continuous; pre-wrapping with `fract()` at a 0.85 cycle frequency made the colour jump at every integer crossing, putting a rainbow contour seam on every surface/edge — and a discontinuity is infinite-frequency, so it **aliased by construction**. A large part of the reported "glitchy", and unfixable by any amount of temporal AA. Perf p50 5.3 / p95 6.4 ms. **Open:** residual moiré on grazing high-detail surfaces; the preset NAME now understates it (rename at sign-off).
-
-### Increment FD.2 — Fractal Fly-By look pass (jewel palette + materials + flash fix) 🔨 (2026-07-23)
-
-The look transformation over the FD.1 maquette. **Jewel stained-glass palette** (IQ cosine, orbit-trap-driven, ref 06) replacing the monochrome gold; **3 materials via matID region dispatch** (shaded jewelled stone dominant + thin-film iridescent fold-edge rims + emission-dominated deep-recess votives with varied hue). Narrow FOV (48°) fills the frame and kills the sky-miss edge blobs. **Two motion defects the still sheets hid, caught by motion_gate:** (1) the on-axis descent rammed the Mandelbox central sphere once per octave → its emissive face flashed the whole frame bright (**flash-unsafe, D-157**) — fixed with an off-axis offset applied before the zoom (`(p+c)*zoom` keeps the self-similar wrap seamless) + a tight emission threshold so no large face can glow; (2) a first attempt at a time-varying drift broke the seamless wrap → reverted. Motion-gate after: **0 spikes, 0 frozen, max diff 2.2× median**. **Faster than FD.1** (~3.5 ms p95 — narrow FOV). Golden regenerated. **Deferred to FD.3:** god-rays (need screen-space post-process infra), aerial-fog tuning, motion-coherence detail cap, secondary audio, cert. **Brightness lift (Matt's call — "brighter and more saturated"):** gallery IBL env (RMENV.2, lifts ambient + makes metals read) + a cool fill light (RMENV.1 light 1) + brighter/more-saturated palette and albedos + brighter votives. Re-gated: flash-safe (0 spikes), 4.4 ms p95. Integrated to local `main` for Matt's live M7. Still a not-certified maquette pending that M7.
-
+### Increment FLY.1 — Fractal Fly-By reframed as a FLY-THROUGH + enclosed backdrop (2026-07-23; Matt's call after the 3rd live M7) — RETIRED with the line (FLY.14, BUG-071 wontfix, D-201) ✅ (2026-07-25)
+### Increment FD.2 — Fractal Fly-By look pass (jewel palette + materials + flash fix) (2026-07-23) — RETIRED with the line (FLY.14, BUG-071 wontfix, D-201) ✅ (2026-07-25)
 ### Increment RMPERF.1 — shared ray-march preamble per-hit-pixel optimization ✅ (2026-07-23)
-### Increment FD.1 — Fractal Fly-By Mandelbox maquette + hero motion + perf gate 🔨 (2026-07-23; supersedes PG.3 Mandelbox Cathedral per Matt — camera falls instead of holding)
-
-Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) into a new `ray_march` preset, with a self-similar scale-descent that wraps seamlessly (a Mandelbox is bounded, so descent is `zoom = |Scale|^fract(phase)`, not a translation). **Gate initially FAILED at 8.06 ms** (§A8 stop-and-report); the DE port was verified correct against the curated `fractal_fly_by` references (fan vault, muqarnas) BEFORE any further work — the discipline the three prior PG-slate M7 deaths (KS / Truchet / Kleinian) each skipped. RMPERF.1 unblocked it. **Both heroes then wired:** descent SPEED = the music's energy via `accumulatedAudioTime` (monotonic energy-time; near-stationary in silence, D-037; the animation time base, so removed from `audio_routes` after it read constant on the offline fixtures — QG.1.1 boundary, VL precedent); fold-open = `f.bass_att_rel` widening the box-fold LIMIT (chamber unfolds on the bass swell, no scale-constant recompute). Camera static (`cameraDollySpeed` 0) → no collision with the preset-agnostic camera dolly (the FA #67 worry was moot — FD's camera doesn't dolly). **Iteration cap LOCKED at 8** (≈ cap 10 visually, cap 6 collapses). **Measured cap 8 p50 5.57 / p95 ~6.2 ms @1080p M2 Pro (3 clean runs; a flaky first run's 7.15 p95 did not reproduce).** **Motion-gated: 0 jitter spikes, 0 frozen frames over a 90-frame descent+swell sequence** — the identity trait (endless fall into self-elaborating recursive architecture) reads; the fold-open reads but subtly. Golden added; count 26 → 27. **NOT the look yet:** monochrome-gold orbit-trap, dim — jewel HDR palette / materials / god-rays / fog = FD.2; secondary audio + structural-boundary tuning + cert = FD.3. Stays a not-certified maquette pending Matt's live M7.
-
+### Increment FD.1 — Fractal Fly-By Mandelbox maquette + hero motion + perf gate (2026-07-23; supersedes PG.3 Mandelbox Cathedral per Matt — camera falls instead of holding) — RETIRED with the line (FLY.14, BUG-071 wontfix, D-201) ✅ (2026-07-25)
 ### Increment KFRETIRE.1 — Kleinian Froth retired ✅ (2026-07-22)
 ### Increment KSRETIRE.1 — Kinetic Sculpture retired ✅ (2026-07-20)
 ### Increment KSRB.1 — Kinetic Sculpture geometry rebuild ✅ (2026-07-20) — SUPERSEDED
