@@ -600,8 +600,7 @@ struct PresetVisualReviewTests {
         pipeline.sceneUniforms = scene
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
 
-        let ibl = try IBLManager(context: context, shaderLibrary: shaderLibrary,
-                                 envType: preset.descriptor.environmentType)
+        let ibl = try IBLManager(context: context, shaderLibrary: shaderLibrary)
         let postChain: PostProcessChain?
         if preset.descriptor.passes.contains(.postProcess) {
             let chain = try PostProcessChain(context: context, shaderLibrary: shaderLibrary)
@@ -1039,10 +1038,8 @@ struct PresetVisualReviewTests {
         }
         pipeline.sceneUniforms = sceneUniforms
 
-        // Production-parity bindings (see doc comment). RMENV.2: bake the IBL for
-        // the preset's declared environment (default 0 / gallery 1).
-        let iblManager = try IBLManager(context: context, shaderLibrary: shaderLibrary,
-                                        envType: preset.descriptor.environmentType)
+        // Production-parity bindings (see doc comment).
+        let iblManager = try IBLManager(context: context, shaderLibrary: shaderLibrary)
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
 
         let ppChain: PostProcessChain?
