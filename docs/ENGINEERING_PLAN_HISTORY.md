@@ -168,6 +168,42 @@ Correction to the filing: `swift test -c release` alone still fails, and that is
 `@testable import` requires testability, which release does not enable. Use
 `swift test -c release -Xswiftc -enable-testing --package-path PhospheneEngine`.
 
+### Increment FDY.1 — Faraday: a Swift–Hohenberg sea wired into the engine (D-203) — RETIRED same day (FDYRETIRE.1, D-204) ✅ (2026-07-27)
+
+An iridescent liquid sea the music physically drives, built to exercise MFX.1 + RMPERF.1. A
+Swift–Hohenberg simulation of parametrically-driven surface waves runs on the GPU every frame and is
+ray-marched as a liquid heightfield with MetalFX temporal AA. Loudness crossing the Faraday
+threshold is a real supercritical bifurcation (glassy below, cells erupting above); timbre selects
+the cell wavelength; the dish's plate modes gate the drive so cells organise into large-scale
+figures. Colour is thin-film interference off the wave itself — the standing wave IS the film
+thickness. Sibling to Cymatic Resonance: sound causes the image.
+
+- **Engine:** new `setRayMarchPreRenderCompute` per-frame hook (Ferrofluid bakes its slot-10 field
+  once; a live PDE must step on the render's own command buffer). State on `RayMarchPipeline`.
+- **No SceneUniforms lanes added** — phase derives from `accumulatedAudioTime`, so the 240-byte
+  D-187 contract is untouched (FLY.12's byte regression not repeated).
+- **`SessionReplayHarness` steps simulated slot-10 fields** — without it it renders a FLAT
+  placeholder (the FLY.6 divergence; the first production render hit exactly this).
+- Removes the abandoned Molten Gyroid look-spike. Roster 26 → 27. Gates: lint 0, engine + app build,
+  43 gate tests green incl. the byte contract. **`certified:false` — pending Matt's live M7.**
+- **Honest residuals:** cell walls ring where fringes outrun the pixel (`sceneMaterial` gets no
+  slope); backdrop is a dark strip because the engine offers only `env` (grey studio) or `dark`.
+
+### Increment FLY.1 — Fractal Fly-By reframed as a FLY-THROUGH + enclosed backdrop (2026-07-23; Matt's call after the 3rd live M7) — RETIRED with the line (FLY.14, BUG-071 wontfix, D-201) ✅ (2026-07-25)
+
+**Concept pivot.** The original identity trait was "an unending fall INTO the fractal" and the design declared it untradeable. Three live tests said the mechanic does not deliver it: a scale traversal converges on a fixed target, so it reads as *approaching a place*, not dropping through a world. Matt's call: **abandon the fall, adopt a fly-through** — travel between and past towering recursive architecture. This is also what the cited reference (Horsthuis) actually does. **The mechanic is unchanged; the target moved to match what the geometry is genuinely good at.** ★ The general lesson: when three M7s miss on the same axis, the concept was fighting the substrate — re-aim the concept rather than keep tuning the mechanism (contrast KS / Truchet / Kleinian, which were cut instead).
+
+**FLY.1 engine capability — `scene_backdrop`.** Miss/sky rays can now render a near-black enclosed void (`"dark"`) instead of the RMENV.3 IBL backdrop, **decoupled from `environment`** so a preset can take bright ambient + reflections from the gallery env while still being visually enclosed. `lightingParams.w`; default 0 → byte-identical for every existing preset. Matt picked enclosed: openings read as darkness receding, never an exit.
+
+**Also fixed (BUG-071 round 2):** a `fract()` hue discontinuity feeding the cosine palette. `palette()` is already periodic AND continuous; pre-wrapping with `fract()` at a 0.85 cycle frequency made the colour jump at every integer crossing, putting a rainbow contour seam on every surface/edge — and a discontinuity is infinite-frequency, so it **aliased by construction**. A large part of the reported "glitchy", and unfixable by any amount of temporal AA. Perf p50 5.3 / p95 6.4 ms. **Open:** residual moiré on grazing high-detail surfaces; the preset NAME now understates it (rename at sign-off).
+
+### Increment FD.2 — Fractal Fly-By look pass (jewel palette + materials + flash fix) (2026-07-23) — RETIRED with the line (FLY.14, BUG-071 wontfix, D-201) ✅ (2026-07-25)
+
+The look transformation over the FD.1 maquette. **Jewel stained-glass palette** (IQ cosine, orbit-trap-driven, ref 06) replacing the monochrome gold; **3 materials via matID region dispatch** (shaded jewelled stone dominant + thin-film iridescent fold-edge rims + emission-dominated deep-recess votives with varied hue). Narrow FOV (48°) fills the frame and kills the sky-miss edge blobs. **Two motion defects the still sheets hid, caught by motion_gate:** (1) the on-axis descent rammed the Mandelbox central sphere once per octave → its emissive face flashed the whole frame bright (**flash-unsafe, D-157**) — fixed with an off-axis offset applied before the zoom (`(p+c)*zoom` keeps the self-similar wrap seamless) + a tight emission threshold so no large face can glow; (2) a first attempt at a time-varying drift broke the seamless wrap → reverted. Motion-gate after: **0 spikes, 0 frozen, max diff 2.2× median**. **Faster than FD.1** (~3.5 ms p95 — narrow FOV). Golden regenerated. **Deferred to FD.3:** god-rays (need screen-space post-process infra), aerial-fog tuning, motion-coherence detail cap, secondary audio, cert. **Brightness lift (Matt's call — "brighter and more saturated"):** gallery IBL env (RMENV.2, lifts ambient + makes metals read) + a cool fill light (RMENV.1 light 1) + brighter/more-saturated palette and albedos + brighter votives. Re-gated: flash-safe (0 spikes), 4.4 ms p95. Integrated to local `main` for Matt's live M7. Still a not-certified maquette pending that M7.
+
+### Increment FD.1 — Fractal Fly-By Mandelbox maquette + hero motion + perf gate (2026-07-23; supersedes PG.3 Mandelbox Cathedral per Matt — camera falls instead of holding) — RETIRED with the line (FLY.14, BUG-071 wontfix, D-201) ✅ (2026-07-25)
+
+Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) into a new `ray_march` preset, with a self-similar scale-descent that wraps seamlessly (a Mandelbox is bounded, so descent is `zoom = |Scale|^fract(phase)`, not a translation). **Gate initially FAILED at 8.06 ms** (§A8 stop-and-report); the DE port was verified correct against the curated `fractal_fly_by` references (fan vault, muqarnas) BEFORE any further work — the discipline the three prior PG-slate M7 deaths (KS / Truchet / Kleinian) each skipped. RMPERF.1 unblocked it. **Both heroes then wired:** descent SPEED = the music's energy via `accumulatedAudioTime` (monotonic energy-time; near-stationary in silence, D-037; the animation time base, so removed from `audio_routes` after it read constant on the offline fixtures — QG.1.1 boundary, VL precedent); fold-open = `f.bass_att_rel` widening the box-fold LIMIT (chamber unfolds on the bass swell, no scale-constant recompute). Camera static (`cameraDollySpeed` 0) → no collision with the preset-agnostic camera dolly (the FA #67 worry was moot — FD's camera doesn't dolly). **Iteration cap LOCKED at 8** (≈ cap 10 visually, cap 6 collapses). **Measured cap 8 p50 5.57 / p95 ~6.2 ms @1080p M2 Pro (3 clean runs; a flaky first run's 7.15 p95 did not reproduce).** **Motion-gated: 0 jitter spikes, 0 frozen frames over a 90-frame descent+swell sequence** — the identity trait (endless fall into self-elaborating recursive architecture) reads; the fold-open reads but subtly. Golden added; count 26 → 27. **NOT the look yet:** monochrome-gold orbit-trap, dim — jewel HDR palette / materials / god-rays / fog = FD.2; secondary audio + structural-boundary tuning + cert = FD.3. Stays a not-certified maquette pending Matt's live M7.
 
 ### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
 
