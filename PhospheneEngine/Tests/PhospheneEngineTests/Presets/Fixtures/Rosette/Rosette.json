@@ -1,0 +1,27 @@
+{
+  "name": "Rosette (WHIT.0 spike)",
+  "family": "geometric",
+  "duration": 30,
+  "description": "THROWAWAY look-spike, not a shipped preset. John Whitney Sr.'s Arabesque morphing emblem: two-term epicycle line figure, white/pale-lavender stroke, mirrored coloured wing arcs. No audio coupling (clock-driven morph only). See docs/prompts/WHIT0_LOOK_SPIKE.md.",
+  "author": "Claude (WHIT.0)",
+  "passes": ["direct", "mv_warp"],
+  "fragment_function": "rosette_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 0.15,
+  "marks": {
+    "vertex_count": 3,
+    "instance_count": 1,
+    "primitive": "triangle",
+    "chromatic": 0.0,
+    "comp": { "invert": 0.0, "echo": 0.0, "gamma": 1.0 },
+    "beat_pulse": false
+  },
+  "visual_density": 0.30,
+  "motion_intensity": 0.35,
+  "fatigue_risk": "low",
+  "complexity_cost": { "tier1": 0.6, "tier2": 0.3 },
+  "audio_routes": [],
+  "certified": false,
+  "rubric_profile": "lightweight"
+}
