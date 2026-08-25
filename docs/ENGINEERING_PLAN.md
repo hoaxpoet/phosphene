@@ -7366,3 +7366,87 @@ test` invocations concurrently against the same package; both re-ran clean in is
 `FidelityRubricTests`' `"Rosette"` entry once routing exists and the automated gate is re-evaluated;
 measure the photosensitivity/flash gates (`ROSETTE_DESIGN.md` §9, still unmeasured); verify
 `complexity_cost.tier2` on real M3+ hardware (currently an unverified estimate).
+
+### Increment WHIT.1d — Rosette harmony coupling: 3 of 5 routes, 2 filed to WHIT.1d-2 ✅ (2026-08-25)
+
+**Done-when:** the harmony coupling (`ROSETTE_DESIGN.md` §5) + HDR bloom on the stroke. Route
+manifest declared after auditing the code. Gate: `RouteCoverageTests` green on all five routes,
+**or a filed defect**.
+
+**Audited before declaring (QG.1) — and the audit found a real infrastructure gap, not just a
+mapping detail.** Two of the five proposed routes need a value held **across frames**:
+`tonalPhaseFifths` is a raw ±π sawtooth that must go through a stateful circular smoother (D-209)
+before any visual use — skipping this is the exact defect that hit Fractal Tree (144°/p95 jump per
+update, Matt: *"Color changes feel glitchy, not intentional"*); `harmonicFlux` needs a hold-timer
+so a symmetry-order step lasts "tens of seconds" rather than flickering on every accent spike.
+Rosette carries **zero CPU-side per-preset state** (unlike Skein/Witchlight/Nacre, each wired
+through the shared `RenderPipeline+PresetSwitching.swift`/`RenderPipeline+MVWarpSetup.swift`/
+`RenderPipeline+MVWarpScene.swift` dispatch files) — building either route means adding that
+infrastructure, real engine-adjacent work that does not belong folded silently into "add audio
+routes." **Filed as WHIT.1d-2** (D-219) rather than built blind, exactly as the ladder's own
+"green on all five, or a filed defect" phrasing anticipates. A secondary finding: the pre-spike
+design docs mapped both `tonalConsonance` and `tonalPhaseFifths` onto the SAME single visual DOF
+(the epicycle's one scalar `a`) — an FA #67 one-primitive-per-layer conflict that only became
+visible once the generator was validated as one scalar at WHIT.0; resolved for WHIT.1d-2 as "map
+the smoothed phase to a rotation of the figure only," a genuinely distinct channel.
+
+**Shipped: three stateless, continuous routes**, all read fresh every frame via
+`RosetteGeoVertexOut`'s existing interpolated-struct passthrough (the same mechanism WHIT.0 built
+for `time`/`aspect`, extended rather than replaced):
+
+- **`figure_tightness` ← `tonalConsonance`.** TONAL.2b's 1000-track calibration (floor 0.05,
+  median 0.117, p99 0.32) is applied via a **square-root curve**, not linear/smoothstep — the
+  program doc's own §5.2 warning that a linear map puts the median too close to the loose end,
+  verified concretely: `sqrt((0.117−0.05)/(0.32−0.05)) ≈ 0.50`, landing the median at the range's
+  midpoint. **Harmony SETS the position; the clock demotes to a floor drift** (the Nacre-round-1
+  lesson honoured structurally via `presence = smoothstep(0.02, 0.08, tonalConsonance)`, gated on
+  consonance's own documented analyzer floor — no second primitive needed for presence-gating).
+- **`stroke_presence` ← `bassDev`**, **`morph_floor_rate` ← `midAttRel`** — straightforward
+  continuous deviation-primitive routes (D-026, FA #31-clean).
+
+**Verified two ways.** `RosetteMVWarpAccumulationTest.test_rosette_harmonyCoupling` (new,
+always-on): consonance 0.0 vs 0.32 at a fixed clock time produces a meaningfully different render
+(meanAbsDiff > 5.0 gate); bassDev 0.0 vs 1.0 measurably raises mean frame luma (peak luma already
+saturates at the stroke core regardless of boost, so the assertion uses mean, not peak — a real
+metric-choice finding caught by the test actually failing on the first attempt). A visual dump at
+floor/median/p99 consonance shows the p99 render as a visibly tighter, closed rounded polygon
+against the open 5-petal flower at low consonance.
+
+**`RouteCoverageTests`: 204 routes across 22 presets, 3 fixtures — 0 red.** All three shipped
+routes fire per their `continuous` floor on the canonical fixture set.
+
+**Flash-safety measured early, not deferred to certification** (`ROSETTE_DESIGN.md` §9.3's own
+instruction). Registered Rosette in `MultiPassRenderHarness.multiPassPresets` and its `renderMVWarp`
+dispatch case (needs zero preset-specific branching — it falls straight into the same `else`
+path Dragon Bloom uses, since it has no CPU state to configure). `MultiPassFlashHarnessTests
+.rosetteIsFlashSafe` (`harmonicMotion: true`, so `figure_tightness` actually moves during the
+measurement): **0.00 flashes/s, luma 0.033–0.037 (Δ0.004) — SAFE**, and by a wide margin. Makes
+sense structurally: the fragment repaints every pixel opaque every frame (no accumulation to
+smooth a spike into), and a thin bright line on a large near-black field barely moves the frame's
+mean luminance regardless of tightness or brightness swings.
+
+**`FidelityRubricTests` needed an update, not just a route declaration.** Wiring `tonalConsonance`/
+`bassDev`/`midAttRel` directly into `Rosette.metal`'s source means the automated MSL-source
+heuristic now DETECTS them (unlike Skein/Witchlight's CPU-side-only routing, invisible to that
+heuristic by construction) — `expectedAutomatedGate["Rosette"]` flipped from `false` to `true`, an
+L2-deviation-primitives pass, caught by `automatedGate_allPresetsMatchExpected` actually failing
+before the fix.
+
+**HDR bloom — deliberately not added.** Rosette has no `post_process` pass and no consumer for
+float-headroom values; its bloom is a saturated two-Gaussian falloff entirely within the 8-bit
+fragment, already validated as looking correct at WHIT.0/1c. Adding `feedback_pixel_format:
+rgba16Float` now would reintroduce the exact pixel-format mismatch WHIT.0 found and removed, for
+no visual gain (nothing would read the extra headroom). Treated as already satisfied by the
+existing technique, not as deferred scope — flagged here so it isn't mistaken for an oversight.
+
+**No new engine-adjacent code** — the two deferred routes are exactly what would have required it.
+Full suite green (the only failures across two runs were the known `SessionLifecycleChurn`
+audio-hardware-contention flake, re-confirmed clean in isolation both times); `swiftlint --strict`
+clean; `RouteCoverageTests`/`AudioRouteSchemaTests`/`FidelityRubricTests`/
+`MultiPassFlashHarnessTests` all green.
+
+**Follow-ups for WHIT.1d-2:** build `RosetteState` (circular-phase smoother + symmetry hold-timer),
+wire it through the shared `RenderPipeline` dispatch files the same way Skein/Witchlight/Nacre do,
+add the rotation (`tonalPhaseFifths`) and symmetry-order-step (`harmonicFlux`) behaviour, declare
+both remaining routes, re-run `RouteCoverageTests` for all five green. Independent follow-up:
+verify `complexity_cost.tier2` on real M3+ hardware (still an unverified estimate from WHIT.1c).

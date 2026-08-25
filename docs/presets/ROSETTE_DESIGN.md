@@ -13,11 +13,12 @@ validated or revised it, and adds what only a running spike could produce: real 
 at the states that matter, the architecture that actually renders correctly, and the bugs a naive
 reading of §6 would reproduce.
 **Look-spike:** WHIT.0, verdict **GO** (`docs/ENGINEERING_PLAN.md` Phase WHIT / Increment WHIT.0).
-**Decisions:** D-217 (full cartouche).
-**Status:** design only. No `.metal` file and no JSON sidecar exist under
-`PhospheneEngine/Sources/Presets/Shaders/` — WHIT.0's `Rosette.metal` lives at
-`PhospheneEngine/Tests/PhospheneEngineTests/Presets/Fixtures/Rosette/`, deliberately unregistered.
-WHIT.1c authors the registered version; §6 below is its starting point.
+**Decisions:** D-217 (full cartouche), D-218 (maquette landed).
+**Status:** registered (WHIT.1c) and harmony-coupled for 3 of 5 proposed routes (WHIT.1d).
+`certified: false`, pending Matt's live M7. `tonalPhaseFifths` (rotation) and `harmonicFlux`
+(symmetry-order step) are deferred to **WHIT.1d-2** — both need a value held across frames (a
+stateful circular smoother; a hold-timer), which Rosette has no infrastructure for yet. §5 below
+is current as of WHIT.1d.
 
 ---
 
@@ -98,19 +99,68 @@ footprint roughly constant across the whole morph (matching the film, where the 
 does not visibly balloon between tight and loose states) rather than letting the raw radius swing
 with `a`.
 
-## 5. Harmony coupling — plan only, unbuilt (WHIT.1d)
+## 5. Harmony coupling — 3 of 5 routes shipped (WHIT.1d)
 
-`WHITNEY_PROGRAM.md` §5.1's mapping table is the design; it is not re-typed here. Nothing in this
-section has been exercised — WHIT.0 deliberately ran zero audio so the morph's legibility could be
-judged independent of a second (harmony) variable. Two structural rules from §5 carry forward
-unchanged and must be re-verified against the real routing once WHIT.1d writes it:
+`WHITNEY_PROGRAM.md` §5.1's mapping table proposed five routes. **Three are built, stateless,
+green on `RouteCoverageTests`.** Two are deferred to **WHIT.1d-2**.
 
-- **Harmony SETS the sweep position; the clock demotes to a slow floor drift** (§5.3) — not
-  additive to a free-running clock. This is the exact trap that made Nacre round 1 read as "not
-  sure if it worked" despite the coupling being measurably active.
-- **Colour stays off the figure** (§5.1, F3) — `tonalPhaseFifths`/`tonalConsonance` never touch the
-  central stroke's hue. The figure is white/pale-lavender always; hue lives only in the wing arcs
-  (§6.3), which currently drift on an independent plain clock and have no route at all yet.
+### 5.1 Shipped: `figure_tightness` ← `tonalConsonance`
+
+**Harmony SETS the sweep position; the clock demotes to a floor drift** (§5.3's Nacre-round-1
+lesson, honoured structurally, not just documented). Implementation in `Rosette.metal`:
+
+- TONAL.2b's calibration (`WHITNEY_PROGRAM.md` §5.2 — floor 0.05, corpus median 0.117, p99 0.32)
+  is applied via a **square-root curve** on the normalised band, not linear/smoothstep: linear
+  puts the median at ~0.15 of the tightness range (the exact failure §5.2 warns about);
+  `sqrt((0.117−0.05)/(0.32−0.05)) ≈ 0.50` lands it at the range's midpoint.
+- `presence = smoothstep(0.02, 0.08, tonalConsonance)` gates the blend between the harmony-set
+  position and the clock-driven floor drift — using consonance's own documented analyzer floor
+  (0.05, width 0.03) as the "is there tonal content" signal, so no second primitive is needed for
+  presence-gating (FA #67 — one primitive per layer would otherwise be at risk here).
+- Verified two ways: `RosetteMVWarpAccumulationTest.test_rosette_harmonyCoupling` (consonance
+  0.0 vs 0.32 at fixed clock time produces meaningfully different renders); a visual dump at
+  floor/median/p99 consonance (`06_specular`-style comparison) shows the p99 render as a visibly
+  tighter, more closed figure than the low-consonance renders.
+
+### 5.2 Shipped: `stroke_presence` ← `bassDev`, `morph_floor_rate` ← `midAttRel`
+
+Both continuous, both read fresh every frame, no state. `bassDev` swells stroke brightness/
+halation (deviation primitive, D-026 — never an absolute threshold, FA #31). `midAttRel` scales
+the floor-drift clock's rate via a bounded multiplicative time-warp — **not** a true per-frame
+integral (that needs the same cross-frame state §5.3 below rules out); documented as a reasonable
+approximation for a slowly-varying, heavily-smoothed (`*_att_rel`) primitive.
+
+### 5.3 Deferred to WHIT.1d-2: `morph_position` ← `tonalPhaseFifths`, `symmetry_order_step` ← `harmonicFlux`
+
+Both need a value **held across frames**, which Rosette has no infrastructure for (unlike Skein/
+Witchlight/Nacre, which all carry a per-preset Swift state object wired through the shared
+`RenderPipeline` dispatch files):
+
+- **`tonalPhaseFifths` is a raw ±π sawtooth** (`CircularPhaseSmoother.swift`) that must be smoothed
+  through a stateful circular smoother (D-209) before any visual use, or it jumps at the seam —
+  documented as the exact defect that hit Fractal Tree (`f.tonalPhaseFifths` read straight into
+  hue, 144°/p95 jump, Matt: *"Color changes feel glitchy, not intentional"*). The originally
+  proposed mapping ("where in the morph family") also collides with `tonalConsonance` on the same
+  single visual DOF (`a`) once the generator is a one-scalar epicycle — an FA #67 audit finding
+  from `WHITNEY_PROGRAM.md`'s pre-spike design, not a new problem. The resolution, when this is
+  built: map the smoothed phase to a **rotation of the figure only** (the wings stay fixed,
+  preserving the D-217 frame), a genuinely distinct visual channel from tightness.
+- **`harmonicFlux` needs a hold-timer**: it "spikes at chord changes" (`kind: accent`), and driving
+  a discrete symmetry-order step directly off a per-frame spike would flicker every spike, not
+  hold for "tens of seconds" as `WHITNEY_PROGRAM.md` §2 requires — violating the anti-contract's
+  "the symmetry order must never flicker."
+- Building either means a new `RosetteState` (or similar) wired through
+  `RenderPipeline+PresetSwitching.swift` / `RenderPipeline+MVWarpSetup.swift` /
+  `RenderPipeline+MVWarpScene.swift` — the same files Skein/Witchlight/Nacre's state objects touch.
+  Real, scoped, separate work — not folded silently into "add audio routes."
+- `WHITNEY_PROGRAM.md`'s ladder for WHIT.1d explicitly sanctions this: *"RouteCoverageTests green
+  on all five routes, **or a filed defect**."* Filed here, not built blind.
+
+### 5.4 Colour stays off the figure (unchanged)
+
+`tonalConsonance`/`tonalPhaseFifths` never touch the central stroke's hue (§5.1, F3) — the figure
+is white/pale-lavender always. Hue lives only in the wing arcs (§6.3), which still drift on an
+independent plain clock and have no route (a candidate for WHIT.1d-2 or later, not requested yet).
 
 ## 6. Architecture — what actually renders, revised from §6's original proposal
 
@@ -210,14 +260,22 @@ tuning**: profile it live; if it doesn't clear budget, the fallback options name
 task 4 are an SDF-swept triangle-strip ribbon (vertex-stage geometry, no per-pixel search) or a
 reduced coarse-sample count with a correspondingly coarser bisection tolerance.
 
-## 7. Audio-routing table (WHIT.1d; audit before declaring)
+## 7. Audio-routing table — audited, 3 of 5 declared (WHIT.1d)
 
-`WHITNEY_PROGRAM.md` §7's proposed manifest (five routes: `figure_tightness` ← `tonalConsonance`,
-`morph_position` ← `tonalPhaseFifths`, `symmetry_order_step` ← `harmonicFlux`, `stroke_presence` ←
-`bassDev`, `morph_floor_rate` ← `midAttRel`) is the plan. Not re-typed here; not yet audited
-against code, because no code reads any of these yet (QG.1 — a declared route the code doesn't
-read is as wrong as an unread route left undeclared). WHIT.1d writes the routes and the manifest
-together, then runs `RouteCoverageTests`.
+`WHITNEY_PROGRAM.md` §7 proposed five routes. **Shipped, audited against code, green on
+`RouteCoverageTests`** (204 routes across 22 presets, 0 red):
+
+| `route` | `primitive` | `kind` | Status |
+|---|---|---|---|
+| `figure_tightness` | `tonalConsonance` | continuous | **Shipped** (§5.1) |
+| `stroke_presence` | `bassDev` | continuous | **Shipped** (§5.2) |
+| `morph_floor_rate` | `midAttRel` | continuous | **Shipped** (§5.2) |
+| `morph_position` | `tonalPhaseFifths` | continuous | Deferred, WHIT.1d-2 (§5.3) |
+| `symmetry_order_step` | `harmonicFlux` | accent | Deferred, WHIT.1d-2 (§5.3) |
+
+Declared in `Rosette.json`'s `audio_routes` exactly as the three shipped rows above — the two
+deferred rows are **not** declared (QG.1: a declared route the code doesn't read is as wrong as an
+unread route left undeclared; they will be added when WHIT.1d-2 actually reads them).
 
 ## 8. Grounding audit (`PRESET_SESSION_CHECKLIST` grounding ladder)
 
@@ -226,7 +284,8 @@ together, then runs `RouteCoverageTests`.
 | Two-term epicycle generator | **1 — working reference, cited and validated twice** | Whitney's own published theory (`Digital Harmony`, cited at `WHITNEY_PROGRAM.md` §8/§13) names the Fourier/epicycle family (F13); WHIT.0's CPU sweep validated the state-family match; `docs/VISUAL_REFERENCES/rosette/05_macro_pentagon_straight_edges.jpg` is independent photographic confirmation of the one predicted miss. |
 | SDF-in-fragment stroke rendering | **1 — working reference, directly copied** | Skein's shipped, certified `skein_geometry_vertex`/`_fragment` pattern, not invented. |
 | The combination (numerically-searched epicycle SDF + wing-arc capsule SDF, both inside one `strandsOnTop` fragment) | **1 — validated together**, not just piecewise | WHIT.0 rendered and inspected the actual combination; the three bugs in §6.4 were only found by running the combination, not by reasoning about the pieces separately. |
-| Harmony coupling (§5) | **3 — no empirical grounding yet** | Explicitly deferred to WHIT.1d. Flagged here per the checklist's instruction to surface level-3 mechanisms immediately rather than let them arrive at code review. |
+| Harmony coupling — consonance/bassDev/midAttRel (§5.1–5.2) | **1 — measured, calibrated, verified** | TONAL.2b's 1000-track calibration grounds the sqrt curve; `RosetteMVWarpAccumulationTest.test_rosette_harmonyCoupling` + a visual dump verify the mapping renders as designed. |
+| Harmony coupling — tonalPhaseFifths/harmonicFlux (§5.3) | **3 — no empirical grounding, and no infrastructure** | Deferred to WHIT.1d-2, not built blind. Flagged per the checklist's instruction to surface level-3 mechanisms immediately rather than let them arrive at code review. |
 
 ## 9. Hard constraints carried forward from `WHITNEY_PROGRAM.md` §9
 
@@ -234,9 +293,12 @@ together, then runs `RouteCoverageTests`.
 dot field), not Rosette's — Rosette has no accumulating trail to bound (§6.2). §9.3 (strobing /
 photosensitivity) and §9.4 (no easing, fp32 phase) apply directly:
 
-- **§9.3** is untested — no `PhotosensitivityCertificationTests`/`MultiPassFlashHarnessTests` run
-  exists for Rosette yet. WHIT.1c should measure this early, per the program doc's own instruction,
-  not defer it to certification.
+- **§9.3 measured at WHIT.1d** (`MultiPassFlashHarnessTests.rosetteIsFlashSafe`, `harmonicMotion:
+  true` so `figure_tightness` actually moves during the measurement): 0.00 flashes/s, luma
+  0.033–0.037 (Δ0.004) — flash-safe, and by a wide margin. Makes sense structurally: the fragment
+  repaints every pixel opaque every frame (§6.2, no accumulation to smooth a spike), and a thin
+  bright line on a large near-black field barely moves the frame's mean luminance regardless of
+  tightness or brightness swings.
 - **§9.4** is now empirically reinforced, not just theoretically stated — see §2's table and §4.2.
 
 ## 10. WHIT.1c authoring checklist
@@ -266,7 +328,12 @@ In rough order:
 
 - **D-217 is resolved** — full cartouche. Do not re-litigate; if a future session questions it,
   that needs new evidence, not a re-ask.
+- **D-218 is resolved** — Rosette registered, `certified: false`. Halation retuned, numerical
+  search profiled clean, three harmony routes shipped and measured flash-safe.
 - **The straight-edged-pentagon miss is accepted**, not an open defect (§4.1). Adding a third
   harmonic term is a decision for Matt if ever wanted, not a default fix.
-- **Halation and the numerical-search performance budget (§6.5, §6.6) are WHIT.1c's actual open
-  work.** Everything else in this document is either validated or explicitly deferred to WHIT.1d.
+- **WHIT.1d-2 is the real remaining work**: `tonalPhaseFifths` (rotation) and `harmonicFlux`
+  (symmetry-order step) both need a new per-preset held-state object wired through the shared
+  `RenderPipeline` dispatch files (§5.3) — scoped out of WHIT.1d deliberately, not an oversight.
+- **`complexity_cost.tier2` (M3+) is still an unverified ~0.6x estimate**, not measured on real
+  hardware (carried from WHIT.1c).
