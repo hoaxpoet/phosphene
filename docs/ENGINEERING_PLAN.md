@@ -7291,3 +7291,78 @@ whether WHIT.0's spike validated or revised it, and adds what only a running spi
 **No engine touch, no shader code, no new tests.** Doc-only: one new file
 (`docs/presets/ROSETTE_DESIGN.md`), plus this entry. `swiftlint --strict` clean (no Swift changed);
 `DocIntegrityTests` clean; the WHIT.0 harness re-run green (unchanged).
+
+### Increment WHIT.1c — Rosette authoring: registered, `certified: false` ✅ (2026-08-25)
+
+**Done-when:** Rosette lands in-repo (`.metal` + sidecar, `certified: false`) — the morphing
+figure, the white stroke, the coloured frame elements. No audio coupling yet. Gate:
+`compare_render.sh` verdict table + `motion_gate.sh` verdict, both in the transcript. Preset count
+29 → **30** (D-218).
+
+**Followed `ROSETTE_DESIGN.md` §10's checklist in order:**
+
+1. **Profiled the numerical nearest-point search at 1080p FIRST**, before any other work — the
+   design doc's one flagged open risk. Geometry-overlay pass alone: **5.8ms p50 / 6.2ms p95** on
+   an M2 Pro, comfortably inside the 16.67ms @60fps total budget. Resolved; `complexity_cost.tier1`
+   in the sidecar is this measured number (`tier2` is an unverified ~0.6x estimate, not measured).
+2. Moved `Rosette.metal`/`.json` from the WHIT.0 spike's throwaway location into
+   `PhospheneEngine/Sources/Presets/Shaders/`. `family: "geometric"`, `rubric_profile:
+   "lightweight"`, `certified: false`, `audio_routes: []` (WHIT.1d).
+3. **Retuned halation** from WHIT.0's thumbnail-derived ~4.4x core width down to ~1.75x, against
+   `docs/VISUAL_REFERENCES/rosette/06_specular_stroke_core_halo.jpg` — visibly tighter, crisper
+   stroke in the re-rendered stills.
+4. **Adapted the harness into the permanent form**: `RosetteMVWarpAccumulationTest.swift` replaces
+   WHIT.0's `RosetteLookSpikeTests.swift` (deleted, along with the now-superseded
+   `RosetteNoWings.metal`/`.json` comparison fixtures — their decision, D-217, is already made and
+   recorded; nothing references them anymore). Loads Rosette via `_acceptanceFixture` (the real
+   bundle) instead of the `watchDirectory` scratch mechanism WHIT.0 needed for an unregistered
+   preset. Carries an **always-on regression test** — non-degenerate output at 5 morph states, and
+   pairwise frame differences across those states — that directly guards against WHIT.0's own found
+   bug (a broken `FeatureVector` fragment binding that rendered every frame identically regardless
+   of `time`) — plus an env-gated (`ROSETTE_MVWARP_DIAG=1`) visual-dump test for human tuning.
+
+**`PresetAcceptanceTests` needed the same exemption five other marks-on-top presets already
+carry.** Rosette's real content is entirely in the scene-geometry overlay (`strandsOnTop`); the
+standalone `rosette_fragment` is an intentional flat-black stub. Added to
+`test_nonBlack_atSteadyEnergy` and `test_readableForm_atSteadyEnergy`, matching Dragon Bloom /
+Fata Morgana / Nacre / Floret / Glaze / Skein's existing pattern exactly.
+`test_noWhiteClip_steadyEnergy` and `test_beatResponse_bounded` pass without exemption (a flat
+black frame trivially clears both). **`FidelityRubricTests`** needed a `"Rosette": false` entry in
+`expectedAutomatedGate` — same shape as Nebula/Plasma (no audio routing in source at all, not a
+hidden-CPU-side-coupling case like Skein/Witchlight).
+
+**Visual verification — `compare_render.sh`'s automatic script does not apply to this preset
+class** (same reason it doesn't apply to Skein/Dragon Bloom/etc.: `PresetVisualReviewTests`'
+`RENDER_VISUAL=1` path renders only the standalone direct fragment via `renderFrame`, which for a
+`strandsOnTop` preset is the intentional black stub — there is nothing for the script to
+composite). The verdict table below substitutes, built from `RosetteMVWarpAccumulationTest`'s
+`ROSETTE_MVWARP_DIAG=1` stills against `docs/VISUAL_REFERENCES/rosette/`:
+
+| Trait | Reference | Verdict | What differs |
+|---|---|---|---|
+| 5-fold symmetry (compact states) | `03`, `04`, `05` | PASS | `n=5` fixed in source; matches the reference README's own measured 5-fold count. |
+| Straight-edged pentagon | `05` | **FAIL — expected, accepted** | Renders rounded/Reuleaux-like at `a=0.15`; the film shows genuine flats. The known two-term-epicycle miss (`ROSETTE_DESIGN.md` §4.1), not chased this increment. |
+| Cusped star-in-ring | `04` | PASS | `star_a030` render matches: cusped 5-point star with an implicit outer ring. |
+| Broad petals | `03` | PASS | `petals_a075` render matches: 5 broad petal loops. |
+| Open tangle / splay | `01`, `02` | PASS (approximate) | Comparable loose open-loop character; exact fold-count unverifiable on this state, per the reference README's own caveat — not a new gap. |
+| Stroke core:halo ratio | `06` | PASS (retuned this increment) | ~1.75x, down from WHIT.0's ~4.4x; visibly crisper in the re-rendered stills. |
+| Near-black ground | `07` | PASS | No visible banding after the sRGB-encode fix carried from WHIT.0. |
+| Wing arc + ellipse | `08` | PASS | Present and correctly paired in every rendered state. |
+| Anti: beaded-stroke artifact | (prose anti-reference) | PASS (does not resemble) | WHIT.0's point-to-segment SDF fix is unchanged and still holds. |
+| Anti: kaleidoscope feedback artifact | (prose anti-reference) | PASS (does not resemble) | WHIT.0's explicit `chromaticMix` binding is carried into the permanent harness's `encodeWarp`. |
+
+**`motion_gate.sh` verdict (production, post-registration):** 300-frame sequence, 0/299 spike
+frames (smooth), 57/299 near-frozen — consistent with WHIT.0's final (triangle-wave-clock)
+measurement of 52/299; the small delta is normal run-to-run sampling variance, not a regression.
+Sampled frames read as the same clean tighten/unravel cycle WHIT.0 validated.
+
+**Full suite green.** Engine: 1895/1895 (two apparent failures — `BeatThisModelTests` timing and
+a `SessionLifecycleChurn` audio-hardware flake — were resource contention from running two `swift
+test` invocations concurrently against the same package; both re-ran clean in isolation).
+`swiftlint --strict`: 0 violations. `DocIntegrityTests` + `MSLNamingTests`: clean (the new
+`ARCHITECTURE.md` Module Map entry for `Rosette.metal` is discoverable). App build: green.
+
+**Follow-ups for WHIT.1d:** wire the audio-routing manifest (`ROSETTE_DESIGN.md` §7); flip
+`FidelityRubricTests`' `"Rosette"` entry once routing exists and the automated gate is re-evaluated;
+measure the photosensitivity/flash gates (`ROSETTE_DESIGN.md` §9, still unmeasured); verify
+`complexity_cost.tier2` on real M3+ hardware (currently an unverified estimate).
