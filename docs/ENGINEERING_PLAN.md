@@ -7450,3 +7450,82 @@ wire it through the shared `RenderPipeline` dispatch files the same way Skein/Wi
 add the rotation (`tonalPhaseFifths`) and symmetry-order-step (`harmonicFlux`) behaviour, declare
 both remaining routes, re-run `RouteCoverageTests` for all five green. Independent follow-up:
 verify `complexity_cost.tier2` on real M3+ hardware (still an unverified estimate from WHIT.1c).
+
+### Increment WHIT.1d-2 — Rosette: `RosetteState` built, remaining 2 routes shipped ✅ (2026-08-25)
+
+**Done-when:** `tonalPhaseFifths` → rotation and `harmonicFlux` → symmetry-order step both land,
+backed by real per-frame state; `RouteCoverageTests` green on all five declared routes.
+
+**Built `RosetteState`** (`PhospheneEngine/Sources/Presets/Rosette/RosetteState.swift`) —
+Skein/Gossamer's minimal per-preset-state shape (one `storageModeShared` `MTLBuffer`, a
+`tick(deltaTime:features:)` that updates internal state then flushes a fixed-stride GPU mirror
+struct). Rosette needed neither Skein's onset-burst ring nor its per-track palette, so this is much
+smaller: two pieces of held state, both D-219 already scoped exactly.
+
+1. **`morph_position` ← `tonalPhaseFifths`.** A D-209 circular smoother — cos/sin tracked
+   separately via EMA (τ=3s, matching `CircularPhaseSmoother`'s own default), recombined via
+   `atan2` on each tick — feeds a 2D rotation applied to the figure's sample coordinate (`pf`)
+   only, before the numerical distance search; the wing arcs' coordinate (`q`) is left untouched,
+   preserving D-217's fixed frame. Resolves the D-219 FA #67 finding cleanly: `figure_tightness`
+   (curve shape) and `morph_position` (curve orientation) are now genuinely distinct visual
+   channels rather than two routes competing for the epicycle's single scalar `a`.
+2. **`symmetry_order_step` ← `harmonicFlux`.** A hold-timer (`minHoldSeconds=24s`,
+   `fluxStepThreshold=0.09`, calibrated against TONAL.2b's p99=0.110) steps the epicycle's `n`
+   through Whitney's own stated sequence (5→6→4, `WHITNEY_PROGRAM.md` §2) on a qualifying spike,
+   gated so a step never lands sooner than the hold window after the last one — honouring the
+   explicit anti-contract ("the symmetry order must never flicker"). `rosetteCurve`/`rosetteDist`
+   took `n` as a third parameter (previously the fixed constant `kRosetteN = 5.0`); the
+   `aMin`/`aMax` tightness calibration (WHIT.0 task 2's CPU sweep, n=5) is reused as-is for the
+   stepped orders rather than re-swept per `n` — a documented approximation, not a re-derivation.
+
+**`RosetteUniforms`** (Metal struct) / **`RosetteUniformsGPU`** (Swift mirror, byte-for-byte, 16
+bytes) travel at fragment buffer(6) — Skein's per-preset-uniforms convention.
+
+**The first WHIT increment to touch the app layer.** WHIT.1c/1d stayed entirely inside the engine
+SPM package; wiring `RosetteState`'s per-frame tick required `PhospheneApp` changes: a
+`var rosetteState: RosetteState?` on `VisualizerEngine`, a `bindRosetteRuntime` in
+`VisualizerEngine+Presets.swift` (mirrors `bindGossamerRuntime` — allocate, bind `rosetteBuffer` at
+fragment slot 6, wire `setMeshPresetTick`), a `case "Rosette"` in the
+`bindStatefulPresetRuntime(for:)` switch, a `rosetteState = nil` teardown in `applyPreset()`'s
+shared reset block, `"Rosette"` added to `StatefulRuntimeRegistry.knownPresetNames`
+(`ParticleGeometryRegistry.swift`, gated by `StatefulRuntimeRegistryTests`), and
+`rosetteState?.reset()` on track change (a new track's fifths phase starts fresh rather than
+gliding in from the previous track's smoothed value; the symmetry order restarts at the stated
+base, 5-fold).
+
+**Found live: a second harness with its own hardcoded preset registry.**
+`MultiPassRenderHarness`'s `renderMVWarp` case (used by `MultiPassFlashHarnessTests` — a real-
+dispatch flash-safety measurement, separate from `_acceptanceFixture`) only special-cased
+`SkeinState` binding at buffer(6). With the rotation/symmetry wiring landed, Rosette fell into the
+unbound `else` branch there — reading zeros collapses `rosetteDist`'s `n` to 0, which degenerates
+the two-term epicycle to a fixed unit circle regardless of `a` (`t2 = -(n-1)*t = t` at n=0, so the
+second term becomes identical to the first), meaning the figure stops responding to ANY audio
+input, including the three routes WHIT.1d already shipped. `rosetteIsFlashSafe` caught this
+correctly, not silently: *"'Rosette' rendered static (Δ0.0026) under the worst-case beat+stem
+train — the harness is not reaching its real multi-pass response, so the measurement is INVALID
+(not safe). Fix the harness setup; do not weaken this guard."* Fixed by binding a `RosetteState` in
+`renderMVWarp` the same way Skein's is bound, ticked once per rendered frame. Re-measured post-fix:
+**MEASURED** (not the prior invalid `UNMEASURED(static)`), 0.00 flashes/s, luma 0.033–0.037
+(Δ0.004) — SAFE.
+
+**Verification.** `RosetteMVWarpAccumulationTest` gained
+`test_rosette_rotationAndSymmetryCoupling` — a new always-on regression guard exercising the
+rotation (`tonalPhaseFifths=0` vs `π/2` at fixed time/consonance) and the symmetry step
+(`harmonicFlux=0` vs `1.0`, which steps immediately since `RosetteState` starts with
+`timeSinceLastStep == minHoldSeconds`) through the real geometry-overlay dispatch, both asserting
+`meanAbsDiff` against a near-identical-render floor. `RouteCoverageTests`: **206 routes across 22
+presets, 0 red** — all five of Rosette's declared routes fire per their kind's floor. Also updated:
+`Rosette.json` (2 new `audio_routes` entries, description text), `docs/ARCHITECTURE.md` Module Map
+(Rosette.metal entry updated, new `Rosette/RosetteState.swift` entry added), `docs/DECISIONS.md`
+(D-220), `docs/presets/ROSETTE_DESIGN.md` (§5/§7/§8/§11 updated to reflect all 5 routes shipped).
+
+**Full engine suite green** (1898 tests, 290 suites) on a clean re-run — the only failures on the
+first pass were the known `SessionLifecycleChurn`/`LocalFilePlaybackStartRace` CoreAudio-hardware-
+contention flake class, re-confirmed clean in isolation. `swiftlint --strict` clean (one
+large-tuple violation found and fixed in `RosetteState.tick`'s lock-scoped snapshot — reduced 3
+members to 2 by computing `atan2` inside the lock rather than passing `re`/`im` back out).
+`xcodebuild -scheme PhospheneApp build` and `test` both green (417 app tests) — the first WHIT
+increment to exercise the app-layer build/test surface, not just the engine SPM package.
+
+**Remaining before certification:** Matt's live M7 review against the curated references
+(`docs/VISUAL_REFERENCES/rosette/`) — the only still-open item on Rosette's certification path.
