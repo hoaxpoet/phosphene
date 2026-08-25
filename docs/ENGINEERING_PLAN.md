@@ -7152,7 +7152,8 @@ chosen up front per the film's "drawn complete each frame, no accumulation" read
 **Task 5 — frame verdict: decisively load-bearing.** With/without renders at the same morph moment
 (`docs/prompts` §12 #1 recommendation: full cartouche) — without the mirrored wing arcs + small
 ellipses, the figure floats in a large dead black field; with them, the same figure reads as a
-composed picture. Bring both frames to Matt rather than describing them (§10 DECISION-NEEDED #1).
+composed picture. **Matt's call, same session: full cartouche (D-217).** The wings ship as part
+of the frame, not an optional extra.
 
 **Task 6 — motion gate.** First pass (sine-parameterised `a(t)`) showed 82/299 frozen frames
 (<0.5 luma-diff) — a real defect, not a false positive: sinusoidal `a(t)` eases at the tight/loose
