@@ -146,6 +146,10 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Murmuration":          false,   // full; M3 fails (file: Murmuration.metal)
     "Nebula":               false,   // lightweight; L2 fails — no deviation primitives in source
     "Plasma":               false,   // lightweight; L2 fails — no deviation primitives in source
+    "Rosette":              false,   // lightweight; L2 fails — no audio routing at all yet
+                                     // (WHIT.1c, certified:false). The morph runs on a plain clock;
+                                     // the harmony coupling (tonalConsonance etc.) is WHIT.1d.
+                                     // Same shape as Nebula/Plasma, not a hidden-coupling case.
     "Skein":                false,   // lightweight; L2 fails BY CONSTRUCTION — Skein's deviation
                                      // primitives (stems.*EnergyDev, midAttRel — D-026) are consumed
                                      // CPU-side in SkeinState and reach the shader pre-computed via

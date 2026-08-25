@@ -1,0 +1,31 @@
+{
+  "name": "Rosette",
+  "family": "geometric",
+  "duration": 30,
+  "natural_cycle_seconds": 30,
+  "description": "John Whitney Sr.'s Arabesque (1975) morphing emblem: a two-term epicycle z(t)=e^{it}+a*e^{-i(n-1)t} (n=5) drawn as a single closed white-to-pale-lavender stroke with soft halation on a near-black ground, tightening into a straight-edged pentagon and unravelling into an open tangle. Mirrored coloured wing arcs with small ellipses at the frame edges (D-217: full cartouche). Clock-driven this increment; the harmony coupling (WHIT.1d) will set the morph position from tonalConsonance. See docs/presets/ROSETTE_DESIGN.md and docs/ENGINEERING_PLAN.md Phase WHIT.",
+  "author": "Matt",
+  "passes": ["direct", "mv_warp"],
+  "fragment_function": "rosette_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 0.15,
+  "marks": {
+    "vertex_count": 3,
+    "instance_count": 1,
+    "primitive": "triangle",
+    "chromatic": 0.0,
+    "comp": { "invert": 0.0, "echo": 0.0, "gamma": 1.0 },
+    "beat_pulse": false
+  },
+  "visual_density": 0.30,
+  "motion_intensity": 0.35,
+  "color_temperature_range": [0.35, 0.65],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "morph"],
+  "section_suitability": ["ambient", "buildup", "peak", "bridge", "comedown"],
+  "complexity_cost": { "tier1": 6.0, "tier2": 3.5 },
+  "audio_routes": [],
+  "certified": false,
+  "rubric_profile": "lightweight"
+}

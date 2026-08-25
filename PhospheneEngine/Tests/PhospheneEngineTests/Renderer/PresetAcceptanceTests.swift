@@ -102,6 +102,11 @@ struct PresetAcceptanceTests {
         // (drawWithGlaze); the standalone `glaze_fragment` is intentionally black. Production
         // coverage: GlazeMVWarpAccumulationTest.
         guard preset.descriptor.name != "Glaze" else { return }
+        // Rosette (WHIT.1c): the figure, wings and ground are all drawn in the
+        // scene-geometry overlay (`rosette_geometry_fragment`, strandsOnTop); the
+        // standalone `rosette_fragment` this harness renders is an intentional black
+        // stub, never invoked at runtime. Production coverage: RosetteMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Rosette" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -292,6 +297,11 @@ struct PresetAcceptanceTests {
         // CymaticSandSketchRenderTests (multi-frame sand render + non-degenerate metric) and
         // the MultiPassFlashHarness (real geometry dispatch).
         guard preset.descriptor.name != "Cymatic Resonance" else { return }
+        // Rosette (WHIT.1c): same rationale as Skein — the readable figure, wings and
+        // ground are all in the scene-geometry overlay (strandsOnTop); the standalone
+        // `rosette_fragment` is an intentional flat black stub (1 luma bin). Production
+        // coverage: RosetteMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Rosette" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
