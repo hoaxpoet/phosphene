@@ -2,7 +2,8 @@
 //
 // Uploaded to the GPU as buffer(4) in the G-buffer and lighting passes.
 // Layout must match the `SceneUniforms` MSL struct in Common.metal and in the
-// preset shader preamble — identical float4 field ordering, 128 bytes total.
+// preset shader preamble — identical float4 field ordering, 240 bytes total
+// (8 original float4s + the 7 RMENV.1 light rows).
 //
 // All fields use SIMD4<Float> to guarantee unambiguous 16-byte alignment in both
 // Swift and Metal, avoiding the packed_float3 vs SIMD3<Float> size mismatch
@@ -19,7 +20,7 @@ import simd
 /// have the identical layout.  All fields are `SIMD4<Float>` (16 bytes each) to
 /// avoid `float3` vs `SIMD3<Float>` size ambiguity.
 ///
-/// Layout (128 bytes = 8 × float4):
+/// Layout (240 bytes = 15 × float4; rows 8–14 are the RMENV.1 lights below):
 /// ```
 /// [0]  cameraOriginAndFov     xyz = world-space camera position, w = vertical fov (radians)
 /// [1]  cameraForward          xyz = normalized forward direction, w = 0

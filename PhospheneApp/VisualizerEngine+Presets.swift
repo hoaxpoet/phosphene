@@ -254,17 +254,8 @@ extension VisualizerEngine {
                     rmPipeline.cameraDollyOffset = 0
                     rmPipeline.lastDollyFrameTime = nil
 
-                    // MFX.1 — MetalFX Temporal opt-in. `metalFXEnabled` must be set
-                    // BEFORE allocateTextures so the working set is (de)allocated to
-                    // match; the motion pipeline comes from the preset's own library.
-                    // Presets that don't opt in are byte-identical to pre-MFX.
-                    rmPipeline.metalFXEnabled = desc.usesMetalFXTemporal
-                    rmPipeline.metalFXRenderScale = desc.effectiveRenderScale
-                    // BUG-101 — resolution scale WITHOUT MetalFX. Applies whenever a ray-march
-                    // preset declares `render_scale`, whether or not it opts into upscaling.
+                    // BUG-101 — resolution scale for ray-march presets declaring `render_scale`.
                     rmPipeline.renderScale = desc.rayMarchRenderScale
-                    rmPipeline.motionPipelineState = preset.motionPipelineState
-                    rmPipeline.resetTemporalHistory()
 
                     currentRayMarchPipeline = rmPipeline
 

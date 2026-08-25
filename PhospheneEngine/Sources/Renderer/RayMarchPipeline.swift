@@ -32,11 +32,6 @@ private let logger = Logger(subsystem: "com.phosphene.renderer", category: "RayM
 
 // MARK: - RayMarchPipeline
 
-// swiftlint:disable type_body_length
-// MFX.1 pushed this class past 300 lines: it owns the G-buffer/lighting/SSGI/post
-// sequencing plus the MetalFX working set. The MetalFX *behaviour* already lives in
-// RayMarchPipeline+MetalFX.swift; stored properties cannot move to an extension, so
-// what remains is irreducible without splitting the render sequence itself.
 /// Deferred PBR ray march pipeline: G-buffer pass → lighting pass → composite/post-process.
 ///
 /// Textures are lazily allocated at drawable size via `ensureAllocated(width:height:)`.
@@ -122,10 +117,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// recent `render(...)` call. Includes either the `PostProcessChain.runBloomAndComposite`
     /// call (when a chain is attached) or the fallback `runCompositePass`.
     public private(set) var lastPostProcessPassMs: Float = 0
-    /// MFX.1 — CPU encode time for the motion pass + MetalFX temporal resolve.
-    public private(set) var lastMetalFXPassMs: Float = 0
-    /// MFX.1 diagnostic: did the temporal resolve actually encode last frame?
-    public private(set) var metalFXResolveDidRun = false
 
     /// `true` when SSGI must be suppressed, regardless of `ssgiEnabled`.
     /// Computed as the OR of `a11yReducedMotion` and `governorSkipsSSGI`.
@@ -156,7 +147,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
 
     /// Resolution scale for the G-buffer + lighting targets (BUG-101). 1.0 = drawable size.
     ///
-    /// Independent of `metalFXRenderScale`, which only applies when MetalFX Temporal is on.
     /// The composite pass already samples `litTexture` by UV through a linear sampler, so a
     /// smaller source upscales with no extra pass — the marcher simply shades fewer pixels.
     /// The post-process chain stays at drawable size so bloom and ACES still run at full
@@ -403,55 +393,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
 
     // MARK: - Texture Allocation
 
-    // MARK: - MetalFX Temporal (MFX.1)
-
-    /// Enables the MetalFX Temporal resolve. Set from the active preset's sidecar
-    /// (`upscale: "metalfx_temporal"`) before `allocateTextures`.
-    public var metalFXEnabled = false {
-        didSet { if metalFXEnabled != oldValue { metalFX?.reset() } }
-    }
-
-    /// Fraction of the display resolution the ray-march chain renders at when
-    /// MetalFX is active (`render_scale` in the sidecar). MetalFX reconstructs
-    /// back to full resolution. 1.0 = no downscale, which measured ~8.5 ms of pure
-    /// scaler cost at 1080p — the saving on the DE march is what makes TAA
-    /// affordable, so this is part of the contract, not an optimization.
-    public var metalFXRenderScale: Float = 1.0
-
-    /// Display (output) size the scaler reconstructs to.
-    private var displayWidth = 0
-    private var displayHeight = 0
-
-    /// Motion-vector + depth pipeline supplied by the active preset (nil disables
-    /// the resolve even when `metalFXEnabled` is true).
-    public var motionPipelineState: MTLRenderPipelineState?
-
-    /// Lazily-created scaler; nil when the device does not support temporal scaling.
-    private(set) lazy var metalFX: MetalFXTemporalUpscaler? = {
-        guard MetalFXTemporalUpscaler.isSupported(device: context.device) else {
-            logger.warning("MetalFX Temporal unsupported on this device — TAA disabled")
-            return nil
-        }
-        return MetalFXTemporalUpscaler(device: context.device)
-    }()
-
-    /// Discard accumulated temporal history. Call on preset (re)apply — stale
-    /// history reprojected into a different scene smears.
-    public func resetTemporalHistory() { metalFX?.reset() }
-
-    var mfxMotionTexture: MTLTexture?
-    var mfxDepthTexture: MTLTexture?
-    var mfxResolvedTexture: MTLTexture?
-
-    // The sub-pixel jitter applied to THIS frame's rays, in pixels. The G-buffer
-    // bakes it into the camera basis and the scaler is told the same value.
-    var currentJitter: SIMD2<Float> = .zero
-
-    /// The UNJITTERED camera forward, captured before the first jitter of a run.
-    /// applyJitter must always derive from this, never from the live (already
-    /// jittered) value — see the BUG-071 round-3 note in applyJitter.
-    var jitterBaseForward: SIMD4<Float>?
-
     /// FLY.9 — EMA of `bass_att_rel`, the smoothed "musical event" driver.
     var smoothedFoldDrive: Float = 0
 
@@ -471,14 +412,8 @@ public final class RayMarchPipeline: @unchecked Sendable {
     ///   - width:  Full-resolution width in pixels (drawable width).
     ///   - height: Full-resolution height in pixels (drawable height).
     public func allocateTextures(width: Int, height: Int) {
-        displayWidth  = max(width, 1)
-        displayHeight = max(height, 1)
-        // When MetalFX is active the whole ray-march chain (G-buffer → lighting →
-        // SSGI) runs at the reduced render size; the scaler reconstructs to display.
-        let useScale = metalFXEnabled && metalFXRenderScale > 0.1 && metalFXRenderScale < 1.0
-        let scale = useScale ? metalFXRenderScale : 1.0
-        let texWidth = max(Int((Float(displayWidth) * scale).rounded()), 1)
-        let texHeight = max(Int((Float(displayHeight) * scale).rounded()), 1)
+        let texWidth = max(width, 1)
+        let texHeight = max(height, 1)
 
         let ssgiW = max(texWidth / 2, 1)
         let ssgiH = max(texHeight / 2, 1)
@@ -503,42 +438,9 @@ public final class RayMarchPipeline: @unchecked Sendable {
         depthDesc.usage = [.renderTarget]
         gbufferDepth = context.device.makeTexture(descriptor: depthDesc)
 
-        // MFX.1 — MetalFX Temporal working set. Allocated only when a preset opts
-        // in, so non-MetalFX presets keep their exact previous memory footprint.
-        if metalFXEnabled {
-            mfxMotionTexture = context.makeSharedTexture(
-                width: texWidth,
-                height: texHeight,
-                pixelFormat: MetalFXTemporalUpscaler.motionFormat
-            )
-            mfxDepthTexture = context.makeSharedTexture(
-                width: texWidth,
-                height: texHeight,
-                pixelFormat: MetalFXTemporalUpscaler.depthFormat
-            )
-            // Scaler output must be writable by MetalFX and readable by post-process.
-            let resolvedDesc = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: MetalFXTemporalUpscaler.colorFormat,
-                width: displayWidth,
-                height: displayHeight,
-                mipmapped: false
-            )
-            resolvedDesc.usage = [.shaderRead, .shaderWrite, .renderTarget]
-            resolvedDesc.storageMode = .private
-            mfxResolvedTexture = context.device.makeTexture(descriptor: resolvedDesc)
-            metalFX?.reset()
-        } else {
-            mfxMotionTexture = nil
-            mfxDepthTexture = nil
-            mfxResolvedTexture = nil
-        }
-
-        let dW = displayWidth
-        let dH = displayHeight
-        let mfxOn = metalFXEnabled
         logger.info("""
-            RayMarchPipeline textures allocated: render \(texWidth)×\(texHeight) → \
-            display \(dW)×\(dH), SSGI: \(ssgiW)×\(ssgiH), metalFX=\(mfxOn) scale=\(scale)
+            RayMarchPipeline textures allocated: \(texWidth)×\(texHeight), \
+            SSGI: \(ssgiW)×\(ssgiH)
             """)
     }
 
@@ -625,10 +527,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
         sceneUniforms.cameraRight.w =
             2.0 * tan(sceneUniforms.cameraOriginAndFov.w * 0.5) / Float(renderH)
 
-        // MFX.1: choose + bake this frame's sub-pixel jitter BEFORE the G-buffer
-        // marches, so every downstream reconstruction uses the same basis.
-        applyJitter(width: gbuffer0?.width ?? 0, height: gbuffer0?.height ?? 0)
-
         let gbufT0 = CACurrentMediaTime()
         let meshEncoder = meshGBufferLock.withLock { meshGBufferEncoder }
         if let meshEncoder = meshEncoder, let heightTex = presetHeightTexture {
@@ -662,7 +560,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
             lastLightingPassMs = 0
             lastSSGIPassMs = 0
             lastPostProcessPassMs = 0
-            lastMetalFXPassMs = 0
             return
         }
 
@@ -688,46 +585,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
             lastSSGIPassMs = 0
         }
 
-        // MFX.1 — temporal resolve. Runs on the LINEAR HDR lit colour, before
-        // bloom/ACES, which is where temporal accumulation belongs (resolving after
-        // tonemapping smears the bloom). Produces `mfxResolvedTexture`, which the
-        // post chain then consumes in place of `litTexture`.
-        var colorForPost = litTexture
-        if metalFXReady,
-           let mfx = metalFX,
-           let lit = litTexture,
-           let motionTex = mfxMotionTexture,
-           let depthTex = mfxDepthTexture,
-           let resolved = mfxResolvedTexture,
-           let motionState = motionPipelineState {
-            let mfxT0 = CACurrentMediaTime()
-            runMotionPass(
-                commandBuffer: commandBuffer,
-                targets: .init(
-                    pipelineState: motionState,
-                    motionTexture: motionTex,
-                    depthTexture: depthTex
-                ),
-                features: &features,
-                stemFeatures: stemFeatures
-            )
-            let encoded = mfx.encode(
-                commandBuffer: commandBuffer,
-                inputs: .init(
-                    color: lit,
-                    depth: depthTex,
-                    motion: motionTex,
-                    output: resolved,
-                    jitter: currentJitter
-                )
-            )
-            if encoded { colorForPost = resolved }
-            metalFXResolveDidRun = encoded
-            mfx.advanceFrame()
-            lastMetalFXPassMs = Float((CACurrentMediaTime() - mfxT0) * 1000)
-        } else {
-            lastMetalFXPassMs = 0
-        }
+        let colorForPost = litTexture
 
         let postT0 = CACurrentMediaTime()
         if let chain = postProcessChain {
@@ -778,4 +636,3 @@ public enum RayMarchPipelineError: Error, Sendable {
     /// — bail out of pipeline construction.
     case bufferAllocationFailed
 }
-// swiftlint:enable type_body_length

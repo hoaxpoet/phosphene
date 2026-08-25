@@ -14,7 +14,7 @@
 // because MEN.4a was calibrated on one capture where arousal never went negative.
 //
 // The clamp is not always wrong — `max(0, valence)` / `max(0, -valence)` in
-// `RayMarchPipeline+MetalFX` deliberately splits the bipolar signal into two unipolar channels
+// `RayMarchPipeline+AudioModulation` deliberately splits the bipolar signal into two unipolar channels
 // and loses nothing, and the `*Dev` family is `max(0, *Rel)` by definition. The rule is
 // narrower than "avoid `max(0,)`": **do not clamp a bipolar primitive to one side of zero and
 // then treat the result as its full range.**

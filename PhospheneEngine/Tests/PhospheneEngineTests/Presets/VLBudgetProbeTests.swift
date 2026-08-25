@@ -93,43 +93,6 @@ struct VLBudgetProbeTests {
             """)
     }
 
-    /// Dumps three frames spanning one full descent octave, so the iteration-cap
-    /// decision (§9 DECISION-NEEDED 3: "reduce ambition vs cut the preset") can be
-    /// made against what it actually looks like rather than against a number.
-    /// Run once per FFB_ITERS value; the PNGs are the comparison.
-            @Test("camera basis does not accumulate jitter drift (VL_BUDGET=1)")
-    func test_jitterDoesNotAccumulate() throws {
-        guard ProcessInfo.processInfo.environment["VL_BUDGET"] == "1" else { return }
-        let ctx = try MetalContext()
-        let lib = try ShaderLibrary(context: ctx)
-        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
-        guard let preset = loader.presets.first(where: { $0.descriptor.name == Self.subjectName }) else {
-            throw HarnessError.presetNotFound(Self.subjectName)
-        }
-        let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
-        pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal
-        pipeline.metalFXRenderScale = preset.descriptor.effectiveRenderScale
-        pipeline.motionPipelineState = preset.motionPipelineState
-        pipeline.allocateTextures(width: Self.width, height: Self.height)
-
-        var scene = preset.descriptor.makeSceneUniforms()
-        scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
-        pipeline.sceneUniforms = scene
-        let original = simd_normalize(SIMD3(scene.cameraForward.x, scene.cameraForward.y, scene.cameraForward.z))
-
-        for _ in 0..<600 {
-            pipeline.applyJitter(width: Self.width, height: Self.height)
-            pipeline.metalFX?.advanceFrame()
-        }
-        let fwd = pipeline.sceneUniforms.cameraForward
-        let drift = simd_length(simd_normalize(SIMD3(fwd.x, fwd.y, fwd.z)) - original)
-        print(String(format: "[FFBBudget] camera-forward drift after 600 frames: %.6f", drift))
-        #expect(drift < 0.002, """
-            Camera forward drifted \(drift) after 600 frames — jitter is accumulating. \
-            applyJitter must offset from the stored UNJITTERED basis, never the live value.
-            """)
-    }
-
     /// Renders one frame at an explicit descent phase + fold swell, returns BGRA.
     /// `sceneParamsA.x` (accumulated audio time, the descent driver) and
     /// `bassAttRel` (the fold driver) are normally written by the live path, which
@@ -145,20 +108,12 @@ struct VLBudgetProbeTests {
             throw HarnessError.presetNotFound(name)
         }
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
-        // MFX.1 production parity: the MetalFX flags decide the render size and the
-        // working-set allocation, so they MUST be set before allocateTextures.
-        pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal
-        pipeline.metalFXRenderScale = preset.descriptor.effectiveRenderScale
-        pipeline.motionPipelineState = preset.motionPipelineState
         pipeline.allocateTextures(width: Self.width, height: Self.height)
         var scene = preset.descriptor.makeSceneUniforms()
         scene.sceneParamsA.x = descentPhase      // HERO #1: descent driver (energy-time)
         scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
         pipeline.sceneUniforms = scene
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
-        // MFX.1: exercise the real MetalFX path when the preset opts in, so the
-        // probe measures/renders what production does.
-
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
         var postChain: PostProcessChain?
@@ -231,11 +186,6 @@ struct VLBudgetProbeTests {
         // Live pipeline, production parity (BUG-034): the same seam the renderer
         // drives, at the live 128-step budget (sceneParamsB.z default 1.0).
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
-        // MFX.1 production parity: the MetalFX flags decide the render size and the
-        // working-set allocation, so they MUST be set before allocateTextures.
-        pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal
-        pipeline.metalFXRenderScale = preset.descriptor.effectiveRenderScale
-        pipeline.motionPipelineState = preset.motionPipelineState
         pipeline.allocateTextures(width: Self.width, height: Self.height)
         var scene = preset.descriptor.makeSceneUniforms()
         scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
@@ -247,9 +197,6 @@ struct VLBudgetProbeTests {
         }
         pipeline.sceneUniforms = scene
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
-        // MFX.1: exercise the real MetalFX path when the preset opts in, so the
-        // probe measures/renders what production does.
-
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
         let postChain: PostProcessChain?
