@@ -637,6 +637,22 @@ struct MultiPassRenderHarness {
             skein = nil
         }
 
+        // WHIT.1d-2: Rosette's rotation (tonalPhaseFifths) and symmetry-order step
+        // (harmonicFlux) both read RosetteUniforms at fragment buffer(6) — an unbound
+        // slot here reads zeros, collapsing `rosetteDist`'s `n` to 0 and degenerating the
+        // curve to a fixed unit circle regardless of audio input (found live: the flash
+        // harness read the preset as falsely "static" under its worst-case drive).
+        let rosette: RosetteState?
+        if presetName == "Rosette" {
+            guard let state = RosetteState(device: ctx.device) else {
+                throw HarnessError.setupFailed("RosetteState allocation")
+            }
+            pipeline.setDirectPresetFragmentBuffer(state.rosetteBuffer)   // slot 6
+            rosette = state
+        } else {
+            rosette = nil
+        }
+
         let outTex = try makeOutputTexture(ctx)
         return try renderLoop(drive, ctx, outTex, reduce) { i, pixels in
             var fv = drive[i]
@@ -645,6 +661,7 @@ struct MultiPassRenderHarness {
                 skein.tick(deltaTime: fv.deltaTime, features: fv, stems: stem)
                 pipeline.setMVWarpWetnessDecay(skein.wetnessDecay)
             }
+            rosette?.tick(deltaTime: fv.deltaTime, features: fv)
             guard let cmd = ctx.commandQueue.makeCommandBuffer(),
                   let warpState = pipeline.mvWarpState else { throw HarnessError.renderFailed }
             pipeline.renderMVWarpToTexture(

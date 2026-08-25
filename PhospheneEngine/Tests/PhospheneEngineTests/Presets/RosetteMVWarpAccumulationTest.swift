@@ -132,6 +132,48 @@ struct RosetteMVWarpAccumulationTest {
                 "Rosette bassDev=1.0 mean luma (\(brightMean)) is not brighter than bassDev=0.0 (\(dimMean)) — stroke_presence may not be reaching bassDev")
     }
 
+    // MARK: - WHIT.1d-2: rotation + symmetry-step regression guard
+
+    @Test("Rosette: tonalPhaseFifths rotates the figure; harmonicFlux steps the symmetry order")
+    func test_rosette_rotationAndSymmetryCoupling() throws {
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Rosette" }) else {
+            Issue.record("Rosette preset not found in _acceptanceFixture — is it registered?")
+            return
+        }
+        guard let mvWarp = preset.mvWarpPipelines, let geo = mvWarp.sceneGeometryState else {
+            Issue.record("Rosette preset compiled with no scene-geometry overlay pipeline")
+            return
+        }
+        let ctx = try MetalContext()
+        let t0 = Self.timeForA(0.30)   // a state with plenty of visible figure detail (star)
+
+        // (a) morph_position <- tonalPhaseFifths: a quarter-turn rotation must visibly move
+        // the figure. `RosetteState` seeds fully (no smoothing lag) on its first tick, so a
+        // fresh single-frame state directly reflects the value passed in.
+        let unrotated = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                            width: Self.seqWidth, height: Self.seqHeight, time: t0,
+                                            consonance: 0.15, tonalPhaseFifths: 0)
+        let rotated = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                          width: Self.seqWidth, height: Self.seqHeight, time: t0,
+                                          consonance: 0.15, tonalPhaseFifths: .pi / 2)
+        let rotDiff = meanAbsDiff(unrotated, rotated)
+        #expect(rotDiff > 2.0,
+                "Rosette at t0=\(t0): tonalPhaseFifths=0 vs pi/2 renders are near-identical (meanAbsDiff=\(rotDiff)) — morph_position may not be reaching the figure rotation")
+
+        // (b) symmetry_order_step <- harmonicFlux: a qualifying spike (RosetteState starts
+        // with timeSinceLastStep == minHoldSeconds, so the very first tick's spike steps
+        // immediately) must change the figure's symmetry order (5-fold -> 6-fold).
+        let orderFive = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                            width: Self.seqWidth, height: Self.seqHeight, time: t0,
+                                            consonance: 0.15, harmonicFlux: 0)
+        let orderSix = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                           width: Self.seqWidth, height: Self.seqHeight, time: t0,
+                                           consonance: 0.15, harmonicFlux: 1.0)
+        let stepDiff = meanAbsDiff(orderFive, orderSix)
+        #expect(stepDiff > 2.0,
+                "Rosette at t0=\(t0): harmonicFlux=0 (5-fold) vs 1.0 (steps to 6-fold) renders are near-identical (meanAbsDiff=\(stepDiff)) — symmetry_order_step may not be reaching rosetteDist's n")
+    }
+
     // MARK: - Env-gated visual dump (human tuning)
 
     @Test("Rosette: visual dump for motion_gate.sh / human review (env-gated)")
@@ -190,7 +232,8 @@ struct RosetteMVWarpAccumulationTest {
     private func renderOneFrame(
         preset: PresetLoader.LoadedPreset, mvWarp: PresetLoader.MVWarpCompiledPipelines,
         geo: MTLRenderPipelineState, context: MetalContext, width: Int, height: Int, time: Double,
-        consonance: Float = 0, bassDev: Float = 0, midAttRel: Float = 0
+        consonance: Float = 0, bassDev: Float = 0, midAttRel: Float = 0,
+        tonalPhaseFifths: Float = 0, harmonicFlux: Float = 0
     ) throws -> [UInt8] {
         let device = context.device
         let texDesc = MTLTextureDescriptor.texture2DDescriptor(
@@ -207,9 +250,18 @@ struct RosetteMVWarpAccumulationTest {
         features.tonalConsonance = consonance
         features.bassDev = bassDev
         features.midAttRel = midAttRel
+        features.tonalPhaseFifths = tonalPhaseFifths
+        features.harmonicFlux = harmonicFlux
+        // WHIT.1d-2: the geometry fragment now reads RosetteState's uniforms at buffer(6)
+        // (smoothedFifths rotation, held symmetryN) — an unbound slot here reads undefined
+        // GPU memory, the same class of bug chromaticMix hit at WHIT.0. A fresh state per
+        // call + a single tick means the smoother is seeded straight from this call's
+        // `tonalPhaseFifths` (no cross-frame carryover to worry about in a single-frame test).
+        guard let state = RosetteState(device: device) else { throw DiagError.textureFailed }
+        state.tick(deltaTime: 1.0 / 60.0, features: features)
         guard let cmd = context.commandQueue.makeCommandBuffer() else { throw DiagError.cmdBufferFailed }
         try encodeWarp(cmd: cmd, mvWarp: mvWarp, warpTex: warpTex, composeTex: composeTex, features: &features)
-        try encodeGeometryOverlay(cmd: cmd, geo: geo, target: composeTex, features: &features)
+        try encodeGeometryOverlay(cmd: cmd, geo: geo, target: composeTex, features: &features, state: state)
         cmd.commit()
         cmd.waitUntilCompleted()
         return try readPixels(from: composeTex, width: width, height: height)
@@ -232,13 +284,15 @@ struct RosetteMVWarpAccumulationTest {
               var composeTex = device.makeTexture(descriptor: texDesc)
         else { throw DiagError.textureFailed }
         try HarnessTemplateCore.clear([warpTex, composeTex], context)
+        guard let state = RosetteState(device: device) else { throw DiagError.textureFailed }
 
         for (idx, t) in times.enumerated() {
             var features = FeatureVector(time: Float(t), deltaTime: 1.0 / 60.0)
             features.aspectRatio = Float(width) / Float(height)
+            state.tick(deltaTime: 1.0 / 60.0, features: features)
             guard let cmd = queue.makeCommandBuffer() else { throw DiagError.cmdBufferFailed }
             try encodeWarp(cmd: cmd, mvWarp: mvWarp, warpTex: warpTex, composeTex: composeTex, features: &features)
-            try encodeGeometryOverlay(cmd: cmd, geo: geo, target: composeTex, features: &features)
+            try encodeGeometryOverlay(cmd: cmd, geo: geo, target: composeTex, features: &features, state: state)
             cmd.commit()
             cmd.waitUntilCompleted()
             let tmp = warpTex; warpTex = composeTex; composeTex = tmp
@@ -280,7 +334,8 @@ struct RosetteMVWarpAccumulationTest {
     }
 
     private func encodeGeometryOverlay(
-        cmd: MTLCommandBuffer, geo: MTLRenderPipelineState, target: MTLTexture, features: inout FeatureVector
+        cmd: MTLCommandBuffer, geo: MTLRenderPipelineState, target: MTLTexture, features: inout FeatureVector,
+        state: RosetteState
     ) throws {
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture = target
@@ -292,6 +347,9 @@ struct RosetteMVWarpAccumulationTest {
         enc.setVertexBytes(&featuresCopy, length: MemoryLayout<FeatureVector>.stride, index: 0)
         var stemsCopy = StemFeatures.zero
         enc.setVertexBytes(&stemsCopy, length: MemoryLayout<StemFeatures>.stride, index: 1)
+        // WHIT.1d-2: RosetteState's uniforms (smoothedFifths rotation, held symmetryN) —
+        // fragment buffer(6), Skein's per-preset-uniforms convention.
+        enc.setFragmentBuffer(state.rosetteBuffer, offset: 0, index: 6)
         // Rosette.json marks: vertex_count 3 / instance_count 1 / primitive "triangle"
         // (fullscreen-triangle overlay — all figure math is per-pixel in the fragment).
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3, instanceCount: 1)
