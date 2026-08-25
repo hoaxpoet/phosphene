@@ -2,10 +2,19 @@
 //
 // WHIT.1c: registered from the WHIT.0 look-spike (docs/ENGINEERING_PLAN.md Phase WHIT),
 // verdict GO. Design record: docs/presets/ROSETTE_DESIGN.md. References:
-// docs/VISUAL_REFERENCES/rosette/. certified: false — no audio coupling yet (WHIT.1d).
+// docs/VISUAL_REFERENCES/rosette/. certified: false.
 //
-// Two-term epicycle z(t) = e^{it} + a·e^{-i(n-1)t} (n=5, `a` swept by a plain clock —
-// no audio this increment) reproduces the film's tangle/petals/star/pentagon family
+// WHIT.1d: harmony coupling for THREE of the program doc's five proposed routes
+// (figure_tightness<-tonalConsonance, stroke_presence<-bassDev, morph_floor_rate<-
+// midAttRel) — all stateless, read fresh every frame. tonalPhaseFifths (rotation) and
+// harmonicFlux (symmetry-order step) are DEFERRED to WHIT.1d-2: both need a value held
+// across frames (a stateful circular smoother for the +/-pi sawtooth; a hold-timer for
+// a step that must last tens of seconds), which means wiring a new per-preset state
+// object through the shared RenderPipeline dispatch files — real engine-adjacent work,
+// scoped out of this increment. See the fragment below for the audit detail.
+//
+// Two-term epicycle z(t) = e^{it} + a·e^{-i(n-1)t} (n=5 fixed — harmonicFlux stepping
+// is WHIT.1d-2) reproduces the film's tangle/petals/star/pentagon family
 // (ROSETTE_DESIGN.md §4.1: hits circle/cusped-star/petals/petals-with-loops/tangle;
 // misses a true STRAIGHT-edged pentagon — two terms round the corners where the film
 // shows flats, confirmed against docs/VISUAL_REFERENCES/rosette/
@@ -116,12 +125,15 @@ struct RosetteGeoVertexOut {
     float4 position [[position]];
     float2 uv;
     float  aspect;
-    float  time;   // passed through from the vertex stage — drawSceneGeometryOverlay
-                    // (RenderPipeline+SceneGeometry.swift) only binds FeatureVector at the
-                    // VERTEX argument table for this draw call, not the fragment's; Skein's
-                    // geometry fragment gets its clock/state the same way (interpolated
-                    // struct fields, or a dedicated per-preset buffer at slot 6 — never by
-                    // re-declaring FeatureVector as a fragment parameter).
+    float  time;        // passed through from the vertex stage — drawSceneGeometryOverlay
+                         // (RenderPipeline+SceneGeometry.swift) only binds FeatureVector at the
+                         // VERTEX argument table for this draw call, not the fragment's; Skein's
+                         // geometry fragment gets its clock/state the same way (interpolated
+                         // struct fields, or a dedicated per-preset buffer at slot 6 — never by
+                         // re-declaring FeatureVector as a fragment parameter).
+    float  consonance;   // WHIT.1d: f.tonal_consonance, same passthrough contract as `time`.
+    float  bassDev;      // WHIT.1d: f.bass_dev (D-026 deviation primitive, never absolute).
+    float  midAttRel;    // WHIT.1d: f.mid_att_rel.
 };
 
 // Fullscreen triangle — Skein's exact pattern (Skein.metal:309-320), renamed. All
@@ -136,6 +148,9 @@ vertex RosetteGeoVertexOut rosette_geometry_vertex(
     out.uv = p * 0.5 + 0.5;
     out.aspect = (f.aspect_ratio > 0.01) ? f.aspect_ratio : 1.0;
     out.time = f.time;
+    out.consonance = f.tonal_consonance;
+    out.bassDev = f.bass_dev;
+    out.midAttRel = f.mid_att_rel;
     return out;
 }
 
@@ -153,15 +168,50 @@ fragment float4 rosette_geometry_fragment(
     float rEdge = length(q);
     float3 col = mix(float3(0.006, 0.004, 0.009), float3(0.0), smoothstep(0.15, 0.75, rEdge));
 
-    // Plain clock driving the morph — no audio this session (§6 of the prompt).
-    // TRIANGLE wave, not sine: a sinusoidal a(t) eases at the tight/loose extremes
-    // (da/dt -> 0 at the turning points) — found live via motion_gate.sh, 82/299
-    // frames read as near-frozen. A triangle wave has constant |da/dt| everywhere
-    // except an instantaneous reversal at each extreme, matching §9.4's "servo-
-    // driven, constant rate — any easing reads immediately as wrong."
-    float x = in.time / kRosettePeriod;
+    // WHIT.1d harmony coupling (ROSETTE_DESIGN.md §5 / §7). Two of the program doc's five
+    // proposed routes (tonalPhaseFifths -> rotation, harmonicFlux -> symmetry-order step)
+    // are DEFERRED, not dropped silently: both need a value smoothed/held ACROSS FRAMES
+    // (tonalPhaseFifths is a raw +/-pi sawtooth that must go through a stateful circular
+    // smoother before use — D-209, CircularPhaseSmoother.swift — or it jumps at the seam,
+    // the exact defect that hit Fractal Tree; harmonicFlux needs a hold-timer so a step
+    // lasts "tens of seconds", not one frame). Rosette has zero CPU-side state today
+    // (unlike Skein/Witchlight/Nacre); adding either would mean wiring a new per-preset
+    // state object through the shared RenderPipeline dispatch files those presets use
+    // (RenderPipeline+PresetSwitching.swift etc.) -- real engine-adjacent work, scoped out
+    // of this increment and filed as WHIT.1d-2. The three routes below need no such state:
+    // consonance, bassDev and midAttRel are read fresh every frame.
+
+    // figure_tightness <- tonalConsonance (continuous). TONAL.2b's 1000-track calibration
+    // (WHITNEY_PROGRAM.md §5.2): floor 0.05, corpus MEDIAN 0.117, p99 0.32. A linear or
+    // smoothstep map puts the median at ~0.15 of the tightness range (too close to the loose
+    // end) -- explicitly the failure mode §5.2 warns about. A sqrt curve on the normalised
+    // band lands the median at ~0.50: sqrt((0.117-0.05)/(0.32-0.05)) = sqrt(0.248) = 0.498.
+    float c01 = saturate((in.consonance - 0.05) / (0.32 - 0.05));
+    float tight01 = sqrt(c01);                 // 0 = loose (low consonance), 1 = tight (high)
+    float aHarmony = mix(kRosetteAMax, kRosetteAMin, tight01);
+
+    // Plain clock — the tighten/unravel floor when there is little/no tonal signal to read
+    // (silence, noise, atonal passages). TRIANGLE wave, not sine: a sinusoidal a(t) eases at
+    // the tight/loose extremes (da/dt -> 0 at the turning points) -- found live via
+    // motion_gate.sh at WHIT.0, 82/299 frames read as near-frozen. A triangle wave has
+    // constant |da/dt| everywhere except an instantaneous reversal at each extreme, matching
+    // §9.4's "servo-driven, constant rate -- any easing reads immediately as wrong."
+    // morph_floor_rate <- midAttRel (continuous): scales the clock's rate. Not a true
+    // per-frame integral (that needs cross-frame state, same constraint as above) -- a
+    // bounded multiplicative time-warp is a reasonable, documented approximation for a
+    // slowly-varying, heavily-smoothed (*_att_rel) primitive.
+    float floorRateMul = clamp(1.0 + 0.6 * in.midAttRel, 0.4, 1.8);
+    float x = (in.time * floorRateMul) / kRosettePeriod;
     float tri = 2.0 * abs(x - floor(x + 0.5));   // period 1, linear ramp 0->1->0
-    float aMorph = kRosetteAMin + (kRosetteAMax - kRosetteAMin) * tri;
+    float aClock = kRosetteAMin + (kRosetteAMax - kRosetteAMin) * tri;
+
+    // Harmony SETS the position; the clock is demoted to the floor drift and only shows
+    // through when there is little tonal signal (the Nacre lesson, §5.3 -- a free clock
+    // additively competing with harmony reads as "not sure if the coupling is working").
+    // Consonance's own analyzer floor (0.05, width 0.03 -- §5.2) is the natural gate: below
+    // it there is effectively no tonal content to read.
+    float presence = smoothstep(0.02, 0.08, in.consonance);
+    float aMorph = mix(aClock, aHarmony, presence);
 
     // The rosette figure — white / pale lavender, always (F3: colour is NOT indexical
     // on the figure; do not hue-cycle this element).
@@ -170,7 +220,12 @@ fragment float4 rosette_geometry_fragment(
     float core = exp(-(d * d) / (2.0 * kRosetteStrokeW * kRosetteStrokeW));
     float halo = exp(-(d * d) / (2.0 * kRosetteHaloW * kRosetteHaloW));
     float3 figureCol = mix(float3(1.0), float3(0.88, 0.85, 1.0), 0.30);
-    col += figureCol * (1.15 * core + 0.35 * halo);
+    // stroke_presence <- bassDev (continuous, D-026 deviation primitive — never an
+    // absolute threshold, FA #31). Brightness/halation swell on bass transients; bounded
+    // so a quiet passage never fully extinguishes the stroke (D-037-adjacent: this preset
+    // has no true silence floor concern since bassDev=0 already gives full unit presence).
+    float presenceBoost = 1.0 + 0.5 * max(0.0, in.bassDev);
+    col += figureCol * presenceBoost * (1.15 * core + 0.35 * halo);
 
     // Mirrored coloured wings (F4) — saturated hue lives HERE, never on the figure.
     // Slow independent drift stands in for "hue changes between passages" (F3) with

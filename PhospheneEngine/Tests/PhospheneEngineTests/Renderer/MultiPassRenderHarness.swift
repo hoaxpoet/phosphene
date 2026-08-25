@@ -70,7 +70,12 @@ struct MultiPassRenderHarness {
         // first with a geometry-owned resolution-dependent target (ensureAllocated). Absent
         // until this increment: PresetFrameBudgetTests carried "Ricercar" in its UNVERIFIED
         // list, so its mandatory performance and D-157 flash gates had never actually run.
-        "Ricercar"
+        "Ricercar",
+        // WHIT.1d — Rosette needs no per-preset CPU state (unlike Skein), so it falls
+        // straight into the shared `renderMVWarp` path's `else` branch. Wired at
+        // authoring time, not certification (the Meniscus/Ricercar lesson) — measured
+        // now that stroke_presence (bassDev) gives it real audio-driven brightness.
+        "Rosette"
     ]
 
     /// Render `presetName` over `features`/`stems` (row-aligned), returning `reduce(bgra)`
@@ -98,7 +103,7 @@ struct MultiPassRenderHarness {
         case "Nacre":        return try renderBespokeMVWarp("Nacre", features, stems, reduce)
         case "Floret":       return try renderBespokeMVWarp("Floret", features, stems, reduce)
         case "Glaze":        return try renderBespokeMVWarp("Glaze", features, stems, reduce)
-        case "Dragon Bloom", "Skein": return try renderMVWarp(presetName, features, stems, reduce)
+        case "Dragon Bloom", "Skein", "Rosette": return try renderMVWarp(presetName, features, stems, reduce)
         case "Fractal Tree": return try renderMeshPreset(presetName, features, stems,
                                                          settle: settle, reduce)
         case "Nebula", "Plasma", "Spectral Cartograph", "Waveform":

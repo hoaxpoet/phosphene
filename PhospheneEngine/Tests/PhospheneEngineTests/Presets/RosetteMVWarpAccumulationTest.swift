@@ -93,6 +93,45 @@ struct RosetteMVWarpAccumulationTest {
         }
     }
 
+    // MARK: - WHIT.1d: harmony coupling regression guard
+
+    @Test("Rosette: tonalConsonance sets figure tightness; bassDev boosts stroke presence")
+    func test_rosette_harmonyCoupling() throws {
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Rosette" }) else {
+            Issue.record("Rosette preset not found in _acceptanceFixture — is it registered?")
+            return
+        }
+        guard let mvWarp = preset.mvWarpPipelines, let geo = mvWarp.sceneGeometryState else {
+            Issue.record("Rosette preset compiled with no scene-geometry overlay pipeline")
+            return
+        }
+        let ctx = try MetalContext()
+        let t0 = Self.period / 4.0   // clock alone sits near the loose/tangle end here
+
+        // (a) High consonance (p99, ~full presence) must override the clock and pull the
+        // figure toward the TIGHT end, regardless of what the clock alone would show at t0.
+        let atFloor = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                          width: Self.seqWidth, height: Self.seqHeight, time: t0, consonance: 0.0)
+        let atP99 = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                        width: Self.seqWidth, height: Self.seqHeight, time: t0, consonance: 0.32)
+        let diff = meanAbsDiff(atFloor, atP99)
+        #expect(diff > 5.0,
+                "Rosette at t0=\(t0): consonance 0.0 vs 0.32 renders are near-identical (meanAbsDiff=\(diff)) — tonalConsonance may not be reaching the tightness mapping")
+
+        // (b) bassDev boosts overall brightness (stroke_presence) at fixed time+consonance.
+        let dim = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                      width: Self.seqWidth, height: Self.seqHeight, time: t0, consonance: 0.15, bassDev: 0.0)
+        let bright = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                         width: Self.seqWidth, height: Self.seqHeight, time: t0, consonance: 0.15, bassDev: 1.0)
+        // Mean, not peak — the stroke's core already saturates to 255 regardless of the
+        // presence boost, so peak luma can't distinguish the two; the boosted halo widens
+        // and lifts the frame's overall brightness instead.
+        let dimMean = meanLuma(dim)
+        let brightMean = meanLuma(bright)
+        #expect(brightMean > dimMean,
+                "Rosette bassDev=1.0 mean luma (\(brightMean)) is not brighter than bassDev=0.0 (\(dimMean)) — stroke_presence may not be reaching bassDev")
+    }
+
     // MARK: - Env-gated visual dump (human tuning)
 
     @Test("Rosette: visual dump for motion_gate.sh / human review (env-gated)")
@@ -126,6 +165,17 @@ struct RosetteMVWarpAccumulationTest {
             ("petals_a075", Self.timeForA(0.75)),
             ("tangle_a180", Self.period / 2.0),
         ]
+
+        // WHIT.1d: harmony-coupling comparison, same wall time, consonance only.
+        let harmonyDir = try makeOutputDir("rosette_harmony")
+        print("[rosette-diag] harmony coupling output dir: \(harmonyDir.path)")
+        let tFixed = Self.period / 4.0
+        for (name, c) in [("floor_c000", Float(0.0)), ("median_c0117", Float(0.117)), ("p99_c032", Float(0.32))] {
+            let pixels = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                             width: Self.hiWidth, height: Self.hiHeight, time: tFixed, consonance: c)
+            try writePNG(pixels, width: Self.hiWidth, height: Self.hiHeight,
+                         to: harmonyDir.appendingPathComponent("\(name).png"))
+        }
         for (name, t) in targets {
             try renderFrames(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
                               width: Self.hiWidth, height: Self.hiHeight,
@@ -139,7 +189,8 @@ struct RosetteMVWarpAccumulationTest {
 
     private func renderOneFrame(
         preset: PresetLoader.LoadedPreset, mvWarp: PresetLoader.MVWarpCompiledPipelines,
-        geo: MTLRenderPipelineState, context: MetalContext, width: Int, height: Int, time: Double
+        geo: MTLRenderPipelineState, context: MetalContext, width: Int, height: Int, time: Double,
+        consonance: Float = 0, bassDev: Float = 0, midAttRel: Float = 0
     ) throws -> [UInt8] {
         let device = context.device
         let texDesc = MTLTextureDescriptor.texture2DDescriptor(
@@ -153,6 +204,9 @@ struct RosetteMVWarpAccumulationTest {
 
         var features = FeatureVector(time: Float(time), deltaTime: 1.0 / 60.0)
         features.aspectRatio = Float(width) / Float(height)
+        features.tonalConsonance = consonance
+        features.bassDev = bassDev
+        features.midAttRel = midAttRel
         guard let cmd = context.commandQueue.makeCommandBuffer() else { throw DiagError.cmdBufferFailed }
         try encodeWarp(cmd: cmd, mvWarp: mvWarp, warpTex: warpTex, composeTex: composeTex, features: &features)
         try encodeGeometryOverlay(cmd: cmd, geo: geo, target: composeTex, features: &features)
@@ -262,6 +316,17 @@ struct RosetteMVWarpAccumulationTest {
             if luma > maxL { maxL = luma }
         }
         return (minL, maxL)
+    }
+
+    private func meanLuma(_ pixels: [UInt8]) -> Double {
+        var sum: Double = 0
+        var n = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let b = Double(pixels[i]), g = Double(pixels[i + 1]), r = Double(pixels[i + 2])
+            sum += 0.114 * b + 0.587 * g + 0.299 * r
+            n += 1
+        }
+        return sum / Double(n)
     }
 
     private func meanAbsDiff(_ a: [UInt8], _ b: [UInt8]) -> Double {
