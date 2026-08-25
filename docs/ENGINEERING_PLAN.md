@@ -7077,3 +7077,125 @@ entirely absent from the harness — an unproven but structurally-sized candidat
 2–4× harness/live gap.
 
 Suite 1892/1892, lint 0, app builds.
+
+---
+
+## Phase WHIT — Whitney program (three visual-music presets after John Whitney Sr.)
+
+### Increment WHIT.0 — Rosette look spike: does the morph read? ✅ GO (2026-08-25)
+
+**Done-when:** a rendered, motion-gated answer to whether Phosphene can draw *Arabesque*'s
+morphing emblem at the film's quality, with frames, so Matt can say go/re-scope. Throwaway spike —
+no sidecar, no registration, `certified` unset, preset count unchanged (verified: `29`,
+`PresetLoaderCompileFailureTest`). Prompt: `docs/prompts/WHIT0_LOOK_SPIKE.md`.
+
+**Verdict: the morph reads, the stroke is close-not-exact, the frame is decisively load-bearing.
+Recommendation: proceed to WHIT.1a.**
+
+**Pre-flight finding (CHR.1-class).** `WHITNEY_PROGRAM.md`, `ARABESQUE_FILM_NOTES_2026-08-19.md`,
+and the four `_incoming/frames/` evidence sheets were delivered untracked to the **primary**
+checkout while this session ran in a **worktree** — exactly the failure the prompt's pre-flight
+#3 names by number. Resolved by copying the untracked files into the worktree (not
+reconstructing them); `Scripts/link_fixtures.sh` separately resolved 491 missing gitignored
+engine fixtures (`project_worktree_engine_fixtures_absent` class) that were failing ~66 tests
+before that run.
+
+**Task 2 — generator verdict.** The two-term epicycle `z(t) = e^{it} + a·e^{-i(n-1)t}` (n=5), swept
+`a` on a stdlib-only Python PNG rasterizer (no numpy/PIL in this environment): **hits** circle,
+cusped star, petals-with-inner-loops, broad petals, and tangle — the bulk of the observed family,
+in the observed order, from one scalar. **Misses** a true straight-edged pentagon: two terms round
+the corners (a Reuleaux-like bulge) where the film's frame 9 shows flats — a third harmonic would
+fix it but was not added, per the task's own instruction that a miss is the finding. Not obviously
+distinguishable: "petals inside a closing circle" and "arcs breaking apart" read as continuous
+topology changes of the same family rather than as separate named states.
+
+**Task 3 — engine realization, and three real bugs found live.** Ported to a fullscreen-triangle
+marks overlay (Skein's SDF-in-fragment pattern, not Dragon Bloom's raw `line_strip` — see task 4)
+on the **real** `PresetLoader` compile path, loaded via its `watchDirectory` scratch-dir mechanism
+(`PresetLoaderTests` precedent) pointed at `Tests/PhospheneEngineTests/Presets/Fixtures/Rosette/`
+— never the shipped `Sources/Presets/Shaders/` directory, so nothing here is a sidecar or a
+registration. A hand-rolled harness (`RosetteLookSpikeTests.swift`, adapted from
+`AuroraVeilMVWarpAccumulationTest` per `PRESET_SESSION_CHECKLIST` Part 2) drives the identical
+warp → geometry-overlay-onto-warped-texture (`strandsOnTop`, `RenderPipeline+MVWarp.swift:138`) →
+swap dispatch DragonBloom/Skein run live. Three bugs surfaced and fixed **in the harness/shader**,
+none in engine source:
+1. `mvWarp_fragment`'s fragment `buffer(0)` is `chromaticMix` (`PresetLoader+WarpPreamble.swift:155`),
+   not the vertex-slot `FeatureVector` — left unbound (undefined GPU memory), it drove a runaway
+   hue-zoom resample feedback loop that rendered as a concentric-ring kaleidoscope swamping the
+   frame. Fixed by binding it explicitly to `0.0` (Rosette.json's `marks.chromatic`).
+2. `drawSceneGeometryOverlay` only binds `FeatureVector`/`StemFeatures` at the **vertex** argument
+   table for the marks pass — Skein's own geometry fragment never re-declares `FeatureVector` as a
+   fragment parameter for exactly this reason. My first draft did, read garbage `f.time`, and every
+   still rendered the same fixed mid-morph shape regardless of target time. Fixed by passing `time`
+   through the interpolated vertex→fragment struct instead (`RosetteGeoVertexOut.time`), matching
+   Skein's actual contract.
+3. `feedback_pixel_format: "rgba16Float"` (copied from the port plan's HDR-headroom suggestion) is
+   a real pixel-format mismatch against a harness whose textures were `context.pixelFormat`
+   (`bgra8Unorm_srgb`) — undefined behaviour, manifesting as the same ring garbage. The shader
+   never actually needs HDR values (bloom is a saturated `exp()` falloff, not a float>1 accumulator),
+   so the field was dropped rather than plumbing 16-bit readback into the harness.
+A fourth, non-bug finding: the wing-arc distance field used nearest-of-49-discrete-points instead
+of nearest-point-on-segment, rendering as a "beads on a string" artifact — fixed with a standard
+capsule/segment SDF (`segDist`). The main figure's distance field never had this defect (its
+bisection refinement evaluates the continuous curve function, not a fixed sample array).
+
+**Task 4 — stroke verdict: close, not exact.** Against a same-scale crop of `rosette_build.png`'s
+petals panel: core stroke width and antialiasing quality are close (numerical-SDF `exp()` falloff
+gives clean AA, no raw-`line_strip` aliasing); halation reads **oversized** relative to the film —
+task 1's own estimate (halo ≈ 3–5× core width) was itself too generous once viewed at this crop
+scale; the actual film halation is tighter, closer to ~1.5–2×. Near-black ground required a
+correction after first render: the harness's `bgra8Unorm_srgb` target (the real drawable format —
+`MetalContext.swift:55`) encodes a naive `0.035` linear "near-black" as ~20% grey on screen; retuned
+to `0.006` to land visually near-black. `line_strip` was never attempted live — the SDF path was
+chosen up front per the film's "drawn complete each frame, no accumulation" read, and it worked.
+
+**Task 5 — frame verdict: decisively load-bearing.** With/without renders at the same morph moment
+(`docs/prompts` §12 #1 recommendation: full cartouche) — without the mirrored wing arcs + small
+ellipses, the figure floats in a large dead black field; with them, the same figure reads as a
+composed picture. Bring both frames to Matt rather than describing them (§10 DECISION-NEEDED #1).
+
+**Task 6 — motion gate.** First pass (sine-parameterised `a(t)`) showed 82/299 frozen frames
+(<0.5 luma-diff) — a real defect, not a false positive: sinusoidal `a(t)` eases at the tight/loose
+extremes (dA/dt → 0 at the turning points), directly violating §9.4's "servo-driven, constant rate
+— any easing reads immediately as wrong." **Fixed in-session**, not just flagged: switched to a
+triangle-wave clock (constant `|dA/dt|` except an instantaneous reversal at each extreme). Re-run:
+52/299 frozen, 4/299 spikes (>3×). Read as sequence (8 evenly-time-spaced samples spanning the full
+30 s cycle): pentagon → splay → petals → tight-flower → tangle-ish peak → tight-flower → splay →
+pentagon — a clean, legible, non-repeating tighten/unravel arc; every sample is visually distinct
+from its neighbours (the earlier sine version's defect was exactly that adjacent extreme-region
+samples looked identical). The residual 52 frozen frames are judged **morph, not defect**: even at
+constant `dA/dt`, the `a → shape` mapping itself compresses visible change near `a ≈ aMin` (a small
+epicycle amplitude looks like "slightly perturbed circle" over a wide `a` range) — a property of the
+curve family, not the clock. The 4 spike frames are judged **morph**: topological transitions
+(a lobe splitting, a self-intersection forming) are large frame-to-frame changes by construction,
+exactly the false-positive class the prompt warned about (§7 note) — confirmed by viewing the
+flagged frames rather than dismissing the tool.
+
+**Dispatch path exercised.** Not `_acceptanceFixture`/the shipped bundle — a bespoke
+`PresetLoader(watchDirectory:loadBuiltIn:false)` instance, real compile path
+(`device.makeLibrary(source:)`, `makeStandardPipeline`/`makeWarpPipelines`/`makeSceneGeometryPipeline`),
+hand-driven `warp → geometry-overlay → swap` matching `drawWithMVWarpStandard`'s `strandsOnTop`
+branch call-for-call. "Tests pass" is not the evidence — the PNG frames are.
+
+**Spike code disposition: proposed as WHIT.1c's skeleton, not discarded.** `Rosette.metal`'s
+epicycle math, SDF stroke technique, and wing-arc/ellipse mechanism are sound and reusable;
+`RosetteLookSpikeTests.swift` is a second reference multi-frame harness for the SDF-in-fragment
+marks paradigm (alongside `AuroraVeilMVWarpAccumulationTest`'s decay-compose paradigm). WHIT.1a/b
+should curate references and write the design doc BEFORE further shader edits, per the checklist.
+
+**Grounding:** no rating ≤ 3 to surface — the port target (F13, two-term epicycle) was specified by
+the design doc, not invented, and desk research (the CPU sweep) preceded any shader work.
+
+**No amendment to `ARABESQUE_FILM_NOTES`** — this session's own read of `rosette_build.png` (task 1)
+confirmed the notes' §1/§2 claims (5-fold symmetry throughout, the stated state sequence) rather
+than contradicting them.
+
+**Follow-ups for WHIT.1:** (1) halation tuning needs a corrected, larger-scale film crop, not the
+task-1 thumbnail estimate; (2) the per-pixel numerical nearest-point search (coarse-40 + bisect-7)
+is not a shipped-perf pattern anywhere in this codebase and was never profiled for 60fps — likely
+the first thing to revisit; (3) `AuroraVeilMVWarpAccumulationTest`'s `encodeWarp` has the same
+unbound-`chromaticMix` gap found here — latent, harmless there only because that preset's warp
+fragment override path doesn't read it the same way; worth a follow-up fix.
+
+Suite 1893/1893 (+1 new, env-gated, skips without `WHIT0_ROSETTE_SPIKE=1`), lint 0, app builds.
+`expectedProductionPresetCount` unchanged at 29.
