@@ -70,7 +70,12 @@ struct MultiPassRenderHarness {
         // first with a geometry-owned resolution-dependent target (ensureAllocated). Absent
         // until this increment: PresetFrameBudgetTests carried "Ricercar" in its UNVERIFIED
         // list, so its mandatory performance and D-157 flash gates had never actually run.
-        "Ricercar"
+        "Ricercar",
+        // WHIT.1d — Rosette needs no per-preset CPU state (unlike Skein), so it falls
+        // straight into the shared `renderMVWarp` path's `else` branch. Wired at
+        // authoring time, not certification (the Meniscus/Ricercar lesson) — measured
+        // now that stroke_presence (bassDev) gives it real audio-driven brightness.
+        "Rosette"
     ]
 
     /// Render `presetName` over `features`/`stems` (row-aligned), returning `reduce(bgra)`
@@ -98,7 +103,7 @@ struct MultiPassRenderHarness {
         case "Nacre":        return try renderBespokeMVWarp("Nacre", features, stems, reduce)
         case "Floret":       return try renderBespokeMVWarp("Floret", features, stems, reduce)
         case "Glaze":        return try renderBespokeMVWarp("Glaze", features, stems, reduce)
-        case "Dragon Bloom", "Skein": return try renderMVWarp(presetName, features, stems, reduce)
+        case "Dragon Bloom", "Skein", "Rosette": return try renderMVWarp(presetName, features, stems, reduce)
         case "Fractal Tree": return try renderMeshPreset(presetName, features, stems,
                                                          settle: settle, reduce)
         case "Nebula", "Plasma", "Spectral Cartograph", "Waveform":
@@ -632,6 +637,22 @@ struct MultiPassRenderHarness {
             skein = nil
         }
 
+        // WHIT.1d-2: Rosette's rotation (tonalPhaseFifths) and symmetry-order step
+        // (harmonicFlux) both read RosetteUniforms at fragment buffer(6) — an unbound
+        // slot here reads zeros, collapsing `rosetteDist`'s `n` to 0 and degenerating the
+        // curve to a fixed unit circle regardless of audio input (found live: the flash
+        // harness read the preset as falsely "static" under its worst-case drive).
+        let rosette: RosetteState?
+        if presetName == "Rosette" {
+            guard let state = RosetteState(device: ctx.device) else {
+                throw HarnessError.setupFailed("RosetteState allocation")
+            }
+            pipeline.setDirectPresetFragmentBuffer(state.rosetteBuffer)   // slot 6
+            rosette = state
+        } else {
+            rosette = nil
+        }
+
         let outTex = try makeOutputTexture(ctx)
         return try renderLoop(drive, ctx, outTex, reduce) { i, pixels in
             var fv = drive[i]
@@ -640,6 +661,7 @@ struct MultiPassRenderHarness {
                 skein.tick(deltaTime: fv.deltaTime, features: fv, stems: stem)
                 pipeline.setMVWarpWetnessDecay(skein.wetnessDecay)
             }
+            rosette?.tick(deltaTime: fv.deltaTime, features: fv)
             guard let cmd = ctx.commandQueue.makeCommandBuffer(),
                   let warpState = pipeline.mvWarpState else { throw HarnessError.renderFailed }
             pipeline.renderMVWarpToTexture(

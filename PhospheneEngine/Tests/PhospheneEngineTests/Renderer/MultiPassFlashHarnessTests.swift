@@ -57,6 +57,18 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Skein", luma: try flashLuma("Skein"))
     }
 
+    @Test("Rosette is flash-safe (mv_warp strandsOnTop, harmony-driven tightness, real headless render)")
+    func rosetteIsFlashSafe() throws {
+        // ROSETTE_DESIGN.md §9.3: consonant moments are moments of maximum spatial
+        // coherence, and the fragment repaints every pixel opaque every frame (§6.2) — no
+        // accumulation to smooth a spike. `stroke_presence` (bassDev) is the risk this
+        // measurement exists for: brightness/halation swell on the worst-case beat train.
+        // `harmonicMotion` is required so `figure_tightness` (tonalConsonance) actually
+        // moves during the measurement — the shared train otherwise leaves it at zero,
+        // same reason Witchlight needs it for tonalPhaseFifths.
+        assertFlashSafe(name: "Rosette", luma: try flashLuma("Rosette", harmonicMotion: true))
+    }
+
     @Test("Nacre is flash-safe (mv_warp feedback, downbeat camera push, real headless render)")
     func nacreIsFlashSafe() throws {
         assertFlashSafe(name: "Nacre", luma: try flashLuma("Nacre"))
