@@ -6158,6 +6158,19 @@ Plan + session log: [`docs/presets/MENISCUS_PLAN.md`](presets/MENISCUS_PLAN.md).
 - **MEN.4a–d ✅ the sync work that actually landed (2026-08-05)** — **(4a)** the visual follows the music's ARC, not just its beat: density is a function of arrangement fullness + mood, so a build FILLS IN rather than merely growing louder. Before this the preset played an identical pattern from first bar to last — *"Music is more than just beat, remember."* **(4b)** fewer drops, each meaning something: 15/bar → 7 after measuring that the offbeat scatter alone was **53 % of every drop**, landing between beats at the widest spread on the sheet. **(4c)** ★ **the surface had no continuous audio-driven driver at all** — the swell was gated off as volume rose, leaving 100 % discrete events, which inverts CLAUDE.md's central rule; excitation now goes INTO the wave field (the old swell was display-only and could never interfere with the drops), with a `tanh` ceiling because continuous forcing is resonant and tore spears off the sheet. **(4d)** the beat had no anchor: drums scattered ±0.34 (68 % of the sheet) so the beat drop appeared somewhere different every beat — *visual sync needs something to pulse in place.*
 - **MEN.5 ✅ CERTIFIED (2026-08-05, D-214)** — Matt's M7: *"Ready to certify. Looks good!!!"* First `mesh_animation` member of the Milkdrop-inspired family and the catalog's first projected line-surface preset. Certified count 15 → 16. D-157 flash gate added at cert (it had never existed) and measured **maxΔ/frame 0.0048** against the 0.05 bar. **★ The lesson worth carrying: eleven live rounds, and the first ten optimised drop TIMING — which was already correct at a median 6 ms, verified against ground truth at +4/+8/+8/+8 ms. The failures were a 5.2 s stem lag, a missing continuous driver, and scattered placement. When a preset does not read as synced, check which LAYER of the audio hierarchy is driving it before touching timing.**
 
+> ⚠ **Post-cert behaviour change, confirmed retroactively (BUG-094, 2026-08-24).** Twelve days
+> after this cert, `f94860b6` (2026-08-17, filed as BUG-091) fixed a bipolar-primitive clamp bug
+> — `arousal`'s calm half (−1…0) was being discarded, so the beat-locked vocals-drop region went
+> silent on calm material and the camera dolly pinned at its "hero" distance through quiet
+> passages. The fix shipped in the same commit that wrote `KNOWN_ISSUES.md` text claiming it
+> hadn't — a same-commit self-contradiction that survived an ID renumbering and a week of
+> production use before anyone checked the source against the doc. Certified Meniscus therefore
+> ran this behaviour, unreviewed, from 2026-08-17 to 2026-08-24. Matt, asked directly: **"I'm
+> fine with what I've already been seeing."** No further action; recorded here because a
+> certified preset's behaviour changed without the M7 the process calls for, and that gap is
+> worth a future reader knowing about even though it closed cleanly. Full account: `KNOWN_ISSUES.md`
+> §BUG-094.
+
 ---
 
 These milestones map to product-level outcomes, not implementation phases.
