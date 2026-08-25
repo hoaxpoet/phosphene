@@ -7200,3 +7200,50 @@ fragment override path doesn't read it the same way; worth a follow-up fix.
 
 Suite 1893/1893 (+1 new, env-gated, skips without `WHIT0_ROSETTE_SPIKE=1`), lint 0, app builds.
 `expectedProductionPresetCount` unchanged at 29.
+
+### Increment WHIT.1a — Rosette reference set curated ✅ (2026-08-25)
+
+**Done-when:** `docs/VISUAL_REFERENCES/rosette/` exists per `_NAMING_CONVENTION.md`, cropped from
+the *Arabesque* recording (the `_incoming/frames/` sheets are the raw material — WHITNEY_PROGRAM.md
+§10), with provenance rows. Blocks WHIT.1b (D-064, references locked before authoring).
+
+**Eight images, all cropped from full-resolution (1970×1470) frame extracts of Matt's own
+recording** (`ffmpeg -ss` at chosen timestamps, not the lower-resolution `_incoming/frames/`
+contact-sheet grids used for WHIT.0's task-1 read) — five macro states spanning the tighten/
+unravel morph (tangle, five-spoke splay, broad petals, star-in-ring, straight-edged pentagon) plus
+specular (stroke cross-section), atmosphere (ground darkness), and palette (wing arc + ellipse)
+crops. No external stock photography: Rosette ports one specific named film, so the film itself is
+the entire reference set, unlike Skein/Witchlight's stock-photo mood boards for a broader aesthetic
+family.
+
+**5-fold symmetry re-verified, this time by measurement, not by eye.** A radial brightness-crossing
+count on `03_macro_broad_petals` (a circle at mid-radius should cross each of 5 petal loops twice)
+measured exactly 10 at R=250px. The two open/splayed states resisted the same check — inconsistent
+crossing counts across radii, because their arms reach very different radii from each other — so
+the folder's annotations state plainly that fold-count is unverifiable-by-eye-or-measurement on
+those two frames, rather than asserting 5-fold where it cannot be shown.
+
+**`05_macro_pentagon_straight_edges` is the hard evidence for WHIT.0 task 2's predicted miss.** The
+film's pentagon state has genuinely flat sides; the two-term epicycle's own render (WHIT.0's
+`pentagon_a015` still) shows a rounded, Reuleaux-like bulge at the same nominal state. This is now
+a direct, cite-able comparison for WHIT.1c rather than a claim resting on task 2's CPU sweep alone.
+
+**`06_specular_stroke_core_halo` corrects WHIT.0's own halation estimate.** Viewed at a proper crop
+scale (not the small evidence-sheet thumbnails task 1 read from), the film's halation is tighter
+than task 1's "3–5× core width" guess — closer to 1.5–2×. WHIT.0's engine render's halation reads
+oversized against this corrected number; flagged as a WHIT.1c tuning target, not fixed here.
+
+**`CheckVisualReferences --strict` does not currently see this folder.** `discoverPresets`
+(`PhospheneTools/Sources/CheckVisualReferences/main.swift:99`) only scans
+`PhospheneEngine/Sources/Presets/Shaders/` for registered `.metal` files and validates the matching
+`docs/VISUAL_REFERENCES/<name>/` folder — Rosette is deliberately unregistered until WHIT.1c, so the
+tool has nothing to check yet. `rosette/`'s naming and required lightweight README sections were
+hand-verified against the tool's own regex/section-list instead (both pass). **Incidental finding,
+unrelated to Rosette:** running the tool anyway surfaced a pre-existing, long-standing gap —
+`witchlight/` only has a `README.md` on disk; the 13 images its own reference table and provenance
+table cite were never committed. 389 warnings, exit 1, `--strict` has evidently never been clean.
+Filed as a follow-up (out of scope here — a different preset, unrelated to this increment).
+
+**No engine touch, no code.** Doc-only increment: 8 JPEGs + 1 README under `docs/VISUAL_REFERENCES/
+rosette/`. `swiftlint --strict` clean (no Swift files changed); the two doc-integrity/lint gates
+this increment could plausibly affect (`DocIntegrityTests`, `CheckVisualReferences`) both checked.
