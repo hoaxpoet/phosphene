@@ -11,6 +11,9 @@ uplifting a preset cite these images by filename per `SHADER_CRAFT.md §2.3`.
 2. Drop 3–5 reference images into the folder, named per `_NAMING_CONVENTION.md`.
    Photographic references preferred over renders. Sources are Matt's choice.
    **≤ 500 KB per image.** Crop and compress before committing.
+   **`.gitignore` excludes these rasters by default** (LFS was retired repo-wide
+   at CLEAN.5.8 over billing) — force-add each image or it never leaves your
+   working copy: `git add -f docs/VISUAL_REFERENCES/<preset>/*.jpg`.
 3. Fill in the reference-image table — one sentence per file describing what
    to learn from it.
 4. Tick the mandatory / expected / preferred trait checkboxes. Be specific:
@@ -81,7 +84,8 @@ These criteria close out Increment V.5 entirely. Run
 `swift run --package-path PhospheneTools CheckVisualReferences --strict`
 to verify.
 
-- [ ] All 9 full-rubric folders have 3–5 reference images committed via Git LFS,
+- [ ] All 9 full-rubric folders have 3–5 reference images force-added
+      (`git add -f`, per the gitignore carve-out — LFS was retired at CLEAN.5.8),
       READMEs fully filled in.
 - [ ] All 4 lightweight folders have 1–2 reference images, READMEs filled in.
 - [ ] Quality reel `docs/quality_reel.mp4` committed via Git LFS;
