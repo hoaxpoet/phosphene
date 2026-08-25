@@ -12,8 +12,8 @@
 //   * `applyAudioModulation` (per-frame fog, light intensity, valence tint) was
 //     never called at all — it lived on RenderPipeline, which the harness
 //     bypasses (moved onto RayMarchPipeline at FLY.6 so both share one impl);
-//   * a fresh pipeline per frame, which reset MetalFX to passthrough and hid the
-//     entire temporal-AA path;
+//   * a fresh pipeline per frame, which reset all accumulated per-pipeline state
+//     (at the time including the since-deleted MetalFX temporal-AA path, D-213);
 //   * 1920×1080 offline vs a ~1067×750 window live — half the pixels, so
 //     markedly worse aliasing on screen than in any render I looked at.
 //
@@ -230,9 +230,6 @@ struct SessionReplayHarness {
 
         // Production wiring, in production order.
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
-        pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal
-        pipeline.metalFXRenderScale = preset.descriptor.effectiveRenderScale
-        pipeline.motionPipelineState = preset.motionPipelineState
         pipeline.allocateTextures(width: width, height: height)
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
         let uniforms = preset.descriptor.makeSceneUniforms()
