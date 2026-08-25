@@ -7247,3 +7247,47 @@ Filed as a follow-up (out of scope here — a different preset, unrelated to thi
 **No engine touch, no code.** Doc-only increment: 8 JPEGs + 1 README under `docs/VISUAL_REFERENCES/
 rosette/`. `swiftlint --strict` clean (no Swift files changed); the two doc-integrity/lint gates
 this increment could plausibly affect (`DocIntegrityTests`, `CheckVisualReferences`) both checked.
+
+### Increment WHIT.1b — Rosette design doc ✅ (2026-08-25)
+
+**Done-when:** `docs/presets/ROSETTE_DESIGN.md` exists and the multi-frame harness (adapted from
+`AuroraVeilMVWarpAccumulationTest` at WHIT.0) proves the live `scene → warp → compose → swap` path
+is reachable from a test — both **before any shader work** this increment (`PRESET_SESSION_CHECKLIST`
+Part 2 obligation 1). Blocks WHIT.1c.
+
+**No shader edits.** WHIT.0's `RosetteLookSpikeTests.swift` already IS the required harness and was
+re-run clean this increment (unchanged from WHIT.0) — nothing to write or extend, the obligation
+was satisfied by the prior increment and just needed re-confirming green.
+
+**`ROSETTE_DESIGN.md` is a specialization, not a duplication, of `WHITNEY_PROGRAM.md`.** The program
+doc already carries the shared §§1–9 rationale (musical role, temporal contract, mechanic, harmony
+mapping, hard constraints) written before WHIT.0 ran; this design doc cites each section, states
+whether WHIT.0's spike validated or revised it, and adds what only a running spike could produce:
+
+- **§6 (architecture) is materially revised, not just annotated.** The program doc proposed porting
+  Dragon Bloom's raw `line_strip` marks config; WHIT.0 built (and validated) a fullscreen-triangle
+  SDF-in-fragment overlay instead (Skein's pattern) — a raw hardware line primitive has no
+  antialiasing and no variable width, which the program doc's own task 4 language already
+  anticipated as the likely failure point. The design doc now documents the REAL architecture,
+  including the three bugs WHIT.0 found and fixed (unbound `chromaticMix`, the `FeatureVector`
+  fragment-binding contract, wing-arc beading) as a "read this before re-deriving them" section for
+  WHIT.1c.
+- **§4 (the mechanic) draws a line the program doc's structure blurred.** `WHITNEY_PROGRAM.md` §4
+  documents Whitney's general differential-dynamics / ray-collapse mechanic, which is actually
+  WHIT.C's (Unison) generator, not Rosette's — Rosette's own formula lives at program §8 (F13, the
+  two-term epicycle). The design doc states this explicitly so a future reader doesn't port the
+  wrong formula.
+- **§2 (temporal contract) is split into validated-vs-still-assertion rows** — WHIT.0 ran zero
+  audio, so only the clock-driven rows (constant rate, never blanks) could be exercised; every
+  harmony-dependent row (cold start, vamp, resolution, chord change, modulation, silence) is
+  flagged as untested, not assumed correct because the visual mechanism works.
+- **§8 (grounding audit, per `PRESET_SESSION_CHECKLIST`)** rates the epicycle generator and the
+  SDF-in-fragment technique at level 1 (working references, validated) and the harmony coupling at
+  level 3 (no empirical grounding yet) — surfaced now rather than discovered at WHIT.1d code review.
+- **§10 is a concrete WHIT.1c checklist**, opening with the one unresolved engineering risk: the
+  per-pixel numerical nearest-point search was never profiled for 60fps @ 1080p and is not a
+  shipped-perf pattern anywhere else in this codebase.
+
+**No engine touch, no shader code, no new tests.** Doc-only: one new file
+(`docs/presets/ROSETTE_DESIGN.md`), plus this entry. `swiftlint --strict` clean (no Swift changed);
+`DocIntegrityTests` clean; the WHIT.0 harness re-run green (unchanged).
