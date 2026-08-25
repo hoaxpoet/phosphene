@@ -3,7 +3,7 @@
   "family": "geometric",
   "duration": 30,
   "natural_cycle_seconds": 30,
-  "description": "John Whitney Sr.'s Arabesque (1975) morphing emblem: a two-term epicycle z(t)=e^{it}+a*e^{-i(n-1)t} (n=5) drawn as a single closed white-to-pale-lavender stroke with soft halation on a near-black ground, tightening into a straight-edged pentagon and unravelling into an open tangle. Mirrored coloured wing arcs with small ellipses at the frame edges (D-217: full cartouche). tonalConsonance sets the tighten/unravel position (a plain clock is the floor drift when consonance signal is weak); bassDev swells stroke presence; midAttRel scales the floor-drift rate. tonalPhaseFifths (rotation) and harmonicFlux (symmetry-order step) are deferred to WHIT.1d-2 pending new per-preset held-state infrastructure. See docs/presets/ROSETTE_DESIGN.md and docs/ENGINEERING_PLAN.md Phase WHIT.",
+  "description": "John Whitney Sr.'s Arabesque (1975) morphing emblem: a two-term epicycle z(t)=e^{it}+a*e^{-i(n-1)t} (n dynamic: 5/6/4) drawn as a single closed white-to-pale-lavender stroke with soft halation on a near-black ground, tightening into a straight-edged pentagon and unravelling into an open tangle. Mirrored coloured wing arcs with small ellipses at the frame edges (D-217: full cartouche). tonalConsonance sets the tighten/unravel position (a plain clock is the floor drift when consonance signal is weak); bassDev swells stroke presence; midAttRel scales the floor-drift rate; tonalPhaseFifths (circularly smoothed) rotates the figure only; harmonicFlux steps the symmetry order (5->6->4) on a qualifying spike, held for tens of seconds (WHIT.1d-2, RosetteState). See docs/presets/ROSETTE_DESIGN.md and docs/ENGINEERING_PLAN.md Phase WHIT.",
   "author": "Matt",
   "passes": ["direct", "mv_warp"],
   "fragment_function": "rosette_fragment",
@@ -28,7 +28,9 @@
   "audio_routes": [
     { "route": "figure_tightness", "primitive": "tonalConsonance", "kind": "continuous" },
     { "route": "stroke_presence", "primitive": "bassDev", "kind": "continuous" },
-    { "route": "morph_floor_rate", "primitive": "midAttRel", "kind": "continuous" }
+    { "route": "morph_floor_rate", "primitive": "midAttRel", "kind": "continuous" },
+    { "route": "morph_position", "primitive": "tonalPhaseFifths", "kind": "continuous" },
+    { "route": "symmetry_order_step", "primitive": "harmonicFlux", "kind": "accent" }
   ],
   "certified": false,
   "rubric_profile": "lightweight"

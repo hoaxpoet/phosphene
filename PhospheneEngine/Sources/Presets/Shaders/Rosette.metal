@@ -4,17 +4,24 @@
 // verdict GO. Design record: docs/presets/ROSETTE_DESIGN.md. References:
 // docs/VISUAL_REFERENCES/rosette/. certified: false.
 //
-// WHIT.1d: harmony coupling for THREE of the program doc's five proposed routes
+// WHIT.1d: harmony coupling for three of the program doc's five proposed routes
 // (figure_tightness<-tonalConsonance, stroke_presence<-bassDev, morph_floor_rate<-
-// midAttRel) — all stateless, read fresh every frame. tonalPhaseFifths (rotation) and
-// harmonicFlux (symmetry-order step) are DEFERRED to WHIT.1d-2: both need a value held
-// across frames (a stateful circular smoother for the +/-pi sawtooth; a hold-timer for
-// a step that must last tens of seconds), which means wiring a new per-preset state
-// object through the shared RenderPipeline dispatch files — real engine-adjacent work,
-// scoped out of this increment. See the fragment below for the audit detail.
+// midAttRel) — all stateless, read fresh every frame.
 //
-// Two-term epicycle z(t) = e^{it} + a·e^{-i(n-1)t} (n=5 fixed — harmonicFlux stepping
-// is WHIT.1d-2) reproduces the film's tangle/petals/star/pentagon family
+// WHIT.1d-2: the remaining two routes, which both needed a value held ACROSS FRAMES
+// (D-219 audit finding) — `RosetteState` (Presets/Rosette/RosetteState.swift) owns
+// both and is bound at fragment buffer(6), Skein's per-preset-uniforms convention:
+//   - morph_position <- tonalPhaseFifths: a STATEFUL circular smoother (D-209) on the
+//     raw +/-pi sawtooth, recombined via atan2, applied as a ROTATION of the FIGURE
+//     ONLY (never the wings — keeps the D-217 frame fixed). Distinct visual channel
+//     from figure_tightness, resolving the FA #67 conflict the pre-spike design docs
+//     had (both routes originally targeted the same scalar `a`).
+//   - symmetry_order_step <- harmonicFlux: a hold-timer steps the symmetry order
+//     through Whitney's own sequence (5->6->4, WHITNEY_PROGRAM.md §2) on a flux spike,
+//     but only once the current order has held >= minHoldSeconds — never per-beat.
+//
+// Two-term epicycle z(t) = e^{it} + a·e^{-i(n-1)t} (n now dynamic, WHIT.1d-2) reproduces
+// the film's tangle/petals/star/pentagon family
 // (ROSETTE_DESIGN.md §4.1: hits circle/cusped-star/petals/petals-with-loops/tangle;
 // misses a true STRAIGHT-edged pentagon — two terms round the corners where the film
 // shows flats, confirmed against docs/VISUAL_REFERENCES/rosette/
@@ -36,7 +43,6 @@ using namespace metal;
 // PresetLoader prepends ahead of every preset's .metal source (Self.shaderPreamble +
 // Self.mvWarpPreamble) — no #include, matching every other preset file in this repo.
 
-constant float kRosetteN        = 5.0;     // symmetry order (fixed this spike — harmonicFlux stepping is WHIT.1)
 constant float kRosetteAMin     = 0.05;    // tightest state (near-pentagon), task 2 CPU sweep
 constant float kRosetteAMax     = 1.80;    // loosest state (tangle), task 2 CPU sweep
 constant float kRosettePeriod   = 30.0;    // seconds per tighten/unravel cycle (rosette_build.png spans 30s)
@@ -51,10 +57,12 @@ constant int   kRosetteRefine   = 7;       // bisection refine steps
 
 // The epicycle, normalised to unit-ish radius regardless of `a` (F2: the emblem's
 // overall SIZE stays roughly constant through the morph in rosette_build.png; only the
-// character changes, not the scale).
-static float2 rosetteCurve(float t, float a) {
+// character changes, not the scale). `n` is now dynamic (WHIT.1d-2, `symmetry_order_step`)
+// — the aMin/aMax calibration was tuned against n=5 (task 2's CPU sweep) and is reused
+// as-is for the stepped orders (4, 6): a reasonable approximation, not re-swept per n.
+static float2 rosetteCurve(float t, float a, float n) {
     float2 z1 = float2(cos(t), sin(t));
-    float t2 = -(kRosetteN - 1.0) * t;
+    float t2 = -(n - 1.0) * t;
     float2 z2 = float2(cos(t2), sin(t2));
     return (z1 + a * z2) / (1.0 + a);
 }
@@ -64,20 +72,20 @@ static float2 rosetteCurve(float t, float a) {
 // a per-pixel numerical search is not a shipped-perf pattern anywhere else in this
 // codebase, so WHIT.1c should revisit this for a 60fps budget (flagged in the
 // closeout, not solved here — out of WHIT.0 scope).
-static float rosetteDist(float2 p, float a) {
+static float rosetteDist(float2 p, float a, float n) {
     float bestD2 = 1e9;
     float bestT = 0.0;
     for (int i = 0; i < kRosetteCoarse; i++) {
         float t = 2.0 * M_PI_F * float(i) / float(kRosetteCoarse);
-        float2 d = p - rosetteCurve(t, a);
+        float2 d = p - rosetteCurve(t, a, n);
         float d2 = dot(d, d);
         if (d2 < bestD2) { bestD2 = d2; bestT = t; }
     }
     float span = M_PI_F / float(kRosetteCoarse);
     for (int r = 0; r < kRosetteRefine; r++) {
         float tA = bestT - span, tB = bestT + span;
-        float2 dA = p - rosetteCurve(tA, a);
-        float2 dB = p - rosetteCurve(tB, a);
+        float2 dA = p - rosetteCurve(tA, a, n);
+        float2 dB = p - rosetteCurve(tB, a, n);
         float d2A = dot(dA, dA), d2B = dot(dB, dB);
         if (d2A < bestD2) { bestD2 = d2A; bestT = tA; }
         if (d2B < bestD2) { bestD2 = d2B; bestT = tB; }
@@ -121,6 +129,17 @@ static float rosetteWingEllipseDist(float2 p, float side) {
     return (length(q) - 1.0) * 0.07;   // approximate SDF, scaled back to world units
 }
 
+// WHIT.1d-2: per-preset uniforms from RosetteState (Presets/Rosette/RosetteState.swift),
+// bound at fragment buffer(6) — Skein's `SkeinUniforms` convention (a dedicated per-preset
+// buffer for values a fragment cannot compute per-frame alone). Must match
+// `RosetteUniformsGPU` in RosetteState.swift byte-for-byte.
+struct RosetteUniforms {
+    float smoothedFifths;   // circularly-smoothed tonal_phase_fifths, radians (D-209)
+    float symmetryN;        // current held symmetry order (WHIT.1d-2)
+    float pad0;
+    float pad1;
+};
+
 struct RosetteGeoVertexOut {
     float4 position [[position]];
     float2 uv;
@@ -155,7 +174,8 @@ vertex RosetteGeoVertexOut rosette_geometry_vertex(
 }
 
 fragment float4 rosette_geometry_fragment(
-    RosetteGeoVertexOut in [[stage_in]]
+    RosetteGeoVertexOut in [[stage_in]],
+    constant RosetteUniforms& ru [[buffer(6)]]
 ) {
     float aspect = in.aspect;
     float2 q = float2((in.uv.x - 0.5) * aspect, in.uv.y - 0.5);   // aspect-corrected, centred, y-down
@@ -168,18 +188,16 @@ fragment float4 rosette_geometry_fragment(
     float rEdge = length(q);
     float3 col = mix(float3(0.006, 0.004, 0.009), float3(0.0), smoothstep(0.15, 0.75, rEdge));
 
-    // WHIT.1d harmony coupling (ROSETTE_DESIGN.md §5 / §7). Two of the program doc's five
-    // proposed routes (tonalPhaseFifths -> rotation, harmonicFlux -> symmetry-order step)
-    // are DEFERRED, not dropped silently: both need a value smoothed/held ACROSS FRAMES
-    // (tonalPhaseFifths is a raw +/-pi sawtooth that must go through a stateful circular
-    // smoother before use — D-209, CircularPhaseSmoother.swift — or it jumps at the seam,
-    // the exact defect that hit Fractal Tree; harmonicFlux needs a hold-timer so a step
-    // lasts "tens of seconds", not one frame). Rosette has zero CPU-side state today
-    // (unlike Skein/Witchlight/Nacre); adding either would mean wiring a new per-preset
-    // state object through the shared RenderPipeline dispatch files those presets use
-    // (RenderPipeline+PresetSwitching.swift etc.) -- real engine-adjacent work, scoped out
-    // of this increment and filed as WHIT.1d-2. The three routes below need no such state:
-    // consonance, bassDev and midAttRel are read fresh every frame.
+    // WHIT.1d/WHIT.1d-2 harmony coupling (ROSETTE_DESIGN.md §5 / §7) — all five of the
+    // program doc's proposed routes now shipped. tonalConsonance, bassDev and midAttRel
+    // are read fresh every frame below; tonalPhaseFifths and harmonicFlux both need a
+    // value smoothed/held ACROSS FRAMES (tonalPhaseFifths is a raw +/-pi sawtooth that
+    // must go through a stateful circular smoother before use — D-209,
+    // CircularPhaseSmoother.swift — or it jumps at the seam, the exact defect that hit
+    // Fractal Tree; harmonicFlux needs a hold-timer so a step lasts "tens of seconds", not
+    // one frame) and are supplied by RosetteState (Presets/Rosette/RosetteState.swift) via
+    // the `RosetteUniforms` struct bound at fragment buffer(6), Skein's per-preset-uniforms
+    // convention.
 
     // figure_tightness <- tonalConsonance (continuous). TONAL.2b's 1000-track calibration
     // (WHITNEY_PROGRAM.md §5.2): floor 0.05, corpus MEDIAN 0.117, p99 0.32. A linear or
@@ -215,8 +233,17 @@ fragment float4 rosette_geometry_fragment(
 
     // The rosette figure — white / pale lavender, always (F3: colour is NOT indexical
     // on the figure; do not hue-cycle this element).
+    // morph_position <- tonalPhaseFifths (continuous, WHIT.1d-2): a rotation of the FIGURE
+    // ONLY (D-219's resolution to the FA #67 clash with tonalConsonance -> tightness — a
+    // genuinely distinct visual channel). `ru.smoothedFifths` is already circularly
+    // smoothed (D-209) by RosetteState; rotate the figure's sample coordinate before the
+    // distance search. `q` itself is left untouched so the wings (below) do not rotate.
     float2 pf = float2(q.x, -q.y) / kRosetteRadius;   // figure space, y-up
-    float d = rosetteDist(pf, aMorph) * kRosetteRadius;
+    float rotS = sin(ru.smoothedFifths), rotC = cos(ru.smoothedFifths);
+    pf = float2(rotC * pf.x - rotS * pf.y, rotS * pf.x + rotC * pf.y);
+    // symmetry_order_step <- harmonicFlux (accent, WHIT.1d-2): `ru.symmetryN` is the
+    // held order from RosetteState's hold-timer — never flickers per-beat.
+    float d = rosetteDist(pf, aMorph, ru.symmetryN) * kRosetteRadius;
     float core = exp(-(d * d) / (2.0 * kRosetteStrokeW * kRosetteStrokeW));
     float halo = exp(-(d * d) / (2.0 * kRosetteHaloW * kRosetteHaloW));
     float3 figureCol = mix(float3(1.0), float3(0.88, 0.85, 1.0), 0.30);
