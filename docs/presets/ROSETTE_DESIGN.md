@@ -175,123 +175,154 @@ struct), wired through `VisualizerEngine`/`VisualizerEngine+Presets.swift` (`bin
 is white/pale-lavender always. Hue lives only in the wing arcs (§6.3), which still drift on an
 independent plain clock and have no route (a candidate for a later increment, not requested yet).
 
-## 6. Architecture — what actually renders, revised from §6's original proposal
+## 6. Architecture — real 3D swept-tube geometry (WHIT.2b), history below
+
+**Current (WHIT.2b, 2026-08-26).** Rosette is a `ray_march + post_process` preset. The figure and
+wing arcs/ellipses are genuine 3D tubes — a Pythagorean SDF wrapping the SAME 2D distance-to-curve
+functions the 2D version used (`rosetteCurve`/`rosetteWingDist`/`rosetteWingEllipseDist`,
+unchanged), rendered through the engine's shared ray-march / Cook-Torrance PBR / IBL / AO /
+screen-space-shadow pipeline (D-021's `sceneSDF`/`sceneMaterial` contract) — the same pipeline
+Volumetric Lithograph, Lumen Mosaic, and Ferrofluid Ocean already run on. This replaced the
+`direct + mv_warp` fullscreen-fragment overlay described in §6.1-§6.6's original text below (kept
+as history — the bugs and lessons in it are durable even though the architecture moved on).
+
+- **Tube SDF.** For a planar curve `C(t)` lying in the z=0 plane, a tube of radius `r` swept
+  around it is `sqrt(dist2D(p.xy, C)² + p.z²) - r` — the 2D nearest-point distance and the
+  out-of-plane offset combine as a right triangle's hypotenuse. `rosetteFigureTubeSDF` /
+  `rosetteWingTubeSDF` / `rosetteWingEllTubeSDF` in `Rosette.metal` are thin wrappers around the
+  unchanged 2D distance functions.
+- **State.** `RosetteUniforms` (rotation + symmetry-order state, unchanged from WHIT.1d-2/WHIT.2a)
+  moved from the old `direct+mv_warp` overlay buffer onto ray-march fragment buffer(6) — see
+  `docs/ARCHITECTURE.md` §GPU Contract Details for the full binding history.
+- **Camera + lighting.** `scene_camera`/`scene_lights`/`scene_backdrop: "dark"` set up a
+  conventional key+fill two-light rig against a near-black void (the `scene_backdrop` field
+  decouples background darkness from light intensity — see `docs/ARCHITECTURE.md`'s GPU Contract
+  Details for the mechanism). `scene_orbit_speed=0.12` (a new, engine-generic camera feature —
+  §SHADER_CRAFT.md's preset metadata table) slowly turntables the camera around the world origin,
+  because a static shot undersells a ray-marched tube's actual roundness (self-occlusion and depth
+  read mainly through parallax, not a still frame).
+- **Nearest-point search.** `rosetteDist` (the figure's distance-to-curve function) is a dense
+  150-segment point-to-segment polyline scan, matching the wing arcs' own long-proven technique —
+  see §6.7 for why this replaced the earlier coarse+bisect search, and §6.8 for the performance
+  fix required to make a per-ray-march-step search affordable.
+- **Material.** The figure stays pale/lavender-white (F3 — colour is not indexical on the figure);
+  `bassDev` lifts albedo slightly (an emissive-feeling "catching more light" cue, replacing the 2D
+  version's additive Gaussian glow — a genuinely different technique for the same musical role).
+  The wings carry the saturated, hue-drifting colour (F4), unchanged in spirit from the 2D version.
+
+### 6.7 WHIT.2b found live: the 2D distance search wasn't smooth enough for ray-march normals
+
+Matt's first look at the converted preset: *"fidelity is poor - lines are really jagged."* The 2D
+version's coarse-then-bisect search (BUG-104's fix, §6.6 below) produced a distance field accurate
+enough for a flat, unlit fragment but not smooth enough for the ray-march G-buffer's per-pixel
+finite-difference normal computation (four tiny `eps=0.001` offset taps) — visible as faceted,
+unstable shading. Two structural fixes were tried and failed before switching to systematic
+diagnosis (a Quilez-style smooth-min blend across branch candidates; more bisection precision).
+The diagnosis that worked: isolating an outer loop with no nearby self-crossing showed the SAME
+faceting (ruling out branch-seam theory), and comparing directly against the wing arcs — which
+already used a dense point-to-segment polyline scan with no bisection, and rendered perfectly
+smooth in the same frame — identified the search technique itself, not branch handling, as the
+cause. `rosetteDist` was rewritten to the wing's own proven technique verbatim, at 150 segments
+(chosen empirically: 70 and 110 both still showed visible faceting on the same test loop, while
+150 and 600 were pixel-identical at the same extreme zoom).
+
+### 6.8 WHIT.2b found live: the dense search needed a bounding-sphere gate to stay in budget
+
+Running the full engine test suite for the first time against the completed conversion (not just
+the targeted Rosette test files) surfaced a previously-invisible 150ms/frame regression
+(`PresetFrameBudgetTests`: 14.8x the median preset, over the 60ms ceiling) — the dense polyline
+search ran on every ray-march step of every pixel, including the ~90% of the 1080p frame that is
+empty background far from the small (~0.3-radius) figure. Fixed with a bounding-sphere SDF lower
+bound, mathematically exact from the curve's own magnitude identity
+(`|z1+a·z2| <= |z1|+a|z2| = 1+a`, divided by the curve's own `(1+a)` normaliser proves the whole
+tube lies within a sphere of exactly `kRosetteRadius + tubeRadius`) — applied to both the figure
+and the wing tubes (whose own arc endpoints sit at a known fixed radius from a known center).
+**A bare `boundD > 0` cutoff is unsound, not just imprecise**: the bounding sphere is TANGENT to
+the true surface at specific points (the curve reaches exactly its bounding radius at `t=0`, for
+every morph state), so the cheap branch can return a near-zero value there, which the ray-march
+loop's relative hit epsilon (`d < 0.001·t`) reads as a genuine surface hit — this rendered a
+false, audio-INDEPENDENT sphere silhouette that silently collapsed every aMorph/rotation/symmetry
+difference `RosetteRayMarchTests` measures toward zero (caught because those coupling tests
+failed, not because the render looked visibly wrong). Fixed with a safety margin (`0.03`, ~15x
+the hit epsilon at this scene's camera distance) between the bounding radius and where the cheap
+branch is trusted — only a thin shell around the true boundary falls through to the exact search.
+Final measured cost: 28ms/frame at 1080p (4.8x the median preset), down from 150ms.
+
+### 6.9 History (pre-WHIT.2b): the 2D `direct + mv_warp` architecture
+
+The subsections below describe the ORIGINAL 2D fullscreen-fragment overlay architecture,
+superseded by §6's ray-march conversion above. Kept because the bugs found in it (aspect-ratio
+scaling, point-to-segment vs. discrete-sample distance fields, buffer-binding gotchas) are durable
+lessons that apply to future preset work even though Rosette itself has moved past this
+architecture.
 
 `WHITNEY_PROGRAM.md` §6 proposed porting Dragon Bloom's exact `marks` configuration
 (`"primitive": "line_strip"`, `vertex_count: ~1536`, `instance_count: 1`) — a raw hardware line
-draw. **WHIT.0 did not build that, and §6 should be read as superseded by this section for
-Rosette specifically.** The reason is stated in the program doc's own task 4 language: Metal's
-line-primitive rasterization has no antialiasing and no variable width, and Rosette's fidelity is
-entirely in the stroke — a raw `line_strip` was judged too likely to alias before ever being tried.
+draw. **WHIT.0 did not build that.** The reason is stated in the program doc's own task 4
+language: Metal's line-primitive rasterization has no antialiasing and no variable width, and
+Rosette's fidelity is entirely in the stroke — a raw `line_strip` was judged too likely to alias
+before ever being tried.
 
-### 6.1 What was built instead: SDF-in-fragment, Skein's pattern
+**What was built instead: SDF-in-fragment, Skein's pattern.** A single fullscreen-triangle marks
+overlay (copying Skein's `skein_geometry_vertex`/`_fragment` shape, not Dragon Bloom's). All figure
+math happened per-pixel in the fragment stage: `rosette_geometry_vertex` passed `aspect_ratio`/
+`time` through the interpolated vertex→fragment struct; `rosette_geometry_fragment` computed
+`aMorph` from the clock, ran the coarse-then-bisect nearest-point search, converted distance to a
+bright-core + soft-halo intensity via two nested Gaussians, and composited the wing arcs + a
+near-black vignette ground, writing alpha=1.0 everywhere every frame (a stronger, structurally-
+guaranteed version of "no long trails" than tuning the warp pass's `decay` value — no numeric decay
+could reintroduce a trail under an always-opaque fragment).
 
-A single **fullscreen-triangle** marks overlay (`vertex_count: 3, instance_count: 1, primitive:
-"triangle"` — copying Skein's `skein_geometry_vertex`/`_fragment` shape, not Dragon Bloom's). All
-figure math happens per-pixel in the fragment stage:
+**Wing arcs + ellipses (F4, D-217: full cartouche).** Two mirrored instances computed in the same
+fragment: a shallow bowed arc near each frame edge plus a small ellipse near its lower end, in a
+slowly hue-drifting colour independent of the main figure. **D-217 (Matt, 2026-08-25): these ship
+as part of the base preset, not an optional extra** — the with/without comparison in WHIT.0's
+closeout was decisive.
 
-- `rosette_geometry_vertex` — fullscreen triangle, passes `aspect_ratio` and `time` through to the
-  fragment via the interpolated vertex→fragment struct (**not** by re-declaring `FeatureVector` as
-  a fragment parameter — see §6.4, bug 2).
-- `rosette_geometry_fragment` — computes `aMorph` from the clock (§4.2), runs a coarse-then-bisect
-  numerical nearest-point search against the continuous curve function (no closed-form SDF exists
-  for a self-intersecting two-term epicycle), converts distance to a bright-core + soft-halo
-  intensity via two nested Gaussians, and composites the mirrored wing arcs (§6.3) and a near-black
-  vignette ground. Every pixel is written opaque every frame — see §6.2.
-- `mvWarpPerFrame` / `mvWarpPerVertex` — identity transform, `decay = 0.15` (light, not
-  canvas-hold). Exercises the real `scene → warp → compose(strandsOnTop) → swap` dispatch
-  (`RenderPipeline+MVWarp.swift:138`) without actually depending on the decay value (§6.2).
+**BUG-103 (found live at WHIT.1d-3, 2026-08-26, 2D-only): wing x-placement had to scale with
+aspect.** The wings were tuned only against 16:9-family renders; at Matt's actual window
+(1080×1018, aspect 1.061 — nearly square) they rendered entirely off-screen. This bug class no
+longer exists post-WHIT.2b: world-space positions in the ray-march pipeline are aspect-independent
+by construction (the camera's own FOV/projection handles arbitrary window sizes the same way every
+other ray-march preset already does) — there is no aspect-scaling code left to get wrong.
 
-### 6.2 Canvas behaviour: opaque-every-frame, not decay-bounded
+**Three bugs found live at WHIT.1c, in the test harness or shader, never in engine source:**
 
-`ARABESQUE_FILM_NOTES` §4/§9.4: the film draws the figure complete every frame; the glow is
-halation around a stroke, never a decaying comet-tail. Rosette's fragment shader writes **alpha =
-1.0 everywhere, every frame** — background and figure alike — so the warp pass's `decay` parameter
-has no visible effect (the compose blend always resolves to the current frame regardless of what
-came before). This is a stronger, structurally-guaranteed version of "no long trails" than tuning a
-low decay value would give: there is no numeric value of `decay` that could reintroduce a trail
-under this fragment, short of also making the fragment's alpha non-opaque somewhere.
-
-### 6.3 Wing arcs + ellipses (F4, D-217: full cartouche)
-
-Two mirrored instances' worth of geometry computed in the same fragment: a shallow bowed arc near
-each frame edge plus a small ellipse near its lower end, in a slowly hue-drifting colour
-independent of the main figure. **D-217 (Matt, 2026-08-25): these ship as part of the base preset,
-not an optional extra** — the with/without comparison in WHIT.0's closeout was decisive (without
-them the figure reads as a floating diagram; with them it reads as a composed picture).
-
-The wing arc's distance field must use **point-to-segment** distance, not nearest-of-discrete-
-samples — see §6.4, bug 3.
-
-**BUG-103 (found live at WHIT.1d-3, 2026-08-26): wing x-placement must scale with aspect, not be
-a hardcoded absolute.** The wings were tuned only against 16:9-family renders; at Matt's actual
-window (1080×1018, aspect 1.061 — nearly square) they rendered entirely off-screen, since visible
-`q.x` shrinks to `±0.53` at that aspect while the wings sat at a fixed `x≈0.62–0.67`. Fixed by
-scaling x-placement proportionally to the frame's visible half-width relative to the 16:9 aspect
-the look was approved at (`kRosetteReferenceAspect`). Vertical placement was never affected — the
-visible `q.y` range is always `±0.5` regardless of aspect.
-
-### 6.4 Three bugs found live, and why WHIT.1c should read this before re-deriving them
-
-All three were in the WHIT.0 test harness or the shader, never in engine source
-(`PhospheneEngine/Sources/Renderer`, `PhospheneEngine/Sources/Presets/PresetLoader*.swift`):
-
-1. **Unbound `chromaticMix`.** `mvWarp_fragment`'s fragment `buffer(0)`
-   (`PresetLoader+WarpPreamble.swift:155`) is `chromaticMix`, a value distinct from the
-   vertex-table `FeatureVector` at the same buffer index. Left unbound, it reads undefined GPU
-   memory and drives a runaway hue-zoom resample feedback loop — rendered as a concentric-ring
-   kaleidoscope swamping the entire frame. Any harness or dispatch code driving the warp pass by
-   hand must bind it explicitly (`0.0` = identity, matching `marks.chromatic` in the sidecar).
-2. **`FeatureVector` is not readable in the geometry fragment via a re-declared parameter.**
-   `drawSceneGeometryOverlay` (`RenderPipeline+SceneGeometry.swift`) binds `FeatureVector`/
-   `StemFeatures` at the **vertex** argument table only for the marks pass. A fragment that needs
-   per-frame scalars (the clock, eventually audio) must receive them via the interpolated
-   vertex→fragment struct (what §6.1 does for `time`/`aspect`) or a dedicated per-preset buffer at
-   slot 6 (Skein's `SkeinUniforms` convention) — never by declaring `constant FeatureVector& f
-   [[buffer(0)]]` as a fragment parameter and expecting it to inherit the vertex binding. Getting
-   this wrong reads as "the clock isn't working" (every frame renders the same fixed mid-morph
-   shape), which looks like a math bug and is actually a binding bug.
+1. **Unbound `chromaticMix`.** `mvWarp_fragment`'s fragment `buffer(0)` is `chromaticMix`, distinct
+   from the vertex-table `FeatureVector` at the same index. Left unbound, it read undefined GPU
+   memory and drove a runaway hue-zoom feedback loop. Any harness driving the warp pass by hand
+   must bind it explicitly (`0.0` = identity).
+2. **`FeatureVector` is not readable in a geometry fragment via a re-declared parameter.**
+   `drawSceneGeometryOverlay` binds `FeatureVector`/`StemFeatures` at the vertex argument table
+   only. A fragment needing per-frame scalars must receive them via the interpolated
+   vertex→fragment struct or a dedicated per-preset buffer — never by re-declaring `constant
+   FeatureVector& f [[buffer(0)]]` as a fragment parameter and expecting it to inherit the vertex
+   binding. Getting this wrong reads as "the clock isn't working," which looks like a math bug and
+   is actually a binding bug.
 3. **Wing-arc beading.** A distance-to-nearest-of-N-discrete-sample-points computation (rather than
-   nearest-point-on-segment) leaves gaps at the midpoint between samples, rendering as a dashed/
-   beaded line instead of a continuous stroke. Fixed with a standard point-to-segment (capsule)
-   SDF. The main figure's distance field never had this defect — its bisection refinement evaluates
-   the continuous curve function directly, not a fixed sample array — so this is specific to any
-   future geometry (like the wings) that samples a curve at discrete points without refinement.
+   nearest-point-on-segment) left gaps at the midpoint between samples, rendering as a dashed/
+   beaded line. Fixed with a standard point-to-segment (capsule) SDF — the SAME technique
+   `rosetteDist` itself was rewritten to at WHIT.2b (§6.7) once the coarse+bisect search proved
+   insufficiently smooth for ray-march normals.
 
-### 6.5 Stroke quality — numbers to tune against, corrected twice
+**Stroke quality tuning (2D-specific, superseded by real PBR lighting at WHIT.2b):** near-black
+ground tuned by eye against the sRGB-encoded output (0.006 linear, not the naive 0.035); halation
+width retuned from an over-generous 3-5x core-width estimate down to 1.5-2x against
+`docs/VISUAL_REFERENCES/rosette/06_specular_stroke_core_halo.jpg` at a proper crop scale. Neither
+constant carries into the 3D version — WHIT.2b uses real Cook-Torrance lighting, not a hand-tuned
+Gaussian glow.
 
-- **Near-black ground.** The render target is `bgra8Unorm_srgb` — the real drawable format
-  (`MetalContext.swift:55`). A naive "near-black" linear value (WHIT.0's first attempt, 0.035)
-  displays as ~20% grey after the sRGB encode. Current value (0.006) was tuned by eye against the
-  encoded output, not against the raw number — any future retune must view the actual rendered
-  frame, not reason from the linear constant.
-- **Halation width.** WHIT.0 task 1's own estimate from the small evidence-sheet thumbnails
-  (halo ≈ 3–5× core width) was too generous. `docs/VISUAL_REFERENCES/rosette/
-  06_specular_stroke_core_halo.jpg`, viewed at a proper crop scale, reads closer to **1.5–2×**.
-  WHIT.0's shipped render used the thumbnail-derived (too wide) ratio — **WHIT.1c's first tuning
-  pass should retune against `06`, not against WHIT.0's numbers.**
-
-### 6.6 Known open engineering risk: the numerical search was never profiled
-
-The coarse-40 + bisect-7 nearest-point search runs per pixel, per frame, for the main figure (plus
-a similar per-pixel search for each wing arc). This is not a pattern used anywhere else in this
-codebase for a shipped-perf preset, and WHIT.0 never measured it against the 60fps @ 1080p target
-(CLAUDE.md's stated performance target). **This is WHIT.1c's first checkpoint, before any other
-tuning**: profile it live; if it doesn't clear budget, the fallback options named in WHIT.0's own
-task 4 are an SDF-swept triangle-strip ribbon (vertex-stage geometry, no per-pixel search) or a
-reduced coarse-sample count with a correspondingly coarser bisection tolerance.
-
-**BUG-104 (found live at WHIT.1d-4, 2026-08-26): the same search also had a CORRECTNESS defect,
-not just an unmeasured performance one.** Refining from only the single globally-closest coarse
-sample locks the search onto whichever curve branch owned that sample and never considers a
-different, ultimately-closer branch — once the epicycle self-intersects (any `a` past the loosest
-states), several branches can pass near the same query point. Visible live as literal gaps in the
-stroke at the tangle state (a=1.80) and small disconnected dots at cusps (a=0.30). Matt: *"Lines
-do not connect. The motion is all wrong."* Fixed by finding ALL local minima among the coarse
-samples (a small top-3 candidate list) and bisect-refining each branch separately — see
-`Rosette.metal`'s `rosetteDist` for the implementation and its BUG-104 comment. The remaining
-small loops at a=0.30's cusps are real curve geometry (the second term's amplitude exceeds the
-exact-cusp threshold past `a=0.25`), not a residual defect.
+**BUG-104 (found live at WHIT.1d-4, 2026-08-26): the coarse+bisect search had a CORRECTNESS
+defect, not just an unmeasured performance one.** Refining from only the single globally-closest
+coarse sample locked the search onto whichever curve branch owned that sample and never considered
+a different, ultimately-closer branch — once the epicycle self-intersects, several branches can
+pass near the same query point. Visible live as literal gaps in the stroke at the tangle state and
+small disconnected dots at cusps. Matt: *"Lines do not connect. The motion is all wrong."* Fixed by
+finding ALL local minima among the coarse samples and bisect-refining each branch separately. This
+fix's CONTINUITY property (no gaps at self-crossings) carried cleanly into the WHIT.2b 3D
+conversion and is re-verified there by `test_rosette_curveIsContinuousAtHighA` — but the search
+TECHNIQUE itself was later replaced entirely (§6.7) once ray-march normals exposed a smoothness
+defect the flat 2D fragment never could.
 
 ## 7. Audio-routing table — all 5 declared (WHIT.1d / WHIT.1d-2)
 
