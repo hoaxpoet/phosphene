@@ -46,8 +46,9 @@ reads" are not reads — see the entry.)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-105 | P2 · root-caused statically 2026-08-26 (BUG100.1); **fix is a product decision** | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
-| BUG-100 | P2 · evidence-only, filed 2026-08-19 from an M7 session; **not a preset defect** | app.performance / sustained-load | **The app degrades under sustained 4K rendering, and it is the machine or the frame loop, not the preset that happens to be on screen.** Matt's Stave M7 (`2026-08-19T17-01-15Z`) reported *"performance slowed over time, which led to some choppiness"*. Measured over a contiguous 70 s at 3840×2160: `frame_cpu_ms` **17.4 → 43.6** and `frame_gpu_ms` **2.9 → 11.7**, while the app's OWN CPU work stayed flat — `encode_cpu_ms` 12.9 → 15.2, `renderframe_cpu_ms` 9.8 → 11.0. Same work, less delivered. **Three hypotheses were falsified before filing:** (a) Stave accumulating — an offline soak of 1920 frames at 4K is flat at 22.3 ms with no drift; (b) the dispersion fan opening over the track — `waveformOccupancy` is flat at 0.081–0.095 across the whole segment, r(GPU, occupancy) = **−0.11**; (c) preset-specific — the degradation **persists into the next preset** (Witchlight `frame_cpu` 24.4 at 4K, against Stave's own 17.4 early) and partially recovers after a 2.16 MP interlude. ⚠ **A second finding sits inside this one:** `encode_cpu_ms` is **15–16 ms at 4K** — essentially the entire 60 fps budget spent on CPU encode before any GPU work — and it scales with resolution (9.1 ms at 2.07 MP). CPU encode should not scale with pixel count; that is worth its own look and is probably the more tractable half. Thermal throttling of the Mac mini under sustained 4K is the leading remaining explanation for the rest, and cannot be confirmed from the recordings — it needs `powermetrics` or equivalent alongside a session |
+| BUG-100 | P2 · evidence-only + **instrumented 2026-08-26 (BUG100.1)**; needs one reproduction on the new build; **not a preset defect** | app.performance / sustained-load | **The app degrades under sustained 4K rendering, and it is the machine or the frame loop, not the preset that happens to be on screen.** Matt's Stave M7 (`2026-08-19T17-01-15Z`) reported *"performance slowed over time, which led to some choppiness"*. Measured over a contiguous 70 s at 3840×2160: `frame_cpu_ms` **17.4 → 43.6** and `frame_gpu_ms` **2.9 → 11.7**, while the app's OWN CPU work stayed flat — `encode_cpu_ms` 12.9 → 15.2, `renderframe_cpu_ms` 9.8 → 11.0. Same work, less delivered. **Three hypotheses were falsified before filing:** (a) Stave accumulating — an offline soak of 1920 frames at 4K is flat at 22.3 ms with no drift; (b) the dispersion fan opening over the track — `waveformOccupancy` is flat at 0.081–0.095 across the whole segment, r(GPU, occupancy) = **−0.11**; (c) preset-specific — the degradation **persists into the next preset** (Witchlight `frame_cpu` 24.4 at 4K, against Stave's own 17.4 early) and partially recovers after a 2.16 MP interlude. ⚠ **A second finding sits inside this one:** `encode_cpu_ms` is **15–16 ms at 4K** — essentially the entire 60 fps budget spent on CPU encode before any GPU work — and it scales with resolution (9.1 ms at 2.07 MP). CPU encode should not scale with pixel count; that is worth its own look and is probably the more tractable half. Thermal throttling of the Mac mini under sustained 4K is the leading remaining explanation for the rest, and cannot be confirmed from the recordings — it needs `powermetrics` or equivalent alongside a session |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
@@ -72,6 +73,69 @@ reads" are not reads — see the entry.)*
 ---
 
 ## Open
+
+---
+
+### BUG-105 — The ML dispatch gate compares against a hardcoded 14/16 ms, so at 4K it can never open (2026-08-26)
+
+**Status: root-caused statically, not yet fixed — the fix is a product decision (see below).**
+Found while working BUG-100; filed separately because it is a defect on its own terms whether or
+not it turns out to be part of that entry's degradation.
+
+**Expected.** `MLDispatchScheduler` (D-059) holds the ~142 ms MPSGraph stem separation until
+recent frames are inside the render budget, so ML inference does not land on a frame that is
+already struggling. Deferral is the exception; a clean window is the norm.
+
+**Actual, at any 4K render target.** The gate is inoperative — it can only ever defer, then
+force-dispatch. The chain is static and each link is in the tree today:
+
+1. `VisualizerEngine+Stems.swift:192` — `let budgetMs: Float = self.deviceTier == .tier1 ? 14.0 : 16.0`. **A constant. No resolution term.**
+2. `MLDispatchScheduler.decide` requires **every** frame in a 20–30 frame window to be ≤ that budget.
+3. The number it compares is `FrameBudgetManager.recentMaxFrameMs` — the **worst** frame in the window, itself `max(cpuFrameMs, gpuFrameMs)` (`FrameBudgetManager.swift:207`).
+4. At 3840×2160 the *median* frame in BUG-100's own session was **17.6 ms rising to 44.9 ms** — so the worst frame in any window is never ≤ 16 ms.
+
+⇒ every dispatch defers in 100 ms steps until `pendingForMs` crosses the ceiling
+(2000 ms tier 1 / 1500 ms tier 2), then force-fires anyway. **Against a 2.0 s stem period**
+(`stemSeparationPeriodSeconds`), so deferral consumes 75–100 % of the period: the next dispatch
+is requested at about the moment the previous one is forced. The jank avoidance never happens,
+and every stem update at 4K is roughly one whole period later than designed — which compounds
+with **BUG-086**'s structural stem latency rather than replacing it.
+
+**Reproduction.** Static; no session needed. Any 4K fullscreen session is the live form — with
+the BUG100.1 instrument in, `GPU_PRESSURE … ml_forced=N` climbing by ~one per 2 s is this defect
+running.
+
+**Suspected failure class:** `calibration` — a threshold that was correct for the only resolution
+the app had when it was written, and was never made a function of the target it describes.
+
+**⚠ What this does NOT explain, stated up front.** It is tempting to hand this to BUG-100 as the
+mechanism. **One recorded session refutes that on its own:** the PERF.15 Volumetric Lithograph
+run held **flat across 172 s at 4K with p50 ≈ 31 ms** — permanently over the same 16 ms budget,
+so forced dispatch was happening there too, and nothing degraded. Forced ML dispatch is therefore
+**not sufficient** to produce BUG-100's ramp. Treat the two as separate until a session with
+`ml_forced` recorded says otherwise. (This is the BUG-090 failure shape: a mechanism that
+predicts the direction of an effect is not an explanation of its magnitude.)
+
+**The fix is a product decision, not an engineering one.** At 4K the app cannot have both:
+
+- **(a) Stems on time** — scale the budget to the real frame target (the vsync interval, or the measured median), so the gate opens normally at 4K. Stem-driven visuals stay current; the 142 ms inference lands on frames that are already over budget, so 4K may show occasional stutter.
+- **(b) Jank-free** — keep the fixed budget. 4K stays smoother, and every stem-driven behaviour stays a beat behind — which is what happens today, undocumented.
+- **(c) Resolution-aware policy** — (a) below some pixel count, (b) above it.
+
+Recommendation: **(a)**, with the budget derived from the display's actual refresh interval
+rather than a constant. The stem routes are load-bearing in several certified presets and a
+whole-period lag is a visible cost, where the jank it buys back is one frame in ~60. But this is
+Matt's call, and it needs a live A/B at 4K to confirm the stutter is as small as predicted.
+
+**Verification criteria (written before any fix).**
+- [ ] A live 4K session logs `ml_forced` **flat** (normal dispatch) after the fix, where today it climbs ~one per 2 s.
+- [ ] A 1080p session is unchanged — same `ml_forced` behaviour before and after, since the gate already opens there.
+- [ ] Unit: `MLDispatchScheduler` gets a budget derived from the frame target, with a test that a 4K-shaped frame history (worst 20 ms, target 33 ms) returns `.dispatchNow` and a genuinely janky history (worst 60 ms) still defers.
+- [ ] Manual (musical feel): stem-driven presets at 4K read *with* the music rather than behind it, and Matt's eye on whether any new stutter is acceptable.
+
+**Related:** BUG-100 (found during it, NOT established as its cause — see above), BUG-086 (stem
+latency, compounds), D-059 (the scheduler's rationale), BUG-090 (the reasoning trap this entry
+declines).
 
 ---
 
@@ -205,6 +269,33 @@ at 4K make the general "sustained 4K decays" form less likely.
 within-session degradation. **That is also the session whose 175 ms baseline PERF.15 disputes by
 5.6×**, so its trend should be re-derived once that conflict is settled; a ramp measured on a
 baseline that may be misattributed is not yet evidence for this entry.
+
+**Instrumented 2026-08-26 (BUG100.1) — the two dimensions nothing was recording.** Thermal came
+back `nominal` on both non-reproducing sessions, which rules that out for *those* and leaves the
+degrading one unexplained. Sessions now also log, on the same low-rate heartbeat bucket as
+`DRAWABLE_LIFECYCLE`:
+
+```
+GPU_PRESSURE alloc_mb=… budget_mb=… used_pct=… ml_forced=… ml_last=…
+```
+
+- **`alloc_mb` / `budget_mb`** — this process's Metal allocation against
+  `recommendedMaxWorkingSetSize`. At 4K every render target is 4× its 1080p size; if the working
+  set approaches the budget the driver evicts, which is slow **globally**, survives a preset
+  switch (the targets stay big) and recovers when a smaller target frees memory. That is
+  precisely this entry's signature — whole-app, cross-preset, partial recovery after the 2.16 MP
+  interlude — and it has never been measured. A ratio climbing through a degrading session
+  confirms it; a flat ratio rules it out.
+- **`ml_forced`** — `MLDispatchScheduler.forceDispatchCount`. Filed separately as **BUG-105**:
+  the gate's budget is a hardcoded 14/16 ms, so at 4K it can only defer-then-force. ⚠ **This is
+  not offered as this entry's mechanism** — the PERF.15 VL session was flat across 172 s at 4K
+  while permanently over that same budget, so forced dispatch is not sufficient to degrade. The
+  counter is here so the next degrading session can implicate or clear it with one grep instead
+  of an argument.
+
+**What is needed now is one reproduction on the instrumented build:** a fullscreen 4K session of
+about two minutes on a preset mix that has degraded before (Stave → Witchlight was the original).
+Both candidate mechanisms are then decided by three lines of log.
 
 **Instrumented 2026-08-19 (PERF.9).** Sessions now log
 `THERMAL_STATE state=… low_power=… active_cpus=…` whenever it changes, plus once at the start so
