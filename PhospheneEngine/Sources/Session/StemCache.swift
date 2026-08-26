@@ -53,6 +53,16 @@ public struct CachedTrackData: Sendable {
     /// its family series; empty on non-orchestral tracks (the no-activity fallback).
     public let instrumentFamilySeries: [InstrumentFamilyActivity]
 
+    /// LFSTEM.1 — per-stem features for the WHOLE track on a uniform ~23 ms grid, in playback
+    /// order, so playback can read the stems for the second it is on instead of separating
+    /// audio that has already gone past.
+    ///
+    /// `.empty` for streaming, which cannot have one: a system-audio tap only ever carries
+    /// audio that has already played. Same local-only asymmetry as `loudnessProfile` above.
+    /// An empty series is the signal to fall back to live separation, so a cache entry written
+    /// before this existed degrades to the old behaviour rather than failing.
+    public let stemFeatureSeries: StemFeatureSeries
+
     /// DYN.1c — the track's own quiet-to-loud range, measured over the FULLY DECODED file
     /// during local-file preparation. Installed at track-ready via
     /// `MIRPipeline.setLoudnessProfile` and consumed as the `spectral_surge` band.
@@ -72,7 +82,8 @@ public struct CachedTrackData: Sendable {
         drumsBeatGrid: BeatGrid = .empty,
         gridOnsetOffsetMs: Double = 0,
         instrumentFamilySeries: [InstrumentFamilyActivity] = [],
-        loudnessProfile: LoudnessProfile? = nil
+        loudnessProfile: LoudnessProfile? = nil,
+        stemFeatureSeries: StemFeatureSeries = .empty
     ) {
         self.stemWaveforms = stemWaveforms
         self.stemFeatures = stemFeatures
@@ -82,6 +93,7 @@ public struct CachedTrackData: Sendable {
         self.gridOnsetOffsetMs = gridOnsetOffsetMs
         self.instrumentFamilySeries = instrumentFamilySeries
         self.loudnessProfile = loudnessProfile
+        self.stemFeatureSeries = stemFeatureSeries
     }
 
     /// DYN.1c — copy carrying a loudness profile. The profile is measured at the local-file
@@ -96,7 +108,25 @@ public struct CachedTrackData: Sendable {
             drumsBeatGrid: drumsBeatGrid,
             gridOnsetOffsetMs: gridOnsetOffsetMs,
             instrumentFamilySeries: instrumentFamilySeries,
-            loudnessProfile: loudnessProfile
+            loudnessProfile: loudnessProfile,
+            stemFeatureSeries: stemFeatureSeries
+        )
+    }
+
+    /// LFSTEM.1 — copy carrying a full-file stem series. Same shape and same reason as
+    /// `with(loudnessProfile:)`: only the local-file call site knows the decode covered the
+    /// whole track, and `analyzePreview` is shared with streaming.
+    public func with(stemFeatureSeries: StemFeatureSeries) -> CachedTrackData {
+        CachedTrackData(
+            stemWaveforms: stemWaveforms,
+            stemFeatures: stemFeatures,
+            trackProfile: trackProfile,
+            beatGrid: beatGrid,
+            drumsBeatGrid: drumsBeatGrid,
+            gridOnsetOffsetMs: gridOnsetOffsetMs,
+            instrumentFamilySeries: instrumentFamilySeries,
+            loudnessProfile: loudnessProfile,
+            stemFeatureSeries: stemFeatureSeries
         )
     }
 }

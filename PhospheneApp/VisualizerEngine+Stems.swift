@@ -598,6 +598,11 @@ extension VisualizerEngine {
         currentFamilySeries = []
         pipeline.setInstrumentFamilyActivity(smoothed: .zero, dev: .zero)
 
+        // LFSTEM.1 — clear unconditionally here, install on the cache-hit branch below. Same
+        // shape as the family series above and for the same reason: a track-scoped surface that
+        // only one path clears leaks the previous track's data into every path that does not.
+        currentStemSeries = .empty
+
         // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).
         if let identity { logWiringStemCacheLookup(identity: identity) }
 
@@ -631,6 +636,17 @@ extension VisualizerEngine {
             // activity series (Layer 5a). Sampled by playback position each
             // analysis frame (see processAnalysisFrame).
             currentFamilySeries = cached.instrumentFamilySeries
+            // LFSTEM.1 — a pre-analysed local file: stems now come from the series at the
+            // playback second, not from live separation ~2.5 s behind it. `.empty` for
+            // streaming and for entries written before schema v10, which keeps the live path.
+            currentStemSeries = cached.stemFeatureSeries
+            if !cached.stemFeatureSeries.isEmpty {
+                let frames = cached.stemFeatureSeries.frames.count
+                let covers = String(format: "%.1f", cached.stemFeatureSeries.durationSeconds)
+                let detail = "\(frames) frames covering \(covers) s; live separation no "
+                    + "longer drives StemFeatures for this track"
+                logger.info("LFSTEM: series installed — \(detail, privacy: .public)")
+            }
             // DYN.1c: this track's own loudness distribution as the surge source. Non-nil
             // only for a local file (the only path that decodes the whole thing); nil
             // everywhere else keeps the fixed band. Deliberately survives the

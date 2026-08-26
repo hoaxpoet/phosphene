@@ -133,6 +133,18 @@ private struct PersistentStemCacheEntryMetadata: Codable {
     /// The track's own quiet-to-loud range (DYN.1c). Added in schema v7. Optional so a
     /// decode never fails on it; nil means the surge falls back to the fixed band.
     let loudnessProfile: LoudnessProfile?
+    /// LFSTEM.1 stem-series descriptor (schema v10). The frames themselves live in the
+    /// `stem_series.bin` sibling for the same reason the waveforms do — ~10,000 frames of
+    /// 55 floats through JSON would dominate both the byte count and the parse cost.
+    ///
+    /// `stemSeriesFeatureStride` is the layout guard, and it is the reason this can be a raw
+    /// memory dump at all: every stored property of `StemFeatures` is a `Float`, so the struct
+    /// is trivially copyable, and `MemoryLayout<StemFeatures>.stride` changes the moment a
+    /// field is added or reordered. A stride mismatch is a schema mismatch — the entry is
+    /// rejected and re-analysed rather than read as garbage.
+    let stemSeriesFrameCount: Int?
+    let stemSeriesHopSeconds: Double?
+    let stemSeriesFeatureStride: Int?
 }
 
 // MARK: - PersistentStemCache
@@ -189,7 +201,7 @@ public final class PersistentStemCache: @unchecked Sendable {
     ///                       measured over the full decode. v8 entries decode with it at 0,
     ///                       which silently falls back to the live τ45 s EMA — the DYN.2b
     ///                       defect. Re-analyse rather than replay them.
-    public static let currentSchemaVersion: Int = 9
+    public static let currentSchemaVersion: Int = 10
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).
@@ -199,6 +211,10 @@ public final class PersistentStemCache: @unchecked Sendable {
     /// data (PNG / JPEG depending on container). Absence is non-fatal; the
     /// entry remains valid as long as the metadata.json + four stems exist.
     public static let artworkFilename: String = "artwork.bin"
+
+    /// LFSTEM.1 — raw `[StemFeatures]` dump for the full-file series. Sibling file rather than
+    /// JSON, matching the stem waveforms and for the same reason.
+    public static let stemSeriesFilename: String = "stem_series.bin"
 
     /// Default sub-path under `~/Library/Application Support` where the
     /// cache lives in production.
@@ -318,6 +334,12 @@ public final class PersistentStemCache: @unchecked Sendable {
                 let samples = try readFloats(from: path, label: label, expectedCount: expectedCount)
                 stemWaveforms.append(samples)
             }
+            let stemSeries = readStemSeries(
+                in: dir,
+                frameCount: metadata.stemSeriesFrameCount,
+                hopSeconds: metadata.stemSeriesHopSeconds,
+                featureStride: metadata.stemSeriesFeatureStride
+            )
             let cached = CachedTrackData(
                 stemWaveforms: stemWaveforms,
                 stemFeatures: metadata.stemFeatures,
@@ -326,7 +348,8 @@ public final class PersistentStemCache: @unchecked Sendable {
                 drumsBeatGrid: metadata.drumsBeatGrid,
                 gridOnsetOffsetMs: metadata.gridOnsetOffsetMs,
                 instrumentFamilySeries: metadata.instrumentFamilySeries ?? [],
-                loudnessProfile: metadata.loudnessProfile
+                loudnessProfile: metadata.loudnessProfile,
+                stemFeatureSeries: stemSeries
             )
 
             // Artwork is optional — missing file or empty bytes is fine.
@@ -377,7 +400,13 @@ public final class PersistentStemCache: @unchecked Sendable {
                 decodedDuration: decodedDuration,
                 metadata: metadata.isEmpty ? nil : metadata,
                 instrumentFamilySeries: data.instrumentFamilySeries.isEmpty ? nil : data.instrumentFamilySeries,
-                loudnessProfile: data.loudnessProfile
+                loudnessProfile: data.loudnessProfile,
+                stemSeriesFrameCount: data.stemFeatureSeries.isEmpty
+                    ? nil : data.stemFeatureSeries.frames.count,
+                stemSeriesHopSeconds: data.stemFeatureSeries.isEmpty
+                    ? nil : data.stemFeatureSeries.hopSeconds,
+                stemSeriesFeatureStride: data.stemFeatureSeries.isEmpty
+                    ? nil : MemoryLayout<StemFeatures>.stride
             )
 
             // Write stems first so a partial-store leaves metadata
@@ -386,6 +415,18 @@ public final class PersistentStemCache: @unchecked Sendable {
                 let path = dir.appendingPathComponent("\(label).f32")
                 let samples = index < waveforms.count ? waveforms[index] : []
                 try writeFloats(samples, to: path)
+            }
+
+            // LFSTEM.1 — write the stem series before metadata.json, same ordering rule as the
+            // waveforms: a partial store leaves metadata absent (a miss) rather than metadata
+            // pointing at a file that is not there.
+            let seriesPath = dir.appendingPathComponent(Self.stemSeriesFilename)
+            if !data.stemFeatureSeries.isEmpty {
+                try writeStemSeries(data.stemFeatureSeries.frames, to: seriesPath)
+            } else if fileManager.fileExists(atPath: seriesPath.path) {
+                // Overwrite-without-series: drop the stale sibling so a later load cannot pair
+                // new metadata with an old track's frames.
+                try? fileManager.removeItem(at: seriesPath)
             }
 
             // Write optional artwork.bin before metadata.json so a partial-store
@@ -635,6 +676,49 @@ public final class PersistentStemCache: @unchecked Sendable {
     }
 
     // MARK: - Raw Float32 I/O
+
+    // MARK: - Stem series (LFSTEM.1)
+
+    /// Write the series as a raw dump of `[StemFeatures]`.
+    ///
+    /// Safe because every stored property of `StemFeatures` is a `Float` — the struct is
+    /// trivially copyable, with no references to chase. The read side validates
+    /// `MemoryLayout<StemFeatures>.stride` against what was written, so a field added later
+    /// invalidates old entries instead of misreading them.
+    private func writeStemSeries(_ frames: [StemFeatures], to url: URL) throws {
+        let data = frames.withUnsafeBufferPointer { Data(buffer: $0) }
+        try data.write(to: url, options: .atomic)
+    }
+
+    /// Read the series back, or return `.empty` when the entry predates it or cannot be trusted.
+    ///
+    /// Every failure returns `.empty` rather than throwing: an unreadable series means playback
+    /// falls back to live separation — the behaviour before LFSTEM.1 — where throwing would
+    /// discard an otherwise-good entry (waveforms, beat grid, mood) over an optional accelerator.
+    private func readStemSeries(
+        in directory: URL,
+        frameCount: Int?,
+        hopSeconds: Double?,
+        featureStride: Int?
+    ) -> StemFeatureSeries {
+        guard let frameCount, let hopSeconds, let featureStride,
+              frameCount > 0, hopSeconds > 0 else { return .empty }
+        let expectedStride = MemoryLayout<StemFeatures>.stride
+        guard featureStride == expectedStride else {
+            let detail = "stride \(featureStride) != \(expectedStride) — StemFeatures changed "
+                + "shape since this entry was written; ignoring the series"
+            Logging.session.info("PersistentStemCache: stem series \(detail, privacy: .public)")
+            return .empty
+        }
+        let path = directory.appendingPathComponent(Self.stemSeriesFilename)
+        guard fileManager.fileExists(atPath: path.path),
+              let data = try? Data(contentsOf: path),
+              data.count == frameCount * featureStride else { return .empty }
+
+        var frames = [StemFeatures](repeating: .zero, count: frameCount)
+        _ = frames.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        return StemFeatureSeries(frames: frames, hopSeconds: hopSeconds)
+    }
 
     private func writeFloats(_ floats: [Float], to url: URL) throws {
         let data = floats.withUnsafeBufferPointer { buffer in
