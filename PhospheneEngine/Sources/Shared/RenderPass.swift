@@ -55,16 +55,6 @@ public enum RenderPass: String, Codable, Sendable, CaseIterable {
     /// Optionally paired with `postProcess` for bloom.
     case rayMarch = "ray_march"
 
-    /// GPU-driven indirect command buffer: compute-populated draw commands.
-    /// Requires `IndirectCommandBufferState` to be attached.
-    case icb
-
-    /// Screen-space global illumination pass (Increment 3.17).
-    /// Approximates short-range diffuse indirect light bounces using the G-buffer.
-    /// Must appear alongside `rayMarch` — inserts between the lighting pass and the
-    /// composite pass in `RayMarchPipeline.render(...)`.
-    case ssgi
-
     /// Milkdrop-style per-vertex feedback warp pass (MV-2, D-027).
     /// A 32×24 vertex grid warps the previous frame's composite output per-vertex via
     /// preset-authored `mvWarpPerFrame()` and `mvWarpPerVertex()` Metal functions.

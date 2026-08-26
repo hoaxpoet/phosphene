@@ -293,9 +293,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public var usePostProcess: Bool { passes.contains(.postProcess) }
     /// Whether this preset uses the deferred ray march pipeline.
     public var useRayMarch: Bool { passes.contains(.rayMarch) }
-    /// Whether this preset uses the SSGI indirect illumination pass (Increment 3.17).
-    /// Only meaningful when `useRayMarch` is also true.
-    public var useSSGI: Bool { passes.contains(.ssgi) }
 
     // MARK: - Mesh Shader Configuration
 
@@ -319,64 +316,24 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// fill/accent); a 5th+ is ignored. Empty uses `SceneUniforms` defaults.
     public let sceneLights: [SceneLight]
 
-    /// Ray-march IBL environment the surfaces reflect + take ambient from (RMENV.2).
-    /// `nil`/absent or "default" = the low-contrast interior (`ibl_proc_env`);
-    /// "gallery" = the high-contrast gallery interior (`ibl_gallery_env`) that makes
-    /// polished metals read as metal rather than flat putty. Opt-in — a preset that
-    /// omits this renders byte-identically to pre-RMENV.
-    public let environment: String?
-
-    /// The bake `envType` for `environment` (see `ibl_env`): 0 default, 1 gallery.
-    public var environmentType: Int { environment == "gallery" ? 1 : 0 }
-
-    /// What miss/sky rays render as (FLY.1). `nil`/"environment" = the RMENV.3
-    /// default (the IBL environment, so a reflective surface sits IN the world it
-    /// mirrors). `"dark"` = a near-black enclosed void: for an INTERIOR preset the
-    /// gaps should read as deeper darkness receding, never as an exit to a sky.
-    /// Decoupled from `environment` on purpose — a preset can take bright ambient
-    /// from the gallery env while still being visually enclosed.
-    public let sceneBackdrop: String?
-
-    /// Backdrop mode passed to the shader: 0 = environment/sky, 1 = dark void.
-    public var backdropMode: Int { sceneBackdrop == "dark" ? 1 : 0 }
-
-    /// Temporal upscaler/anti-aliaser for the ray-march path (MFX.1).
-    /// `nil`/absent = none (byte-identical to pre-MFX). `"metalfx_temporal"` =
-    /// MetalFX Temporal, wired at 1:1 as anti-aliasing. A preset that opts in
-    /// MUST define `scenePrevPosition` in its `.metal` (see
-    /// `PresetLoader.rayMarchMotionPreamble`) or it will fail to link.
-    public let upscale: String?
-
-    /// True when this preset asks for MetalFX Temporal.
-    public var usesMetalFXTemporal: Bool { upscale == "metalfx_temporal" }
-
-    /// Fraction of display resolution the ray-march chain renders at when an
-    /// upscaler is active (MFX.1). Ignored without `upscale`. Clamped to [0.4, 1].
-    /// The march is the expensive part and scales with area, so 0.65 ≈ 42 % of the
-    /// DE cost — that saving is what pays for the scaler.
+    /// Fraction of display resolution the ray-march chain renders at (`render_scale`).
+    /// Consumed via `rayMarchRenderScale` below. Clamped to [0.4, 1].
     public let renderScale: Float?
 
-    /// Effective render scale: 1.0 unless an upscaler is active.
-    public var effectiveRenderScale: Float {
-        guard usesMetalFXTemporal, let scale = renderScale else { return 1.0 }
-        return min(max(scale, 0.4), 1.0)
-    }
-
-    /// Ray-march render scale, applied WITHOUT requiring MetalFX (BUG-101).
+    /// Ray-march render scale (BUG-101 / PERF.11).
     ///
-    /// `effectiveRenderScale` above is gated on `usesMetalFXTemporal`, because MFX.1 built the
-    /// two together. They are separable, and the cheap half is worth having on its own: render
-    /// the G-buffer and lighting at `scale × drawable` and let the composite pass upscale it
-    /// with its existing linear sampler. No motion vectors, so no `scenePrevPosition` and no
-    /// ghosting — the failure mode is softness, which is legible and bounded.
+    /// Renders the G-buffer and lighting at `scale × drawable` and lets the composite pass
+    /// upscale with its existing linear sampler. No motion vectors and no ghosting — the
+    /// failure mode is softness, which is legible and bounded. (The MetalFX Temporal
+    /// variant of this lever was deleted at D-213/RECON.14.)
     ///
     /// Volumetric Lithograph needs this: measured live at **32.56 ms/megapixel**, it costs
     /// ~67 ms at 1080p (15 fps) against a 16.7 ms budget, and no shader change spans a 4× gap —
     /// ~69 % of its frame is Perlin noise that has already been optimised twice (BUG-101).
     /// Pixels are the only lever with the right magnitude.
     ///
-    /// Clamped to the same [0.4, 1.0] floor as the MetalFX path: below 0.4 the upscale stops
-    /// being softness and starts being a different image.
+    /// Clamped to [0.4, 1.0]: below 0.4 the upscale stops being softness and starts
+    /// being a different image.
     public var rayMarchRenderScale: Float {
         guard let scale = renderScale else { return 1.0 }
         return min(max(scale, 0.4), 1.0)
@@ -693,10 +650,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case meshAdditiveBlend = "additive_blend"
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
-        case environment
-        case upscale
         case renderScale = "render_scale"
-        case sceneBackdrop = "scene_backdrop"
         case ferrofluid
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
@@ -758,10 +712,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         meshAdditiveBlend = try container.decodeIfPresent(Bool.self, forKey: .meshAdditiveBlend) ?? false
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
-        environment      = try container.decodeIfPresent(String.self, forKey: .environment)
-        upscale          = try container.decodeIfPresent(String.self, forKey: .upscale)
         renderScale      = try container.decodeIfPresent(Float.self, forKey: .renderScale)
-        sceneBackdrop    = try container.decodeIfPresent(String.self, forKey: .sceneBackdrop)
         ferrofluid       = try container.decodeIfPresent(FerrofluidParams.self, forKey: .ferrofluid)
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0

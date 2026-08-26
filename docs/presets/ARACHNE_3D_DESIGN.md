@@ -95,7 +95,7 @@ Each decision below has my recommendation, but **Matt picks**. Decisions are ind
 
 **Option C.1 — Screen-space refraction.** Drops compute their normal in 3D, refract the view ray, then sample the lit-scene texture (or WORLD texture) at an offset UV. Cheap (one texture sample per drop pixel). Loses detail at drop edges where the refracted ray would exit the screen.
 
-**Option C.2 — BVH ray tracing.** Drops compute the refracted ray in 3D and trace it through the BVH (Phosphene's `RayIntersector` exists). The hit point's albedo/lighting is computed there. Expensive but accurate — real refraction through real geometry, including chromatic dispersion if we trace separate rays per RGB channel.
+**Option C.2 — BVH ray tracing.** ⚠ *RECON.17 (2026-08-26): the `RayIntersector`/`BVHBuilder` infrastructure this option assumed was deleted — it was never wired into a preset, and C.1 was the chosen option below. Reviving C.2 means rebuilding it (git history), not re-enabling it.* Drops compute the refracted ray in 3D and trace it through the BVH (Phosphene's `RayIntersector` exists). The hit point's albedo/lighting is computed there. Expensive but accurate — real refraction through real geometry, including chromatic dispersion if we trace separate rays per RGB channel.
 
 **Option C.3 — Hybrid: screen-space refraction with depth.** Use the G-buffer's depth + albedo. The refracted ray steps through the depth field looking for a hit. Cheaper than BVH, more accurate than screen-space at edges. Used by Unreal screen-space refraction.
 

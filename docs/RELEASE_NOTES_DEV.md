@@ -10,7 +10,7 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
-### [dev-2026-08-26-212617] BUG-100 instrumented, and the ML dispatch gate turns out to be inoperative at 4K (BUG-105)
+### [dev-2026-08-26-212617] BUG-100 instrumented, and the ML dispatch gate turns out to be inoperative at 4K (BUG-106)
 
 **Instrumentation, not a fix.** BUG-100 — sustained 4K rendering degrading the whole app rather
 than the preset on screen — had one degrading session, two clean ones, thermal `nominal`
@@ -30,7 +30,7 @@ smaller target frees memory. `ml_forced` is `MLDispatchScheduler.forceDispatchCo
 needed now is **one ~2-minute fullscreen 4K session** on a preset mix that has degraded before;
 both mechanisms are then decided by three lines of log.
 
-**BUG-105, found on the way and filed separately.** `MLDispatchScheduler` (D-059) is supposed to
+**BUG-106, found on the way and filed separately.** `MLDispatchScheduler` (D-059) is supposed to
 hold the 142 ms MPSGraph stem separation until recent frames are inside budget. The budget it
 compares against is `let budgetMs: Float = deviceTier == .tier1 ? 14.0 : 16.0` — **a constant
 with no resolution term** — and the number it compares is the *worst* frame of a 20–30 frame
@@ -43,7 +43,7 @@ about a full period late there, compounding BUG-086.
 PERF.15 Volumetric Lithograph run held flat across 172 s at 4K at p50 ≈ 31 ms — permanently over
 the same budget, forced dispatch happening, nothing degraded. A mechanism that predicts the
 direction of an effect is not an explanation of its magnitude (the BUG-090 shape). The fix is a
-product decision — stems on time at 4K, or jank-free — and is Matt's call, written up on BUG-105.
+product decision — stems on time at 4K, or jank-free — and is Matt's call, written up on BUG-106.
 
 ---
 

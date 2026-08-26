@@ -4,7 +4,7 @@
 //   1. reduceMotion existed as three independent stubs (SessionStateViewModel,
 //      PlaybackChromeViewModel, ReadyViewModel), all reading NSWorkspace directly
 //      and ignoring SettingsStore.reducedMotion (which was display-only).
-//   2. SSGI exists (RayMarchPipeline.ssgiEnabled) — single-frame, not temporal.
+//   2. (SSGI was one of the gated paths; it was deleted at RECON.18) — not temporal.
 //      Gated on reducedMotion in RayMarchPipeline.reducedMotion setter.
 //   3. Beat-pulse amplitude clamped in RenderPipeline.draw(in:) before renderFrame,
 //      applied to all four beat fields (beatBass/Mid/Treble/Composite) of the local
@@ -95,14 +95,6 @@ final class AccessibilityState: ObservableObject {
     func shouldExecuteMVWarp(presetEnabled: Bool) -> Bool {
         presetEnabled && !reduceMotion
     }
-
-    /// Whether SSGI should execute this frame.
-    ///
-    /// SSGI in the current implementation is single-frame (no temporal accumulation),
-    /// but it does contribute visual complexity that may cause discomfort for users
-    /// with motion sensitivity.
-    /// TODO(post-SSGI-temporal-landing): revisit when temporal SSGI is added.
-    var shouldExecuteSSGI: Bool { !reduceMotion }
 
     // MARK: - Private
 

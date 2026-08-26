@@ -97,7 +97,6 @@ extension RenderPipeline {
         let stemFeatures   = stemFeaturesLock.withLock { latestStemFeatures }
         let meshGen        = meshLock.withLock { meshGenerator }
         let ppChain        = postProcessLock.withLock { postProcessChain }
-        let icbSnap        = icbLock.withLock { icbState }
         let rmPipeline     = rayMarchLock.withLock { rayMarchPipeline }
         let mvWarpSnap     = mvWarpLock.withLock { mvWarpState }
 
@@ -189,18 +188,6 @@ extension RenderPipeline {
                 )
                 return
 
-            case .icb:
-                guard let icb = icbSnap else { continue }
-                drawWithICB(
-                    commandBuffer: commandBuffer,
-                    view: view,
-                    features: &features,
-                    stemFeatures: stemFeatures,
-                    activePipeline: activePipeline,
-                    icbState: icb
-                )
-                return
-
             case .feedback:
                 guard let params  = fbParams,
                       let compose = fbCompose else { continue }
@@ -255,9 +242,8 @@ extension RenderPipeline {
                 )
                 return
 
-            case .direct, .particles, .ssgi:
+            case .direct, .particles:
                 // .direct: fallback below. .particles: handled in drawWithFeedback.
-                // .ssgi: companion to .rayMarch, wired in drawWithRayMarch.
                 break
             }
         }

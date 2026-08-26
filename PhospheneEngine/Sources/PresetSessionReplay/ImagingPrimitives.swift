@@ -20,7 +20,8 @@
 // Pixel + spatial-FFT math leans on single-letter coordinate / channel names
 // (x, y, r, g, b, h) — clearer than verbose alternatives in this context.
 // Same convention as Shared/AudioFeatures+Analyzed.swift +
-// Renderer/Geometry/ProceduralGeometry.swift. The identifier_name lint rule
+// Renderer/Geometry/ (the convention outlived ProceduralGeometry, retired at
+// RECON.17). The identifier_name lint rule
 // is scoped-disabled around the math blocks below (paired with explicit
 // re-enable) per project convention (blanket_disable_command rule).
 
