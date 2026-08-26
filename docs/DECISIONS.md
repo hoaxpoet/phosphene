@@ -122,6 +122,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-211 | Accepted | **Reference/diagnostic images leave git; the LFS purge is a separate, explicit step** (LFS.2, Matt 2026-07-31). Raster images under `docs/VISUAL_REFERENCES/` + `docs/diagnostics/` are gitignored and **untracked** — dev-only material no build target reads. Supersedes an earlier attempt that added the `.gitignore` rules but never ran `git rm --cached`: because gitignore does not affect already-tracked paths, dropping the LFS filter converted 189 pointers into real blobs and would have added **~100 MB to git history** (25.7 KB → 100.6 MB measured) while leaving the LFS objects — and the bill — in place. **Untracking stops NEW objects; it does not reclaim the old ones.** GitHub does not GC unreferenced LFS objects, so reclaiming storage needs a history rewrite (`Scripts/reclaim-lfs-visual-refs.sh`) followed by a GitHub Support purge request — deliberately NOT done here. Text records in those dirs stay in git. Worktree consequence handled: `Scripts/link_fixtures.sh` now symlinks the images too, since the preset workflow is "read the README and LOOK at the images" and a worktree without them degrades silently rather than failing. §Rationale below. |
 | D-213 | Accepted | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
+| D-221 | Accepted | **Rosette: symmetry-order steps became a smooth multi-second transition, not an instant jump** (WHIT.2a, Matt live 2026-08-26: *"this preset MUST use motion to smoothly transition from one pattern to another, with lines separating and reattaching at different points."*). `rosetteCurve`'s formula is already continuous in `n` (no shader change needed) — `RosetteState` now interpolates `n` from the old symmetry order to the new one over `transitionDurationSeconds=4s` (smoothstep-eased) instead of writing the new integer instantly; feeding the shader a smoothly-varying `n` is itself the transition, since the curve's crossing points visibly slide, split, and re-merge as `n` moves between integers — verified by rendering the actual mid-transition frames (n=5.5 shows one lobe of the 5-fold flower visibly opening into a loose end mid-split before the 6th lobe closes). Comfortably shorter than `minHoldSeconds` (24s), so a transition always finishes well before the next one can start. Broke `test_rosette_rotationAndSymmetryCoupling`'s single-tick assumption (the old test exploited the instant-jump behavior this decision removes) — fixed by advancing two independent states to settlement before comparing, not by weakening the assertion. §Rationale below. |
 | D-220 | Accepted | **Rosette: the remaining two harmony routes shipped — `RosetteState` built** (WHIT.1d-2). `morph_position`<-`tonalPhaseFifths` (a D-209 circular smoother, cos/sin EMA recombined via `atan2`, applied as a ROTATION of the figure only — wings stay fixed, D-217's frame preserved — resolving the D-219 FA #67 conflict with `figure_tightness`) and `symmetry_order_step`<-`harmonicFlux` (a 24s hold-timer stepping the epicycle's `n` through Whitney's own sequence 5→6→4 on a qualifying spike, never per-beat). New per-preset state object (`Presets/Rosette/RosetteState.swift`, Skein/Gossamer's minimal-shape pattern) wired through `VisualizerEngine`/`VisualizerEngine+Presets.swift` (`bindRosetteRuntime`, `StatefulRuntimeRegistry.knownPresetNames`) and bound at fragment buffer(6) (`RosetteUniforms`, matching `RosetteUniformsGPU` byte-for-byte) — the first WHIT increment to touch the app-layer runtime rather than staying preset-local. All 5 declared routes now green on `RouteCoverageTests` (206 routes / 22 presets / 0 red). Found live: `MultiPassRenderHarness`'s `renderMVWarp` case only special-cased Skein's CPU state — an unbound buffer(6) collapses `rosetteDist`'s `n` to 0, which degenerates the two-term epicycle to a fixed unit circle regardless of audio input, and `MultiPassFlashHarnessTests` correctly read that as a harness fault ("rendered static... the harness is not reaching its real multi-pass response") rather than silently passing; fixed by binding `RosetteState` there too. §Rationale below. |
 | D-219 | Accepted | **Rosette: 3 of 5 harmony routes shipped; tonalPhaseFifths/harmonicFlux filed to WHIT.1d-2** (WHIT.1d). `figure_tightness`<-`tonalConsonance` (sqrt-calibrated against TONAL.2b's 1000-track corpus so the median lands mid-range, not linear/smoothstep — harmony SETS the sweep position, the clock demotes to a floor drift, the Nacre-round-1 lesson honoured structurally), `stroke_presence`<-`bassDev`, `morph_floor_rate`<-`midAttRel` — all stateless, all green on `RouteCoverageTests` (204 routes / 22 presets / 0 red). **`tonalPhaseFifths` (proposed as a rotation) and `harmonicFlux` (proposed as a discrete symmetry-order step) are deferred, not dropped**: both need a value held ACROSS FRAMES — a stateful circular smoother for the raw +/-pi sawtooth (D-209; the exact defect that hit Fractal Tree, "color changes feel glitchy, not intentional") and a hold-timer so a step lasts "tens of seconds" per the temporal contract — which means wiring a new per-preset state object through the shared RenderPipeline dispatch files (RenderPipeline+PresetSwitching.swift etc.), the same infrastructure Skein/Witchlight/Nacre already carry. Rosette has none of it yet; building it is real, separate, scoped work (WHIT.1d-2), not folded silently into "add audio routes." `WHITNEY_PROGRAM.md`'s own WHIT.1d gate explicitly sanctions this ("RouteCoverageTests green on all five routes, **or a filed defect**"). Also measured: `MultiPassFlashHarnessTests.rosetteIsFlashSafe` (0.00 flashes/s, luma Δ0.004) and `FidelityRubricTests`' automated L2 gate now reads true (consonance/bassDev/midAttRel appear directly in Rosette.metal, unlike Skein/Witchlight's CPU-side-only routing). §Rationale below. |
 | D-218 | Accepted | **Rosette maquette landed** (count 29 → 30; `certified:false`). John Whitney Sr.'s *Arabesque* morphing emblem, registered from the WHIT.0 look-spike (verdict GO) after WHIT.1a curated its reference set and WHIT.1b wrote its design doc. Fullscreen-triangle SDF-in-fragment marks-on-top overlay (Skein's pattern, not Dragon Bloom's raw `line_strip` as the program doc originally proposed); the numerical nearest-point stroke search was profiled at 1080p (~5.8ms p50 on an M2 Pro, well inside the 16.67ms @60fps budget) before authoring. Halation retuned against the curated reference (`06_specular_stroke_core_halo.jpg`) from WHIT.0's too-generous thumbnail estimate. **No audio coupling** (WHIT.1d); the morph runs on a clock only. `PresetAcceptanceTests` gained the same standalone-fragment-is-intentionally-black exemption Dragon Bloom/Skein/Nacre/etc. already carry (Rosette's real content is entirely in the scene-geometry overlay). Pending Matt's live M7. §Rationale below. |
@@ -3910,3 +3911,65 @@ invalid UNMEASURED(static)), 0.00 flashes/s, luma 0.033–0.037 (Δ0.004) — SA
 
 **References.** `docs/presets/ROSETTE_DESIGN.md` §5.3/§7 (updated); `RosetteState.swift`;
 D-219 (the audit this closes); D-209 (`CircularPhaseSmoother` precedent).
+
+## D-221: Rosette symmetry-order steps become a smooth transition, not an instant jump (WHIT.2a)
+
+**Status:** Accepted. `certified: false` unchanged.
+
+### What was gated
+
+Immediately after BUG-104's curve-continuity fix, Matt's next live look at Rosette: *"Still too
+basic."* Asked what specifically read as unfinished, he gave two concrete directions — this
+decision covers the first: *"Like arabesque by Whitney, this preset MUST use motion to smoothly
+transition from one pattern to another, with lines separating and reattaching at different
+points."* (The second — a full 3D conversion — is tracked separately; see the WHIT.2a closeout
+in `docs/ENGINEERING_PLAN.md`.)
+
+### The finding
+
+`RosetteState`'s symmetry-order hold-timer (D-220) wrote the new integer `n` to the GPU buffer
+the instant a qualifying `harmonicFlux` spike fired — a hard cut from 5-fold to 6-fold with no
+intermediate frames. Whitney's own films (and Matt's literal ask) treat a pattern change as
+motion, not a state swap.
+
+The fix required no shader change: `rosetteCurve`'s formula (`z(t) = e^{it} + a·e^{-i(n-1)t}`)
+is already a continuous function of `n` — it was only ever WRITTEN discretely. Feeding it a
+smoothly-varying `n` (rather than an instantly-stepped one) produces the transition for free: as
+`n` moves from 5 toward 6, the curve's self-intersections continuously slide, and one lobe
+visibly opens into a loose end mid-transition before the sixth lobe closes — confirmed by
+rendering the actual mid-transition frame (n=5.5) and inspecting it, not by assuming the math
+would look right.
+
+### Decision
+
+`RosetteState` interpolates `n` from the old symmetry order to the new one over
+`transitionDurationSeconds = 4.0s`, smoothstep-eased (`t²(3−2t)`), instead of writing the target
+value instantly. `minHoldSeconds` (24s) is unchanged and stays comfortably longer than the
+transition, so a transition always finishes well before the next one can start — no overlapping
+transitions to reason about. `reset()` (track change) snaps to the base order with the
+transition already marked settled, so a new track never inherits an in-progress animation from
+the previous one.
+
+### Consequence: an existing test's assumption broke, and the test was wrong
+
+`test_rosette_rotationAndSymmetryCoupling`'s symmetry-step assertion rendered a SINGLE tick after
+triggering a spike and expected to see the target order already active — true under the old
+instant-jump behavior, false under this one (a transition's first tick reports the ORIGINAL
+value; visible movement starts on the following tick). This is the correct new behavior, not a
+regression to work around: fixed the test by advancing two independent `RosetteState` instances
+past `transitionDurationSeconds` (one spiked once, one never spiked) and comparing their SETTLED
+renders, added `renderOneFrame`'s `externalState` parameter to support it. Never weaken an
+assertion to match an accidental old behavior when the new behavior is the one that's correct.
+
+### Verification
+
+New unit suite `RosetteStateTests.swift` (no Metal rendering — direct Swift API, matching
+`GossamerStateTests`' pattern): initial state is the settled base order; a triggering spike does
+NOT move `n` within its own frame (only starts the clock); the transition is monotonic and
+settles at exactly the target value once `transitionDurationSeconds` has elapsed; `reset()`
+leaves no lingering animation. New env-gated diagnostic `test_rosette_transitionMotionDump`
+renders named stills across an actual triggered transition for human review. Full existing
+Rosette suite, `swiftlint --strict`, and the full engine suite re-run clean.
+
+**References.** `docs/ENGINEERING_PLAN.md` Increment WHIT.2a; `RosetteState.swift`;
+`RosetteStateTests.swift`; D-220 (the symmetry-order-step mechanism this refines).

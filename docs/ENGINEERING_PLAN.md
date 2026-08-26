@@ -7572,3 +7572,63 @@ the full repo. Full engine suite (1898 tests) re-run clean.
 (`docs/VISUAL_REFERENCES/rosette/`) confirming the curve reads correctly through the full morph
 in motion — and his still-open, separately-tracked scope question on whether/how to uplift the
 preset beyond its current deliberately-lightweight rendering (see WHIT.1d-3's closeout).
+
+### Increment WHIT.2a — symmetry-order steps became smooth motion, not an instant jump ✅ (2026-08-26)
+
+**Matt's next live look, immediately after BUG-104's fix (curve confirmed clean by screenshot):
+"Still too basic."** Asked what specifically read as unfinished rather than guess again, he gave
+two concrete directions in one message: *"Like arabesque by Whitney, this preset MUST use motion
+to smoothly transition from one pattern to another, with lines separating and reattaching at
+different points. The final preset should also be 3D, not 2D, to take better advantage of the
+latest Apple processors."* This increment addresses the first, more contained piece. The 3D
+conversion is real, separate, larger work — scoped as its own increment, not attempted blind in
+the same session as a quick edit.
+
+**Found: `rosetteCurve` was already continuous in `n`; only the WRITE was discrete.**
+`RosetteState`'s symmetry-order hold-timer (D-220) stepped the GPU-visible `n` from 5 to 6
+instantly the moment a qualifying `harmonicFlux` spike fired — a hard cut, no intermediate
+frames. But the underlying epicycle formula `z(t) = e^{it} + a·e^{-i(n-1)t}` is a smooth function
+of `n` for any real value, not just the integers 4/5/6 — nothing in the shader needed to change.
+
+**Fixed:** `RosetteState` now interpolates `n` from the old order to the new one over
+`transitionDurationSeconds = 4.0s`, smoothstep-eased, instead of writing the target instantly.
+Rendered the actual mid-transition frame (n=5.5) to check it looks right rather than assuming
+the math would: one lobe of the 5-fold flower visibly opens into a loose curling end mid-split
+while the rest of the figure holds — exactly "lines separating and reattaching at different
+points," not a guess at what that phrase might mean. The settled 6-fold end state renders clean
+(BUG-104's continuity fix holds through fractional-`n` frames too — checked, not assumed).
+`minHoldSeconds` (24s) stays comfortably longer than the 4s transition, so transitions never
+overlap. `reset()` marks the transition already-settled so a new track never inherits an
+in-progress animation from the last one.
+
+**An existing test's assumption broke, and the test was wrong, not the new behavior.**
+`test_rosette_rotationAndSymmetryCoupling`'s symmetry-step half rendered a single tick after
+triggering a spike and expected the target order already active — true only under the old
+instant-jump code. Fixed the test to advance two independent `RosetteState`s to settlement
+before comparing (added `renderOneFrame`'s `externalState` parameter for this), rather than
+weakening the assertion to fit an old accidental behavior.
+
+**New verification, not reused from WHIT.1d-2.** `RosetteStateTests.swift` (new file — no Metal
+rendering, direct Swift API, `GossamerStateTests`' pattern): initial state settled at the base
+order; a triggering spike does not move `n` within its own frame (only starts the clock, checked
+directly against the off-by-one-tick math); the transition is monotonic and lands at exactly the
+target after `transitionDurationSeconds`; `reset()` leaves nothing lingering. New env-gated
+diagnostic `test_rosette_transitionMotionDump` renders named stills across a real triggered
+transition for human review (this is how the n=5.5 mid-split frame above was produced and
+inspected before calling the feature done).
+
+**Verification.** Full existing Rosette suite green (multi-frame, harmony coupling,
+rotation/symmetry, wing-aspect, curve-continuity, flash-safety still 0.00 flashes/s,
+`RouteCoverageTests` 206/22/0 red). `swiftlint --strict` clean across the full repo (one
+identifier-length violation fixed along the way — `t` renamed to `progress`). Full engine suite
+re-run clean.
+
+**Filed:** D-221 (`docs/DECISIONS.md`) — the symmetry-order-step mechanism now interpolates
+rather than steps; this is a durable behavioral decision, not a bug fix, so it gets a decision
+record rather than a KNOWN_ISSUES entry.
+
+**Remaining:** the 3D conversion Matt asked for in the same message — a genuinely larger
+undertaking (new geometry pipeline, G-buffer/lighting integration, camera work) that needs its
+own scoped increment, not a same-session addition to this one. Also still open: Matt's live M7
+review of the motion + continuity fixes together, and his standing scope question on how far to
+take the uplift beyond the current lightweight rendering.
