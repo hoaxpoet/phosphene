@@ -16,10 +16,12 @@
 // reference (FA #65) and each one broke fidelity. This is the reference itself.
 //
 // The audio buffers remain in the fragment signature only because the engine
-// binds them; they are unused. (BUG-088, 2026-08-26: the slot-6 state buffer
-// AV.2 added is gone — `AuroraVeilState` computed a drum-kink charge and a
-// smoothed vocal pitch that this shader stopped reading at AV.7, so it was
-// dead per-frame work behind a live-looking route. Deleted, not re-wired.)
+// binds them; they are unused. The slot-6 CPU state (`AuroraVeilState.swift`)
+// that fed a buffer this shader never read was deleted at RECON.20 — and,
+// concurrently, at BUG-088, which reached the same deletion from the other
+// direction: a capture said this preset read three stem/pitch primitives it did
+// not declare, and the source said it reads exactly the five its sidecar does.
+// The "undeclared reads" were that dead state.
 //
 // Prior-art credit: nimitz (algorithm + all constants). Lawlor & Genetti
 // (WSCG 2011) — the per-step `sin(...)` palette is their H(z) height curve.

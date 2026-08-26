@@ -51,7 +51,12 @@ public struct RouteSpec: Sendable {
     /// Extracts the route's input scalar from a frame. May incorporate
     /// stem-warmup blending, CPU-side smoothing, or any other per-frame
     /// transform the shader applies before its gate check.
-    public let inputValue: @Sendable (SessionFrame) -> Float
+    ///
+    /// `nil` for sidecar-derived specs (SR.2): those read a recorded column
+    /// directly via `SessionColumnSeries`, which exposes every column in the
+    /// session rather than the 16 `SessionFrame` carries. Analyse those with
+    /// `RouteAnalyzer.analyze(route:values:)`.
+    public let inputValue: (@Sendable (SessionFrame) -> Float)?
 
     public init(
         name: String,
@@ -59,7 +64,7 @@ public struct RouteSpec: Sendable {
         inputName: String,
         gateThreshold: Float,
         partialGateThreshold: Float? = nil,
-        inputValue: @Sendable @escaping (SessionFrame) -> Float
+        inputValue: (@Sendable (SessionFrame) -> Float)? = nil
     ) {
         self.name = name
         self.description = description
@@ -101,7 +106,22 @@ public enum RouteAnalyzer {
         route: RouteSpec,
         session: SessionData
     ) -> RouteFiringReport {
-        let values = session.frames.map(route.inputValue)
+        guard let extract = route.inputValue else {
+            // Sidecar-derived spec with no frame extractor — nothing to measure
+            // from SessionFrame. Callers use `analyze(route:values:)` instead.
+            return analyze(route: route, values: [])
+        }
+        let values = session.frames.map(extract)
+        return analyze(route: route, values: values)
+    }
+
+    /// Analyse a route against a pre-extracted per-frame series. The sidecar
+    /// path (SR.2) uses this: it resolves each declared primitive to its
+    /// recorded column and hands the values straight in.
+    public static func analyze(
+        route: RouteSpec,
+        values: [Float]
+    ) -> RouteFiringReport {
         let firing = values.filter { $0 >= route.gateThreshold }.count
         let partial = route.partialGateThreshold.map { thresh in
             values.filter { $0 >= thresh }.count

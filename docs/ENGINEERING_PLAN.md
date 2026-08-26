@@ -82,6 +82,57 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 ### Increment KI-AUDIT.1 — KNOWN_ISSUES reconciled to the tree ✅ (2026-08-26)
 
 **Done-when:** §Open contains only unfinished work, and every claim in it survives a check against the source. Twelve resolved-in-place entries moved out (six to §Resolved, six rotated early to `KNOWN_ISSUES_HISTORY.md` to stay inside the §Resolved 50 KB DOC.6 budget). One factual correction landed in place: BUG-088's "three undeclared reads" are not shader reads — verified field-by-field against `AuroraVeil.metal` — which inverts its fix from *declare the route* to *delete the dead state*. One historical correction in HISTORY: BUG-089's "consumer was reverted" is stale; `FractalTree.json` declares `spectralLevelRise` on two routes again since FTR.30/33. Doc-only; no production delta. `DocIntegrityTests` 13/13 green.
+### Increment RECON.21 — replay routes resolve from the `audio_routes` sidecars ✅ (2026-08-26)
+
+The audit's one structural item, and the only one that makes future presets *cheaper* rather than the tree smaller. **Replayable presets: 3 → 21.**
+
+**The problem.** Replay route specs were hand-written Swift, one file per preset. That stalled coverage at 3 of 26 because each new preset cost a ~90-line file plus a registry edit, and the files duplicated gate constants their own headers admitted had to be "kept in sync by code review" (`AuroraVeilRoutes` even promised "SR.2 will centralize these"). Meanwhile QG.1 (D-179) already requires every preset to declare its routes in the sidecar, `AudioRoutePrimitives` already maps each primitive to its recorded column, and `RouteCoverageTests` already asserts they fire. The manifest existed; replay just wasn't reading it.
+
+**`SidecarRouteSpecs` + `SidecarLocator`** resolve a preset name to its sidecar and build specs from `audio_routes`. A preset is now replayable by shipping the entry it must ship anyway for certification. `resolvePreset`'s "Unknown preset" wall is gone.
+
+**Two things the sidecar cannot express — stated, not guessed:**
+
+1. **Gate thresholds.** A sidecar route declares `kind`, not the shader's smoothstep edges. Sidecar-derived specs use the QG.1 per-kind coverage floors (`accent` → 0.02, matching `RouteCoverageTests.accentThreshold`; `continuous` → just above zero, since the assertion is that it varies). Those measure *whether the input is live*, not the visual amplitude — the spec text says so in the report.
+2. **Multi-primitive arithmetic.** 38 of 121 declared routes list several primitives, and the sidecar does not say how the shader combines them — Skein's painter speed takes `mean(max(0, ·))` of four stem deviations while its stem-mix gate takes their SUM. Rather than invent a rule, the resolver emits **one spec per (route, primitive)**, labelled with both.
+
+**Hand-written specs still win where they exist**, because they encode exactly what the sidecar cannot. Both survivors were re-verified against their sources rather than assumed: Skein's 0.13 gate is `SkeinState.onsetDevThreshold`, and Murmuration's `(drums+bass+other)/3 + 0.4·vocals` is `Murmuration3DGeometry`'s `stemEnergy`.
+
+**`AuroraVeilRoutes` deleted — it was reporting on a preset that no longer exists.** Its specs described the pre-AV.7 AV.2.h.1 shader (vocals→hue, bass→brightness, drums→kink) and cited `AuroraVeil.metal:515` in a file that is 225 lines; AV.7 removed all audio routing. Anyone running AV replay diagnostics was reading a report about a retired shader. The sidecar path reports its real routes (`star_beat_twinkle`, `veil_breathe`, `mood_colour`). This was surfaced during RECON.20 and flagged rather than silently patched; it is fixed here as the side effect predicted.
+
+**Reads through `SessionColumnSeries`, not `SessionFrame`** — the latter carries 16 fields while a declared primitive may be any recorded column, which is why the frame-based path could never have covered the corpus. `RouteSpec.inputValue` became optional to express "this spec reads a column, not a frame"; the event-montage extractor guards it and yields no events rather than a wrong one.
+
+`SidecarRouteSpecsTests` holds the coverage claim to the tree (every declaring preset resolves; ≥20 expected), plus name-normalisation, per-kind gate selection, and an Aurora Veil case asserting the retired route names cannot reappear.
+
+Engine suite 1,859 / 287 green, SwiftLint 0 in 511, doc gates 13/13.
+
+### Increment RECON.20 — three preset residues deleted (sketch, Aurora Veil state, Arachne pool) ✅ (2026-08-26)
+
+The audit's three remaining ordinary deletions. **−1,314 lines.** Each was verified dead individually rather than inherited from the report.
+
+**A. The MitosisGen2 throwaway sketch** (`tools/mitosis_gen2_sketch/Gen2Cell.metal` 187 + `MitosisGen2SketchRenderTests` 141). It shipped: the production shader records "Ported from the Matt-approved throwaway sketch", the preset has a sidecar, and gen-2 (Cytokinesis) is certified. `MitosisGen2GeometryTests` **stays** — it exercises the production geometry and merely wrote its contact sheets into the sketch's frames directory; retargeted to `tools/mitosis_gen2_renders/`.
+
+**B. Aurora Veil's slot-6 state** (`AuroraVeilState.swift` 244 + shader struct/param + app wiring). The AV.7 shader header said it outright — the buffers "are unused… `AuroraVeilState.swift` still flushes buffer(6) — also unused now; left in place to avoid loader churn." Every frame this **certified** preset ran, a kink accumulator and a 5-frame pitch ring ticked into a buffer whose only reader was `(void)av;`. The shader param and CPU binding had to go together (an unbound `[[buffer(6)]]` read crashes); verified other direct presets declare only buffers 0–2, so slot 6 is optional. **PresetRegressionTests' 29-preset dHash gate green — pixel-identical, no re-certification.**
+
+**C. Arachne's retired V.7.5 pool.** The shader loop had shipped as `for (int wi = 1; wi < 1; wi++)` since V.7.7C.3 — 73 lines that could never execute, kept as a "structural marker" for a §5.12 follow-up never built. Deleted with the CPU machinery feeding it: `accumulateSpawn`, `trySpawn`, `advanceStage`, `freeSlot`, `evictAndRetry`, the `webCount`/`spawnAccumulator`/`lastSpawnBeatIndex`/`prevBeatComposite` state, `ArachneBackgroundWeb`, the whole background-web pool, `ArachneState+M7Diag` (gated on a flag no build config sets), and the three explicitly-deprecated stubs kept alive only so that diag build compiled.
+
+**The one live behaviour inside the dead machinery was preserved.** `finaliseMigration` did two things: snapshot the hero into the unrendered pool (dead), and **restart the foreground build cycle** (live — without it Arachne builds one web and stops). It now lives in `ArachneState+SegmentRollover.swift` with the 1 s delay unchanged, because that delay is the visible pause between a finished web and the next one starting.
+
+**Safety argument for C, since it touches the hero slot:** `advanceStage` ran on webs[0] too. The shader derives the hero's (stage, progress) from **Row 5** (`build_stage`/`frame_progress`/…), written by `advanceBuildState`; after the pool loop's removal `stage`/`progress`/`opacity`/`is_alive` survive only as struct field declarations with **no reader anywhere in the shader**. Six `ArachneStateTests` cases whose subject was the retired pool were deleted; the initial-pool, determinism, silence and spider tests stay, with the pool test's `webCount` assertion rewritten against the live buffer.
+
+Engine suite green (1,855 tests / 286 suites, 0 XCTest failures), app 417/417, SwiftLint 0 in 511 files. Module Map updated; the doc gate caught the new file, which is the gate working.
+
+### Increment RECON.19 — Low Power Mode floors at `.noBloom` (D-167 amended) ✅ (2026-08-26)
+
+Answers the open question RECON.18 left on the table. Matt's call, 2026-08-26: **Low Power Mode floors the quality ladder at `.noBloom`.**
+
+**This is new behaviour, not a restoration.** D-167 floored Low Power Mode at `.noSSGI`, but that rung only ever suppressed SSGI — which no preset ever declared — so Low Power Mode has imposed **no actual reduction for its entire life**. RECON.18 deleted SSGI and the rung, and deliberately left the floor absent rather than promote it silently, because a new user-visible reduction is a product decision rather than a cleanup side effect. Asked, Matt chose `.noBloom`.
+
+**What a user sees:** with Low Power Mode on, bloom is off. ACES tone-mapping still runs (the post-process pass is not skipped), so highlights are flatter rather than the image being flat. Low Power Mode never weakens a stronger thermal floor — `.critical` still yields `.reducedRayMarch`. Thermal floors are otherwise unchanged.
+
+**No re-certification.** Certification grades a preset's own fidelity at full quality; the frame-budget governor is orthogonal to it, and every preset renders unchanged with Low Power Mode off.
+
+One line of logic (`floor = max(floor, .noBloom)`), the `qualityFloor` doc comment rewritten to explain why the floor is new rather than restored, and the D-167 test expectation updated from `.full` to `.noBloom` with a `.fair` case added. D-167 amended from partially-open to resolved; the capability-registry governor row records the new floor.
+
 ### Increment RECON.18 — ICB and SSGI deleted; the last two dormant capabilities ✅ (2026-08-26)
 
 Matt's park-or-delete call on the remaining two dormant capabilities from the 2026-08-25 preset audit (2026-08-26), closing the set opened at RECON.17. Same D-203 precedent. **−2,036 lines.**
