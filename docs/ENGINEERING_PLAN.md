@@ -63,6 +63,18 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.19 — Low Power Mode floors at `.noBloom` (D-167 amended) ✅ (2026-08-26)
+
+Answers the open question RECON.18 left on the table. Matt's call, 2026-08-26: **Low Power Mode floors the quality ladder at `.noBloom`.**
+
+**This is new behaviour, not a restoration.** D-167 floored Low Power Mode at `.noSSGI`, but that rung only ever suppressed SSGI — which no preset ever declared — so Low Power Mode has imposed **no actual reduction for its entire life**. RECON.18 deleted SSGI and the rung, and deliberately left the floor absent rather than promote it silently, because a new user-visible reduction is a product decision rather than a cleanup side effect. Asked, Matt chose `.noBloom`.
+
+**What a user sees:** with Low Power Mode on, bloom is off. ACES tone-mapping still runs (the post-process pass is not skipped), so highlights are flatter rather than the image being flat. Low Power Mode never weakens a stronger thermal floor — `.critical` still yields `.reducedRayMarch`. Thermal floors are otherwise unchanged.
+
+**No re-certification.** Certification grades a preset's own fidelity at full quality; the frame-budget governor is orthogonal to it, and every preset renders unchanged with Low Power Mode off.
+
+One line of logic (`floor = max(floor, .noBloom)`), the `qualityFloor` doc comment rewritten to explain why the floor is new rather than restored, and the D-167 test expectation updated from `.full` to `.noBloom` with a `.fair` case added. D-167 amended from partially-open to resolved; the capability-registry governor row records the new floor.
+
 ### Increment RECON.18 — ICB and SSGI deleted; the last two dormant capabilities ✅ (2026-08-26)
 
 Matt's park-or-delete call on the remaining two dormant capabilities from the 2026-08-25 preset audit (2026-08-26), closing the set opened at RECON.17. Same D-203 precedent. **−2,036 lines.**
