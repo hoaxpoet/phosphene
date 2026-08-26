@@ -671,88 +671,7 @@ PASS from too permissive a correlation floor: **an automated gate that cannot se
 it is named for will happily certify a claim the artifact refutes.**
 
 ### Increment BUG087.1 — Local-file playback analyses at 10 Hz, streaming at 51 Hz ✅ (2026-08-11)
-
-**Diagnosis increment. No fix code.** Filed as **BUG-087**. Found while chasing a
-`beatPhase01` discrepancy across captures that I had twice flagged as "one of two
-behaviours is wrong" — it is neither; both are real and the difference is the
-**playback path**.
-
-`LocalFilePlaybackProvider` requests `installTap(bufferSize: 1024)` (≈47 Hz).
-AVAudioEngine ignores it and delivers **0.1-second** buffers. `processAnalysisFrame`
-runs once per audio callback with no time gate, so the callback rate *is* the analysis
-rate: **10.0 Hz on local files against 51.1 Hz on streaming**, a 5.1× loss on the path
-essentially all development and preset work uses.
-
-**The discriminator that makes it a diagnosis rather than a correlation.** A fixed frame
-count would give different rates at 44.1 and 48 kHz. Measured: 4414 frames at 44.1 kHz
-and 4808 at 48 kHz — **both exactly 0.1 s**, and 100.0–100.2 ms on 8 of 10 captures. The
-size is duration-based, so the request is ignored rather than rounded. Streaming's 939
-frames ≈ the 1024 the system tap honours.
-
-**Method note worth keeping: path and date were perfectly confounded in the corpus** (the
-sole streaming capture is 2026-07-27, every local-file capture is 2026-08-07 or later), so
-the captures alone could not separate "local-file path" from "August regression". What
-settled it was the rate-independence discriminator plus the streaming capture's
-`TAP: startCapture: ENTER → createProcessTap` lines, which no local-file capture carries.
-Checking for that confound before theorising is the transferable part.
-
-`handleTapBuffer` was checked and cleared — it resizes its scratch for oversized buffers,
-so no samples are dropped. That would have been the more serious bug.
-
-**Consequence recorded in the capability registry**, because it is an authoring fact: a
-preset reading a deviation primitive per frame at 60 fps on the local-file path is sampling
-a **step function in 100 ms increments**, not a curve. This is the same 10 Hz the FTR program
-found from the preset side; it is a pipeline property and it is path-specific.
-
-**Left as a lead, not a conclusion:** it may also explain BUG-086's open question about
-local-file captures correlating stems against bands at r 0.19–0.46 where streaming reads
-0.70–0.94 (different clocks — stems advance per render frame, bands step at 10 Hz). Four
-other explanations for that gap were already tested and refuted; this one is untested.
-
-Tooling: `Scripts/measure_analysis_rate.py` recovers the rate from any capture with no
-app instrumentation, via `beatPhase01`'s advance rate against the CSV's own frame rate.
-
 ### Increment BUG086.1 — Stem features were 5.4 s late; the lag was the separation period ✅ (2026-08-11)
-
-**Nominal per-stem feature latency ≈5.4 s → 2.5 s.** Found inside CHR.1 while
-measuring whether per-stem energy could drive a plotting preset; it turned out not
-to be a preset problem. Filed as **BUG-086**, fixed in `BUG086.1`.
-
-**Root cause was read, not inferred** — three literals across two files encoding one
-relationship nothing named: separation every 5 s (`VisualizerEngine+Stems.swift`), on
-a 10 s chunk (same file), with the per-frame read window starting 5 s into that chunk
-(`VisualizerEngine+Audio.swift`). The chunk's newest sample is "now", so reading 5 s
-in reads 5-s-old audio; the window then advances in real time and can only do so for
-`chunkLength − startOffset` before clamping at the chunk's end — a span that must
-cover one separation period. **So `latency ≥ period`, and the 5 s head start was
-runway, not slack.** Chunk length is pinned by the exported Open-Unmix model
-(`modelFrameCount = 431`), leaving the period as the only lever.
-
-**Done-when, all met:** period 5.0 → 2.0 s; read start **derived** (`chunk − period −
-margin` = 7.5 s) rather than a fourth independent literal; the invariant stated once
-in code; a regression gate on the *relationship* not the values; measured inference
-cost logged to `session.log`. Engine 1809/1810 (sole failure the pre-existing DOC.6
-rotation gate — see Known risks), app **411/411** (404 + the 7 new tests, nothing else
-moved), lint clean.
-
-**Two things worth carrying forward.** The comment that hid this was not wrong, it was
-a non-sequitur — *"Features carry ~5-10s of latency … acceptable because musical
-sections persist longer than that."* True, and sound for section-scale coupling; but
-any preset pairing stems against the **time-aligned** beat grid (≈0.3 s) gets two
-clocks disagreeing by the whole lag, and nobody had checked. And the 142 ms inference
-figure the duty estimate rested on existed **only in a code comment** with no session
-artifact behind it, so the cost of the old cadence had never been verifiable —
-`STEM_SEPARATION:` now logs measured inference/duty/latency every separation.
-
-**The gate was verified to bite**: restoring the 5 s period fails it with
-`stemNominalLatencySeconds → 5.5 < 3.0`. A green assertion that also passes against
-the defect proves nothing.
-
-**BUG-086 stays OPEN.** Automated verification is complete; the `dsp.stem` manual gate
-is not. Stem timing is felt on every stem-driven preset — Aurora Veil
-(`other_energy_dev` load-bearing), Skein, Meniscus, FFO — so it needs M7-class
-observation on at least Aurora Veil, plus one real-session duty measurement.
-
 ### Increment CHR.1 — Stave: measurement done, concept parked at the driver decision ⏸ (2026-08-11)
 
 **Docs + measurement only. No `.metal`, no sidecar, no design doc, no references
@@ -7529,3 +7448,59 @@ increment to exercise the app-layer build/test surface, not just the engine SPM 
 
 **Remaining before certification:** Matt's live M7 review against the curated references
 (`docs/VISUAL_REFERENCES/rosette/`) — the only still-open item on Rosette's certification path.
+
+### Increment WHIT.1d-3 — BUG-103: wing cartouche was rendering off-screen at real window sizes ✅ (2026-08-26)
+
+**Matt's first live look at Rosette** (`2026-08-26T12-58-21Z`, Cherub Rock, right after this
+worktree's changes were merged to primary `main` and built): *"Looks completely broken. A star
+shape with a broken line pattern, no additional ornamentation."*
+
+**Diagnosed from the recorded session before touching code** (`session-forensics` skill).
+`session.log`'s `RENDER_TARGET` line showed the real window at **1080×1018 — aspect 1.061,
+nearly square** — and unchanged for the rest of the session. Checked `features.csv` first to rule
+out a routing failure: `tonal_consonance` (mean 0.076, actively varying), `tonal_phase_fifths`
+(sweeping the full ±π), `harmonic_flux` (peaking just over its 0.09 step-threshold), `bassDev` (mean
+0.082, max 1.665) — all alive and in-range. **The routing was never the problem.**
+
+**Root cause:** `rosetteWingArc`/`rosetteWingEllipseDist` placed the mirrored wing arcs (D-217's
+"full cartouche") at a hardcoded absolute `x≈0.62–0.67` in the fragment's aspect-scaled coordinate
+space, where visible `q.x` spans `±0.5·aspect`. Every test, visual-dump, and flash-safety
+measurement this program has ever run used a 16:9-family render (960×540 / 1920×1080, aspect
+1.78, `±0.89` visible) — nobody had ever exercised a square or narrow window. At aspect 1.061 the
+visible range shrinks to `±0.53`, entirely inside the wings' hardcoded position: **they rendered
+fully off-screen, every frame, unconditionally.** With the cartouche invisible, what Matt saw was
+the bare epicycle stroke alone — on this low-consonance passage, a genuinely validated but
+self-intersecting cusped-star state (§4.1), with nothing signaling it was the intended composed
+picture rather than a glitch.
+
+**Fixed:** wing x-placement now scales proportionally to the frame's actual visible half-width,
+referenced against the 16:9 aspect the look was tuned and approved at (`kRosetteReferenceAspect =
+16/9`) — reproduces the exact D-217 look at that aspect, stays on-screen at any other. `y` is
+untouched (visible `q.y` is always `±0.5` regardless of aspect, so vertical placement never had
+this defect).
+
+**New regression guard** `test_rosette_wingsVisibleAtNearSquareAspect` renders at Matt's exact
+reported window size and independently re-derives the expected wing column bands from the fix's
+own formula (not a re-assertion of the implementation), then asserts luma there clears a
+background-only floor. **Verified the guard actually bites**: temporarily reverted the fix
+in-place, confirmed the test fails (max luma 12/255, background-only) with the pre-fix code, then
+restored the fix and confirmed it passes — a real regression guard, not a tautology.
+
+**Verification.** Full existing Rosette suite re-run clean at the reference 16:9 aspect (no
+regression from the scale factor being 1.0 there): `test_rosette_multiFrameNonDegenerate`,
+`test_rosette_harmonyCoupling`, `test_rosette_rotationAndSymmetryCoupling`,
+`rosetteIsFlashSafe` (still 0.00 flashes/s, luma 0.033–0.037), `RouteCoverageTests` (206/22/0
+red), `PresetLoaderCompileFailureTest`. `swiftlint --strict` clean across the full repo. Full
+engine suite (1898 tests) re-run clean.
+
+**Filed and closed same-session:** BUG-103 (`docs/QUALITY/KNOWN_ISSUES.md`), release note
+`docs/RELEASE_NOTES_DEV.md` `[dev-2026-08-26-131626]`.
+
+**Separately raised by Matt, not actioned here — a scope question, not a defect:** *"you still
+have not captured even a faithful reproduction of Whitney. I don't need austere... how does this
+preset exploit Apple Silicon to the fullest?"* Rosette is currently `rubric_profile: "lightweight"`
+by deliberate WHIT.0 scope choice (faithful minimal port before uplift) — a single fullscreen-
+triangle draw, ~5.8ms, no G-buffer/lighting/SSGI/mesh-shaders/particles. Whether and how to uplift
+it is a real product decision (HDR bloom pass vs. a lit 3D ribbon sweep vs. leaving the minimalism
+as the faithful take) that needs Matt's call, not a default — pitched, not built, pending his
+direction.

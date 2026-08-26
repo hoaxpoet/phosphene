@@ -223,6 +223,14 @@ them the figure reads as a floating diagram; with them it reads as a composed pi
 The wing arc's distance field must use **point-to-segment** distance, not nearest-of-discrete-
 samples — see §6.4, bug 3.
 
+**BUG-103 (found live at WHIT.1d-3, 2026-08-26): wing x-placement must scale with aspect, not be
+a hardcoded absolute.** The wings were tuned only against 16:9-family renders; at Matt's actual
+window (1080×1018, aspect 1.061 — nearly square) they rendered entirely off-screen, since visible
+`q.x` shrinks to `±0.53` at that aspect while the wings sat at a fixed `x≈0.62–0.67`. Fixed by
+scaling x-placement proportionally to the frame's visible half-width relative to the 16:9 aspect
+the look was approved at (`kRosetteReferenceAspect`). Vertical placement was never affected — the
+visible `q.y` range is always `±0.5` regardless of aspect.
+
 ### 6.4 Three bugs found live, and why WHIT.1c should read this before re-deriving them
 
 All three were in the WHIT.0 test harness or the shader, never in engine source

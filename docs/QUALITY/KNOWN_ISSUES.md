@@ -2595,3 +2595,68 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ---
 
+### BUG-103 — RESOLVED (WHIT.1d-3): Rosette's wing cartouche rendered fully off-screen on a real window (2026-08-26)
+
+**Severity:** P2
+**Domain tag:** preset.fidelity / renderer
+**Status:** Resolved
+**Introduced:** WHIT.0 (wing arcs added, 2026-08-25)
+**Resolved:** WHIT.1d-3 (2026-08-26)
+
+**Expected behavior.** Rosette's mirrored coloured wing arcs + small ellipses (D-217, "full
+cartouche") render near the frame edges on every real window size, as they do in every recorded
+test (960×540 / 1920×1080).
+
+**Actual behavior.** On Matt's first live look at Rosette (`2026-08-26T12-58-21Z`, Cherub Rock),
+the wings did not render at all — Matt: *"Looks completely broken. A star shape with a broken line
+pattern, no additional ornamentation."*
+
+**Reproduction steps.** Run Rosette in the live app at a near-square window (any window with
+aspect ratio ≲ 1.2 reproduces it; Matt's session measured exactly 1080×1018, aspect 1.061). Observe
+that only the bare epicycle stroke renders — no wing arcs, no ellipses, at any point in the morph.
+
+**Minimum reproducer:** `test_rosette_wingsVisibleAtNearSquareAspect`
+(`RosetteMVWarpAccumulationTest.swift`) at 1080×1018.
+
+**Session artifacts.** Session directory: `~/Documents/phosphene_sessions/2026-08-26T12-58-21Z/`.
+`session.log`: `RENDER_TARGET width=1080 height=1018 megapixels=1.10 render_scale=1.00`, set before
+Rosette became active and unchanged for the rest of the session. `features.csv`: checked first to
+rule out a routing failure — `tonal_consonance` (mean 0.076, actively varying), `tonal_phase_fifths`
+(full ±π sweep), `harmonic_flux` (peaks just over the 0.09 step-threshold), `bassDev` (mean 0.082,
+max 1.665) — all alive and in-range for the whole session. The routing was never the problem.
+
+**Suspected failure class:** sdf-geometry.
+
+**Evidence for this class:** `rosetteWingArc`/`rosetteWingEllipseDist` (`Rosette.metal`) placed the
+wings at a hardcoded absolute `x≈0.62–0.67` in the fragment's aspect-scaled coordinate space, where
+visible `q.x` spans `±0.5·aspect`. At aspect 1.061 (Matt's window) that visible range is `±0.53` —
+strictly inside the wings' hardcoded position, so they render fully off-screen on every frame,
+unconditionally. Every test, visual-dump, and flash-safety measurement this program has ever run
+used a 16:9-family aspect (1.78, `±0.89` visible), where the wings sit comfortably inside frame —
+nobody had ever rendered Rosette at a square or narrow window, so this was invisible to the whole
+suite by construction.
+
+**Verification criteria:**
+- [x] New regression guard `test_rosette_wingsVisibleAtNearSquareAspect` passes at 1080×1018.
+- [x] Confirmed the guard actually bites: temporarily reverted the fix in-place, confirmed the
+      test fails (max luma 12/255, background-only) against the pre-fix code, then restored the
+      fix and confirmed it passes.
+- [x] Full existing Rosette suite (`test_rosette_multiFrameNonDegenerate`,
+      `test_rosette_harmonyCoupling`, `test_rosette_rotationAndSymmetryCoupling`,
+      `rosetteIsFlashSafe`, `RouteCoverageTests`) re-run clean at the 16:9 reference aspect — the
+      scale factor is exactly 1.0 there, so the approved D-217 look is bit-for-bit reproduced.
+- [x] `swiftlint --strict` clean; full engine suite (1898 tests) clean.
+
+**Manual validation required:** Yes — Matt's next live look confirms the cartouche is visible on
+his actual window. Not yet performed as of this fix landing.
+
+**Fix scope.** Contained: `rosetteWingArc`/`rosetteWingDist`/`rosetteWingEllipseDist` gained an
+`aspect` parameter; x-placement scales by `aspect / kRosetteReferenceAspect` (16:9). No change to
+`y` placement (already aspect-independent), the figure geometry, or any audio routing. Trivial
+single-increment collapse (root cause obvious from the session log + math, <20 lines, no
+architectural risk) — approved by Matt in the same session ("yes, fix the aspect-ratio bug").
+
+**Related:** Decision D-217 (the cartouche this bug silently defeated); Increment WHIT.1d-3.
+
+---
+
