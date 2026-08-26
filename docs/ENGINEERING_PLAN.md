@@ -63,6 +63,22 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.20 — three preset residues deleted (sketch, Aurora Veil state, Arachne pool) ✅ (2026-08-26)
+
+The audit's three remaining ordinary deletions. **−1,314 lines.** Each was verified dead individually rather than inherited from the report.
+
+**A. The MitosisGen2 throwaway sketch** (`tools/mitosis_gen2_sketch/Gen2Cell.metal` 187 + `MitosisGen2SketchRenderTests` 141). It shipped: the production shader records "Ported from the Matt-approved throwaway sketch", the preset has a sidecar, and gen-2 (Cytokinesis) is certified. `MitosisGen2GeometryTests` **stays** — it exercises the production geometry and merely wrote its contact sheets into the sketch's frames directory; retargeted to `tools/mitosis_gen2_renders/`.
+
+**B. Aurora Veil's slot-6 state** (`AuroraVeilState.swift` 244 + shader struct/param + app wiring). The AV.7 shader header said it outright — the buffers "are unused… `AuroraVeilState.swift` still flushes buffer(6) — also unused now; left in place to avoid loader churn." Every frame this **certified** preset ran, a kink accumulator and a 5-frame pitch ring ticked into a buffer whose only reader was `(void)av;`. The shader param and CPU binding had to go together (an unbound `[[buffer(6)]]` read crashes); verified other direct presets declare only buffers 0–2, so slot 6 is optional. **PresetRegressionTests' 29-preset dHash gate green — pixel-identical, no re-certification.**
+
+**C. Arachne's retired V.7.5 pool.** The shader loop had shipped as `for (int wi = 1; wi < 1; wi++)` since V.7.7C.3 — 73 lines that could never execute, kept as a "structural marker" for a §5.12 follow-up never built. Deleted with the CPU machinery feeding it: `accumulateSpawn`, `trySpawn`, `advanceStage`, `freeSlot`, `evictAndRetry`, the `webCount`/`spawnAccumulator`/`lastSpawnBeatIndex`/`prevBeatComposite` state, `ArachneBackgroundWeb`, the whole background-web pool, `ArachneState+M7Diag` (gated on a flag no build config sets), and the three explicitly-deprecated stubs kept alive only so that diag build compiled.
+
+**The one live behaviour inside the dead machinery was preserved.** `finaliseMigration` did two things: snapshot the hero into the unrendered pool (dead), and **restart the foreground build cycle** (live — without it Arachne builds one web and stops). It now lives in `ArachneState+SegmentRollover.swift` with the 1 s delay unchanged, because that delay is the visible pause between a finished web and the next one starting.
+
+**Safety argument for C, since it touches the hero slot:** `advanceStage` ran on webs[0] too. The shader derives the hero's (stage, progress) from **Row 5** (`build_stage`/`frame_progress`/…), written by `advanceBuildState`; after the pool loop's removal `stage`/`progress`/`opacity`/`is_alive` survive only as struct field declarations with **no reader anywhere in the shader**. Six `ArachneStateTests` cases whose subject was the retired pool were deleted; the initial-pool, determinism, silence and spider tests stay, with the pool test's `webCount` assertion rewritten against the live buffer.
+
+Engine suite green (1,855 tests / 286 suites, 0 XCTest failures), app 417/417, SwiftLint 0 in 511 files. Module Map updated; the doc gate caught the new file, which is the gate working.
+
 ### Increment RECON.19 — Low Power Mode floors at `.noBloom` (D-167 amended) ✅ (2026-08-26)
 
 Answers the open question RECON.18 left on the table. Matt's call, 2026-08-26: **Low Power Mode floors the quality ladder at `.noBloom`.**
