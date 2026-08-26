@@ -231,7 +231,6 @@ struct SessionReplayHarness {
         // Production wiring, in production order.
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
         pipeline.allocateTextures(width: width, height: height)
-        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
         let uniforms = preset.descriptor.makeSceneUniforms()
         pipeline.sceneUniforms = uniforms
         // `baseScene` is what applyAudioModulation modulates AROUND. Seeded here

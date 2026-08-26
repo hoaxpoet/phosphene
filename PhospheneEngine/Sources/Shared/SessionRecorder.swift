@@ -161,7 +161,6 @@ public final class SessionRecorder: @unchecked Sendable {
     var latestRenderFrameCPUms: Float?
     var latestGBufferPassMs: Float?
     var latestLightingPassMs: Float?
-    var latestSSGIPassMs: Float?
     var latestPostProcessPassMs: Float?
 
     // MARK: Video-stall instrumentation (BUG-039). All accessed only from the
@@ -396,7 +395,6 @@ public final class SessionRecorder: @unchecked Sendable {
             let passTiming = RayMarchPassTimingSnapshot(
                 gbufferPassMs: self.latestGBufferPassMs,
                 lightingPassMs: self.latestLightingPassMs,
-                ssgiPassMs: self.latestSSGIPassMs,
                 postProcessPassMs: self.latestPostProcessPassMs
             )
             // swiftlint:disable multiline_arguments

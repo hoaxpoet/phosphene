@@ -482,7 +482,6 @@ struct MultiPassRenderHarness {
         var scene = preset.descriptor.makeSceneUniforms()          // sceneParamsB.z default 1.0 ⇒ 128 steps
         scene.sceneParamsA.y = Float(width) / Float(height)
         pipeline.sceneUniforms = scene
-        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
@@ -555,7 +554,6 @@ struct MultiPassRenderHarness {
         var scene = preset.descriptor.makeSceneUniforms()
         scene.sceneParamsA.y = Float(width) / Float(height)
         pipeline.sceneUniforms = scene
-        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
         pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed   // the forward flight
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)

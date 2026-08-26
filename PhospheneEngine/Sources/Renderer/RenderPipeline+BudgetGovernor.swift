@@ -18,9 +18,6 @@ extension RenderPipeline {
     /// measured frame.
     @MainActor
     func applyQualityLevel(_ level: FrameBudgetManager.QualityLevel) {
-        let ssgiOff = level >= .noSSGI
-        rayMarchLock.withLock { rayMarchPipeline }?.setGovernorSkipsSSGI(ssgiOff)
-
         let bloomOff = level >= .noBloom
         postProcessLock.withLock { postProcessChain }?.bloomEnabled = !bloomOff
 

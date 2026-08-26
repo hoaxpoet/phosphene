@@ -190,12 +190,11 @@ final class SessionRecorderTests: XCTestCase {
     //
     // CSV column layout from the end after PERF.2-pass (BUG-019 instrumentation):
     //   cells[count -  1] = post_process_pass_ms    (PERF.2-pass)
-    //   cells[count -  2] = ssgi_pass_ms            (PERF.2-pass)
-    //   cells[count -  3] = lighting_pass_ms        (PERF.2-pass)
-    //   cells[count -  4] = gbuffer_pass_ms         (PERF.2-pass)
-    //   cells[count -  5] = renderframe_cpu_ms      (PERF.2-render)
-    //   cells[count -  6] = encode_cpu_ms           (PERF.2-render)
-    //   cells[count -  7] = mood_classifier_ms      (PERF.1)
+    //   cells[count -  2] = lighting_pass_ms        (PERF.2-pass)
+    //   cells[count -  3] = gbuffer_pass_ms         (PERF.2-pass)
+    //   cells[count -  4] = renderframe_cpu_ms      (PERF.2-render)
+    //   cells[count -  5] = encode_cpu_ms           (PERF.2-render)
+    //   cells[count -  6] = mood_classifier_ms      (PERF.1)
     //   cells[count -  8] = pitch_tracker_ms        (PERF.1)
     //   cells[count -  9] = beat_detector_ms        (PERF.1)
     //   cells[count - 10] = stem_analyzer_ms        (PERF.1)
@@ -222,7 +221,7 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertTrue(header.contains("encode_cpu_ms,renderframe_cpu_ms"),
                       "features.csv header must contain the PERF.2-render timing block, got: \(header)")
         XCTAssertTrue(header.contains(
-            "gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms"),
+            "gbuffer_pass_ms,lighting_pass_ms,post_process_pass_ms"),
                       "features.csv header must contain the PERF.2-pass timing block, got: \(header)")
         // `contains`, not `hasSuffix` (RECON.14). What this protects is that the block
         // stays CONTIGUOUS AND IN ORDER — that is what positional consumers depend on,
@@ -679,7 +678,6 @@ final class SessionRecorderTests: XCTestCase {
         recorder.recordRayMarchPassTimings(
             gbufferMs: 0.61,
             lightingMs: 0.84,
-            ssgiMs: 0.0,
             postProcessMs: 0.42
         )
         recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
@@ -692,12 +690,10 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[featuresTailEnd - qg1Tail - tonalTail - structTail - 4]) ?? -1, 0.61, accuracy: 0.001,
-                       "gbuffer_pass_ms round-trip — column count-4")
-        XCTAssertEqual(Float(cells[featuresTailEnd - qg1Tail - tonalTail - structTail - 3]) ?? -1, 0.84, accuracy: 0.001,
-                       "lighting_pass_ms round-trip — column count-3")
-        XCTAssertEqual(Float(cells[featuresTailEnd - qg1Tail - tonalTail - structTail - 2]) ?? -1, 0.0, accuracy: 0.001,
-                       "ssgi_pass_ms round-trip — column count-2 (0.0 = SSGI suppressed this frame)")
+        XCTAssertEqual(Float(cells[featuresTailEnd - qg1Tail - tonalTail - structTail - 3]) ?? -1, 0.61, accuracy: 0.001,
+                       "gbuffer_pass_ms round-trip — column count-3")
+        XCTAssertEqual(Float(cells[featuresTailEnd - qg1Tail - tonalTail - structTail - 2]) ?? -1, 0.84, accuracy: 0.001,
+                       "lighting_pass_ms round-trip — column count-2")
         XCTAssertEqual(Float(cells[featuresTailEnd - qg1Tail - tonalTail - structTail - 1]) ?? -1, 0.42, accuracy: 0.001,
                        "post_process_pass_ms round-trip — column count-1 (last)")
     }

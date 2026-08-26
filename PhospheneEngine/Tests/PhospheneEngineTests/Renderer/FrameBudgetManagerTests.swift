@@ -58,7 +58,7 @@ struct FrameBudgetManagerTests {
         #expect(mgr.currentLevel == .full)
     }
 
-    // MARK: - 3. Three consecutive overruns trigger noSSGI
+    // MARK: - 3. Three consecutive overruns trigger noBloom
 
     @Test
     func threeConsecutiveOverruns_downshiftsToNoSSGI() {
@@ -67,8 +67,8 @@ struct FrameBudgetManagerTests {
         _ = observe(mgr, cpuMs: 18.0)
         #expect(mgr.currentLevel == .full, "Should not downshift after 2 overruns")
         let level = observe(mgr, cpuMs: 18.0)
-        #expect(level == .noSSGI)
-        #expect(mgr.currentLevel == .noSSGI)
+        #expect(level == .noBloom)
+        #expect(mgr.currentLevel == .noBloom)
     }
 
     // MARK: - 4. Interrupted overrun run resets counter
@@ -86,17 +86,17 @@ struct FrameBudgetManagerTests {
         #expect(mgr.currentLevel == .full)
     }
 
-    // MARK: - 5. Successive overruns at noSSGI → noBloom
+    // MARK: - 5. Successive overruns at noBloom → reducedRayMarch
 
     @Test
-    func threeMoreOverrunsAtNoSSGI_downshiftsToNoBloom() {
+    func threeMoreOverrunsAtNoBloom_downshiftsToReducedRayMarch() {
         let mgr = makeManager()
-        // Downshift to noSSGI.
-        for _ in 0..<3 { _ = observe(mgr, cpuMs: 18.0) }
-        #expect(mgr.currentLevel == .noSSGI)
-        // Downshift to noBloom.
+        // Downshift to noBloom (the first rung since RECON.18 removed .noSSGI).
         for _ in 0..<3 { _ = observe(mgr, cpuMs: 18.0) }
         #expect(mgr.currentLevel == .noBloom)
+        // Downshift again → reducedRayMarch.
+        for _ in 0..<3 { _ = observe(mgr, cpuMs: 18.0) }
+        #expect(mgr.currentLevel == .reducedRayMarch)
     }
 
     // MARK: - 6. Floor clamping — stuck at reducedMesh, no further downshift
@@ -118,11 +118,11 @@ struct FrameBudgetManagerTests {
     func sustainedRecovery_upshiftsFromNoSSGIToFull() {
         let mgr = makeManager()
         for _ in 0..<3 { _ = observe(mgr, cpuMs: 18.0) }
-        #expect(mgr.currentLevel == .noSSGI)
+        #expect(mgr.currentLevel == .noBloom)
         // 180 frames at 14 ms (≤ 16.0 − 1.5 = 14.5 ms) triggers upshift.
         for i in 0..<180 {
             let level = observe(mgr, cpuMs: 14.0)
-            if i < 179 { #expect(level == .noSSGI, "Should still be noSSGI at frame \(i)") }
+            if i < 179 { #expect(level == .noBloom, "Should still be noBloom at frame \(i)") }
         }
         #expect(mgr.currentLevel == .full)
     }
@@ -133,11 +133,11 @@ struct FrameBudgetManagerTests {
     func almostRecovery_oneOvershotFrame_resetsRecoveryCounter() {
         let mgr = makeManager()
         for _ in 0..<3 { _ = observe(mgr, cpuMs: 18.0) }
-        #expect(mgr.currentLevel == .noSSGI)
+        #expect(mgr.currentLevel == .noBloom)
         for _ in 0..<179 { _ = observe(mgr, cpuMs: 14.0) }
         // One frame within hysteresis band zeros recovery counter without upshifting.
         _ = observe(mgr, cpuMs: 16.0)
-        #expect(mgr.currentLevel == .noSSGI)
+        #expect(mgr.currentLevel == .noBloom)
     }
 
     // MARK: - 9. enabled=false — always returns .full, no state changes
@@ -161,7 +161,7 @@ struct FrameBudgetManagerTests {
         _ = observe(mgr, cpuMs: 12.0, gpuMs: 18.0)
         _ = observe(mgr, cpuMs: 12.0, gpuMs: 18.0)
         _ = observe(mgr, cpuMs: 12.0, gpuMs: 18.0)
-        #expect(mgr.currentLevel == .noSSGI)
+        #expect(mgr.currentLevel == .noBloom)
     }
 
     // MARK: - 11. gpuFrameMs == nil → CPU fallback
@@ -171,7 +171,7 @@ struct FrameBudgetManagerTests {
         let mgr = makeManager()
         // gpu nil — 18 ms CPU should still count as overrun.
         for _ in 0..<3 { _ = observe(mgr, cpuMs: 18.0, gpuMs: nil) }
-        #expect(mgr.currentLevel == .noSSGI)
+        #expect(mgr.currentLevel == .noBloom)
     }
 
     // MARK: - 12. reset() from reducedRayMarch → .full, counters zeroed
@@ -179,7 +179,8 @@ struct FrameBudgetManagerTests {
     @Test
     func reset_fromReducedRayMarch_returnsToFull() {
         let mgr = makeManager()
-        for _ in 0..<(3 * 3) { _ = observe(mgr, cpuMs: 18.0) }
+        // RECON.18 removed the `.noSSGI` rung: full → noBloom → reducedRayMarch is 2 steps.
+        for _ in 0..<(3 * 2) { _ = observe(mgr, cpuMs: 18.0) }
         #expect(mgr.currentLevel == .reducedRayMarch)
         mgr.reset()
         #expect(mgr.currentLevel == .full)
@@ -203,8 +204,7 @@ struct FrameBudgetManagerTests {
 
     @Test
     func qualityLevelComparable_ordering() {
-        #expect(FrameBudgetManager.QualityLevel.full < .noSSGI)
-        #expect(FrameBudgetManager.QualityLevel.noSSGI < .noBloom)
+        #expect(FrameBudgetManager.QualityLevel.full < .noBloom)
         #expect(FrameBudgetManager.QualityLevel.noBloom < .reducedRayMarch)
         #expect(FrameBudgetManager.QualityLevel.reducedRayMarch < .reducedParticles)
         #expect(FrameBudgetManager.QualityLevel.reducedParticles < .reducedMesh)
@@ -245,11 +245,11 @@ struct FrameBudgetManagerTests {
 
     @Test func thermalFloor_timingCanStillDownshiftBelowFloor() {
         let mgr = makeManager(overrunsNeeded: 3)
-        mgr.setThermalFloor(.noSSGI)                 // floor at level 1
+        mgr.setThermalFloor(.noBloom)                 // floor at level 1
         var level: FrameBudgetManager.QualityLevel = .full
         for _ in 0..<12 { level = observe(mgr, cpuMs: 30.0) }   // way over the 16 ms budget
-        #expect(level > .noSSGI, "timing must be able to downshift worse than the thermal floor")
-        #expect(mgr.appliedLevel == max(mgr.currentLevel, .noSSGI))
+        #expect(level > .noBloom, "timing must be able to downshift worse than the thermal floor")
+        #expect(mgr.appliedLevel == max(mgr.currentLevel, .noBloom))
     }
 
     @Test func thermalFloor_survivesReset() {
@@ -266,8 +266,11 @@ struct FrameBudgetManagerTests {
         #expect(FBM.qualityFloor(thermalState: .fair,     lowPowerMode: false) == .full)
         #expect(FBM.qualityFloor(thermalState: .serious,  lowPowerMode: false) == .noBloom)
         #expect(FBM.qualityFloor(thermalState: .critical, lowPowerMode: false) == .reducedRayMarch)
-        // Low Power Mode imposes at least no-SSGI and never weakens a stronger thermal floor.
-        #expect(FBM.qualityFloor(thermalState: .nominal,  lowPowerMode: true) == .noSSGI)
+        // RECON.18: Low Power Mode's floor was `.noSSGI`, a rung that reduced nothing (no preset
+        // ever declared SSGI). It was NOT promoted to `.noBloom` — that would be a new, user-visible
+        // reduction — so Low Power Mode imposes no floor today, matching prior effective behaviour.
+        // Pending Matt's D-167 call on whether it should floor at `.noBloom` instead.
+        #expect(FBM.qualityFloor(thermalState: .nominal,  lowPowerMode: true) == .full)
         #expect(FBM.qualityFloor(thermalState: .critical, lowPowerMode: true) == .reducedRayMarch)
     }
 }

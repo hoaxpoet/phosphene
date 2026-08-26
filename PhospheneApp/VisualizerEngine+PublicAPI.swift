@@ -107,9 +107,8 @@ extension VisualizerEngine {
     func applyAccessibility(reduceMotion: Bool, beatAmplitudeScale: Float) {
         pipeline.frameReduceMotion = reduceMotion
         pipeline.beatAmplitudeScale = beatAmplitudeScale
-        // Propagate to any active RayMarchPipeline so SSGI is suppressed immediately.
-        // Uses the a11y-specific setter — the OR-gate ensures the governor flag is unaffected.
-        currentRayMarchPipeline?.setA11yReducedMotion(reduceMotion)
+        // The ray-march arm of reduced motion gated only SSGI, deleted at RECON.18.
+        // The live arms remain: the mv_warp single-frame path and beatAmplitudeScale.
     }
 
     // MARK: - Preset Settings
