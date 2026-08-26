@@ -41,8 +41,12 @@ public enum AudioEventExtractor {
             let value: Float
         }
         var candidates: [Candidate] = []
+        // Sidecar-derived specs (SR.2) carry no frame extractor — their input is a
+        // recorded column, not a SessionFrame field. Event montage needs the frame
+        // path, so those yield no events rather than a wrong one.
+        guard let extract = route.inputValue else { return [] }
         for (idx, frame) in session.frames.enumerated() {
-            let value = route.inputValue(frame)
+            let value = extract(frame)
             guard value >= route.gateThreshold else { continue }
             candidates.append(Candidate(
                 idx: idx,
