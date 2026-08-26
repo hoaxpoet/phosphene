@@ -105,7 +105,18 @@ enum FlashHarnessSupport {
     /// defaults to 3.2 rad/s — the fastest smoothed harmonic motion in the measured corpus
     /// (love_rehab, 15.4 circles per 30 s, WITCHLIGHT_DESIGN §2.3), i.e. the worst case for a
     /// harmonically-steered visual.
-    static func withHarmonicMotion(_ drive: [FeatureVector], radPerSecond: Float = 3.2) -> [FeatureVector] {
+    ///
+    /// `varyConsonance` (WHIT.2b, Rosette): held-flat `tonalConsonance = 0.12` was tuned for
+    /// Witchlight, whose response IS `tonalPhaseFifths` alone. Rosette's dominant visual
+    /// dimension is `figure_tightness <- tonalConsonance` (`aMorph`, the swept tube's SHAPE) —
+    /// with consonance pinned, `aMorph` never moves and only the near-shapeless rotation does,
+    /// which barely perturbs a symmetric white tube's mean frame luminance. Sweeping consonance
+    /// across the shader's own calibrated range (0.05 floor … 0.32 p99, `Rosette.metal`'s
+    /// `rosetteMorphState`) over roughly one cycle per 3 s drive window reaches Rosette's real
+    /// tighten/unravel response instead of leaving it geometrically frozen.
+    static func withHarmonicMotion(
+        _ drive: [FeatureVector], radPerSecond: Float = 3.2, varyConsonance: Bool = false
+    ) -> [FeatureVector] {
         drive.enumerated().map { index, frame in
             var out = frame
             let t = Float(index) / Float(fps)
@@ -113,7 +124,9 @@ enum FlashHarnessSupport {
             phase = phase.truncatingRemainder(dividingBy: 2 * .pi)
             out.tonalPhaseFifths = phase > .pi ? phase - 2 * .pi : phase
             out.tonalPhaseThirds = out.tonalPhaseFifths
-            out.tonalConsonance = 0.12
+            out.tonalConsonance = varyConsonance
+                ? 0.05 + 0.27 * (0.5 + 0.5 * sin(t * 2.0))
+                : 0.12
             out.tonalTension = 0.08
             out.harmonicFlux = 0.06
             return out

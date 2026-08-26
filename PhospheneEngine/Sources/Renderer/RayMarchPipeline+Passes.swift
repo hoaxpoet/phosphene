@@ -41,7 +41,8 @@ extension RayMarchPipeline {
         stemFeatures: StemFeatures,
         noiseTextures: TextureManager?,
         presetFragmentBuffer3: MTLBuffer? = nil,
-        presetHeightTexture: MTLTexture? = nil
+        presetHeightTexture: MTLTexture? = nil,
+        presetFragmentBuffer1: MTLBuffer? = nil
     ) {
         guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2 else {
             passLogger.error("runGBufferPass: G-buffer textures nil — skipping")
@@ -82,6 +83,12 @@ extension RayMarchPipeline {
         // `[[buffer(8)]]` parameter is defined.
         let slot8Buffer = presetFragmentBuffer3 ?? lumenPlaceholderBuffer
         encoder.setFragmentBuffer(slot8Buffer, offset: 0, index: 8)
+        // Slot 6 (WHIT.2b): Rosette's circular-phase-smoother + symmetry-order
+        // state, or the zero-filled placeholder for every other ray-march
+        // preset. Always non-nil so the preamble's `[[buffer(6)]]` parameter
+        // is defined.
+        let slot6Buffer = presetFragmentBuffer1 ?? rosettePlaceholderBuffer
+        encoder.setFragmentBuffer(slot6Buffer, offset: 0, index: 6)
         noiseTextures?.bindTextures(to: encoder)
         // Texture slot 10: Ferrofluid Ocean's V.9 Session 4.5b baked height
         // field, or a 1×1 zero placeholder for every other ray-march preset.

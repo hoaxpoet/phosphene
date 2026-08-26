@@ -72,6 +72,8 @@ struct ReplayHarnessRouteCoverageTests {
         "pulseAmp01", "pulsePhase01", "pulseBeatIndex", "pulseRegionalBlend01",
         // deviation primitives (D-026)
         "bassAttRel", "bassDev",
+        // TONAL block (D-178) — Rosette (WHIT.2b), the first ray-march preset routed off it
+        "tonalPhaseFifths", "tonalConsonance", "harmonicFlux", "midAttRel",
         // StemFeatures — energies, beats, deviations, spectral shape
         "drumsEnergy", "bassEnergy", "vocalsEnergy", "otherEnergy",
         "drumsBeat", "bassBeat", "vocalsBeat", "otherBeat",

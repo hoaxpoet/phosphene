@@ -7632,3 +7632,117 @@ undertaking (new geometry pipeline, G-buffer/lighting integration, camera work) 
 own scoped increment, not a same-session addition to this one. Also still open: Matt's live M7
 review of the motion + continuity fixes together, and his standing scope question on how far to
 take the uplift beyond the current lightweight rendering.
+
+### Increment WHIT.2b — Rosette converted to real 3D swept-tube geometry (ray_march) ✅ (2026-08-26)
+
+**The 3D conversion deferred at WHIT.2a's close.** Converted Rosette from a flat 2D
+`direct+mv_warp` marks-on-top preset to a `ray_march` preset: the existing, UNCHANGED 2D
+distance-to-curve functions (`rosetteCurve`, plus `rosetteWingDist`/`rosetteWingEllipseDist`)
+now feed a Pythagorean tube SDF (`sqrt(dist2D(p.xy,curve)^2+p.z^2)-radius`) rendered through the
+engine's existing ray-march / Cook-Torrance PBR / IBL / AO / screen-space-shadow pipeline — the
+established "exploit Apple Silicon" answer already used by Volumetric Lithograph/Lumen
+Mosaic/Ferrofluid Ocean (D-021's `sceneSDF`/`sceneMaterial` contract), not an invented technique.
+Validated as an isolated agent-built prototype first (3 render/look iterations), then authored
+fresh in production directly informed by what worked there.
+
+**Found: the engine already had everything the conversion needed, structurally.**
+`RayMarchPipeline`'s fragment buffer slots 6/7 turned out to be completely unused by the
+G-buffer fragment (unlike the direct/mv_warp/staged paths, which reserve them for per-preset
+uniforms) — so `RosetteUniforms` (D-220's rotation + symmetry-order state) could move onto
+buffer(6) with zero risk to the three existing ray-march presets. And
+`RenderPipeline.directPresetFragmentBuffer` — the very property the OLD `direct+mv_warp` path
+already wrote via `setDirectPresetFragmentBuffer` — turned out to already be a generic,
+pipeline-agnostic Swift property (mirroring how buffer-8's `directPresetFragmentBuffer3` is
+already shared between Lumen's ray-march use and other direct/staged uses), so the conversion
+needed **zero new engine-wide Swift state**, only threading the existing property into the
+ray-march render call too. New engine-generic `scene_orbit_speed` feature (JSON key, mirrors the
+existing `scene_dolly_speed`) rotates the camera around the world Y-axis through the origin — a
+static shot undersells a ray-marched tube's actual depth (roundness/self-occlusion read mainly
+through parallax), so motion is what makes the "3D-ness" legible, not a still screenshot.
+`scene_backdrop: "dark"` (a real, pre-existing field found via code search, correcting an
+earlier prototype-agent claim that no such mechanism existed) gives a genuinely dark background
+decoupled from light intensity, replacing an initial hacky near-zero-light-color-plus-huge-
+intensity workaround with realistic key/fill light colors and intensities.
+
+**Two defects found on the FIRST live look at the converted preset, both fixed in this
+increment.** Immediately after the conversion rendered:
+
+1. Matt: *"So far, this is a good start at 3D translation, but the design is still VERY basic."*
+   then, on the next round, *"fidelity is poor - lines are really jagged."* The 2D version's
+   coarse-then-bisect nearest-point search (BUG-104's branch-lock fix) produced a distance field
+   smooth enough for a flat, unlit 2D fragment but not smooth enough for the ray-march
+   G-buffer's tetrahedral finite-difference normals (`eps=0.001`) — visible as faceted, unstable
+   shading. Two structural fixes were tried and failed first (a Quilez-style smooth-min blend
+   across branch candidates; more bisection precision) before switching to systematic diagnosis
+   per FA #64: isolating an outer loop with no nearby self-crossing showed the SAME faceting
+   (ruling out the branch-seam theory), and comparing directly against the wing arcs — which
+   already use a dense point-to-segment polyline scan with no bisection and rendered perfectly
+   smooth in the same frame — identified the search technique itself as the root cause.
+   `rosetteDist` was rewritten to the wing's own proven technique verbatim (FA #65/#73) at 150
+   segments, chosen empirically: 70 and 110 both still showed visible faceting on the same test
+   loop, while 150 and 600 were pixel-identical at the same extreme zoom.
+
+2. Running the FULL engine suite for the first time against the completed conversion (not just
+   the targeted Rosette test files) surfaced a previously-invisible **150 ms/frame regression**
+   (`PresetFrameBudgetTests`: 14.8x the median preset, over the 60 ms absolute ceiling) — the
+   dense polyline search ran on every ray-march step of every pixel, including the ~90% of the
+   1080p frame that is empty background far from the small (~0.3-radius) figure. Fixed with a
+   bounding-sphere SDF lower bound, mathematically exact (not approximate) from the curve's own
+   `|z1+a*z2| <= 1+a` magnitude identity: the whole tube provably lies within a sphere of exactly
+   `kRosetteRadius + tubeRadius` centered at the origin, and the same bound was added to the wing
+   tubes (their arc's own endpoints sit at a known fixed radius from a known center) once the
+   figure bound alone only partially closed the gap. **Found live within that fix:** a bare
+   `boundD > 0` cutoff is unsound, not just imprecise — the bounding sphere is TANGENT to the
+   true surface at specific points (the curve reaches exactly its bounding radius at `t=0`, for
+   every morph state), so the cheap branch can return a near-zero value there, which the
+   ray-march loop's relative hit epsilon (`d < 0.001*t`) reads as a genuine surface hit —
+   rendering a false, audio-INDEPENDENT sphere silhouette that silently collapsed every
+   aMorph/rotation/symmetry difference `RosetteRayMarchTests` measures toward zero (caught
+   because those three coupling tests failed, not because the render looked visibly wrong).
+   Fixed with a safety margin (0.03, ~15x the hit epsilon at this scene's camera distance)
+   between the bounding radius and where the cheap branch is trusted. Final measured cost: 28 ms
+   at 1080p (4.8x the median preset), comfortable margin under both gates — down from 150 ms.
+
+**Also found and fixed, both by the same full-suite run:**
+`ReplayHarnessRouteCoverageTests` (built exactly to catch this class of gap) correctly flagged
+that `SessionReplayHarness` never mapped the TONAL block (`tonalPhaseFifths`/`tonalConsonance`/
+`harmonicFlux`/`midAttRel`) for any ray-march preset — Rosette is the first to route off it.
+Mapped from the real CSV columns `AudioRoutePrimitives.swift` already names; the columns were
+always written by `SessionRecorder+CSV.swift`, just never read on the replay side.
+`RayMarchPipelineTests`/`SSGITests`' own minimal inline test shaders needed the same
+`RosetteUniforms` parameter added to their `sceneSDF`/`sceneMaterial` stubs as the three
+production ray-march presets (D-021's shared-ABI contract: every ray-march preset — including
+test-only ones — declares every parameter). `Rosette.json`'s `rubric_profile` was briefly
+(incorrectly) set to `full` mid-session — reverted to `lightweight` once `FidelityRubricTests`
+showed the `full` profile's checks (triplanar textures, detail normal maps, volumetric fog
+motes, parallax occlusion, chroma thin-film) are built for painterly/terrain-style ray-march
+presets and do not conceptually apply to a deliberately spare line-art emblem.
+`PresetAcceptanceTests`' Rosette-specific black-stub exemptions (dating from the old
+`direct+mv_warp` `rosette_fragment` stub, which never rendered anything) were removed — Rosette
+now passes both checks through the genuine ray-march path, same as the other three ray-march
+presets, with no exemption needed. `MultiPassFlashHarnessTests.rosetteIsFlashSafe` needed
+`FlashHarnessSupport.withHarmonicMotion` extended with an optional consonance sweep: Rosette's
+dominant visual dimension (`aMorph`, the swept tube's shape) is gated by `tonalConsonance`,
+which the existing decorator (built for Witchlight's rotation-only response) pinned at a
+constant, leaving the geometry frozen and the test correctly rejecting the resulting measurement
+as invalid rather than calling it safe.
+
+**Verification.** Full `RosetteRayMarchTests` suite (non-degenerate render, harmony/rotation/
+symmetry coupling, BUG-104 continuity re-verified under the new distance search) green.
+`MultiPassFlashHarnessTests.rosetteIsFlashSafe` green with real measured motion (Δ0.010, 0.00
+flashes/s, SAFE) after the consonance-sweep fix. Full engine suite (1903 tests, 292 suites)
+green. `swiftlint --strict` clean across the full repo (one function-length + two
+identifier-name violations introduced by this increment's camera-orbit code, fixed by
+extracting `applyCameraOrbit` as its own function). Visual verification: rendered stills at all
+four morph states (pentagon/star/petals/tangle) plus zoomed crops of both an isolated outer loop
+and a dense self-crossing region, confirming the jaggedness fix holds at both scales and the
+segment-count/bounding-sphere tuning did not reintroduce it.
+
+**Filed:** D-222 (`docs/DECISIONS.md`) — the ray-march conversion, its two live-found-and-fixed
+defects, and the harness/test-infrastructure gaps it surfaced.
+
+**Remaining:** Matt's live M7 review of the 3D conversion together with the jaggedness/
+performance fixes. Documentation still to update after this closeout:
+`docs/ARCHITECTURE.md` (Module Map entry for `Rosette.metal`; GPU Contract Details note for
+buffer(6)'s ray-march-specific `RosetteUniforms` meaning) and `docs/presets/ROSETTE_DESIGN.md`
+(architecture section rewrite reflecting the ray-march conversion).

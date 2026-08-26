@@ -57,16 +57,18 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Skein", luma: try flashLuma("Skein"))
     }
 
-    @Test("Rosette is flash-safe (mv_warp strandsOnTop, harmony-driven tightness, real headless render)")
+    @Test("Rosette is flash-safe (ray-march swept tube, harmony-driven tightness, real headless render)")
     func rosetteIsFlashSafe() throws {
         // ROSETTE_DESIGN.md §9.3: consonant moments are moments of maximum spatial
-        // coherence, and the fragment repaints every pixel opaque every frame (§6.2) — no
-        // accumulation to smooth a spike. `stroke_presence` (bassDev) is the risk this
-        // measurement exists for: brightness/halation swell on the worst-case beat train.
-        // `harmonicMotion` is required so `figure_tightness` (tonalConsonance) actually
-        // moves during the measurement — the shared train otherwise leaves it at zero,
-        // same reason Witchlight needs it for tonalPhaseFifths.
-        assertFlashSafe(name: "Rosette", luma: try flashLuma("Rosette", harmonicMotion: true))
+        // coherence. `stroke_presence` (bassDev) is the risk this measurement exists for:
+        // an albedo swell on the worst-case beat train. `harmonicMotion` + `consonanceSweep`
+        // are both required: the shared train otherwise leaves `tonalConsonance` pinned at a
+        // constant (0.12) and `tonalPhaseFifths` at zero, so neither of WHIT.2b's dominant
+        // response dimensions — `figure_tightness` (the swept tube's SHAPE) and rotation —
+        // would move during the measurement, same reason Witchlight needs harmonicMotion for
+        // tonalPhaseFifths (see `FlashHarnessSupport.withHarmonicMotion`'s doc comment).
+        assertFlashSafe(name: "Rosette",
+                        luma: try flashLuma("Rosette", harmonicMotion: true, consonanceSweep: true))
     }
 
     @Test("Nacre is flash-safe (mv_warp feedback, downbeat camera push, real headless render)")
@@ -196,13 +198,16 @@ struct MultiPassFlashHarnessTests {
     /// reduced to per-frame WCAG relative luminance (the flash signal). `frames` (when set)
     /// tiles the 3 s train to a longer window for the slow-cycle particle presets.
     private func flashLuma(
-        _ name: String, settle: Int = 0, frames: Int? = nil, harmonicMotion: Bool = false
+        _ name: String, settle: Int = 0, frames: Int? = nil, harmonicMotion: Bool = false,
+        consonanceSweep: Bool = false
     ) throws -> [Double] {
         // `harmonicMotion` layers the TONAL block onto the shared train — see
         // `FlashHarnessSupport.withHarmonicMotion`. Only for presets steered by it; the
-        // shared train stays byte-identical for everyone else.
+        // shared train stays byte-identical for everyone else. `consonanceSweep` additionally
+        // sweeps `tonalConsonance` (Rosette's `aMorph` shape driver — see that function's doc).
         let beat = harmonicMotion
-            ? FlashHarnessSupport.withHarmonicMotion(FlashHarnessSupport.worstCaseBeatTrain())
+            ? FlashHarnessSupport.withHarmonicMotion(FlashHarnessSupport.worstCaseBeatTrain(),
+                                                      varyConsonance: consonanceSweep)
             : FlashHarnessSupport.worstCaseBeatTrain()
         let stem = FlashHarnessSupport.worstCaseStemTrain()
         let f = frames.map { tile(beat, $0) } ?? beat

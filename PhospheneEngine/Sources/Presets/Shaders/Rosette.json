@@ -3,28 +3,30 @@
   "family": "geometric",
   "duration": 30,
   "natural_cycle_seconds": 30,
-  "description": "John Whitney Sr.'s Arabesque (1975) morphing emblem: a two-term epicycle z(t)=e^{it}+a*e^{-i(n-1)t} (n dynamic: 5/6/4) drawn as a single closed white-to-pale-lavender stroke with soft halation on a near-black ground, tightening into a straight-edged pentagon and unravelling into an open tangle. Mirrored coloured wing arcs with small ellipses at the frame edges (D-217: full cartouche). tonalConsonance sets the tighten/unravel position (a plain clock is the floor drift when consonance signal is weak); bassDev swells stroke presence; midAttRel scales the floor-drift rate; tonalPhaseFifths (circularly smoothed) rotates the figure only; harmonicFlux steps the symmetry order (5->6->4) on a qualifying spike, held for tens of seconds (WHIT.1d-2, RosetteState). See docs/presets/ROSETTE_DESIGN.md and docs/ENGINEERING_PLAN.md Phase WHIT.",
+  "description": "John Whitney Sr.'s Arabesque (1975) morphing emblem, rendered as real 3D lit geometry (WHIT.2b): the two-term epicycle z(t)=e^{it}+a*e^{-i(n-1)t} (n dynamic: 5/6/4) swept into a genuine tube with PBR lighting/AO/IBL, tightening into a straight-edged pentagon and unravelling into an open tangle. Mirrored coloured wing-arc tubes with small ellipse loops frame the figure (D-217: full cartouche). tonalConsonance sets the tighten/unravel position (a plain clock is the floor drift when consonance signal is weak); bassDev swells stroke presence; midAttRel scales the floor-drift rate; tonalPhaseFifths (circularly smoothed) rotates the figure only; harmonicFlux steps the symmetry order (5->6->4) via a smooth multi-second transition (WHIT.2a), held for tens of seconds. See docs/presets/ROSETTE_DESIGN.md and docs/ENGINEERING_PLAN.md Phase WHIT.",
   "author": "Matt",
-  "passes": ["direct", "mv_warp"],
-  "fragment_function": "rosette_fragment",
-  "vertex_function": "fullscreen_vertex",
+  "passes": ["ray_march", "post_process"],
   "beat_source": "composite",
-  "decay": 0.15,
-  "marks": {
-    "vertex_count": 3,
-    "instance_count": 1,
-    "primitive": "triangle",
-    "chromatic": 0.0,
-    "comp": { "invert": 0.0, "echo": 0.0, "gamma": 1.0 },
-    "beat_pulse": false
+  "scene_camera": {
+    "position": [1.15, 1.0, -1.9],
+    "target": [0.0, 0.0, 0.0],
+    "fov": 38
   },
+  "scene_backdrop": "dark",
+  "scene_lights": [
+    { "position": [1.8, 2.2, -1.5], "color": [1.0, 0.96, 0.90], "intensity": 16.0 },
+    { "position": [-1.6, -0.4, 1.8], "color": [0.75, 0.80, 1.0], "intensity": 7.0 }
+  ],
+  "scene_fog": 0.0,
+  "scene_far_plane": 10.0,
+  "scene_orbit_speed": 0.12,
   "visual_density": 0.30,
   "motion_intensity": 0.35,
   "color_temperature_range": [0.35, 0.65],
   "fatigue_risk": "low",
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["ambient", "buildup", "peak", "bridge", "comedown"],
-  "complexity_cost": { "tier1": 6.0, "tier2": 3.5 },
+  "complexity_cost": { "tier1": 14.0, "tier2": 9.0 },
   "audio_routes": [
     { "route": "figure_tightness", "primitive": "tonalConsonance", "kind": "continuous" },
     { "route": "stroke_presence", "primitive": "bassDev", "kind": "continuous" },

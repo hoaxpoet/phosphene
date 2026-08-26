@@ -137,6 +137,17 @@ extension RayMarchPipeline {
         sceneUniforms.cameraOriginAndFov.x = base.cameraPosition.x
         sceneUniforms.cameraOriginAndFov.y = base.cameraPosition.y
         sceneUniforms.cameraOriginAndFov.z = dollyZ
+
+        // WHIT.2b — camera orbit: a slow turntable around the world origin on the Y
+        // axis. A static shot undersells a ray-marched tube's actual depth (roundness
+        // and self-occlusion read mainly through parallax, not a single still), so
+        // Rosette (this feature's first consumer) uses this instead of the dolly.
+        // Orthogonal to the dolly above: computed purely from `base.cameraPosition`,
+        // ignoring `cameraDollyOffset` — no current preset drives both at once.
+        if cameraOrbitSpeed != 0 {
+            cameraOrbitAngle += dt * cameraOrbitSpeed
+            applyCameraOrbit(aroundOrigin: base.cameraPosition, angle: cameraOrbitAngle)
+        }
         // PERF.3 (BUG-019 fix) — light-intensity restructured per CLAUDE.md Failed
         // Approach #4 (beat is accent, never primary). Previous formula
         // `0.4 + beatPulse * 2.6` had the beat term 6.5× the baseline; every beat
@@ -220,5 +231,28 @@ extension RayMarchPipeline {
         let bassDrive = max(0, min(1, features.subBass + features.lowBass))
         let finCX: Float = 1.20 - (1.20 - 0.85) * bassDrive
         sceneUniforms.cameraForward.w = finCX
+    }
+
+    /// WHIT.2b camera-orbit math, split out of `applyAudioModulation` to keep that
+    /// function under the lint length gate. Rotates `origin` around the world Y axis by
+    /// `angle` and re-derives a look-at-world-origin basis — the turntable shot a static
+    /// camera undersells for a ray-marched tube (roundness/self-occlusion read mainly
+    /// through parallax).
+    private func applyCameraOrbit(aroundOrigin origin: SIMD3<Float>, angle: Float) {
+        let sinAngle = sin(angle), cosAngle = cos(angle)
+        let rotatedPos = SIMD3<Float>(
+            cosAngle * origin.x + sinAngle * origin.z,
+            origin.y,
+            -sinAngle * origin.x + cosAngle * origin.z)
+        let forward = simd_normalize(-rotatedPos)   // target is always the world origin
+        let worldUp = SIMD3<Float>(0, 1, 0)
+        let right = simd_normalize(simd_cross(worldUp, forward))
+        let up = simd_cross(forward, right)
+        sceneUniforms.cameraOriginAndFov.x = rotatedPos.x
+        sceneUniforms.cameraOriginAndFov.y = rotatedPos.y
+        sceneUniforms.cameraOriginAndFov.z = rotatedPos.z
+        sceneUniforms.cameraForward = SIMD4(forward.x, forward.y, forward.z, 0)
+        sceneUniforms.cameraRight   = SIMD4(right.x, right.y, right.z, 0)
+        sceneUniforms.cameraUp      = SIMD4(up.x, up.y, up.z, 0)
     }
 }
