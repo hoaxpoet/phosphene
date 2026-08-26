@@ -28,15 +28,6 @@ import Metal
 @testable import Presets
 @testable import Shared
 
-// 16-byte AuroraVeilStateGPU mirror — direct binding so the test can
-// drive `kinkAccumulator` without going through the CPU state class's
-// rare-event gate + decay logic.
-private struct AuroraVeilStateGPUMirror {
-    var kinkAccumulator: Float
-    var smoothedPitchNorm: Float
-    var padA: Float = 0
-    var padB: Float = 0
-}
 
 @Suite("AuroraVeil continuous dominance")
 struct AuroraVeilContinuousDominanceTest {
@@ -175,8 +166,7 @@ struct AuroraVeilContinuousDominanceTest {
             let fft  = ctx.makeSharedBuffer(length: 512 * floatStride),
             let wav  = ctx.makeSharedBuffer(length: 2048 * floatStride),
             let stem = ctx.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
-            let hist = ctx.makeSharedBuffer(length: 4096 * floatStride),
-            let avState = ctx.makeSharedBuffer(length: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
+            let hist = ctx.makeSharedBuffer(length: 4096 * floatStride)
         else { return nil }
 
         _ = fft.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 512 * floatStride)
@@ -200,12 +190,6 @@ struct AuroraVeilContinuousDominanceTest {
         features.pulseAmp01 = 0
 
         // Slot-6 state buffer retained (still bound by the loader) but unused.
-        var avMirror = AuroraVeilStateGPUMirror(
-            kinkAccumulator: 0,
-            smoothedPitchNorm: 0.5
-        )
-        avState.contents().copyMemory(from: &avMirror,
-                                      byteCount: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
 
         guard let cmd = ctx.commandQueue.makeCommandBuffer() else { return nil }
         let rpd = MTLRenderPassDescriptor()
@@ -221,7 +205,6 @@ struct AuroraVeilContinuousDominanceTest {
         enc.setFragmentBuffer(wav, offset: 0, index: 2)
         enc.setFragmentBuffer(stem, offset: 0, index: 3)
         enc.setFragmentBuffer(hist, offset: 0, index: 5)
-        enc.setFragmentBuffer(avState, offset: 0, index: 6)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.endEncoding()
         cmd.commit()

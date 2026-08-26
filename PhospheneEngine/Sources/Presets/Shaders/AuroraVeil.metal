@@ -16,8 +16,10 @@
 // reference (FA #65) and each one broke fidelity. This is the reference itself.
 //
 // The audio buffers remain in the fragment signature only because the engine
-// binds them; they are unused. `AuroraVeilState.swift` still flushes buffer(6)
-// — also unused now; left in place to avoid loader churn.
+// binds them; they are unused. (BUG-088, 2026-08-26: the slot-6 state buffer
+// AV.2 added is gone — `AuroraVeilState` computed a drum-kink charge and a
+// smoothed vocal pitch that this shader stopped reading at AV.7, so it was
+// dead per-frame work behind a live-looking route. Deleted, not re-wired.)
 //
 // Prior-art credit: nimitz (algorithm + all constants). Lawlor & Genetti
 // (WSCG 2011) — the per-step `sin(...)` palette is their H(z) height curve.
@@ -166,14 +168,6 @@ static inline float3 aurora_bg(float3 rd) {
     return col * 0.63;
 }
 
-// ── GPU state buffer (unused; retained to match the loader binding) ───────────
-struct AuroraVeilStateGPU {
-    float kinkAccumulator;
-    float smoothedPitchNorm;
-    float _pad0;
-    float _pad1;
-};
-
 // ── Fragment ──────────────────────────────────────────────────────────────────
 
 fragment float4 aurora_fragment(
@@ -181,10 +175,9 @@ fragment float4 aurora_fragment(
     constant FeatureVector&      f     [[buffer(0)]],
     constant float*              fft   [[buffer(1)]],
     constant float*              wv    [[buffer(2)]],
-    constant StemFeatures&       stems [[buffer(3)]],
-    constant AuroraVeilStateGPU& av    [[buffer(6)]]
+    constant StemFeatures&       stems [[buffer(3)]]
 ) {
-    (void)fft; (void)wv; (void)stems; (void)av;  // unused — reactivity reads f only
+    (void)fft; (void)wv; (void)stems;  // unused — reactivity reads f only
 
     float time = f.time;
 

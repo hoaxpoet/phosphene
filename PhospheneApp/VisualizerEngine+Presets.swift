@@ -153,7 +153,6 @@ extension VisualizerEngine {
         pipeline.setMVWarpCanvasGround(nil)   // Skein.5.3b: drop the per-track ground override (only Skein sets it)
         arachneState = nil
         gossamerState = nil
-        auroraVeilState = nil
         nimbusState = nil
         skeinState = nil
         lumenPatternEngine = nil
@@ -615,7 +614,6 @@ extension VisualizerEngine {
         case "Arachne":     bindArachneRuntime(desc)
         case "Gossamer":    bindGossamerRuntime(desc)
         case "Skein":       bindSkeinRuntime(desc)
-        case "Aurora Veil": bindAuroraVeilRuntime(desc)
         case "Nimbus":      bindNimbusRuntime(desc)
         case "Lumen Mosaic": bindLumenMosaicRuntime(desc)
         case "Witchlight":  bindWitchlightRuntime(desc)
@@ -733,34 +731,6 @@ extension VisualizerEngine {
             }
         } else {
             logger.error("SkeinState: failed to allocate painter state for preset '\(desc.name)'")
-        }
-    }
-
-    private func bindAuroraVeilRuntime(_ desc: PresetDescriptor) {
-        // Aurora Veil-specific (AV.2.2b): allocate kink accumulator +
-        // pitch-smoother state and wire it at slot 6 + per-frame tick.
-        // This block sits OUTSIDE the `for pass` switch above because
-        // AV.2.2 dropped mv_warp from Aurora Veil's passes (`passes: []`),
-        // and a nested-in-`.mvWarp` setup block never fires when the
-        // passes array is empty. AV.2.2a's drawDirect slot-6 binding fix
-        // was necessary but not sufficient — the buffer was never being
-        // created, so even the corrected drawDirect skipped it (nil
-        // setter). Live session 2026-05-18T23-07-33Z still crashed.
-        //
-        // The setMeshPresetTick closure is invoked from RenderPipeline+Draw
-        // line ~120 once per frame regardless of dispatch path, so it
-        // works correctly for both mv_warp and direct presets.
-        if let state = AuroraVeilState(device: context.device) {
-            auroraVeilState = state
-            state.reset()
-            pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
-            pipeline.setMeshPresetTick { [weak state] features, stems in
-                state?.tick(deltaTime: features.deltaTime,
-                            features: features,
-                            stems: stems)
-            }
-        } else {
-            logger.error("AuroraVeilState: failed to allocate state for preset '\(desc.name)'")
         }
     }
 

@@ -198,13 +198,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.
     var gossamerState: GossamerState?
 
-    /// Aurora Veil kink-accumulator + pitch-smoother state — allocated when
-    /// the Aurora Veil preset is active, nil otherwise. Tick closure and
-    /// stateBuffer are wired via `setMeshPresetTick` /
-    /// `setDirectPresetFragmentBuffer` in `applyPreset` (AV.2 — same Gossamer
-    /// pattern, slot 6).
-    var auroraVeilState: AuroraVeilState?
-
     /// Nimbus Energy bloom follower + gas flow-phase state — allocated when the
     /// Nimbus preset is active, nil otherwise. Tick closure and stateBuffer are
     /// wired via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in

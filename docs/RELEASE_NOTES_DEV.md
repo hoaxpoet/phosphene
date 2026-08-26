@@ -10,6 +10,38 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-26-204620] BUG-088 fixed — Aurora Veil's undeclared stem routes were dead computation, and a silence gate is not a driver
+
+**RESOLVED.** BUG-088 was filed from a capture, which said Aurora Veil reads three primitives it
+does not declare — `drumsEnergyDev`, `vocalsPitchHz`, `vocalsPitchConfidence` — and prescribed
+adding them to the manifest so `RouteCoverageTests` could see them. Read against the source
+instead, the premise inverts: **`AuroraVeil.metal` reads exactly the five fields its sidecar
+declares** (`arousal`, `bar_phase`, `bass_att_rel`, `pulse_amp`, `valence`). The three
+"undeclared reads" were consumed by `AuroraVeilState`, which computed a drum-kink charge and a
+5-frame smoothed vocal pitch every frame and flushed them to `[[buffer(6)]]` — the buffer AV.7
+stopped reading when it reauthored the preset as a nimitz *Auroras* port. Declaring those routes
+would have gated values with no consumer.
+
+**Deleted, not re-wired.** `AuroraVeilState.swift` (the class, its GPU struct, the slot-6 bind,
+the per-frame tick closure), the `AuroraVeilStateGPU` struct + `[[buffer(6)]]` parameter in
+`AuroraVeil.metal`, the app-side `auroraVeilState` property and `bindAuroraVeilRuntime`, and the
+slot-6 binding in three test harnesses. Also `PresetSessionReplay/AuroraVeilRoutes.swift` — a
+*second* manifest describing the same three deleted routes, which made `--preset aurora_veil`
+report verdicts about a shader that no longer exists; `aurora_veil` no longer resolves there.
+Aurora Veil's golden hashes are unchanged, because none of this reached a pixel.
+
+**The recurrence fix: `AudioRoute.Kind.gate`.** The entry's second finding was that `pulseAmp01`
+is declared `continuous` while the shader uses it as a silence gate — pinned at 1.000 through
+music, p5–p95 range 0.000. That is correct gate behaviour, so the `continuous` floor
+(non-constant + variance) is the wrong assertion; it passes today only because the fixtures open
+in silence. A `gate` kind now carries its own floor — **peak ≥ 0.9 on every fixture**, i.e. the
+only failure a gate has is never opening — and the three routes that were misdeclared are
+reclassified: Aurora Veil `star_beat_twinkle`, Fractal Tree `silence_gate`, Ferrofluid Ocean
+`spike_punch_gate`. **The arm was verified to bite**: floor temporarily raised to 1.5 → all three
+routes red with peak 1.00; restored → 201 routes / 21 presets / 0 red.
+
+---
+
 ### [dev-2026-08-26-141947] BUG-104 fixed — Rosette's curve had visible gaps from a nearest-point search locking onto the wrong branch
 
 **RESOLVED.** Right after BUG-103's wing fix, Matt's next live look: *"Still too basic... Still

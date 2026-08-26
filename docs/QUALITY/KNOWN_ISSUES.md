@@ -51,7 +51,6 @@ reads" are not reads — see the entry.)*
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
-| BUG-088 | P3 | preset.fidelity / documentation-drift | **Aurora Veil's `audio_routes` manifest does not describe the preset, and it is CERTIFIED.** It declares 5 routes; `pulseAmp01` is declared `kind: continuous` but the shader uses it as a **silence gate** (`aurora_stars(rd, f.bar_phase01, f.pulse_amp01)`, "fades the twinkle to zero at silence") — measured pinned at 1.000 with **zero p5–p95 range**, which is correct gate behaviour and useless as a driver. And it **omits three routes the code actually reads**: `drumsEnergyDev` (ALIVE, 61 % nonzero — the only live stem input, so QG.1 route coverage is blind to it) and `vocalsPitchHz` / `vocalsPitchConfidence` (**0.1 % nonzero**). Net: the manifest overstates coupling. Surfaced by Matt's M7 2026-08-12 — *"I don't really see how the preset responds to music beyond the flickering of the stars once per bar. The veil is just aurora-ing."* Measurement explains it exactly: of everything Aurora Veil reads, only `barPhase01` has large dynamic range. Tool: `Scripts/check_route_liveness.py`. Detail below |
 | BUG-087 | P2 · **partial fix 2026-08-13 (10 → 16.4 Hz); ≥40 Hz NOT met — audio arrival rate is the ceiling, not slicing** | audio.capture / calibration | **Local-file playback runs the whole MIR chain at 10 Hz where streaming runs it at 51 Hz — a 5.1× rate loss on the primary development session type.** `LocalFilePlaybackProvider` asks for `installTap(bufferSize: 1024)` (≈47 Hz) and AVAudioEngine ignores it, delivering **0.1-second** buffers instead — 4414 frames measured at 44.1 kHz, 4808/4810 at 48 kHz. `processAnalysisFrame` runs once per audio callback with no time gate, so the callback rate *is* the analysis rate: every `FeatureVector` field — bands, deviation primitives, `beatPhase01`, centroid, flux, mood inputs — updates at 10 Hz on local files. Proven a fixed *duration* rather than a frame count by the rate-independence discriminator (both sample rates land on 0.1 s). This is the same 10 Hz the FTR program hit from the preset side. Diagnosis only — no fix code. Detail below |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
@@ -616,103 +615,6 @@ Run it *during* the beachball, before force-quitting. Without a blocked stack th
 **Note.** Signal health was `critical` (−24 dBFS) for the session's first ~50 s before reaching green; unlikely to be related but recorded because the session is otherwise the only artifact.
 
 ---
-
-### BUG-088 — Aurora Veil's route manifest does not describe the preset (2026-08-12)
-
-**Diagnosis only, no fix.** Found because BUG-086's `dsp.stem` manual gate was aimed at
-Aurora Veil and returned nothing — for a reason that had nothing to do with BUG-086.
-
-#### How the wrong preset got picked (the process failure, recorded first)
-
-The gate was aimed here on a stale note calling `other_energy_dev` Aurora Veil's
-"song-defining anchor, never drop it." **Git contradicts it**: added at `e7cd6e3a`
-(AV.2.2f), dropped at `e305839a` (AV.2.h, "drop 5 routes"), and **AV.7 / D-185 reauthored
-the preset as a nimitz *Auroras* port onto mood envelopes rather than deviation
-primitives** — deliberately, for a GENTLE preset. Aurora Veil declares **no stem route at
-all**, so no stem-latency change could ever have shown up in it. A human review was spent
-on a question a CSV could have answered first. `Scripts/check_route_liveness.py` exists so
-that does not recur: **run it before aiming any manual review at a preset.**
-
-#### Expected behavior
-
-A preset's `audio_routes` manifest enumerates the primitives it reads, with a `kind` that
-describes how each is used. QG.1 / D-180 route coverage depends on it being accurate.
-
-#### Actual behavior — measured on capture `2026-08-12T19-57-29Z`
-
-| route | declared | verdict | detail |
-|---|---|---|---|
-| `star_beat_twinkle` / `barPhase01` | ✅ accent | **ALIVE** | range 901 / 1000 |
-| `star_beat_twinkle` / `pulseAmp01` | ✅ **continuous** | **DEAD** | pinned 1.000, p5–p95 range **0.000** |
-| `veil_breathe` / `arousal` | ✅ | ALIVE | range 0.178 |
-| `veil_breathe` / `bassAttRel` | ✅ | ALIVE | range 0.287, near-entirely negative |
-| `mood_colour` / `valence` | ✅ | ALIVE | range 0.453 |
-| `drumsEnergyDev` | ❌ **undeclared** | ALIVE | 61 % nonzero, p95 0.997 |
-| `vocalsPitchHz` | ❌ **undeclared** | SPARSE | **0.1 % nonzero** |
-| `vocalsPitchConfidence` | ❌ **undeclared** | SPARSE | **0.1 % nonzero** |
-
-**`pulseAmp01` is not misbehaving.** The shader uses it as a silence gate, and a gate
-pinned at 1.000 through music is exactly right. The defect is the **declaration**:
-`kind: continuous` reads as a driver, and WL.1 already measured this primitive as a silence
-gate with no dynamic range and ruled it out as a hero driver. That lesson did not propagate
-into this manifest.
-
-**The real gaps** are the three undeclared reads. `drumsEnergyDev` is Aurora Veil's only
-live stem input and QG.1 cannot see it; the vocals-pitch pair is garnish at 0.1 % — WL.1
-measured the same primitive at 4.5 % and called it garnish there too.
-
-#### Suspected failure class
-
-`documentation-drift` primarily (manifest vs code), `calibration` secondarily (a primitive
-declared as a driver that cannot drive).
-
-#### Matt's M7, and what it does and does not mean
-
-> *"I don't really see how the preset responds to music beyond the flickering of the stars
-> once per bar. The veil is just aurora-ing."* (2026-08-12)
-
-The measurement explains it precisely: **only `barPhase01` has large dynamic range.**
-Everything else is a slow narrow mood envelope (0.18–0.45) or effectively dead. The bar
-flicker he sees *is* `star_beat_twinkle` working.
-
-**Whether that is a defect or the design is Matt's call, not a measurement.** AV.7 / D-185
-chose mood envelopes over deviation primitives for a GENTLE preset and Matt certified it on
-2026-07-19. "Reads as uncoupled" may be the intended register. What is objectively wrong is
-the manifest. Flagged, not resolved.
-
-#### ⚠ CORRECTION 2026-08-26 (audit pass) — the "three undeclared reads" are not reads
-
-Read against the source rather than the capture: **`AuroraVeil.metal` reads exactly five audio
-fields** — `arousal`, `bar_phase`, `bass_att_rel`, `pulse_amp`, `valence` — which is precisely
-what the sidecar declares. There is no undeclared shader read. `drumsEnergyDev`,
-`vocalsPitchHz` and `vocalsPitchConfidence` are consumed by **`AuroraVeilState.swift`**, which
-still computes a kink charge and a smoothed pitch and flushes them to buffer(6) — and AV.7
-stopped reading that buffer (`AuroraVeil.metal` header: *"still flushes buffer(6) — also unused
-now; left in place to avoid loader churn"*). They are **dead computation on the per-frame path**,
-not coupling QG.1 is blind to.
-
-**This inverts the fix.** Declaring `drumsEnergyDev` in the manifest — the third verification
-criterion below — would declare a route that reaches nothing, and `RouteCoverageTests` would
-then gate a value with no consumer. The correct fix is deletion: drop the dead stem/pitch reads
-from `AuroraVeilState` (or the state object, if nothing survives), and fix `pulseAmp01`'s `kind`
-so a silence gate stops reading as a driver. That is a small increment, not a preset increment —
-no M7, no re-certification, because no rendered pixel changes.
-
-#### Verification criteria (before any fix)
-
-- The manifest matches what the code reads — ideally mechanized, since a hand-maintained
-  list drifted here on a certified preset.
-- `kind` distinguishes a **gate** from a **driver**, so a silence gate cannot be declared as
-  continuous coupling again.
-- ~~`RouteCoverageTests` sees `drumsEnergyDev` for Aurora Veil after the fix.~~ **Withdrawn by the 2026-08-26 correction above** — the shader never reads it; the route would be fictional. Replace with: no live-path code computes a primitive no consumer reads.
-- If Matt decides the coupling itself is too weak, that is a **separate** preset increment
-  with its own M7 — not a manifest fix.
-
-#### Related
-
-**⇄ BUG-086** — this is why that entry's `dsp.stem` gate is still owed. Re-aimed at
-**Skein**, verified first: 20 of 28 routes ALIVE, **all eight stem-deviation routes alive**
-(`painter_speed` and `flick_trigger` on all four stems, ranges 0.60–1.39), zero DEAD.
 
 ### BUG-087 — Local-file playback analyses at 10 Hz where streaming analyses at 51 Hz (AVAudioEngine ignores the tap `bufferSize`) (2026-08-11)
 
@@ -1646,181 +1548,133 @@ default deserves its own decision.
 ---
 
 
-### BUG-098 — Witchlight is over the frame budget in production, and it is the only measured preset that is (2026-08-19)
+### BUG-088 — RESOLVED (BUG088.1): Aurora Veil's "undeclared reads" were dead computation, and a silence gate is not a driver (2026-08-12, resolved 2026-08-26)
 
-**Status: FIXED (PERF.2 + PERF.3, 2026-08-19), 8.2× measured end to end. ✅ The 60 fps @ 1080p
-target is met with headroom (~8 ms at 1800×1200). ⚠ Fullscreen 4K is ~33 ms (≈30 fps) and the
-remaining gap is a product decision, not a shader one — see BUG-099.** Filed after Matt asked
-the right question — *"Are all presets supposed to run at 60 fps? If so, isn't this something you
-can verify?"* — which turned out to have no instrument behind it.
+**Status: ✅ RESOLVED 2026-08-26.** The diagnosis below is kept in full because the correction
+matters more than the fix: a capture said three primitives were live in the session, and that was
+read as "the preset reads them." It does not. `AuroraVeil.metal` reads exactly the five fields its
+sidecar declares; `AuroraVeilState` computed the other three into a buffer AV.7 stopped reading.
 
-**Per-preset GPU cost, 10 recorded sessions, `frame_gpu_ms`:**
+**Fix.** Deleted, not re-wired: `AuroraVeilState.swift`, the `AuroraVeilStateGPU` struct and
+`[[buffer(6)]]` parameter in `AuroraVeil.metal`, the app-side property + `bindAuroraVeilRuntime`
+wiring, the slot-6 bind in three test harnesses, and
+`PresetSessionReplay/AuroraVeilRoutes.swift` (a second manifest for the same three deleted
+routes — `--preset aurora_veil` no longer resolves). Recurrence guard: a new
+`AudioRoute.Kind.gate` with its own floor (peak ≥ 0.9 on every fixture — the only failure a gate
+has is never opening), and the three misdeclared `pulseAmp01` routes reclassified (Aurora Veil
+`star_beat_twinkle`, Fractal Tree `silence_gate`, Ferrofluid Ocean `spike_punch_gate`).
 
-| preset | frames | median | p90 | p99 |
-|---|---|---|---|---|
-| **Witchlight** | 12 109 | **13.75 ms** | **65.50 ms** | 82.37 ms |
-| Nacre | 1 791 | 1.73 ms | 2.84 ms | 76.82 ms |
-| Stave | 3 372 | 0.35 ms | 2.85 ms | 57.44 ms |
-| Fractal Tree | 26 887 | 0.16 ms | 1.03 ms | 11.31 ms |
+**Verification.**
+- [x] The manifest matches what the code reads — verified field-by-field against the shader source, not a capture.
+- [x] `kind` distinguishes a gate from a driver — `Kind.gate`, documented in SHADER_CRAFT §17 and D-180's manifest line.
+- [x] Gate arm proven to bite: floor raised to 1.5 → all three gate routes red at peak 1.00; restored → **201 routes / 21 presets / 0 red**.
+- [x] No pixel moved: Aurora Veil's `PresetRegressionTests` golden hashes unchanged (steady / beat-heavy / quiet).
+- [x] Engine suite + `xcodebuild -scheme PhospheneApp build` green.
+- **No M7 required** — nothing rendered changes; the deleted state never reached a pixel.
 
-Witchlight's *median* consumes 82 % of the 16.7 ms budget and its p90 is 4× over. Everything else
-measured is two orders of magnitude cheaper.
-
-**It is a plateau, not a spike.** On `2026-08-18T16-10-38Z` the cost steps from 15.9 ms to ~60 ms
-at t≈25 s and holds ~60 ms for the remaining 85 s. On `2026-08-18T18-04-06Z` the same preset on
-the same track steps to ~12 ms and holds. Two stable regimes, 5× apart.
-
-✅ **The 5× WAS resolution, and the `RENDER_TARGET` line settled it in one session.** Cost is
-very close to linear in pixels: Witchlight measured 22.5 ms/MP at 900×600, 30.3 at 1800×1200 and
-33.0 at 3840×2160. Every earlier "looks good" session — including two Witchlight sign-offs — ran
-at **900×600 (0.54 MP), a quarter of the 1080p target**, which is the app's own default once a
-session starts (it renders 1920×1080 while idle and drops to 900×600 one second after playback
-begins). That default is why this went unseen for so long, and is worth its own decision.
-
-**ROOT CAUSE (2026-08-19).** `witchlight_bloom` evaluated `fbm8` + `warped_fbm` — ~64 Perlin
-evaluations — for every pixel, then multiplied by `body = exp(-r*r*70)`, which is ~0 outside a
-ball a sixth of the frame wide. ~530 M Perlin evaluations per 4K frame to produce black.
-**Fixed** with an early return when `body < 1e-3`: 151.2 → 31.8 ms/frame at 4K in the harness
-(4.9×), visually identical on every WL.2 gate figure.
-
-⚠ **Do NOT build an offline 1080p frame-budget gate until that is answered.** At 1080p Witchlight
-plausibly measures the cheap ~12 ms and the gate passes, while the real session ran at ~60 ms.
-That is precisely the BUG-097 failure class: a harness that does not reproduce the production
-condition is not testing production, and it would issue a green certificate over the defect.
-
-⚠ **Coverage: 4 of 29 presets.** Only four have enough continuous frames in the recordings to
-attribute, and they were selected by which presets Matt happened to leave on screen — a preset
-that is slow for two seconds before switching away is invisible to this method. **The other 25
-are unmeasured, not passing.** The only pre-existing performance test renders a *single* frame
-with no per-preset budget.
-
-**Method note worth keeping.** The first pass used `deltaTime` and concluded three presets were
-"rock solid at 16.7 ms". That is vsync: 16.7 ms means the frame waited for the 60 Hz refresh, and
-says nothing about headroom. `frame_gpu_ms` is the column that answers the question, and it
-separates the same four presets by ~80×. A metric that cannot distinguish a preset using 0.16 ms
-from one using 13.75 ms was never going to find this.
+**The withdrawn criterion, kept as the lesson.** "RouteCoverageTests sees `drumsEnergyDev` for
+Aurora Veil after the fix" would have declared a route with no consumer and gated a value nothing
+reads. A liveness capture tells you a primitive is alive in the SESSION; only the source tells
+you the preset reads it. `Scripts/check_route_liveness.py` answers the first question — the
+second one needs a grep.
 
 ---
 
 
-### BUG-093 — The tree moves plenty and still reads as disconnected; the drivers track the wrong quantities (2026-08-17, ✅ RESOLVED 2026-08-19)
+**Diagnosis only, no fix.** Found because BUG-086's `dsp.stem` manual gate was aimed at
+Aurora Veil and returned nothing — for a reason that had nothing to do with BUG-086.
 
-**Resolved by the premise change this entry insisted on, not by tuning.** The standing hypothesis
-here was right — the tree tracked three quantities that do not correspond to what a listener
-notices — but it under-stated the fix. Two things were needed:
+#### How the wrong preset got picked (the process failure, recorded first)
 
-1. **FTR.28 — the tree had to DANCE rather than react.** Matt's reframe (*"the motion of the
-   broomsticks in Fantasia's The Sorcerer's Apprentice"*) turned the question from WHICH SIGNAL
-   sets a size into WHICH CLOCK sets a gait. Nine increments had been spent on the first question.
-   A dance is a phase; intensity only sets step size. That produced the first positive report in
-   eleven increments: *"it is swaying and bouncing on the beat."*
-2. **FTR.33 — the remaining three channels stopped following anything unnameable.** Colour became
-   a fixed palette, the tips joined the beat, the size went to held tiers stepped on an arrival.
-   ★ The load-bearing measurement: the size already followed true loudness at **r = +0.863** and
-   was still called random, so **accuracy was never the missing property** — a shared reference
-   with the listener is.
+The gate was aimed here on a stale note calling `other_energy_dev` Aurora Veil's
+"song-defining anchor, never drop it." **Git contradicts it**: added at `e7cd6e3a`
+(AV.2.2f), dropped at `e305839a` (AV.2.h, "drop 5 routes"), and **AV.7 / D-185 reauthored
+the preset as a nimitz *Auroras* port onto mood envelopes rather than deviation
+primitives** — deliberately, for a GENTLE preset. Aurora Veil declares **no stem route at
+all**, so no stem-latency change could ever have shown up in it. A human review was spent
+on a question a CSV could have answered first. `Scripts/check_route_liveness.py` exists so
+that does not recur: **run it before aiming any manual review at a preset.**
 
-**The one thing to carry forward:** this entry's instruction (*"do not open another tuning
-increment; the next move needs a changed premise about WHICH quantity the tree should follow, and
-that is a product decision"*) was correct and saved further wasted rounds. Both premise changes
-came from Matt, in his own visual language, after I asked what he PICTURED.
+#### Expected behavior
 
-**Status: P1, evidence only, and deliberately NOT a tuning ticket.**
+A preset's `audio_routes` manifest enumerates the primitives it reads, with a `kind` that
+describes how each is used. QG.1 / D-180 route coverage depends on it being accurate.
 
-**Why this exists.** After nine live rejections of one complaint across FTR.15 → FTR.27, two
-explanations have now been ruled out by measurement rather than argument:
+#### Actual behavior — measured on capture `2026-08-12T19-57-29Z`
 
-1. **"The visual is not moving enough."** Ruled out. After 12 s on `2026-08-17T20-01-01Z`: `reach`
-   span 0.680, size span 0.360, **visible trunk length span 0.151 clip space ≈ 164 px at 1080p**,
-   spread 20°→34°, tip spark firing 0.37/s. The tree traverses two thirds of its geometric range.
-2. **"A primary channel is dead."** Ruled out (BUG-092, retracted on that point): the inert term is
-   `arousal`, whose coefficient is 0.10 inside a `max()` it never wins — removing or fixing it
-   changes nothing about how much the tree moves.
-
-**What remains, and it is a routing-semantics problem rather than a calibration one.** Every
-quantity the geometry follows has been measured against what a listener notices, and none of them
-correspond:
-
-| channel | driver | what it actually measures | event specificity |
+| route | declared | verdict | detail |
 |---|---|---|---|
-| size | `spectral_surge` | this moment's rank in the track's loudness distribution, off a τ 0.76 s follower | **0.25× — moves DOWN at events** |
-| growth | `spectral_section_ratio` | a slow τ20 s density rank against the track's normal | not event-scaled at all |
-| canopy angle | `spectral_flux` | broadband spectral change | 1.50× — fires as often between events as on them |
-| tip light | `spectral_level_rise` | pre-AGC level rise (FTR.25) | event-aligned, but only 0.37/s |
+| `star_beat_twinkle` / `barPhase01` | ✅ accent | **ALIVE** | range 901 / 1000 |
+| `star_beat_twinkle` / `pulseAmp01` | ✅ **continuous** | **DEAD** | pinned 1.000, p5–p95 range **0.000** |
+| `veil_breathe` / `arousal` | ✅ | ALIVE | range 0.178 |
+| `veil_breathe` / `bassAttRel` | ✅ | ALIVE | range 0.287, near-entirely negative |
+| `mood_colour` / `valence` | ✅ | ALIVE | range 0.453 |
+| `drumsEnergyDev` | ❌ **undeclared** | ALIVE | 61 % nonzero, p95 0.997 |
+| `vocalsPitchHz` | ❌ **undeclared** | SPARSE | **0.1 % nonzero** |
+| `vocalsPitchConfidence` | ❌ **undeclared** | SPARSE | **0.1 % nonzero** |
 
-**So the standing hypothesis is: the tree moves a lot while tracking three quantities that are not
-what a listener attends to.** That is consistent with every rejection in the arc, including the two
-where a genuinely event-aligned driver WAS tried and rejected for its motion cost — FTR.24 put one
-on size and multiplied peak velocity 10.7× (*"herky-jerky… looks defective"*).
+**`pulseAmp01` is not misbehaving.** The shader uses it as a silence gate, and a gate
+pinned at 1.000 through music is exactly right. The defect is the **declaration**:
+`kind: continuous` reads as a driver, and WL.1 already measured this primitive as a silence
+gate with no dynamic range and ruled it out as a hero driver. That lesson did not propagate
+into this manifest.
 
-**⚠ Do not open another tuning increment against this.** Six size formulations, two accent
-placements, three spread routes and a detector rewrite have all been tried. The next move needs a
-changed premise about WHICH musical quantity the tree should follow — arrangement? section
-boundaries? a beat-grid-derived structure? — and that is a product decision for Matt, not a
-coefficient.
+**The real gaps** are the three undeclared reads. `drumsEnergyDev` is Aurora Veil's only
+live stem input and QG.1 cannot see it; the vocals-pitch pair is garnish at 0.1 % — WL.1
+measured the same primitive at 4.5 % and called it garnish there too.
 
-**Verification criteria for any future attempt:** a driver whose event specificity exceeds 2× AND
-whose total travel stays within 25 % of the FTR.23 baseline, measured on one capture, before any
-live review is requested.
+#### Suspected failure class
 
----
+`documentation-drift` primarily (manifest vs code), `calibration` secondarily (a primitive
+declared as a driver that cannot drive).
 
+#### Matt's M7, and what it does and does not mean
 
-### BUG-092 — Fractal Tree's declared `growth` route is inert: `arousal` loses its own `max()` on every frame (2026-08-17, RE-SCOPED same day, ✅ RESOLVED 2026-08-19)
+> *"I don't really see how the preset responds to music beyond the flickering of the stars
+> once per bar. The veil is just aurora-ing."* (2026-08-12)
 
-**Resolved at FTR.33**, by removing the term rather than giving it a coefficient. Matt chose
-hold-and-step for the growth channel, so the size now reads DYN.2c's per-track density rank
-(`spectralSectionRatio`) through `ArrivalStep` and commits each change on a `spectral_level_rise`
-arrival. The `arousal` term is deleted from `fractal_growth`, and the sidecar's `growth ← arousal`
-route is replaced by `growth_tier ← spectralSectionRatio` plus `growth_commit ← spectralLevelRise`.
-The manifest and the shader agree again, which was the whole of this entry once its original
-headline was retracted.
+The measurement explains it precisely: **only `barPhase01` has large dynamic range.**
+Everything else is a slow narrow mood envelope (0.18–0.45) or effectively dead. The bar
+flicker he sees *is* `star_beat_twinkle` working.
 
-**Status: P3, evidence only. This entry was filed with a WRONG headline and corrected hours later;
-the correction is the more useful half.**
+**Whether that is a defect or the design is Matt's call, not a measurement.** AV.7 / D-185
+chose mood envelopes over deviation primitives for a GENTLE preset and Matt certified it on
+2026-07-19. "Reads as uncoupled" may be the intended register. What is objectively wrong is
+the manifest. Flagged, not resolved.
 
-**⚠ WHAT I FILED FIRST, AND WHY IT WAS WRONG.** The original entry claimed `arousal` was the
-preset's primary growth driver, that it flatlines after 12 s, and that this explained nine live
-rejections of *"the tree grows and shrinks with no clear connection to the music"*. The flatness is
-real. **The rest was false, because I measured the primitive and never checked its COEFFICIENT.**
+#### ⚠ CORRECTION 2026-08-26 (audit pass) — the "three undeclared reads" are not reads
 
-The shader computes:
+Read against the source rather than the capture: **`AuroraVeil.metal` reads exactly five audio
+fields** — `arousal`, `bar_phase`, `bass_att_rel`, `pulse_amp`, `valence` — which is precisely
+what the sidecar declares. There is no undeclared shader read. `drumsEnergyDev`,
+`vocalsPitchHz` and `vocalsPitchConfidence` are consumed by **`AuroraVeilState.swift`**, which
+still computes a kink charge and a smoothed pitch and flushes them to buffer(6) — and AV.7
+stopped reading that buffer (`AuroraVeil.metal` header: *"still flushes buffer(6) — also unused
+now; left in place to avoid loader churn"*). They are **dead computation on the per-frame path**,
+not coupling QG.1 is blind to.
 
-```metal
-reach = saturate(max(0.10f * arousalReach, fullness) * musicGate)
-```
+**This inverts the fix.** Declaring `drumsEnergyDev` in the manifest — the third verification
+criterion below — would declare a route that reaches nothing, and `RouteCoverageTests` would
+then gate a value with no consumer. The correct fix is deletion: drop the dead stem/pitch reads
+from `AuroraVeilState` (or the state object, if nothing survives), and fix `pulseAmp01`'s `kind`
+so a silence gate stops reading as a driver. That is a small increment, not a preset increment —
+no M7, no re-certification, because no rendered pixel changes.
 
-Measured after 12 s on `2026-08-17T20-01-01Z`:
+#### Verification criteria (before any fix)
 
-| term | p05 | p95 | span |
-|---|---|---|---|
-| `0.10 × arousalReach` | 0.038 | 0.070 | **0.032** |
-| `fullness` (= `spectral_section_ratio × 0.5`) | 0.316 | 0.961 | **0.646** |
-| `musicGate` (from `spectral_surge`) | 0.294 | 1.000 | 0.707 |
-| resulting `reach` | 0.270 | 0.950 | **0.680** |
+- The manifest matches what the code reads — ideally mechanized, since a hand-maintained
+  list drifted here on a certified preset.
+- `kind` distinguishes a **gate** from a **driver**, so a silence gate cannot be declared as
+  continuous coupling again.
+- ~~`RouteCoverageTests` sees `drumsEnergyDev` for Aurora Veil after the fix.~~ **Withdrawn by the 2026-08-26 correction above** — the shader never reads it; the route would be fictional. Replace with: no live-path code computes a primitive no consumer reads.
+- If Matt decides the coupling itself is too weak, that is a **separate** preset increment
+  with its own M7 — not a manifest fix.
 
-**`arousal` wins that `max()` on 0.0 % of frames.** It is not a dead driver; it is an inert term.
-And the growth channel is not dead at all — `reach` spans 0.680, and the visible trunk length spans
-**0.151 clip space ≈ 164 px of 1080**.
+#### Related
 
-**The actual defect, which is small.** The sidecar declares `growth ← arousal`, and that route has
-no visible effect. This is the FTR.2 false-manifest class, and QG.1 route coverage cannot catch it:
-the gate asks whether a declared primitive VARIES (it does, faintly), not whether it survives the
-arithmetic it feeds. `arousal`'s within-track flatness — mean 0.446…0.475, sd 0.048…0.069, the same
-0.258…0.509 bounds on five captures across three builds and two audio paths — is unremarkable for a
-*mood* classifier and is why it went unnoticed for the whole FTR program.
-
-**Two fixes, both Matt's call because one changes what he sees:** delete the inert term and its
-route (honest, no visual change), or raise its coefficient so a track's mood biases the tree's
-resting size (a visible change, and the thing the route was presumably *meant* to do).
-
-**★ The transferable lesson, which is why this entry is kept rather than quietly deleted: measuring
-a PRIMITIVE's range says nothing about whether it reaches the picture.** Check the coefficient and
-the surrounding arithmetic — a term inside a `max()` against something ten times larger is decor.
-This is the same species as FTR.24's model/shader mismatch (glide order) three days earlier.
-
----
-
+**⇄ BUG-086** — this is why that entry's `dsp.stem` gate is still owed. Re-aimed at
+**Skein**, verified first: 20 of 28 routes ALIVE, **all eight stem-deviation routes alive**
+(`painter_speed` and `flick_trigger` on all four stems, ranges 0.60–1.39), zero DEAD.
 ### BUG-104 — RESOLVED (WHIT.1d-4): Rosette's curve had visible gaps — the nearest-point search locked onto the wrong branch (2026-08-26)
 
 **Severity:** P1

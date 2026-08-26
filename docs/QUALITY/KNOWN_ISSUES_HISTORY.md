@@ -4,6 +4,181 @@ Resolved entries rotated out of [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §Resolved 
 
 ---
 
+### BUG-098 — Witchlight is over the frame budget in production, and it is the only measured preset that is (2026-08-19)
+
+**Status: FIXED (PERF.2 + PERF.3, 2026-08-19), 8.2× measured end to end. ✅ The 60 fps @ 1080p
+target is met with headroom (~8 ms at 1800×1200). ⚠ Fullscreen 4K is ~33 ms (≈30 fps) and the
+remaining gap is a product decision, not a shader one — see BUG-099.** Filed after Matt asked
+the right question — *"Are all presets supposed to run at 60 fps? If so, isn't this something you
+can verify?"* — which turned out to have no instrument behind it.
+
+**Per-preset GPU cost, 10 recorded sessions, `frame_gpu_ms`:**
+
+| preset | frames | median | p90 | p99 |
+|---|---|---|---|---|
+| **Witchlight** | 12 109 | **13.75 ms** | **65.50 ms** | 82.37 ms |
+| Nacre | 1 791 | 1.73 ms | 2.84 ms | 76.82 ms |
+| Stave | 3 372 | 0.35 ms | 2.85 ms | 57.44 ms |
+| Fractal Tree | 26 887 | 0.16 ms | 1.03 ms | 11.31 ms |
+
+Witchlight's *median* consumes 82 % of the 16.7 ms budget and its p90 is 4× over. Everything else
+measured is two orders of magnitude cheaper.
+
+**It is a plateau, not a spike.** On `2026-08-18T16-10-38Z` the cost steps from 15.9 ms to ~60 ms
+at t≈25 s and holds ~60 ms for the remaining 85 s. On `2026-08-18T18-04-06Z` the same preset on
+the same track steps to ~12 ms and holds. Two stable regimes, 5× apart.
+
+✅ **The 5× WAS resolution, and the `RENDER_TARGET` line settled it in one session.** Cost is
+very close to linear in pixels: Witchlight measured 22.5 ms/MP at 900×600, 30.3 at 1800×1200 and
+33.0 at 3840×2160. Every earlier "looks good" session — including two Witchlight sign-offs — ran
+at **900×600 (0.54 MP), a quarter of the 1080p target**, which is the app's own default once a
+session starts (it renders 1920×1080 while idle and drops to 900×600 one second after playback
+begins). That default is why this went unseen for so long, and is worth its own decision.
+
+**ROOT CAUSE (2026-08-19).** `witchlight_bloom` evaluated `fbm8` + `warped_fbm` — ~64 Perlin
+evaluations — for every pixel, then multiplied by `body = exp(-r*r*70)`, which is ~0 outside a
+ball a sixth of the frame wide. ~530 M Perlin evaluations per 4K frame to produce black.
+**Fixed** with an early return when `body < 1e-3`: 151.2 → 31.8 ms/frame at 4K in the harness
+(4.9×), visually identical on every WL.2 gate figure.
+
+⚠ **Do NOT build an offline 1080p frame-budget gate until that is answered.** At 1080p Witchlight
+plausibly measures the cheap ~12 ms and the gate passes, while the real session ran at ~60 ms.
+That is precisely the BUG-097 failure class: a harness that does not reproduce the production
+condition is not testing production, and it would issue a green certificate over the defect.
+
+⚠ **Coverage: 4 of 29 presets.** Only four have enough continuous frames in the recordings to
+attribute, and they were selected by which presets Matt happened to leave on screen — a preset
+that is slow for two seconds before switching away is invisible to this method. **The other 25
+are unmeasured, not passing.** The only pre-existing performance test renders a *single* frame
+with no per-preset budget.
+
+**Method note worth keeping.** The first pass used `deltaTime` and concluded three presets were
+"rock solid at 16.7 ms". That is vsync: 16.7 ms means the frame waited for the 60 Hz refresh, and
+says nothing about headroom. `frame_gpu_ms` is the column that answers the question, and it
+separates the same four presets by ~80×. A metric that cannot distinguish a preset using 0.16 ms
+from one using 13.75 ms was never going to find this.
+
+---
+
+
+### BUG-093 — The tree moves plenty and still reads as disconnected; the drivers track the wrong quantities (2026-08-17, ✅ RESOLVED 2026-08-19)
+
+**Resolved by the premise change this entry insisted on, not by tuning.** The standing hypothesis
+here was right — the tree tracked three quantities that do not correspond to what a listener
+notices — but it under-stated the fix. Two things were needed:
+
+1. **FTR.28 — the tree had to DANCE rather than react.** Matt's reframe (*"the motion of the
+   broomsticks in Fantasia's The Sorcerer's Apprentice"*) turned the question from WHICH SIGNAL
+   sets a size into WHICH CLOCK sets a gait. Nine increments had been spent on the first question.
+   A dance is a phase; intensity only sets step size. That produced the first positive report in
+   eleven increments: *"it is swaying and bouncing on the beat."*
+2. **FTR.33 — the remaining three channels stopped following anything unnameable.** Colour became
+   a fixed palette, the tips joined the beat, the size went to held tiers stepped on an arrival.
+   ★ The load-bearing measurement: the size already followed true loudness at **r = +0.863** and
+   was still called random, so **accuracy was never the missing property** — a shared reference
+   with the listener is.
+
+**The one thing to carry forward:** this entry's instruction (*"do not open another tuning
+increment; the next move needs a changed premise about WHICH quantity the tree should follow, and
+that is a product decision"*) was correct and saved further wasted rounds. Both premise changes
+came from Matt, in his own visual language, after I asked what he PICTURED.
+
+**Status: P1, evidence only, and deliberately NOT a tuning ticket.**
+
+**Why this exists.** After nine live rejections of one complaint across FTR.15 → FTR.27, two
+explanations have now been ruled out by measurement rather than argument:
+
+1. **"The visual is not moving enough."** Ruled out. After 12 s on `2026-08-17T20-01-01Z`: `reach`
+   span 0.680, size span 0.360, **visible trunk length span 0.151 clip space ≈ 164 px at 1080p**,
+   spread 20°→34°, tip spark firing 0.37/s. The tree traverses two thirds of its geometric range.
+2. **"A primary channel is dead."** Ruled out (BUG-092, retracted on that point): the inert term is
+   `arousal`, whose coefficient is 0.10 inside a `max()` it never wins — removing or fixing it
+   changes nothing about how much the tree moves.
+
+**What remains, and it is a routing-semantics problem rather than a calibration one.** Every
+quantity the geometry follows has been measured against what a listener notices, and none of them
+correspond:
+
+| channel | driver | what it actually measures | event specificity |
+|---|---|---|---|
+| size | `spectral_surge` | this moment's rank in the track's loudness distribution, off a τ 0.76 s follower | **0.25× — moves DOWN at events** |
+| growth | `spectral_section_ratio` | a slow τ20 s density rank against the track's normal | not event-scaled at all |
+| canopy angle | `spectral_flux` | broadband spectral change | 1.50× — fires as often between events as on them |
+| tip light | `spectral_level_rise` | pre-AGC level rise (FTR.25) | event-aligned, but only 0.37/s |
+
+**So the standing hypothesis is: the tree moves a lot while tracking three quantities that are not
+what a listener attends to.** That is consistent with every rejection in the arc, including the two
+where a genuinely event-aligned driver WAS tried and rejected for its motion cost — FTR.24 put one
+on size and multiplied peak velocity 10.7× (*"herky-jerky… looks defective"*).
+
+**⚠ Do not open another tuning increment against this.** Six size formulations, two accent
+placements, three spread routes and a detector rewrite have all been tried. The next move needs a
+changed premise about WHICH musical quantity the tree should follow — arrangement? section
+boundaries? a beat-grid-derived structure? — and that is a product decision for Matt, not a
+coefficient.
+
+**Verification criteria for any future attempt:** a driver whose event specificity exceeds 2× AND
+whose total travel stays within 25 % of the FTR.23 baseline, measured on one capture, before any
+live review is requested.
+
+---
+
+
+### BUG-092 — Fractal Tree's declared `growth` route is inert: `arousal` loses its own `max()` on every frame (2026-08-17, RE-SCOPED same day, ✅ RESOLVED 2026-08-19)
+
+**Resolved at FTR.33**, by removing the term rather than giving it a coefficient. Matt chose
+hold-and-step for the growth channel, so the size now reads DYN.2c's per-track density rank
+(`spectralSectionRatio`) through `ArrivalStep` and commits each change on a `spectral_level_rise`
+arrival. The `arousal` term is deleted from `fractal_growth`, and the sidecar's `growth ← arousal`
+route is replaced by `growth_tier ← spectralSectionRatio` plus `growth_commit ← spectralLevelRise`.
+The manifest and the shader agree again, which was the whole of this entry once its original
+headline was retracted.
+
+**Status: P3, evidence only. This entry was filed with a WRONG headline and corrected hours later;
+the correction is the more useful half.**
+
+**⚠ WHAT I FILED FIRST, AND WHY IT WAS WRONG.** The original entry claimed `arousal` was the
+preset's primary growth driver, that it flatlines after 12 s, and that this explained nine live
+rejections of *"the tree grows and shrinks with no clear connection to the music"*. The flatness is
+real. **The rest was false, because I measured the primitive and never checked its COEFFICIENT.**
+
+The shader computes:
+
+```metal
+reach = saturate(max(0.10f * arousalReach, fullness) * musicGate)
+```
+
+Measured after 12 s on `2026-08-17T20-01-01Z`:
+
+| term | p05 | p95 | span |
+|---|---|---|---|
+| `0.10 × arousalReach` | 0.038 | 0.070 | **0.032** |
+| `fullness` (= `spectral_section_ratio × 0.5`) | 0.316 | 0.961 | **0.646** |
+| `musicGate` (from `spectral_surge`) | 0.294 | 1.000 | 0.707 |
+| resulting `reach` | 0.270 | 0.950 | **0.680** |
+
+**`arousal` wins that `max()` on 0.0 % of frames.** It is not a dead driver; it is an inert term.
+And the growth channel is not dead at all — `reach` spans 0.680, and the visible trunk length spans
+**0.151 clip space ≈ 164 px of 1080**.
+
+**The actual defect, which is small.** The sidecar declares `growth ← arousal`, and that route has
+no visible effect. This is the FTR.2 false-manifest class, and QG.1 route coverage cannot catch it:
+the gate asks whether a declared primitive VARIES (it does, faintly), not whether it survives the
+arithmetic it feeds. `arousal`'s within-track flatness — mean 0.446…0.475, sd 0.048…0.069, the same
+0.258…0.509 bounds on five captures across three builds and two audio paths — is unremarkable for a
+*mood* classifier and is why it went unnoticed for the whole FTR program.
+
+**Two fixes, both Matt's call because one changes what he sees:** delete the inert term and its
+route (honest, no visual change), or raise its coefficient so a track's mood biases the tree's
+resting size (a visible change, and the thing the route was presumably *meant* to do).
+
+**★ The transferable lesson, which is why this entry is kept rather than quietly deleted: measuring
+a PRIMITIVE's range says nothing about whether it reaches the picture.** Check the coefficient and
+the surrounding arithmetic — a term inside a `max()` against something ten times larger is decor.
+This is the same species as FTR.24's model/shader mismatch (glide order) three days earlier.
+
+---
+
 ### BUG-097 — A physics frame-time clamp corrupts a musical measurement: Witchlight loses two thirds of its off-beat accents when frames get heavy (2026-08-18)
 
 **Status: FIXED 2026-08-18 (WL.14), on Matt's instruction. Validated on three real sessions and
