@@ -193,6 +193,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// forwarded into MIRDiagnostics for the spider debug overlay.
     var latestBassAttackRatio: Float = 0
 
+    /// LFSTEM.1 — the current track's pre-analysed stem series, or `.empty` when there is none
+    /// (streaming, a cache miss, or a local file analysed before schema v10).
+    ///
+    /// Non-empty means playback reads stems from here by playback position instead of from live
+    /// separation, which is late by construction. Written on the cache-hit branch of
+    /// `resetStemPipeline(for:)` and cleared unconditionally on every track change beside it —
+    /// a per-track surface written on one path and not its complement is how BUG-024 leaked one
+    /// session's album art across every track of the next.
+    var currentStemSeries: StemFeatureSeries = .empty
+
     /// Gossamer wave-pool state — allocated when the Gossamer preset is active,
     /// nil otherwise. Tick closure and waveBuffer are wired into the render pipeline
     /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.
