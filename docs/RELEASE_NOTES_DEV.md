@@ -10,6 +10,41 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-26-215039] BUG-106 fixed — the ML dispatch gate now measures jank, not resolution
+
+**Matt's call: (a) stems on time.** `MLDispatchScheduler` held the 142 ms MPSGraph stem
+separation until every frame in a 20–30 frame window came in under `deviceTier == .tier1 ? 14.0
+: 16.0` — a constant with no resolution term, compared against the *worst* frame of the window.
+At 4K the median frame was 17.6 ms rising to 44.9 in BUG-100's session, so the window was never
+clean: every dispatch deferred in 100 ms steps to the 1.5–2.0 s ceiling and force-fired anyway,
+against a 2.0 s stem period. The gate prevented nothing and cost every stem update about a full
+period.
+
+`MLDispatchScheduler.budgetMs(floorMs:recentMedianFrameMs:)` now returns
+`max(floorMs, median × 1.5)`, with the median taken over the same rolling window the max comes
+from (`FrameBudgetManager.recentMedianFrameMs`). The question the gate asks changes from "is this
+machine fast" to "is this frame worse than what this session normally delivers" — an absolute
+threshold on a quantity whose scale varies with the input is the same mistake the audio side
+corrected with deviation primitives (D-026 / FA #31).
+
+- **1080p unchanged.** Median ≈ 8 ms → `8 × 1.5 = 12`, under both tier floors, so the floor
+  decides exactly as before. An 18 ms frame there still defers.
+- **4K opens.** A steady 25 ms session budgets 37.5 ms and dispatches; the same window against
+  the old 16 ms constant still returns `.defer`, which is what proves the case bites.
+- **Still a gate.** A 60 ms spike inside that same 4K session defers. Median rather than mean, so
+  one 200 ms hitch does not raise the bar the next dispatch is judged against.
+
+⚠ **One correction to the recommendation as written.** BUG-106 proposed deriving the budget from
+the display's refresh interval. That would not have worked: at 60 Hz the interval is 16.7 ms, so
+a 4K session at 17–45 ms never clears it and the gate stays shut. It has to follow what the
+renderer actually delivers at this resolution.
+
+Still owed: one fullscreen 4K session on this build — `ml_forced` should stay flat where it
+previously climbed ~one per 2 s, and Matt's eye on whether stems now read with the music without
+new stutter. That is the same session BUG-100 needs for `GPU_PRESSURE`.
+
+---
+
 ### [dev-2026-08-26-212617] BUG-100 instrumented, and the ML dispatch gate turns out to be inoperative at 4K (BUG-106)
 
 **Instrumentation, not a fix.** BUG-100 — sustained 4K rendering degrading the whole app rather

@@ -280,6 +280,16 @@ No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU). Three p
 2. If the dispatch has been pending ≥ `maxDeferralMs` → force-dispatch to prevent stem freeze (D-059c).
 3. If fewer than `requireCleanFramesCount` frames have been observed → defer (startup warmup).
 4. If `recentMaxFrameMs > currentTierBudgetMs` → defer 100 ms and retry.
+
+**`currentTierBudgetMs` is derived, not constant (BUG-106, 2026-08-26).** It was
+`deviceTier == .tier1 ? 14.0 : 16.0`, which no 4K render can meet, so step 4 always fired and
+every dispatch reached step 2's ceiling: the gate prevented nothing at 4K and cost each stem
+update roughly a full 2 s period. It is now
+`MLDispatchScheduler.budgetMs(floorMs:recentMedianFrameMs:)` = `max(floorMs, median × 1.5)` over
+the same rolling window `recentMaxFrameMs` comes from, so step 4 asks whether a frame is worse
+than *this session's* steady state rather than whether the machine is fast. 1080p is unchanged
+(the floor decides); 4K's steady state stops reading as jank; a spike inside either still defers.
+Matt's call, "stems on time" over "jank-free".
 5. Else → dispatch now.
 
 **Budget signal:** the scheduler reads `FrameBudgetManager.recentMaxFrameMs` — the worst frame in the last 30-frame rolling window, not `currentLevel`. The level has 180-frame upshift hysteresis; the rolling max reflects the current render state immediately (D-059a).

@@ -30,6 +30,10 @@ public protocol FrameTimingProviding {
     /// Number of frames observed in the rolling window. May be less than the
     /// full window size at startup — scheduler defers until the window fills.
     var recentFramesObserved: Int { get }
+    /// Median frame time (ms) across the same window — what this session normally
+    /// delivers, as opposed to its worst moment. BUG-106: the budget is derived from
+    /// this so the gate measures *jank* rather than *resolution*.
+    var recentMedianFrameMs: Float { get }
 }
 
 // MARK: - MLDispatchScheduler
@@ -123,6 +127,41 @@ public final class MLDispatchScheduler {
 
     /// Active configuration (immutable after init).
     public let configuration: Configuration
+
+    // MARK: - Budget derivation (BUG-106)
+
+    /// Multiple of the session's own median frame time above which a frame counts as jank.
+    ///
+    /// The gate exists to keep a 142 ms MPSGraph dispatch off a frame that is already
+    /// struggling — and "struggling" is a **deviation from what this session delivers**, not
+    /// an absolute millisecond count. 1.5x is the same shape the audio side settled on for
+    /// deviation primitives (D-026 / FA #31): a threshold on an absolute value whose scale
+    /// varies with the input is a threshold that is wrong at one end of the range.
+    public static let jankFactor: Float = 1.5
+
+    /// Frame budget (ms) the window is judged against.
+    ///
+    /// **BUG-106.** This used to be the caller's tier constant alone — 14 ms on tier 1,
+    /// 16 on tier 2, with no resolution term. `recentMaxFrameMs` is the WORST frame of a
+    /// 20–30 frame window, and at 3840x2160 the *median* frame measured 17.6 ms rising to
+    /// 44.9 in the session BUG-100 was filed from, so the window was never clean: every
+    /// dispatch deferred in 100 ms steps to the 1.5–2.0 s ceiling and force-fired anyway,
+    /// against a 2.0 s stem period. The gate could not open at 4K, so it prevented nothing
+    /// and cost every stem update roughly a full period of latency.
+    ///
+    /// Matt's call, 2026-08-26: **stems on time**. So the budget now follows the session's
+    /// own median, floored at the tier constant:
+    ///
+    /// - **1080p is unchanged.** Median ≈ 8 ms, so `median × 1.5 = 12` and the floor wins:
+    ///   the gate behaves exactly as before at the only resolution it ever worked at.
+    /// - **4K opens.** A steady 25 ms session budgets 37.5 ms, so its own steady state is
+    ///   not read as jank — while a 45 ms spike inside it still defers.
+    ///
+    /// The floor is what keeps this from being a "never defer" change: below it, a genuinely
+    /// cheap preset that suddenly costs 20 ms still trips the gate.
+    public static func budgetMs(floorMs: Float, recentMedianFrameMs: Float) -> Float {
+        max(floorMs, recentMedianFrameMs * jankFactor)
+    }
 
     /// The most recent decision returned by `decide(context:)`. Used by the debug overlay.
     public private(set) var lastDecision: Decision?
