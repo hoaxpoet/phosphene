@@ -266,11 +266,12 @@ struct FrameBudgetManagerTests {
         #expect(FBM.qualityFloor(thermalState: .fair,     lowPowerMode: false) == .full)
         #expect(FBM.qualityFloor(thermalState: .serious,  lowPowerMode: false) == .noBloom)
         #expect(FBM.qualityFloor(thermalState: .critical, lowPowerMode: false) == .reducedRayMarch)
-        // RECON.18: Low Power Mode's floor was `.noSSGI`, a rung that reduced nothing (no preset
-        // ever declared SSGI). It was NOT promoted to `.noBloom` — that would be a new, user-visible
-        // reduction — so Low Power Mode imposes no floor today, matching prior effective behaviour.
-        // Pending Matt's D-167 call on whether it should floor at `.noBloom` instead.
-        #expect(FBM.qualityFloor(thermalState: .nominal,  lowPowerMode: true) == .full)
+        // RECON.19 (Matt's D-167 call, 2026-08-26): Low Power Mode floors at `.noBloom`.
+        // It floored at `.noSSGI` until RECON.18 — a rung that reduced nothing, since no preset
+        // ever declared SSGI — so this is the first time Low Power Mode costs anything visually.
+        #expect(FBM.qualityFloor(thermalState: .nominal,  lowPowerMode: true) == .noBloom)
+        #expect(FBM.qualityFloor(thermalState: .fair,     lowPowerMode: true) == .noBloom)
+        // Never weakens a stronger thermal floor.
         #expect(FBM.qualityFloor(thermalState: .critical, lowPowerMode: true) == .reducedRayMarch)
     }
 }
