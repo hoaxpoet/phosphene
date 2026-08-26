@@ -10,6 +10,47 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-26-225906] LFSTEM.1 — local-file stems arrive on time instead of 2.5 s late
+
+**Code-complete; the Skein M7 is owed before this can be called done.**
+
+Live stem separation is late by construction — a 2 s window plus inference — so every
+stem-driven behaviour has been following the music by about a bar. For a local file that was
+never necessary: the whole file is decoded during preparation, and the codebase already shipped
+the pattern (`instrumentFamilySeries`, sampled by playback position, IFC.4 / D-177). Stems were
+cached as a single snapshot of the track's first ten seconds where they could have been a series.
+
+- **1a — the sweep.** `SessionPreparer.analyzeStemSeries` steps the separator across the whole
+  file, keeping spans of 2 s and placing each at the END of its ~10 s window: deliberately the
+  same relative position the live path reads from, so the series carries the character presets
+  were tuned against without the lag. One analyzer instance sweeps in playback order so its AGC
+  carries across spans, as it does across live separations. Placing a span flush with the window
+  end dropped the frame starting on its last sample — 10 of 1292 over 30 s, invisible within any
+  one span — which the drift gate caught on its first run.
+- **1b — persistence, schema v10.** A raw `[StemFeatures]` dump in `stem_series.bin` (JSON for
+  ~10,000 frames × 55 floats would dominate the entry), safe only because every stored property
+  of `StemFeatures` is a `Float`, and guarded by a stored `stemSeriesFeatureStride`. Every read
+  failure degrades to `.empty`: the series is an accelerator, and discarding a good cache entry
+  over it would mean re-analysing a file that was already analysed.
+- **1c — playback.** The local prep path builds the series; the analysis frame samples it at
+  `mir.elapsedSeconds`; the live path stands down when one is installed, because both publishing
+  every frame is a race, not a feature.
+
+The alignment gate is the one that matters and it is asserted against a signal whose timing is
+known by construction: silence then a tone at a known second, with energy required never to
+appear EARLY (a start-placed window would surface it up to 8 s early) and only a little slack on
+the late side for the analyzer's own EMA.
+
+**Streaming is untouched and cannot have this** — a tap only ever carries audio that has already
+played. `analyzePreview` stays free of the sweep for that reason, asserted by a wiring test.
+
+⚠ **Owed before this is done:** the Skein M7. Around ten certified presets have stem routes tuned
+against values that arrive 2.5 s late, and this makes them arrive on time — expected better, but
+it is a real change in feel across the roster. **LFSTEM.2** (retiring live separation on the
+local path, which takes a 142 ms MPSGraph job off the GPU every 2 s) runs after that M7.
+
+---
+
 ### [dev-2026-08-26-224840] BUG-100 closed — the "sustained 4K degradation" was a preset switch inside the measurement window
 
 **CLOSED, not fixed — there was nothing to fix.** BUG-100 held that sustained 4K rendering
