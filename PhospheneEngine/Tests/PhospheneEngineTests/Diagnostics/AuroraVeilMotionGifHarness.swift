@@ -44,7 +44,6 @@ struct AuroraVeilMotionGifHarness {
         guard let preset = loader.presets.first(where: { $0.descriptor.name == "Aurora Veil" }) else {
             print("AuroraVeilMotionGifHarness: Aurora Veil not found — skipping"); return
         }
-        guard let avState = AuroraVeilState(device: ctx.device) else { throw E.setup }
 
         let dir = URL(fileURLWithPath: "/tmp/aurora_motion")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -95,8 +94,6 @@ struct AuroraVeilMotionGifHarness {
             // A bass transient near each downbeat so the brightness breathes too.
             fv.bassDev = fv.barPhase01 < 0.12 ? 0.7 : 0.05
 
-            avState.tick(deltaTime: dt, features: fv, stems: stems)
-
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw E.render }
             let rpd = MTLRenderPassDescriptor()
             rpd.colorAttachments[0].texture = tex
@@ -110,7 +107,6 @@ struct AuroraVeilMotionGifHarness {
             enc.setFragmentBuffer(wavBuf, offset: 0, index: 2)
             enc.setFragmentBuffer(stemBuf, offset: 0, index: 3)
             enc.setFragmentBuffer(histBuf, offset: 0, index: 5)
-            enc.setFragmentBuffer(avState.stateBuffer, offset: 0, index: 6)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             enc.endEncoding()
             cmd.commit(); cmd.waitUntilCompleted()
