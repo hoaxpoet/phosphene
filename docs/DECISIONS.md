@@ -122,6 +122,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-211 | Accepted | **Reference/diagnostic images leave git; the LFS purge is a separate, explicit step** (LFS.2, Matt 2026-07-31). Raster images under `docs/VISUAL_REFERENCES/` + `docs/diagnostics/` are gitignored and **untracked** — dev-only material no build target reads. Supersedes an earlier attempt that added the `.gitignore` rules but never ran `git rm --cached`: because gitignore does not affect already-tracked paths, dropping the LFS filter converted 189 pointers into real blobs and would have added **~100 MB to git history** (25.7 KB → 100.6 MB measured) while leaving the LFS objects — and the bill — in place. **Untracking stops NEW objects; it does not reclaim the old ones.** GitHub does not GC unreferenced LFS objects, so reclaiming storage needs a history rewrite (`Scripts/reclaim-lfs-visual-refs.sh`) followed by a GitHub Support purge request — deliberately NOT done here. Text records in those dirs stay in git. Worktree consequence handled: `Scripts/link_fixtures.sh` now symlinks the images too, since the preset workflow is "read the README and LOOK at the images" and a worktree without them degrades silently rather than failing. §Rationale below. |
 | D-213 | Accepted | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
+| D-224 | Accepted | **Rosette retired** (WHIT-RETIRE.1, Matt's call, 2026-08-26). After the WHIT.2b ray-march conversion's jaggedness fix and the WHIT.2c orbit removal, Matt's next live look, on a fresh session: *"Ugh, it's terrible. The camera angle is weird, the design is ugly, the motion is basic. It's a loser across the board. This feels like it's going nowhere fast. Thinking we should just move to retire."* Offered a bounded, concrete two-item fix (camera recomposition so the epicycle reads as the hero rather than the wing arcs; tightness-calibration recalibration against real track data) or retirement as the alternative; Matt: *"Even a harness difference will not be enough to save this preset, I'm afraid."* Six live rounds (WHIT.0 through WHIT.2c) each landed a technically-correct fix for the specific defect raised and the overall verdict never turned positive — the D-201/D-204 pattern (a correct, working mechanism that still doesn't produce a compelling image) rather than an unfixed bug. All preset code deleted: `Rosette.metal`, `Rosette.json`, `Rosette/RosetteState.swift`, `RosetteRayMarchTests.swift`, `RosetteStateTests.swift`, `docs/presets/ROSETTE_DESIGN.md`, `docs/VISUAL_REFERENCES/rosette/`. `expectedProductionPresetCount` 30 → 29. The `RosetteUniforms` ray-march buffer-6 ABI parameter (D-220/WHIT.2b) is also fully removed from the shared preamble and all three other ray-march presets (Volumetric Lithograph, Lumen Mosaic, Ferrofluid Ocean) — unlike `scene_orbit_speed`/`scene_dolly_speed` (a generic scalar reusable by any future preset) or `LumenPatternState`/slot 8 (a live, actively-shipping consumer), `RosetteUniforms` was a bespoke struct with zero remaining consumers; a future preset needing cross-frame CPU state can reintroduce the same pattern from git history rather than carrying dead ABI weight in the meantime (D-097 — siblings, not subclasses; "reusable infrastructure" is not a defense for a failed concept). `scene_orbit_speed` itself, and the generic `presetFragmentBuffer1`-style slot-6 mechanism, are kept per the RMENV/D-188 zero-consumer-capability precedent. Phase WHIT itself is NOT closed — `docs/presets/WHITNEY_PROGRAM.md` governs three siblings (Rosette/WHIT.A built and retired; Frieze/WHIT.B and Unison/WHIT.C unstarted), and this decision retires only WHIT.A. §Rationale below. |
 | D-223 | Accepted | **Rosette's camera orbit removed — a constant-rate turntable on a wholly planar scene reads as disconnected from the music and periodically flattens the whole composition** (WHIT.2c, Matt live 2026-08-26, immediately after D-222 shipped: *"I hate it. It's just a few objects rotating 360 degrees and moving poorly with the music... I dislike the rotation and hate the way the pattern moves."*). Diagnosed from Matt's own attached session (`features.csv`) before any fix: the orbit ran at a fixed 0.12 rad/s regardless of the music, the single most visually dominant motion in the frame with zero audio coupling; and because the figure and both wing arcs all lie flat in the z=0 plane, the orbit periodically pointed the camera near edge-on to the ENTIRE scene at once — confirmed by replaying his actual session (`SessionReplayHarness`) and finding several timestamps where the whole composition flattened to a plain ring plus two thin lines even though the underlying curve was not that simple at those moments. **Decision:** `scene_orbit_speed` removed from `Rosette.json` (camera reverts to the fixed position `[1.15,1.0,-1.9]` already verified against the WHIT.2b jaggedness/perf fixes); the generic engine feature itself is kept (cheap, generic, mirrors the already-kept `scene_dolly_speed` — the failure was Rosette's unmodulated rate against a flat scene, not the mechanism). **A separate, still-open finding from the same session** (not addressed here, not yet decided by Matt): `tonal_consonance` on this track averaged 0.071 against the corpus calibration's 0.117 median / 0.32 p99, so 84% of frames sat below the point where harmony reaches even half-weight against the audio-independent floor-drift clock — a tightness-calibration question, separate from the orbit. §Rationale below. |
 | D-222 | Accepted | **Rosette converted from flat 2D `direct+mv_warp` to a `ray_march` preset — genuine 3D swept-tube geometry** (WHIT.2b, Matt live 2026-08-26, same message as D-221: *"The final preset should also be 3D, not 2D, to take better advantage of the latest Apple processors."*). Wraps the UNCHANGED 2D distance-to-curve functions (`rosetteDist`/`rosetteWingDist`/`rosetteWingEllipseDist`) in a Pythagorean tube SDF (`sqrt(dist2D²+z²)-radius`) and renders through the engine's existing ray-march/PBR/IBL/SSGI pipeline — the same one Volumetric Lithograph/Lumen Mosaic/Ferrofluid Ocean already run on (D-021 `sceneSDF`/`sceneMaterial` contract), not an invented technique. New engine-generic `scene_orbit_speed` feature (mirrors the existing dolly) makes the tube's roundness legible in motion. `RosetteUniforms` (rotation + symmetry state, D-220's carry-forward) moves from the old `direct+mv_warp` buffer to ray-march fragment buffer(6) — discovered `RayMarchPipeline`'s buffer 6/7 were completely unused, and `directPresetFragmentBuffer` was already a pipeline-agnostic Swift property, so no new engine state was needed. **Two defects found on the FIRST live look at the converted preset, both fixed in the same increment, neither a surprise given the technique change:** (1) *"fidelity is poor - lines are really jagged"* — the 2D version's coarse-then-bisect nearest-point search (BUG-104's fix) produced a distance field smooth enough for a flat, non-lit 2D fragment but not smooth enough for the ray-march G-buffer's finite-difference normals; replaced with a dense point-to-segment polyline scan (the wing arcs' own already-proven technique, adopted verbatim per FA #65/#73 rather than re-derived) — confirmed by isolating a self-crossing-free outer loop (ruling out branch-seam theory) and comparing directly against the wing tubes in the same frame. (2) A previously-invisible **150ms/frame regression** (14.8x the median preset, over `PresetFrameBudgetTests`' 60ms ceiling) — the dense search ran on every ray-march step across the ENTIRE frame, including empty background; fixed with a bounding-sphere SDF lower bound around the figure and wing tubes (mathematically exact from the curve's own `|z|<=1` identity), cut to 28ms. **Found live within that fix:** a bare `boundD > 0` cutoff is unsound — the bound is TANGENT to the true surface at specific points (the curve reaches its bounding radius exactly, for every state), so the cheap branch can return a near-zero value the march loop's hit epsilon reads as a false, audio-independent hit, silently collapsing every RosetteRayMarchTests coupling measurement toward zero; fixed with a safety margin (15x the march loop's relative hit epsilon) between the true surface and where the cheap branch is trusted. Also surfaced and fixed as part of this increment: `SessionReplayHarness` never carried the TONAL block (`tonalPhaseFifths`/`tonalConsonance`/`harmonicFlux`/`midAttRel`) for any ray-march preset — Rosette is the first to route off it — now mapped from the real CSV columns `AudioRoutePrimitives.swift` already names; and `rubric_profile` briefly (incorrectly) set to `full` mid-session — reverted to `lightweight`, since the `full` cascade (triplanar textures, volumetric fog motes, parallax occlusion) is built for painterly/terrain presets and does not conceptually apply to a spare line-art emblem. §Rationale below. |
 | D-221 | Accepted | **Rosette: symmetry-order steps became a smooth multi-second transition, not an instant jump** (WHIT.2a, Matt live 2026-08-26: *"this preset MUST use motion to smoothly transition from one pattern to another, with lines separating and reattaching at different points."*). `rosetteCurve`'s formula is already continuous in `n` (no shader change needed) — `RosetteState` now interpolates `n` from the old symmetry order to the new one over `transitionDurationSeconds=4s` (smoothstep-eased) instead of writing the new integer instantly; feeding the shader a smoothly-varying `n` is itself the transition, since the curve's crossing points visibly slide, split, and re-merge as `n` moves between integers — verified by rendering the actual mid-transition frames (n=5.5 shows one lobe of the 5-fold flower visibly opening into a loose end mid-split before the 6th lobe closes). Comfortably shorter than `minHoldSeconds` (24s), so a transition always finishes well before the next one can start. Broke `test_rosette_rotationAndSymmetryCoupling`'s single-tick assumption (the old test exploited the instant-jump behavior this decision removes) — fixed by advancing two independent states to settlement before comparing, not by weakening the assertion. §Rationale below. |
@@ -4149,3 +4150,94 @@ and still 0.00 flashes/s / SAFE).
 
 **References.** `docs/ENGINEERING_PLAN.md` Increment WHIT.2c; `Rosette.json`; D-222 (the orbit
 this removes); `docs/presets/ROSETTE_DESIGN.md` §6.10.
+
+## D-224: Rosette retired (WHIT-RETIRE.1)
+
+**Status:** Accepted (Matt's call, 2026-08-26).
+
+**Decision.** Rosette is retired in its entirety. All preset code (`Rosette.metal`,
+`Rosette.json`, `Sources/Presets/Rosette/RosetteState.swift`), its dedicated tests
+(`RosetteRayMarchTests.swift`, `RosetteStateTests.swift`), its design doc
+(`docs/presets/ROSETTE_DESIGN.md`), and its visual reference set
+(`docs/VISUAL_REFERENCES/rosette/`) are deleted. `PresetLoaderCompileFailureTest.
+expectedProductionPresetCount` drops **30 → 29**. Recover from git history if a future concept
+revives it — `git log --all --oneline -- '**/Rosette*'` finds every commit.
+
+**Context — what makes this different from Faraday (D-204) but the same shape.** Like Faraday,
+Rosette did not die on an unfixed bug: the WHIT.2b ray-march conversion, the jaggedness fix, and
+the WHIT.2c orbit removal were each root-caused correctly and verified working (full test suite
+green, real measured flash-safety numbers, direct visual confirmation at every step). What never
+moved was Matt's verdict. Six live rounds, from WHIT.0's initial look-spike through WHIT.2c's
+orbit removal, each addressed the SPECIFIC defect raised in that round — and each time, the next
+live look found a new specific defect rather than approval. The final round made this explicit:
+offered a bounded, two-item fix (recompose the camera so the epicycle reads as the hero rather
+than the wing arcs; recalibrate `figure_tightness <- tonalConsonance` against real track data,
+since the shader's assumed corpus range didn't match observed sessions) as an alternative to
+retirement. Matt: *"Even a harness difference will not be enough to save this preset, I'm
+afraid."* That is a statement about the CONCEPT's ceiling, not about any specific remaining bug —
+the same category as D-201's motion-incoherence ceiling and D-204's "a correct mapping cannot
+rescue an intrinsically low-energy image," not the KS/Truchet/Kleinian Froth
+reference-vs-mechanism misses.
+
+**What survives.** The ray-march / PBR / IBL / SSGI pipeline itself (`RayMarchPipeline`,
+`RayMarch.metal`, `IBL.metal`, `PresetDescriptor+SceneUniforms`) is untouched — Volumetric
+Lithograph, Lumen Mosaic, and Ferrofluid Ocean all still run on it. The generic camera-orbit
+feature (`scene_orbit_speed`, `RayMarchPipeline.cameraOrbitSpeed`/`cameraOrbitAngle`,
+`applyCameraOrbit`) is KEPT, per the same reasoning D-223 already gave and the RMENV/D-188
+zero-consumer-capability precedent: it is cheap, generic scalar plumbing, and the failure
+diagnosed was Rosette's specific use of it (constant rate, wholly planar scene), not the
+mechanism. It currently has zero consumers, same as RMENV after Kinetic Sculpture's retirement,
+and awaits a future preset the same way.
+
+**What does NOT survive, and why this is a different call than the orbit.** The
+`RosetteUniforms` ray-march buffer-6 ABI parameter (D-220/WHIT.2b) — `smoothedFifths`/`symmetryN`,
+threaded as a mandatory trailing parameter through `sceneSDF`/`sceneMaterial` in the shared
+preamble AND all three other ray-march presets (each silencing it via `(void)rosette;`) — is
+fully removed, not kept-as-capability. Unlike `scene_orbit_speed` (a generic float scalar any
+future preset can trivially reuse by name) or `LumenPatternState`/buffer 8 (kept because Lumen
+Mosaic is a LIVE, currently-shipping consumer), `RosetteUniforms` was a bespoke 2-float struct
+whose FIELDS encode Rosette's own specific algorithm (a circular-phase smoother and a
+symmetry-order hold-timer) — renaming it away from "Rosette" would not have made it reusable, since
+a future preset wanting cross-frame CPU state would need different fields anyway. Keeping a
+zero-consumer, preset-shaped struct as permanent ABI weight on every ray-march preset's signature
+is exactly the "reusable infrastructure" trap CLAUDE.md's Authoring Discipline warns against
+(D-097 — siblings, not subclasses); a future preset can rebuild the identical pattern from git
+history (this decision, or D-220) in about the time it took to build originally. The matching
+`presetFragmentBuffer1` Swift-side plumbing (`RayMarchPipeline.render`, `runGBufferPass`,
+`rosettePlaceholderBuffer`) and the `varyConsonance`/`consonanceSweep` flash-harness parameters
+(added at WHIT.2b/D-222 specifically for Rosette's flash-safety measurement, zero other callers)
+are removed for the same reason.
+
+**Phase WHIT is NOT closed.** `docs/presets/WHITNEY_PROGRAM.md` is the program-level doc governing
+three sibling presets after John Whitney Sr.: Rosette (WHIT.A, built through WHIT.2c, retired by
+this decision), Frieze (WHIT.B, unstarted), and Unison (WHIT.C, unstarted) — explicitly "three
+different Whitney mechanisms, not one engine with three configs" (D-097 cited in that doc). This
+decision retires only WHIT.A/Rosette; Frieze and Unison remain open future work under the same
+program, unaffected by Rosette's specific concept not landing. `WHITNEY_PROGRAM.md` is annotated
+to mark WHIT.A retired with a pointer here, not deleted.
+
+**Wiring removed.** `expectedProductionPresetCount` 30 → 29; `FidelityRubricTests.
+expectedAutomatedGate` Rosette entry removed; `MultiPassRenderHarness`'s `renderRosette` method +
+its `"Rosette"` dispatch case + its ray-march-preset-name-set entry removed;
+`MultiPassFlashHarnessTests.rosetteIsFlashSafe` removed; `StatefulRuntimeRegistry.
+knownPresetNames`'s `"Rosette"` entry removed (`ParticleGeometryRegistry.swift`);
+`VisualizerEngine`'s `rosetteState` property + `bindRosetteRuntime` + its dispatch case + its
+track-change reset + its teardown nil-out all removed (`VisualizerEngine.swift`,
+`VisualizerEngine+Presets.swift`). Comments in `PresetDescriptor.swift`, `RayMarchPipeline+
+MetalFX.swift`, `SessionReplayHarness.swift`, and `ReplayHarnessRouteCoverageTests.swift` that
+named Rosette as a still-live consumer of `scene_orbit_speed` or the TONAL-block CSV mapping are
+reworded to reflect retirement while the underlying generic capabilities stay documented and
+available.
+
+**Carry-forward.** `docs/ENGINEERING_PLAN.md` (Phase WHIT header annotated, WHIT-RETIRE.1
+Recently-Completed entry), `docs/ARCHITECTURE.md` (Module Map entries removed, GPU Contract
+Details buffer-6 section reverted to its pre-WHIT.2b text), `docs/ENGINE/RENDER_CAPABILITY_
+REGISTRY.md` and `docs/SHADER_CRAFT.md` (`scene_orbit_speed` rows updated to note zero consumers,
+Rosette retired), `docs/presets/WHITNEY_PROGRAM.md` (WHIT.A marked retired). D-217 through D-223
+(Rosette's full decision history) are kept in place as historical record, per the D-188 precedent
+— superseded, not deleted.
+
+**References.** `docs/ENGINEERING_PLAN.md` Increment WHIT-RETIRE.1; D-217–D-223 (Rosette's full
+decision history, all superseded by this one); D-188 / D-201 / D-204 (the retirement precedents
+this follows); D-097 (siblings not subclasses — why `RosetteUniforms` does not survive as
+"reusable infrastructure").
