@@ -2689,7 +2689,7 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 every point in the morph (`a` from 0.05 to 1.80), matching the validated state family
 (circle/cusped-star/petals/petals-with-loops/tangle, `ROSETTE_DESIGN.md` §4.1).
 
-**Actual behavior.** After BUG-103's wing fix, Matt's next live look reported: *"Still too
+**Actual behavior.** After BUG-105's wing fix, Matt's next live look reported: *"Still too
 basic... Still broken."* Asked directly what "still broken" meant: *"Lines do not connect. The
 motion is all wrong."* Rendered diagnostic stills (`test_rosette_visualDump`,
 `ROSETTE_MVWARP_DIAG=1`) confirmed it directly: the tangle state (a=1.80) showed clear gaps
@@ -2757,13 +2757,16 @@ the same search's *correctness* failure mode, found live rather than by review.
 
 ---
 
-### BUG-103 — RESOLVED (WHIT.1d-3): Rosette's wing cartouche rendered fully off-screen on a real window (2026-08-26)
+### BUG-105 — RESOLVED (WHIT.1d-3): Rosette's wing cartouche rendered fully off-screen on a real window (2026-08-26)
 
 **Severity:** P2
 **Domain tag:** preset.fidelity / renderer
 **Status:** Resolved
 **Introduced:** WHIT.0 (wing arcs added, 2026-08-25)
 **Resolved:** WHIT.1d-3 (2026-08-26)
+**Note (2026-08-26):** originally filed as BUG-103; renumbered to BUG-105 when a concurrent
+session's unrelated BUG-103 (AVAudioPlayerNode NSException) merged to main first, creating a
+duplicate. Content unchanged. Rosette itself is retired (D-224) — this entry is historical.
 
 **Expected behavior.** Rosette's mirrored coloured wing arcs + small ellipses (D-217, "full
 cartouche") render near the frame edges on every real window size, as they do in every recorded

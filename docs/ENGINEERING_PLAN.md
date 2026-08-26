@@ -7523,7 +7523,11 @@ increment to exercise the app-layer build/test surface, not just the engine SPM 
 **Remaining before certification:** Matt's live M7 review against the curated references
 (`docs/VISUAL_REFERENCES/rosette/`) — the only still-open item on Rosette's certification path.
 
-### Increment WHIT.1d-3 — BUG-103: wing cartouche was rendering off-screen at real window sizes ✅ (2026-08-26)
+### Increment WHIT.1d-3 — BUG-105: wing cartouche was rendering off-screen at real window sizes ✅ (2026-08-26)
+
+*(Filed as BUG-103 at the time; renumbered to BUG-105 when a concurrent session's unrelated
+BUG-103 — AVAudioPlayerNode NSException — merged to main first, D-numbers/BUG-numbers must stay
+unique. Content below unchanged.)*
 
 **Matt's first live look at Rosette** (`2026-08-26T12-58-21Z`, Cherub Rock, right after this
 worktree's changes were merged to primary `main` and built): *"Looks completely broken. A star
@@ -7567,7 +7571,7 @@ regression from the scale factor being 1.0 there): `test_rosette_multiFrameNonDe
 red), `PresetLoaderCompileFailureTest`. `swiftlint --strict` clean across the full repo. Full
 engine suite (1898 tests) re-run clean.
 
-**Filed and closed same-session:** BUG-103 (`docs/QUALITY/KNOWN_ISSUES.md`), release note
+**Filed and closed same-session:** BUG-105 (`docs/QUALITY/KNOWN_ISSUES.md`), release note
 `docs/RELEASE_NOTES_DEV.md` `[dev-2026-08-26-131626]`.
 
 **Separately raised by Matt, not actioned here — a scope question, not a defect:** *"you still
