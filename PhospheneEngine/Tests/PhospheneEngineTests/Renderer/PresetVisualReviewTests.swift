@@ -598,7 +598,6 @@ struct PresetVisualReviewTests {
         scene.sceneParamsA.y = Float(width) / Float(height)
         scene.cameraOriginAndFov.z += dollyOffset          // the forward flight
         pipeline.sceneUniforms = scene
-        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
 
         let ibl = try IBLManager(context: context, shaderLibrary: shaderLibrary)
         let postChain: PostProcessChain?
@@ -1040,7 +1039,6 @@ struct PresetVisualReviewTests {
 
         // Production-parity bindings (see doc comment).
         let iblManager = try IBLManager(context: context, shaderLibrary: shaderLibrary)
-        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
 
         let ppChain: PostProcessChain?
         if preset.descriptor.passes.contains(.postProcess) {

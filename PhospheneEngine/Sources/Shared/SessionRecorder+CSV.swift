@@ -64,25 +64,21 @@ public struct RenderTimingSnapshot: Sendable {
 public struct RayMarchPassTimingSnapshot: Sendable {
     public let gbufferPassMs: Float?
     public let lightingPassMs: Float?
-    public let ssgiPassMs: Float?
     public let postProcessPassMs: Float?
 
     public init(
         gbufferPassMs: Float?,
         lightingPassMs: Float?,
-        ssgiPassMs: Float?,
         postProcessPassMs: Float?
     ) {
         self.gbufferPassMs = gbufferPassMs
         self.lightingPassMs = lightingPassMs
-        self.ssgiPassMs = ssgiPassMs
         self.postProcessPassMs = postProcessPassMs
     }
 
     public static let empty = RayMarchPassTimingSnapshot(
         gbufferPassMs: nil,
         lightingPassMs: nil,
-        ssgiPassMs: nil,
         postProcessPassMs: nil
     )
 }
@@ -108,7 +104,7 @@ extension SessionRecorder {
         frame_cpu_ms,frame_gpu_ms,track_elapsed_s,cached_bass_proportion,\
         mir_pipeline_ms,stem_analyzer_ms,beat_detector_ms,pitch_tracker_ms,mood_classifier_ms,\
         encode_cpu_ms,renderframe_cpu_ms,\
-        gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms,\
+        gbuffer_pass_ms,lighting_pass_ms,post_process_pass_ms,\
         pulse_phase01,pulse_amp01,\
         section_index,section_start_s,section_confidence,\
         pulse_beat_index,pulse_regional_blend01,\
@@ -213,9 +209,8 @@ extension SessionRecorder {
         // where the active preset doesn't take the ray-march path.
         let gbufMs = rayMarchPass.gbufferPassMs.map { String(format: "%.4f", $0) } ?? ""
         let lightMs = rayMarchPass.lightingPassMs.map { String(format: "%.4f", $0) } ?? ""
-        let ssgiMs = rayMarchPass.ssgiPassMs.map { String(format: "%.4f", $0) } ?? ""
         let postMs = rayMarchPass.postProcessPassMs.map { String(format: "%.4f", $0) } ?? ""
-        let rayMarchPassCols = ",\(gbufMs),\(lightMs),\(ssgiMs),\(postMs)"
+        let rayMarchPassCols = ",\(gbufMs),\(lightMs),\(postMs)"
         // FBS Stage 1 (D-153) — the steady first-note-anchored beat pulse, so
         // anchor accuracy + steadiness are verifiable from session artifacts.
         let pulseCols = String(format: ",%.5f,%.3f", fv.pulsePhase01, fv.pulseAmp01)

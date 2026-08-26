@@ -200,13 +200,6 @@ extension RenderPipeline {
             chain.ensureAllocated(width: marchWidth, height: marchHeight)
         }
 
-        // Enable SSGI when the active passes array includes .ssgi.
-        let ssgiActive = passesLock.withLock { activePasses.contains(.ssgi) }
-        rayMarchState.ssgiEnabled = ssgiActive
-        // Propagate accessibility flag — a11y gate only. Governor gate managed via
-        // applyQualityLevel(_:) → setGovernorSkipsSSGI. D-054, D-057.
-        rayMarchState.setA11yReducedMotion(frameReduceMotion)
-
         let noiseTextures = textureManagerLock.withLock { textureManager }
         let ibl = iblManagerLock.withLock { iblManager }
         // Snapshot slot-8 per-preset buffer (D-LM-buffer-slot-8). Slot 8 is
@@ -303,7 +296,6 @@ extension RenderPipeline {
         onRayMarchPassTimingObserved?(
             rayMarchState.lastGBufferPassMs,
             rayMarchState.lastLightingPassMs,
-            rayMarchState.lastSSGIPassMs,
             rayMarchState.lastPostProcessPassMs
         )
 

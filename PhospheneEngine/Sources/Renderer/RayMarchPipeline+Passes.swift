@@ -3,12 +3,10 @@
 // Extracted from RayMarchPipeline.swift for file-length compliance.
 // All methods are internal to the Renderer module — callers use `render(...)` on the main type.
 //
-// Pass order when SSGI is enabled:
-//   1. runGBufferPass   — preset SDF → 3 G-buffer targets
-//   2. runLightingPass  — G-buffer → litTexture (.rgba16Float), PBR + screen-space shadows + IBL
-//   3. runSSGIPass      — G-buffers + litTexture → ssgiTexture (half-res indirect diffuse)
-//   4. runSSGIBlendPass — additive upsample of ssgiTexture into litTexture
-//   5. runCompositePass — litTexture → outputTexture (ACES SDR, used when no PostProcessChain)
+// Pass order:
+//   1. runGBufferPass
+//   2. runLightingPass
+//   3. runCompositePass (or PostProcessChain)
 
 import Metal
 import Shared
@@ -153,71 +151,16 @@ extension RayMarchPipeline {
     }
 }
 
-// MARK: - SSGI Passes (Increment 3.17)
+// MARK: - Debug Passes
 
 extension RayMarchPipeline {
-
-    /// Pass 3 (optional): SSGI accumulation — G-buffers + litTexture → ssgiTexture (half-res).
-    ///
-    /// Reads depth (gbuffer0 at texture 0), normals (gbuffer1 at texture 1), and direct
-    /// lighting (litTexture at texture 2).  Writes half-res indirect diffuse to `ssgiTexture`.
-    /// Blue noise (texture 8) is forwarded for sample-pattern dithering when `noiseTextures`
-    /// is non-nil.
-    func runSSGIPass(
-        commandBuffer: MTLCommandBuffer,
-        features: inout FeatureVector,
-        noiseTextures: TextureManager?
-    ) {
-        guard let g0 = gbuffer0, let g1 = gbuffer1, let lit = litTexture,
-              let ssgi = ssgiTexture else { return }
-
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture     = ssgi
-        desc.colorAttachments[0].loadAction  = .clear
-        desc.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        desc.colorAttachments[0].storeAction = .store
-
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        encoder.setRenderPipelineState(ssgiPipeline)
-        encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
-        encoder.setFragmentBytes(&sceneUniforms, length: MemoryLayout<SceneUniforms>.stride, index: 4)
-        encoder.setFragmentTexture(g0, index: 0)    // depth
-        encoder.setFragmentTexture(g1, index: 1)    // normals + AO
-        encoder.setFragmentTexture(lit, index: 2)   // direct lighting
-        encoder.setFragmentSamplerState(sampler, index: 0)
-        // Blue noise at texture(8) for sample-rotation dithering — forwarded from TextureManager.
-        noiseTextures?.bindTextures(to: encoder)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
-    }
-
-    /// Pass 4 (optional): SSGI blend — additive upsample of ssgiTexture into litTexture.
-    ///
-    /// Uses additive blending (src=one, dst=one) with loadAction=.load so the
-    /// existing direct-lighting content in `litTexture` is preserved and the
-    /// upsampled indirect diffuse is layered on top.
-    func runSSGIBlendPass(commandBuffer: MTLCommandBuffer) {
-        guard let ssgi = ssgiTexture, let lit = litTexture else { return }
-
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture     = lit
-        desc.colorAttachments[0].loadAction  = .load   // preserve direct lighting
-        desc.colorAttachments[0].storeAction = .store
-
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        encoder.setRenderPipelineState(ssgiBlendPipeline)
-        encoder.setFragmentTexture(ssgi, index: 0)
-        encoder.setFragmentSamplerState(sampler, index: 0)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
-    }
 }
 
 // MARK: - Depth Debug Pass
 
 extension RayMarchPipeline {
 
-    /// DEBUG: Split-screen depth/albedo bypass — no lighting, SSGI, or ACES.
+    /// DEBUG: Split-screen depth/albedo bypass — no lighting or ACES.
     /// Left half:  depth map (white=near, dark=far, RED=sky/miss).
     /// Right half: raw unlit albedo from gbuf2.
     func runDepthDebugPass(commandBuffer: MTLCommandBuffer, outputTexture: MTLTexture) {
@@ -246,7 +189,7 @@ extension RayMarchPipeline {
 
 extension RayMarchPipeline {
 
-    /// Debug pass: copy gbuf2 directly to outputTexture without any lighting, SSGI, or ACES.
+    /// Debug pass: copy gbuf2 directly to outputTexture without any lighting or ACES.
     ///
     /// Used when `debugGBufferMode == true` (toggled with 'G' key).
     /// Because this bypasses the PBR lighting pass and all post-processing, the raw colours

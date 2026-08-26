@@ -9,17 +9,12 @@
 // Render path (all on one command buffer):
 //   1. runGBufferPass   — preset → 3 G-buffer targets (.rg16Float, .rgba8Snorm, .rgba8Unorm)
 //   2. runLightingPass  — G-buffer → litTexture (.rgba16Float), PBR + screen-space shadows
-//   3. runSSGIPass      — (optional, Increment 3.17) G-buffers + litTexture → ssgiTexture (half-res)
-//   4. runSSGIBlendPass — (optional) additively upsample ssgiTexture into litTexture
-//   5. runCompositePass — litTexture → outputTexture (ACES SDR) OR
+//   3. runCompositePass — litTexture → outputTexture (ACES SDR) OR
 //      (optional) caller feeds litTexture into PostProcessChain.runBloomAndComposite()
-//
-// SSGI is enabled by setting `ssgiEnabled = true` before calling `render(...)`.
-// `RenderPipeline+RayMarch` sets this flag when `.ssgi` is present in `activePasses`.
 //
 // When both `useRayMarch: true` and a PostProcessChain are desired, the caller:
 //   1. Runs RayMarchPipeline.render(..., postProcessChain: chain)
-//   2. The pipeline runs G-buffer + lighting (+ optional SSGI) into litTexture, then calls
+//   2. The pipeline runs G-buffer + lighting into litTexture, then calls
 //      chain.runBloomAndComposite(from: litTexture, to: outputTexture, ...)
 //   3. The composite pass is skipped in favour of the chain's bloom composite.
 
@@ -51,43 +46,15 @@ public final class RayMarchPipeline: @unchecked Sendable {
     public private(set) var gbuffer2: MTLTexture?
 
     /// Lit scene texture: `.rgba16Float` — PBR lighting output before tone-mapping.
-    /// After the optional SSGI blend pass this also contains indirect diffuse contributions.
     public private(set) var litTexture: MTLTexture?
-
-    /// SSGI accumulation texture: `.rgba16Float`, half drawable resolution.
-    /// Written by `runSSGIPass`; blended additively into `litTexture` by `runSSGIBlendPass`.
-    /// Nil until `allocateTextures` is called.
-    public private(set) var ssgiTexture: MTLTexture?
 
     // MARK: - Pipeline States
 
     /// Lighting pass: reads 3 G-buffer targets, evaluates PBR, writes to `.rgba16Float`.
     let lightingPipeline: MTLRenderPipelineState
 
-    /// SSGI accumulation pass (Increment 3.17): reads G-buffers + lit texture → half-res indirect diffuse.
-    let ssgiPipeline: MTLRenderPipelineState
-
-    /// SSGI blend pass (Increment 3.17): additive upsample of ssgiTexture into litTexture.
-    let ssgiBlendPipeline: MTLRenderPipelineState
-
     /// Composite pass: reads litTexture, applies ACES, writes to drawable format.
     let compositePipeline: MTLRenderPipelineState
-
-    // MARK: - SSGI Suppression Flags (D-054, D-057)
-    //
-    // SSGI is suppressed when EITHER the a11y gate OR the frame-budget governor
-    // wants it off. Two separate flags are OR-gated into the computed `reducedMotion`
-    // so that governor-driven recovery cannot re-enable SSGI when the user has
-    // explicitly chosen reduced motion. A11y always wins. D-057(c).
-    //
-    // Future producers (e.g. photosensitivity strict mode, deferred from U.9) must
-    // add a third private flag and widen the OR expression — never assign directly
-    // to `reducedMotion`.
-
-    /// A11y-driven suppression. Set via `setA11yReducedMotion(_:)`.
-    private var a11yReducedMotion: Bool = false
-    /// Governor-driven suppression. Set via `setGovernorSkipsSSGI(_:)`.
-    private var governorSkipsSSGI: Bool = false
 
     // MARK: - Per-pass Timing Breakdown (PERF.2-pass — BUG-019 instrumentation)
     //
@@ -99,33 +66,10 @@ public final class RayMarchPipeline: @unchecked Sendable {
     public private(set) var lastGBufferPassMs: Float = 0
     /// Wall-clock cost in ms of the lighting pass during the most recent `render(...)` call.
     public private(set) var lastLightingPassMs: Float = 0
-    /// Wall-clock cost in ms of SSGI (pass + blend) during the most recent `render(...)`
-    /// call. 0 when SSGI is disabled or suppressed for this frame.
-    public private(set) var lastSSGIPassMs: Float = 0
     /// Wall-clock cost in ms of the post-process bloom / composite pass during the most
     /// recent `render(...)` call. Includes either the `PostProcessChain.runBloomAndComposite`
     /// call (when a chain is attached) or the fallback `runCompositePass`.
     public private(set) var lastPostProcessPassMs: Float = 0
-
-    /// `true` when SSGI must be suppressed, regardless of `ssgiEnabled`.
-    /// Computed as the OR of `a11yReducedMotion` and `governorSkipsSSGI`.
-    public var reducedMotion: Bool { a11yReducedMotion || governorSkipsSSGI }
-
-    /// Set the a11y-driven SSGI suppression flag.
-    ///
-    /// Called by `RenderPipeline+RayMarch` from `RenderPipeline.frameReduceMotion`
-    /// and by the app layer from `AccessibilityState`.
-    public func setA11yReducedMotion(_ value: Bool) {
-        a11yReducedMotion = value
-    }
-
-    /// Set the frame-budget governor's SSGI suppression flag.
-    ///
-    /// Called by `RenderPipeline.applyQualityLevel(_:)`. Setting this to `false`
-    /// never overrides an active a11y flag — the OR gate prevents that.
-    public func setGovernorSkipsSSGI(_ value: Bool) {
-        governorSkipsSSGI = value
-    }
 
     // MARK: - Step Count Governor (D-057)
 
@@ -142,14 +86,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// resolution on the upscaled image.
     public var renderScale: Float = 1.0
 
-    // MARK: - SSGI State
-
-    /// When `true`, `render(...)` runs the SSGI accumulation and blend passes between
-    /// the lighting pass and the composite/bloom pass.
-    /// Set by `RenderPipeline+RayMarch` when `.ssgi` is present in `activePasses`.
-    /// Defaults to `false`.
-    public var ssgiEnabled: Bool = false
-
     // MARK: - Depth Debug Mode
 
     /// Direct depth+albedo diagnostic pipeline — compiled from `raymarch_depth_debug_fragment`.
@@ -157,7 +93,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
 
     // MARK: - G-buffer Debug Mode
 
-    /// When `true`, `render(...)` skips the lighting pass, SSGI, and ACES tone-mapping
+    /// When `true`, `render(...)` skips the lighting pass and ACES tone-mapping
     /// and copies `gbuffer2` directly to the output texture.
     ///
     /// This makes the `#ifdef GBUFFER_DEBUG` 4-quadrant visualization readable on screen:
@@ -302,8 +238,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
         self.sceneUniforms = SceneUniforms()
         let bundle = try Self.buildPipelineBundle(context: context, shaderLibrary: shaderLibrary)
         self.lightingPipeline = bundle.lighting
-        self.ssgiPipeline = bundle.ssgi
-        self.ssgiBlendPipeline = bundle.ssgiBlend
         self.compositePipeline = bundle.composite
         self.gbufferDebugPipeline = bundle.gbufferDebug
         self.depthDebugPipeline = bundle.depthDebug
@@ -375,18 +309,13 @@ public final class RayMarchPipeline: @unchecked Sendable {
         let texWidth = max(width, 1)
         let texHeight = max(height, 1)
 
-        let ssgiW = max(texWidth / 2, 1)
-        let ssgiH = max(texHeight / 2, 1)
-
         gbuffer0    = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rg16Float)
         gbuffer1    = makeSnormTexture(width: texWidth, height: texHeight)
         gbuffer2    = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rgba8Unorm)
         litTexture  = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rgba16Float)
-        ssgiTexture = context.makeSharedTexture(width: ssgiW, height: ssgiH, pixelFormat: .rgba16Float)
 
         logger.info("""
-            RayMarchPipeline textures allocated: \(texWidth)×\(texHeight), \
-            SSGI: \(ssgiW)×\(ssgiH)
+            RayMarchPipeline textures allocated: \(texWidth)×\(texHeight)
             """)
     }
 
@@ -479,13 +408,12 @@ public final class RayMarchPipeline: @unchecked Sendable {
         )
         lastGBufferPassMs = Float((CACurrentMediaTime() - gbufT0) * 1000)
 
-        // G-buffer debug bypass: skip lighting/SSGI/ACES entirely.
+        // G-buffer debug bypass: skip lighting/ACES entirely.
         // gbuf2 is written directly to the drawable so the 4-quadrant
         // diagnostic colors are unmodified when they reach the screen.
         if debugGBufferMode {
             runGBufferDebugPass(commandBuffer: commandBuffer, outputTexture: outputTexture)
             lastLightingPassMs = 0
-            lastSSGIPassMs = 0
             lastPostProcessPassMs = 0
             return
         }
@@ -500,17 +428,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
             presetFragmentBuffer3: presetFragmentBuffer3
         )
         lastLightingPassMs = Float((CACurrentMediaTime() - lightT0) * 1000)
-
-        // Optional SSGI pass (Increment 3.17): indirect diffuse between lighting and composite.
-        // Suppressed when reducedMotion is true per U.9 / D-054.
-        if ssgiEnabled && !reducedMotion {
-            let ssgiT0 = CACurrentMediaTime()
-            runSSGIPass(commandBuffer: commandBuffer, features: &features, noiseTextures: noiseTextures)
-            runSSGIBlendPass(commandBuffer: commandBuffer)
-            lastSSGIPassMs = Float((CACurrentMediaTime() - ssgiT0) * 1000)
-        } else {
-            lastSSGIPassMs = 0
-        }
 
         let colorForPost = litTexture
 

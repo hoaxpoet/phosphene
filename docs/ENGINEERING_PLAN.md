@@ -63,6 +63,23 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.18 — ICB and SSGI deleted; the last two dormant capabilities ✅ (2026-08-26)
+
+Matt's park-or-delete call on the remaining two dormant capabilities from the 2026-08-25 preset audit (2026-08-26), closing the set opened at RECON.17. Same D-203 precedent. **−2,036 lines.**
+
+**A. Indirect command buffers.** `RenderPipeline+ICB.swift` (340), `Shaders/ICB.metal` (`icb_populate_kernel`), `RenderPipelineICBTests` (417), the `.icb` `RenderPass` case and draw arm, the `IndirectCommandBufferState` type, and `ShaderLibrary`'s `supportICB` pipeline-key axis. **No sidecar ever declared `"icb"`**; the app's branch logged *"ICB state must be set externally"* and nothing ever set it; `supportICB: true` appeared only in tests. The registry row's claim of a `MeshShaders.metal` populate kernel was stale — the kernel lived only in `ICB.metal`.
+
+**B. Screen-space global illumination.** `Shaders/SSGI.metal` (171), `SSGITests` (450), `runSSGIPass`/`runSSGIBlendPass`, the `ssgi`/`ssgiBlend` pipeline states, `ssgiTexture`, the `.ssgi` case, `PresetDescriptor.useSSGI`, and the `ssgi_pass_ms` CSV column (written since PERF.2-pass, read by nothing). No sidecar ever declared `"ssgi"`; both historical consumers retired (Glass Brutalist D-186, Kinetic Sculpture D-188).
+
+**SSGI's two entanglements, handled rather than stepped around** — this is why it was flagged as needing more care than the RECON.17 pair:
+
+1. **The D-057 OR-gate.** `RayMarchPipeline.reducedMotion` existed *solely* to arbitrate SSGI suppression between the a11y and governor paths, so it retired with SSGI (D-057 amended). **The accessibility feature is intact:** reduced motion has three arms and only the SSGI one is gone — the mv_warp single-frame path and `beatAmplitudeScale = 0.5` both remain. That arm had been inert anyway, since no preset declared the pass.
+2. **The D-167 Low Power Mode floor.** The `.noSSGI` quality rung was the ladder's *first* reduction, so deleting SSGI would have left the governor a wasted step; the rung is gone and the ladder is now `full → noBloom → reducedRayMarch → reducedParticles → reducedMesh`. Low Power Mode floored at `.noSSGI` — a rung that reduced nothing — and was **deliberately not promoted** to `.noBloom`, which would be a new user-visible reduction smuggled in as cleanup. Behaviour matches prior *effective* behaviour exactly (no floor), and **D-167 carries an open question for Matt**: should Low Power Mode floor at `.noBloom` instead?
+
+Full engine suite green (**1,863 tests in 287 suites**), app suite 417/417, SwiftLint 0 violations across 513 files. Test expectations that encoded the old rung count were updated to the new ladder rather than loosened — the governor still downshifts on exactly 3 consecutive overruns, it simply reaches `.reducedRayMarch` in two steps instead of three. No preset's rendering changes: nothing deleted was reachable from any shipping preset.
+
+**This closes Tier 1 of the preset audit's dormant-capability set.** Remaining audit items are ordinary deletions (Arachne retired pool ~540, Aurora Veil dead `buffer(6)` ~300, MitosisGen2 sketch ~330) plus the one structural item — driving replay from the `audio_routes` sidecars.
+
 ### Increment RECON.17 — the 2D Murmuration flock and hardware ray tracing deleted ✅ (2026-08-26)
 
 Matt's park-or-delete call on the first two of the four dormant capabilities from the 2026-08-25 preset audit (2026-08-26). Both were built to capability-complete, both work, and neither has a consumer — the **D-203** precedent: *good work is not a reason to keep code with no consumer.* **−2,562 lines.**

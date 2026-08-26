@@ -51,7 +51,7 @@ import simd
 /// | `B.x` | fog start distance               | `makeSceneUniforms()` (static)                         | `RayMarch.metal` lighting |
 /// | `B.y` | fog end distance                 | `makeSceneUniforms()`; arousal fog-scale per frame     | `RayMarch.metal` lighting |
 /// | `B.z` | D-057 frame-budget step multiplier (1.0 = 128 steps) | 1.0 at construction; `RenderPipeline+RayMarch` per frame under budget pressure | G-buffer preamble march loop (`clamp(z, 0.25, 1.0)`; `z ≤ 0` → 1.0) |
-/// | `B.w` | SSGI sample-radius override (0 = default 0.08) | nobody (always 0 today)                  | `SSGI.metal` |
+/// | `B.w` | reserved (was the SSGI sample-radius override; SSGI deleted at RECON.18) | nobody | nobody |
 @frozen
 public struct SceneUniforms: Sendable {
 
@@ -85,7 +85,7 @@ public struct SceneUniforms: Sendable {
 
     /// x = fog start distance; y = fog end distance (fully opaque beyond this);
     /// z = D-057 frame-budget step multiplier (1.0 = full 128-step budget);
-    /// w = SSGI sample-radius override (0 = shader default). See the slot map above.
+    /// w = reserved (was the SSGI sample-radius override). See the slot map above.
     public var sceneParamsB: SIMD4<Float>
 
     // MARK: Additional lights (RMENV.1 — 112 bytes)

@@ -113,7 +113,6 @@ struct VLBudgetProbeTests {
         scene.sceneParamsA.x = descentPhase      // HERO #1: descent driver (energy-time)
         scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
         pipeline.sceneUniforms = scene
-        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
         var postChain: PostProcessChain?
@@ -196,7 +195,6 @@ struct VLBudgetProbeTests {
             print(String(format: "[VLBudget] step multiplier %.2f → %d march steps", mult, Int(128.0 * mult)))
         }
         pipeline.sceneUniforms = scene
-        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
         let postChain: PostProcessChain?

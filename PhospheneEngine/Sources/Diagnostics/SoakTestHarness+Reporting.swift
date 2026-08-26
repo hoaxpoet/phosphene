@@ -42,7 +42,7 @@ extension SoakTestHarness {
         }
 
         // Quality downshifts (transitions away from "full").
-        let qualityOrder = ["full", "no-SSGI", "no-bloom", "step-0.75", "particles-0.5", "mesh-0.5"]
+        let qualityOrder = ["full", "no-bloom", "step-0.75", "particles-0.5", "mesh-0.5"]
         let downshifts = qualityTransitions.filter { transition in
             let fromIdx = qualityOrder.firstIndex(of: transition.from) ?? 0
             let toIdx   = qualityOrder.firstIndex(of: transition.to) ?? 0
