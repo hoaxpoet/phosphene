@@ -73,7 +73,7 @@ extension SessionRecorder {
 
     /// Record one ray-march frame's per-sub-pass timing breakdown for the
     /// next features.csv row's `gbuffer_pass_ms` / `lighting_pass_ms` /
-    /// `ssgi_pass_ms` / `post_process_pass_ms` columns. Wires
+    /// `post_process_pass_ms` columns. Wires
     /// `RenderPipeline.onRayMarchPassTimingObserved` to the recorder.
     /// (PERF.2-pass — BUG-019 instrumentation.)
     ///
@@ -98,14 +98,12 @@ extension SessionRecorder {
     public func recordRayMarchPassTimings(
         gbufferMs: Float,
         lightingMs: Float,
-        ssgiMs: Float,
         postProcessMs: Float
     ) {
         queue.async { [weak self] in
             guard let self = self else { return }
             self.latestGBufferPassMs = gbufferMs
             self.latestLightingPassMs = lightingMs
-            self.latestSSGIPassMs = ssgiMs
             self.latestPostProcessPassMs = postProcessMs
         }
     }

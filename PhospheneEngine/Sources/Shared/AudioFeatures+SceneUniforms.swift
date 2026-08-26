@@ -2,11 +2,13 @@
 //
 // Uploaded to the GPU as buffer(4) in the G-buffer and lighting passes.
 // Layout must match the `SceneUniforms` MSL struct in Common.metal and in the
-// preset shader preamble — identical float4 field ordering, 128 bytes total.
+// preset shader preamble — identical float4 field ordering, 240 bytes total
+// (8 original float4s + the 7 RMENV.1 light rows).
 //
 // All fields use SIMD4<Float> to guarantee unambiguous 16-byte alignment in both
 // Swift and Metal, avoiding the packed_float3 vs SIMD3<Float> size mismatch
-// documented in RayIntersector+Internal.swift.
+// that motivated this rule was documented in RayIntersector+Internal.swift,
+// deleted with the ray-tracing capability at RECON.17 (see git history).
 
 import simd
 
@@ -19,7 +21,7 @@ import simd
 /// have the identical layout.  All fields are `SIMD4<Float>` (16 bytes each) to
 /// avoid `float3` vs `SIMD3<Float>` size ambiguity.
 ///
-/// Layout (128 bytes = 8 × float4):
+/// Layout (240 bytes = 15 × float4; rows 8–14 are the RMENV.1 lights below):
 /// ```
 /// [0]  cameraOriginAndFov     xyz = world-space camera position, w = vertical fov (radians)
 /// [1]  cameraForward          xyz = normalized forward direction, w = 0
@@ -43,13 +45,13 @@ import simd
 /// | Slot  | Meaning                          | Writer(s)                                              | Reader(s) |
 /// |-------|----------------------------------|--------------------------------------------------------|-----------|
 /// | `A.x` | accumulated audio time           | placeholder 0 at load; `RenderPipeline+RayMarch` per frame | preamble + preset shaders |
-/// | `A.y` | aspect ratio (width/height)      | placeholder 16/9 at load; render loop per frame        | preamble, RayMarch, SSGI, FerrofluidMesh |
+/// | `A.y` | aspect ratio (width/height)      | placeholder 16/9 at load; render loop per frame        | preamble, RayMarch, SSGI |
 /// | `A.z` | ray-march near plane             | `makeSceneUniforms()` (static)                         | march loops |
 /// | `A.w` | ray-march far plane              | `makeSceneUniforms()` (static)                         | march loops, fog |
 /// | `B.x` | fog start distance               | `makeSceneUniforms()` (static)                         | `RayMarch.metal` lighting |
 /// | `B.y` | fog end distance                 | `makeSceneUniforms()`; arousal fog-scale per frame     | `RayMarch.metal` lighting |
 /// | `B.z` | D-057 frame-budget step multiplier (1.0 = 128 steps) | 1.0 at construction; `RenderPipeline+RayMarch` per frame under budget pressure | G-buffer preamble march loop (`clamp(z, 0.25, 1.0)`; `z ≤ 0` → 1.0) |
-/// | `B.w` | SSGI sample-radius override (0 = default 0.08) | nobody (always 0 today)                  | `SSGI.metal` |
+/// | `B.w` | reserved (was the SSGI sample-radius override; SSGI deleted at RECON.18) | nobody | nobody |
 @frozen
 public struct SceneUniforms: Sendable {
 
@@ -83,7 +85,7 @@ public struct SceneUniforms: Sendable {
 
     /// x = fog start distance; y = fog end distance (fully opaque beyond this);
     /// z = D-057 frame-budget step multiplier (1.0 = full 128-step budget);
-    /// w = SSGI sample-radius override (0 = shader default). See the slot map above.
+    /// w = reserved (was the SSGI sample-radius override). See the slot map above.
     public var sceneParamsB: SIMD4<Float>
 
     // MARK: Additional lights (RMENV.1 — 112 bytes)

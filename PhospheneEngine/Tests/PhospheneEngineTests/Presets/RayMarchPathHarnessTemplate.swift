@@ -64,7 +64,6 @@ struct RayMarchPathHarnessTemplate {
         var scene = preset.descriptor.makeSceneUniforms()
         scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
         pipeline.sceneUniforms = scene
-        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)

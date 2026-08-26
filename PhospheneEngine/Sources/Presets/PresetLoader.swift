@@ -127,9 +127,6 @@ public final class PresetLoader: @unchecked Sendable {
         public let feedbackPipelineState: MTLRenderPipelineState?
         /// G-buffer pipeline state for ray march presets (3 color attachments). Nil for non-ray-march presets.
         public let rayMarchPipelineState: MTLRenderPipelineState?
-        /// MFX.1 motion-vector + depth pipeline. Non-nil only when the sidecar opts
-        /// into MetalFX Temporal AND the preset defines `scenePrevPosition`.
-        public let motionPipelineState: MTLRenderPipelineState?
         /// Per-vertex warp pipeline states (MV-2). Nil for non-mv_warp presets.
         public let mvWarpPipelines: MVWarpCompiledPipelines?
         /// Ordered staged-composition pipelines (V.ENGINE.1). Empty for non-staged presets.
@@ -140,7 +137,6 @@ public final class PresetLoader: @unchecked Sendable {
             pipelineState: MTLRenderPipelineState,
             feedbackPipelineState: MTLRenderPipelineState? = nil,
             rayMarchPipelineState: MTLRenderPipelineState? = nil,
-            motionPipelineState: MTLRenderPipelineState? = nil,
             mvWarpPipelines: MVWarpCompiledPipelines? = nil,
             stages: [LoadedStage] = []
         ) {
@@ -148,7 +144,6 @@ public final class PresetLoader: @unchecked Sendable {
             self.pipelineState = pipelineState
             self.feedbackPipelineState = feedbackPipelineState
             self.rayMarchPipelineState = rayMarchPipelineState
-            self.motionPipelineState = motionPipelineState
             self.mvWarpPipelines = mvWarpPipelines
             self.stages = stages
         }
@@ -300,7 +295,6 @@ public final class PresetLoader: @unchecked Sendable {
                 pipelineState: pipelines.standard,
                 feedbackPipelineState: pipelines.feedback,
                 rayMarchPipelineState: pipelines.rayMarch,
-                motionPipelineState: pipelines.motion,
                 mvWarpPipelines: pipelines.mvWarp,
                 stages: pipelines.stages
             )
@@ -353,7 +347,6 @@ public final class PresetLoader: @unchecked Sendable {
                 pipelineState: pipelines.standard,
                 feedbackPipelineState: pipelines.feedback,
                 rayMarchPipelineState: pipelines.rayMarch,
-                motionPipelineState: pipelines.motion,
                 mvWarpPipelines: pipelines.mvWarp,
                 stages: pipelines.stages
             )
@@ -419,22 +412,17 @@ public final class PresetLoader: @unchecked Sendable {
         let standard: MTLRenderPipelineState
         let feedback: MTLRenderPipelineState?
         let rayMarch: MTLRenderPipelineState?
-        /// MFX.1 motion-vector + depth pipeline. Non-nil only when the sidecar
-        /// opts into MetalFX Temporal.
-        let motion: MTLRenderPipelineState?
         let mvWarp: MVWarpCompiledPipelines?
         let stages: [LoadedStage]
 
         init(standard: MTLRenderPipelineState,
              feedback: MTLRenderPipelineState? = nil,
              rayMarch: MTLRenderPipelineState? = nil,
-             motion: MTLRenderPipelineState? = nil,
              mvWarp: MVWarpCompiledPipelines? = nil,
              stages: [LoadedStage] = []) {
             self.standard  = standard
             self.feedback  = feedback
             self.rayMarch  = rayMarch
-            self.motion    = motion
             self.mvWarp    = mvWarp
             self.stages    = stages
         }
@@ -628,13 +616,8 @@ public final class PresetLoader: @unchecked Sendable {
         // Full source: standard preamble + ray march G-buffer preamble + preset SDF.
         // rayMarchGBufferPreamble adds SceneUniforms, GBufferOutput, forward declarations,
         // and raymarch_gbuffer_fragment (which calls preset-defined sceneSDF/sceneMaterial).
-        // MFX.1: presets opting into MetalFX Temporal also get the motion-vector
-        // pass; it references preset-defined `scenePrevPosition`, so it must NOT
-        // be injected for presets that don't opt in (they'd fail to link).
-        let motionSection = descriptor.usesMetalFXTemporal
-            ? "\n\n" + Self.rayMarchMotionPreamble : ""
         let fullSource = Self.shaderPreamble + "\n\n" + Self.rayMarchGBufferPreamble
-            + motionSection + "\n\n" + fragmentSource
+            + "\n\n" + fragmentSource
 
         let options = MTLCompileOptions()
         options.fastMathEnabled = true
@@ -707,43 +690,7 @@ public final class PresetLoader: @unchecked Sendable {
             standardState = gbufferState
         }
 
-        let motionState = makeMotionPipeline(library: library, vertexFn: vertexFn, descriptor: descriptor, url: url)
-
-        return CompiledShader(standard: standardState, rayMarch: gbufferState, motion: motionState)
-    }
-
-    /// MFX.1 motion-vector pipeline (opt-in). Two attachments:
-    ///   [0] .rg16Float — motion (prev - curr) in UV units
-    ///   [1] .r32Float  — normalized depth, for MetalFX disocclusion
-    /// Formats MUST stay in lockstep with `MetalFXTemporalUpscaler.motionFormat` /
-    /// `.depthFormat` (Renderer module — not importable from Presets).
-    private func makeMotionPipeline(
-        library: MTLLibrary,
-        vertexFn: MTLFunction,
-        descriptor: PresetDescriptor,
-        url: URL
-    ) -> MTLRenderPipelineState? {
-        guard descriptor.usesMetalFXTemporal else { return nil }
-        guard let motionFn = library.makeFunction(name: "raymarch_motion_fragment") else {
-            logger.error("""
-                \(descriptor.name) declares upscale=metalfx_temporal but \
-                'raymarch_motion_fragment' is missing — does the preset define scenePrevPosition?
-                """)
-            return nil
-        }
-        let motionDesc = MTLRenderPipelineDescriptor()
-        motionDesc.vertexFunction = vertexFn
-        motionDesc.fragmentFunction = motionFn
-        motionDesc.colorAttachments[0].pixelFormat = .rg16Float
-        motionDesc.colorAttachments[1].pixelFormat = .r32Float
-        do {
-            let state = try device.makeRenderPipelineState(descriptor: motionDesc)
-            logger.info("Compiled MetalFX motion pipeline for \(descriptor.name)")
-            return state
-        } catch {
-            logger.error("Motion pipeline creation failed for \(url.lastPathComponent): \(error) — TAA disabled")
-            return nil
-        }
+        return CompiledShader(standard: standardState, rayMarch: gbufferState)
     }
 
     /// Compile an mv_warp preset: injects `shaderPreamble + rayMarchGBufferPreamble +

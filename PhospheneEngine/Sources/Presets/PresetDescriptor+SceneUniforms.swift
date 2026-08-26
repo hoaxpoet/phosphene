@@ -94,13 +94,9 @@ extension PresetDescriptor {
             default: uniforms.light3PositionAndIntensity = pos; uniforms.light3Color = col
             }
         }
+        // Lanes .y/.z/.w are reserved (the RMENV.2/.3 environment selector and the
+        // MFX.1 prev-frame clock that lived here were deleted at D-213/RECON.14).
         uniforms.lightingParams.x = Float(min(max(sceneLights.count, 1), 4))
-        // RMENV.3: lane .y carries the environment type into the shader so the
-        // miss/background path can render a matching backdrop (0 = sky, unchanged).
-        uniforms.lightingParams.y = Float(environmentType)
-        // FLY.1: lane .w selects the backdrop for miss rays (0 = env/sky, 1 = dark
-        // enclosed void). Default 0 → byte-identical for every existing preset.
-        uniforms.lightingParams.w = Float(backdropMode)
 
         // Fog: convert density → far distance. Dense fog (0.05) → 20 units; light (0.015) → ~67.
         //

@@ -181,7 +181,6 @@ import Metal
     #expect(RenderPass.meshShader.rawValue  == "mesh_shader")
     #expect(RenderPass.postProcess.rawValue == "post_process")
     #expect(RenderPass.rayMarch.rawValue    == "ray_march")
-    #expect(RenderPass.icb.rawValue == "icb")
 }
 
 @Test func renderPassDecodesFromJSON() throws {

@@ -73,12 +73,7 @@ public final class IBLManager: @unchecked Sendable {
     ///     `ibl_gen_prefiltered_env`, and `ibl_gen_brdf_lut` kernels.
     /// - Throws: `IBLManagerError` if texture allocation, kernel lookup, or GPU
     ///   generation fails.
-    /// The environment baked into the cubemaps (RMENV.2). 0 = default interior
-    /// (byte-identical to pre-RMENV), 1 = high-contrast gallery. See `ibl_env`.
-    public let envType: Int
-
-    public init(context: MetalContext, shaderLibrary: ShaderLibrary, envType: Int = 0) throws {
-        self.envType = envType
+    public init(context: MetalContext, shaderLibrary: ShaderLibrary) throws {
         let device = context.device
         let lib    = shaderLibrary.library
 
@@ -124,16 +119,14 @@ public final class IBLManager: @unchecked Sendable {
             commandBuffer: cmdBuf,
             pipeline: pipes.irradiance,
             texture: irrMap,
-            faceSize: IBLManager.irradianceFaceSize,
-            envType: envType
+            faceSize: IBLManager.irradianceFaceSize
         )
 
         // Prefiltered env: one dispatch per mip level (roughness increases with LOD).
         IBLManager.dispatchPrefilteredEnv(
             commandBuffer: cmdBuf,
             pipeline: pipes.prefilteredEnv,
-            texture: prefMap,
-            envType: envType
+            texture: prefMap
         )
 
         // BRDF LUT: (512, 512, 1).
@@ -234,16 +227,13 @@ public final class IBLManager: @unchecked Sendable {
         commandBuffer: MTLCommandBuffer,
         pipeline: MTLComputePipelineState,
         texture: MTLTexture,
-        faceSize: Int,
-        envType: Int
+        faceSize: Int
     ) {
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return }
         encoder.setComputePipelineState(pipeline)
         encoder.setTexture(texture, index: 0)
         var sz = UInt32(faceSize)
         encoder.setBytes(&sz, length: MemoryLayout<UInt32>.stride, index: 0)
-        var env = UInt32(envType)
-        encoder.setBytes(&env, length: MemoryLayout<UInt32>.stride, index: 1)
 
         let tgSize = MTLSize(width: 8, height: 8, depth: 1)
         let grid   = MTLSize(width: faceSize, height: faceSize, depth: 6)
@@ -256,8 +246,7 @@ public final class IBLManager: @unchecked Sendable {
     private static func dispatchPrefilteredEnv(
         commandBuffer: MTLCommandBuffer,
         pipeline: MTLComputePipelineState,
-        texture: MTLTexture,
-        envType: Int
+        texture: MTLTexture
     ) {
         let totalMips = IBLManager.prefilteredMipCount
         let baseSize  = IBLManager.prefilteredFaceSize
@@ -271,12 +260,10 @@ public final class IBLManager: @unchecked Sendable {
             var roughness = Float(mip) / Float(totalMips - 1)
             var faceSzU   = UInt32(faceSize)
             var mipU      = UInt32(mip)
-            var envU      = UInt32(envType)
 
             encoder.setBytes(&roughness, length: MemoryLayout<Float>.stride, index: 0)
             encoder.setBytes(&faceSzU, length: MemoryLayout<UInt32>.stride, index: 1)
             encoder.setBytes(&mipU, length: MemoryLayout<UInt32>.stride, index: 2)
-            encoder.setBytes(&envU, length: MemoryLayout<UInt32>.stride, index: 3)
 
             let tgSize = MTLSize(width: 8, height: 8, depth: 1)
             let grid   = MTLSize(width: faceSize, height: faceSize, depth: 6)

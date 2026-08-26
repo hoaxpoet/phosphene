@@ -101,16 +101,16 @@ public final class FrameBudgetManager {
     public enum QualityLevel: Int, Comparable, Sendable, CaseIterable {
         /// Baseline — all passes and effects at full quality.
         case full = 0
-        /// SSGI pass suppressed. First reduction; SSGI is expensive and visually subtle.
-        case noSSGI = 1
-        /// SSGI off + bloom off. Post-process pass still runs for ACES tone-mapping.
-        case noBloom = 2
+        /// Bloom off. First reduction; the post-process pass still runs for ACES tone-mapping.
+        /// (The former `.noSSGI` rung sat above this one; SSGI was deleted at RECON.18 and the
+        /// rung went with it — it had no effect, since no preset ever declared the pass.)
+        case noBloom = 1
         /// + ray march step count at 0.75×. Trades SDF precision for throughput.
-        case reducedRayMarch = 3
+        case reducedRayMarch = 2
         /// + particle count at 0.5×. Reduces murmuration density.
-        case reducedParticles = 4
+        case reducedParticles = 3
         /// + mesh density at 0.5×. Lowest quality floor.
-        case reducedMesh = 5
+        case reducedMesh = 4
 
         public static func < (lhs: QualityLevel, rhs: QualityLevel) -> Bool {
             lhs.rawValue < rhs.rawValue
@@ -120,7 +120,6 @@ public final class FrameBudgetManager {
         public var displayName: String {
             switch self {
             case .full:             return "full"
-            case .noSSGI:           return "no-SSGI"
             case .noBloom:          return "no-bloom"
             case .reducedRayMarch:  return "step-0.75"
             case .reducedParticles: return "particles-0.5"
@@ -268,7 +267,12 @@ public final class FrameBudgetManager {
     /// Map a thermal state + Low Power Mode flag to a minimum quality floor. Pure — the
     /// listener reads `ProcessInfo` and feeds the values here, keeping this controller
     /// `ProcessInfo`-free. Tunable policy (D-167): serious → no-bloom, critical →
-    /// step-0.75; Low Power Mode imposes at least no-SSGI.
+    /// step-0.75. Low Power Mode previously imposed a `.noSSGI` floor, which was a no-op in
+    /// practice — no preset ever declared the SSGI pass, so the rung reduced nothing. SSGI and
+    /// that rung were deleted at RECON.18 and the Low Power Mode floor is NOT silently promoted
+    /// to `.noBloom`: that would be a new, user-visible reduction. It therefore imposes no floor
+    /// today, exactly matching prior behaviour. **Open question for Matt (D-167 amendment):**
+    /// should Low Power Mode floor at `.noBloom` instead?
     public static func qualityFloor(
         thermalState: ProcessInfo.ThermalState,
         lowPowerMode: Bool
@@ -280,9 +284,8 @@ public final class FrameBudgetManager {
         case .critical:       floor = .reducedRayMarch
         @unknown default:     floor = .noBloom
         }
-        if lowPowerMode {
-            floor = max(floor, .noSSGI)
-        }
+        // See the doc comment: no floor from Low Power Mode, pending Matt's D-167 call.
+        _ = lowPowerMode
         return floor
     }
 

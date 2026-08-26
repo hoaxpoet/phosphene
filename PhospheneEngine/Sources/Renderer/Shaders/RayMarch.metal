@@ -1061,26 +1061,6 @@ fragment float4 raymarch_lighting_fragment(
     // returns fogFar = 1_000_000.  Any realistic fogFar is < 500.
     if (depthNorm >= 0.999) {
         float3 rd = rm_rayDir(uv, scene);
-        // RMENV.3: a preset with an environment (lightingParams.y != 0) renders that
-        // environment as the backdrop, so the visible background matches what the
-        // surfaces reflect (a chrome sculpture sits IN the gallery it mirrors). env 0
-        // keeps the original sky path exactly → byte-identical for every other preset.
-        // FLY.1: an ENCLOSED preset renders miss rays as a near-black void rather
-        // than a backdrop, so openings read as darkness receding instead of an exit
-        // to a sky. Kept faintly light-tinted (not pure black) so the gaps still sit
-        // in the same world rather than punching a flat hole. Independent of the IBL
-        // environment, which keeps feeding ambient + reflections.
-        if (scene.lightingParams.w >= 0.5) {
-            // Not pure black: at 0.015 the void read as a flat HOLE punched in the
-            // frame rather than depth receding away (BUG-071 round 8, corridor
-            // framing). A dim light-tinted floor keeps it enclosed while letting it
-            // sit in the same world as the lit geometry.
-            return float4(scene.lightColor.rgb * 0.022, 1.0);
-        }
-        uint bgEnv = uint(scene.lightingParams.y + 0.5);
-        if (bgEnv != 0u) {
-            return float4(ibl_env(rd, bgEnv), 1.0);
-        }
         bool fogDisabled = scene.sceneParamsB.y > 1.0e5;
         float3 sky = rm_skyColor(rd);
         return float4(fogDisabled ? sky * scene.lightColor.rgb : sky, 1.0);

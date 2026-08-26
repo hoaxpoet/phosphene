@@ -175,11 +175,6 @@ extension RenderPipeline {
         rayMarchState.ensureAllocated(width: marchWidth, height: marchHeight)
 
         // Update per-frame uniforms: accumulated audio time, aspect ratio, and step-count multiplier.
-        // MFX.1: lightingParams.z carries the PREVIOUS frame's accumulated audio
-        // time so a preset can derive where its geometry was last frame
-        // (`scenePrevPosition` → MetalFX motion vectors). Written before the new
-        // value lands in sceneParamsA.x.
-        rayMarchState.sceneUniforms.lightingParams.z = rayMarchState.sceneUniforms.sceneParamsA.x
         rayMarchState.sceneUniforms.sceneParamsA.x = features.accumulatedAudioTime
         // CLEAN.4.3: guard the divisor (height), not width — a zero-height drawable
         // divided to +inf/NaN aspect. Identical for any height > 0.
@@ -204,13 +199,6 @@ extension RenderPipeline {
             // at full drawable size and did not shrink with it.
             chain.ensureAllocated(width: marchWidth, height: marchHeight)
         }
-
-        // Enable SSGI when the active passes array includes .ssgi.
-        let ssgiActive = passesLock.withLock { activePasses.contains(.ssgi) }
-        rayMarchState.ssgiEnabled = ssgiActive
-        // Propagate accessibility flag — a11y gate only. Governor gate managed via
-        // applyQualityLevel(_:) → setGovernorSkipsSSGI. D-054, D-057.
-        rayMarchState.setA11yReducedMotion(frameReduceMotion)
 
         let noiseTextures = textureManagerLock.withLock { textureManager }
         let ibl = iblManagerLock.withLock { iblManager }
@@ -308,7 +296,6 @@ extension RenderPipeline {
         onRayMarchPassTimingObserved?(
             rayMarchState.lastGBufferPassMs,
             rayMarchState.lastLightingPassMs,
-            rayMarchState.lastSSGIPassMs,
             rayMarchState.lastPostProcessPassMs
         )
 

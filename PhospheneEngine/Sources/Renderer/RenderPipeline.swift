@@ -33,7 +33,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     /// Optional particle geometry — compute update + point-sprite rendering.
     /// Typed as `any ParticleGeometry` so per-preset conformers (Murmuration's
-    /// `ProceduralGeometry`, future siblings) can attach via `setParticleGeometry`. D-097.
+    /// `Murmuration3DGeometry`, `Physarum`, siblings) attach via `setParticleGeometry`. D-097.
     var particleGeometry: (any ParticleGeometry)?
     let particleLock = NSLock()
 
@@ -329,12 +329,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var postProcessChain: PostProcessChain?
     let postProcessLock = NSLock()
 
-    // MARK: - ICB State (Increment 3.5)
-
-    /// Optional ICB state for GPU-driven indirect command buffer rendering.
-    var icbState: IndirectCommandBufferState?
-    let icbLock = NSLock()
-
     // MARK: - Ray March Pipeline (Increment 3.14)
 
     /// Optional deferred ray march pipeline — G-buffer + PBR lighting + composite.
@@ -517,7 +511,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     /// Beat-pulse amplitude scale. `1.0` normal; `0.5` reduced-motion. See D-054.
     public var beatAmplitudeScale: Float = 1.0
-    /// When true, mv_warp and SSGI passes are suppressed. See D-054.
+    /// When true, the mv_warp feedback path renders single-frame. See D-054.
     public var frameReduceMotion: Bool = false
 
     // MARK: - Accumulated Audio Time (Increment 3.15)
@@ -576,10 +570,9 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// invoked on ray-march frames; other preset paths leave the recorder's values empty.
     ///   - `gbufferMs`: wall-clock of the G-buffer pass (SDF or mesh dispatch).
     ///   - `lightingMs`: wall-clock of the lighting pass.
-    ///   - `ssgiMs`: wall-clock of SSGI pass + blend (0 when suppressed for this frame).
     ///   - `postProcessMs`: wall-clock of bloom / composite.
     public var onRayMarchPassTimingObserved: (
-        (_ gbufferMs: Float, _ lightingMs: Float, _ ssgiMs: Float, _ postProcessMs: Float) -> Void
+        (_ gbufferMs: Float, _ lightingMs: Float, _ postProcessMs: Float) -> Void
     )?
 
     // MARK: - Timing

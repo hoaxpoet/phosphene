@@ -14,9 +14,11 @@ import Metal
     let preamble = PresetLoader.shaderPreamble
     // Verify the preamble contains ShaderUtilities content (not just structs).
     #expect(preamble.contains("sd_sphere"), "Preamble should include V.1+V.2 SDF primitives")
-    #expect(preamble.contains("perlin2D"), "Preamble should include noise functions from ShaderUtilities")
-    #expect(preamble.contains("cookTorranceBRDF"), "Preamble should include PBR functions from ShaderUtilities")
-    #expect(preamble.contains("uvKaleidoscope"), "Preamble should include UV transforms from ShaderUtilities")
+    // RECON.16 retired the unreachable 38 of ShaderUtilities' 42 functions; these
+    // four remain because they still have consumers (VolumetricLithograph, Nimbus).
+    #expect(preamble.contains("hash21"), "Preamble should include legacy hash21 (perlin3D dependency)")
+    #expect(preamble.contains("perlin3D"), "Preamble should include legacy value noise (fbm3D dependency)")
+    #expect(preamble.contains("fbm3D"), "Preamble should include legacy fbm3D (VolumetricLithograph)")
     #expect(preamble.contains("toneMapACES"), "Preamble should include tone mapping from ShaderUtilities")
     #expect(preamble.contains("palette"), "Preamble should include cosine palette from ShaderUtilities")
 }
@@ -53,11 +55,9 @@ import Metal
         throw ShaderUtilityTestError.noMetalDevice
     }
 
-    // A test preset that calls at least one function from each utility domain.
+    // A test preset that calls at least one function from each utility domain
+    // that survives: legacy noise/tonemap keepers + the V.1–V.3 canonical tree.
     let presetSource = """
-    // Define map() for ray marching utilities.
-    float map(float3 p) { return sd_sphere(p, 1.0); }
-
     fragment float4 preset_fragment(VertexOut in [[stage_in]],
                                     constant FeatureVector& features [[buffer(0)]],
                                     constant float* fftMagnitudes [[buffer(1)]],
@@ -65,29 +65,21 @@ import Metal
         float2 uv = in.uv;
         float t = features.time;
 
-        // Noise domain
-        float n = fbm2D(uv * 4.0 + t, 4);
+        // Noise domain (legacy keeper — VolumetricLithograph's algorithm)
+        float n = fbm3D(float3(uv * 4.0 + t, 0.5), 4);
 
         // SDF + operations domain
         float3 p = float3(uv * 2.0 - 1.0, 0.0);
         float d = op_smooth_union(sd_sphere(p, 0.5), sd_box(p, float3(0.3)), 0.1);
 
-        // Ray marching domain
-        float3 ro = float3(0, 0, -3);
-        float3 rd = normalize(float3(uv * 2.0 - 1.0, 1.5));
-        float hit = rayMarch(ro, rd, 0.1, 20.0, 64);
-
-        // PBR domain
+        // PBR domain (V.1 canonical)
         float3 N = float3(0, 1, 0);
         float3 V = float3(0, 0, 1);
         float3 L = normalize(float3(1, 1, 1));
-        float3 brdf = cookTorranceBRDF(N, V, L, float3(0.8), 0.0, 0.5);
+        float3 brdf = brdf_cook_torrance(N, V, L, float3(0.8), 0.5, 0.0, float3(0.04));
 
-        // UV transform domain
-        float2 polar = uvPolar(uv, float2(0.5));
-
-        // Color/atmosphere domain
-        float3 col = palette(n + polar.x, float3(0.5), float3(0.5),
+        // Color domain
+        float3 col = palette(n + d + brdf.x, float3(0.5), float3(0.5),
                              float3(1.0, 1.0, 1.0), float3(0.0, 0.33, 0.67));
         col = toneMapACES(col * 2.0);
 
@@ -112,11 +104,11 @@ import Metal
         source: """
         kernel void testKernel(device float* output [[buffer(0)]],
                                uint tid [[thread_position_in_grid]]) {
-            // Evaluate perlin2D at two known points, twice each.
-            float a1 = perlin2D(float2(1.23, 4.56));
-            float a2 = perlin2D(float2(1.23, 4.56));
-            float b1 = perlin2D(float2(7.89, 0.12));
-            float b2 = perlin2D(float2(7.89, 0.12));
+            // Evaluate perlin3D at two known points, twice each.
+            float a1 = perlin3D(float3(1.23, 4.56, 0.5));
+            float a2 = perlin3D(float3(1.23, 4.56, 0.5));
+            float b1 = perlin3D(float3(7.89, 0.12, 0.5));
+            float b2 = perlin3D(float3(7.89, 0.12, 0.5));
             output[0] = a1;
             output[1] = a2;
             output[2] = b1;
@@ -129,8 +121,8 @@ import Metal
         outputCount: 6
     )
 
-    #expect(result[0] == result[1], "perlin2D should be deterministic: same input → same output")
-    #expect(result[2] == result[3], "perlin2D should be deterministic for different point")
+    #expect(result[0] == result[1], "perlin3D should be deterministic: same input → same output")
+    #expect(result[2] == result[3], "perlin3D should be deterministic for different point")
     #expect(result[0] != result[2], "Different inputs should produce different outputs")
     #expect(result[4] == 1.0, "Noise output should be in [0, 1] range")
     #expect(result[5] == 1.0, "Noise output should be in [0, 1] range")
@@ -161,101 +153,48 @@ import Metal
     #expect(abs(result[3] - 1.0) < 0.001, "sd_box(2,0,0, b=1) should be 1.0, got \(result[3])")
 }
 
-@Test func test_rayMarch_sphereScene_hitsAtExpectedDistance() throws {
-    let (device, result) = try runComputeKernel(
-        source: """
-        // Scene: unit sphere at origin.
-        float map(float3 p) { return sd_sphere(p, 1.0); }
-
-        kernel void testKernel(device float* output [[buffer(0)]],
-                               uint tid [[thread_position_in_grid]]) {
-            // Ray from (0, 0, -3) toward origin should hit sphere at distance ~2.0
-            float t = rayMarch(float3(0.0, 0.0, -3.0), float3(0.0, 0.0, 1.0),
-                               0.1, 100.0, 256);
-            output[0] = t;
-            // Ray pointing away should miss (return -1.0)
-            float miss = rayMarch(float3(0.0, 0.0, -3.0), float3(0.0, 0.0, -1.0),
-                                  0.1, 100.0, 256);
-            output[1] = miss;
-        }
-        """,
-        outputCount: 2
-    )
-
-    #expect(abs(result[0] - 2.0) < 0.01,
-            "Ray from z=-3 toward unit sphere should hit at ~2.0, got \(result[0])")
-    #expect(result[1] < 0.0,
-            "Ray pointing away should miss (return -1.0), got \(result[1])")
-}
-
-@Test func test_cookTorrance_energyConservation_outputLEInput() throws {
+/// Properties of the V.1 canonical Cook-Torrance BRDF.
+///
+/// RECON.16 note: this replaces an `output <= input energy` assertion written
+/// against the retired legacy `cookTorranceBRDF`. That premise does not transfer
+/// and was not weakened to make it pass — a BRDF evaluated at the mirror
+/// direction is a *density*, so at low roughness the specular lobe legitimately
+/// exceeds albedo (measured ~10.3 at roughness 0.1). Energy conservation is a
+/// property of the integral over the hemisphere, not of one sample. What IS true
+/// pointwise, and what a broken BRDF would violate, is asserted below.
+@Test func test_cookTorrance_physicalProperties() throws {
     let (device, result) = try runComputeKernel(
         source: """
         kernel void testKernel(device float* output [[buffer(0)]],
                                uint tid [[thread_position_in_grid]]) {
             float3 N = float3(0, 1, 0);
             float3 V = float3(0, 1, 0);
-            float3 L = float3(0, 1, 0);
             float3 albedo = float3(1.0);
 
-            // Dielectric (non-metal), smooth surface — maximum specular case.
-            float3 brdf = cookTorranceBRDF(N, V, L, albedo, 0.0, 0.1);
-            float luminance = dot(brdf, float3(0.2126, 0.7152, 0.0722));
-            output[0] = luminance;
+            // Aligned light: positive, finite response.
+            float3 lit = brdf_cook_torrance(N, V, float3(0, 1, 0), albedo, 0.5, 0.0, float3(0.04));
+            output[0] = dot(lit, float3(0.2126, 0.7152, 0.0722));
 
-            // Metal, rough surface.
-            float3 brdfMetal = cookTorranceBRDF(N, V, L, albedo, 1.0, 0.9);
-            float lumMetal = dot(brdfMetal, float3(0.2126, 0.7152, 0.0722));
-            output[1] = lumMetal;
+            // Light BELOW the surface (NdotL <= 0) must contribute nothing.
+            float3 back = brdf_cook_torrance(N, V, float3(0, -1, 0), albedo, 0.5, 0.0, float3(0.04));
+            output[1] = dot(back, float3(0.2126, 0.7152, 0.0722));
 
-            // Input light energy (NdotL = 1.0 for these vectors).
-            output[2] = 1.0;
+            // Rougher surfaces spread the lobe, so the mirror-direction peak falls.
+            float3 smoothS = brdf_cook_torrance(N, V, float3(0, 1, 0), albedo, 0.15, 0.0, float3(0.04));
+            float3 roughS  = brdf_cook_torrance(N, V, float3(0, 1, 0), albedo, 0.85, 0.0, float3(0.04));
+            output[2] = dot(smoothS, float3(0.2126, 0.7152, 0.0722));
+            output[3] = dot(roughS,  float3(0.2126, 0.7152, 0.0722));
         }
         """,
-        outputCount: 3
+        outputCount: 4
     )
 
-    #expect(result[0] <= result[2] + 0.01,
-            "BRDF output luminance (\(result[0])) should not exceed input energy (\(result[2]))")
-    #expect(result[1] <= result[2] + 0.01,
-            "Metal BRDF output (\(result[1])) should not exceed input energy (\(result[2]))")
-    #expect(result[0] > 0.0, "BRDF should produce non-zero output for aligned N/V/L")
-}
-
-@Test func test_uvKaleidoscope_symmetry_nFinsProducesNFoldSymmetry() throws {
-    let (device, result) = try runComputeKernel(
-        source: """
-        kernel void testKernel(device float* output [[buffer(0)]],
-                               uint tid [[thread_position_in_grid]]) {
-            float2 center = float2(0.5);
-            int n = 6;
-
-            // Two points that should map to the same kaleidoscope UV
-            // when reflected through the 6-fold symmetry.
-            float angle1 = 0.1;
-            float angle2 = 0.1 + 2.0 * M_PI_F / 6.0; // One segment apart.
-            float r = 0.3;
-
-            float2 p1 = center + r * float2(cos(angle1), sin(angle1));
-            float2 p2 = center + r * float2(cos(angle2), sin(angle2));
-
-            float2 k1 = uvKaleidoscope(p1, center, n);
-            float2 k2 = uvKaleidoscope(p2, center, n);
-
-            // After folding, both should map to the same UV (within tolerance).
-            output[0] = length(k1 - k2);
-            // Verify radius is preserved.
-            output[1] = length(k1);
-            output[2] = r;
-        }
-        """,
-        outputCount: 3
-    )
-
-    #expect(result[0] < 0.01,
-            "6-fold kaleidoscope: points one segment apart should map to same UV, diff = \(result[0])")
-    #expect(abs(result[1] - result[2]) < 0.01,
-            "Kaleidoscope should preserve radius: got \(result[1]), expected \(result[2])")
+    #expect(result[0] > 0.0, "BRDF should produce positive output for aligned N/V/L")
+    #expect(result[0].isFinite, "BRDF output must be finite, got \(result[0])")
+    #expect(abs(result[1]) < 1e-6,
+            "Light below the surface must contribute nothing, got \(result[1])")
+    #expect(result[2] > result[3],
+            "Smooth surface peak (\(result[2])) should exceed rough surface peak (\(result[3]))")
 }
 
 @Test func test_palette_sweepT_producesSmoothGradient() throws {
@@ -318,32 +257,6 @@ import Metal
             "ACES tone map of HDR input should produce SDR output in (0, 1], got (\(result[0]), \(result[1]), \(result[2]))")
     #expect(result[4] < 0.01,
             "ACES tone map of black should be ~black, got length \(result[4])")
-}
-
-@Test func test_fog_zeroDistance_noEffect() throws {
-    let (device, result) = try runComputeKernel(
-        source: """
-        kernel void testKernel(device float* output [[buffer(0)]],
-                               uint tid [[thread_position_in_grid]]) {
-            float3 original = float3(1.0, 0.5, 0.2);
-            float3 fogColor = float3(0.7, 0.7, 0.8);
-
-            // Zero distance → no fog effect.
-            float3 noFog = fog(original, fogColor, 0.0, 1.0);
-            output[0] = length(noFog - original);
-
-            // Large distance → fully fogged.
-            float3 fullFog = fog(original, fogColor, 100.0, 1.0);
-            output[1] = length(fullFog - fogColor);
-        }
-        """,
-        outputCount: 2
-    )
-
-    #expect(result[0] < 0.001,
-            "Fog at zero distance should have no effect, diff = \(result[0])")
-    #expect(result[1] < 0.01,
-            "Fog at large distance should converge to fog color, diff = \(result[1])")
 }
 
 // MARK: - Performance

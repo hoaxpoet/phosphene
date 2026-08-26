@@ -4,9 +4,10 @@
 // pipeline. The render loop schedules dispatch through this protocol; conformers
 // hide their kernel names, vertex/fragment functions, and per-preset configuration.
 //
-// Murmuration's `ProceduralGeometry` is the first conformer (decay-rate-0 flock
-// with hardcoded bird silhouette). Future particle presets define their own
-// conformer rather than parameterizing a shared pipeline.
+// Murmuration's `ProceduralGeometry` was the first conformer (decay-rate-0 flock
+// with hardcoded bird silhouette); it was retired at RECON.17 and Murmuration now
+// runs `Murmuration3DGeometry`. Particle presets define their own conformer
+// rather than parameterizing a shared pipeline.
 //
 // See `docs/DECISIONS.md` D-097 and `CLAUDE.md` "Particle preset architecture".
 
@@ -23,9 +24,11 @@ import Shared
 /// pipeline state, and render pipeline state — the protocol does not expose any
 /// of those internals.
 ///
-/// The `Particle` struct memory layout (64 bytes, `packed_float4 color`) is shared
-/// across all conformers and lives in `Particles.metal` / `ProceduralGeometry.swift`.
-/// Conformers do not reinvent the struct layout.
+/// Conformers each own their particle struct. The original 64-byte
+/// (`packed_float4 color`) layout lived in `Particles.metal` /
+/// `ProceduralGeometry.swift`, both retired at RECON.17 with the 2D flock;
+/// it survives as a convention the existing conformers follow, not as a
+/// shared declaration.
 ///
 /// Conformers must be reference types (the engine stores them by reference and
 /// attaches/detaches them across queues). `Sendable` permits attach/detach from
