@@ -63,6 +63,17 @@ public final class RosetteState: @unchecked Sendable {
     /// energy levels; this is the same reasoning beat-onset thresholds already use).
     public static let fluxStepThreshold: Float = 0.09
 
+    /// Seconds to smoothly interpolate `n` from the old symmetry order to the new one
+    /// (WHIT.2a, Matt: *"this preset MUST use motion to smoothly transition from one
+    /// pattern to another, with lines separating and reattaching at different
+    /// points"*). `rosetteCurve`'s formula is already continuous in `n` (no shader
+    /// change needed) — feeding it a smoothly-varying `n` instead of an instant step is
+    /// itself the transition: the curve's crossing points visibly slide, split, and
+    /// re-merge as `n` moves between integers. Comfortably shorter than
+    /// `minHoldSeconds`, so a transition always finishes well before the next one can
+    /// start.
+    public static let transitionDurationSeconds: Float = 4.0
+
     /// Circular-smoother time constant (seconds). Matches `CircularPhaseSmoother`'s own
     /// documented default (D-209 / FTR.30) — a τ this codebase has already measured
     /// removes the jump without erasing real harmonic motion.
@@ -74,9 +85,9 @@ public final class RosetteState: @unchecked Sendable {
     /// buffer(6) by `VisualizerEngine+Presets` via `RenderPipeline.setDirectPresetFragmentBuffer`.
     public let rosetteBuffer: MTLBuffer
 
-    /// The currently-held symmetry order. Exposed for diagnostics/tests.
+    /// The current (possibly mid-transition) symmetry order. Exposed for diagnostics/tests.
     public var currentSymmetryN: Float {
-        lock.withLock { Self.symmetrySequence[symmetryIndex] }
+        lock.withLock { interpolatedSymmetryN() }
     }
 
     /// The smoothed `tonalPhaseFifths` value this frame (radians). Exposed for tests.
@@ -90,6 +101,13 @@ public final class RosetteState: @unchecked Sendable {
     private var fifthsIm: Float = 0
     private var fifthsSeeded = false
     private var symmetryIndex: Int = 0
+    /// The symmetry order the current transition is animating FROM. Only read while
+    /// `transitionElapsed < transitionDurationSeconds`.
+    private var transitionFromN: Float = RosetteState.symmetrySequence[0]
+    /// Seconds since the current transition started. `>= transitionDurationSeconds`
+    /// means settled (no animation in progress) — starts settled so the initial state
+    /// renders as a plain held order, not a transition from nothing.
+    private var transitionElapsed: Float = RosetteState.transitionDurationSeconds
     /// Seconds since the last symmetry step. Starts at `minHoldSeconds` so the very
     /// first qualifying spike can step immediately rather than waiting a full hold
     /// window from track start.
@@ -130,32 +148,47 @@ public final class RosetteState: @unchecked Sendable {
                 fifthsIm += (rawIm - fifthsIm) * alpha
             }
 
-            // Symmetry-order hold-timer: a harmonicFlux spike steps to the next order in
-            // the sequence, but only once the current order has held for minHoldSeconds —
-            // never per-beat, never per-spike (the anti-contract: "the symmetry order
-            // must never flicker").
+            // Symmetry-order hold-timer: a harmonicFlux spike starts a smooth transition to
+            // the next order in the sequence, but only once the current order has held for
+            // minHoldSeconds — never per-beat, never per-spike (the anti-contract: "the
+            // symmetry order must never flicker").
             timeSinceLastStep += dt
+            transitionElapsed += dt
             if features.harmonicFlux > Self.fluxStepThreshold && timeSinceLastStep >= Self.minHoldSeconds {
+                transitionFromN = interpolatedSymmetryN()   // wherever we are right now (settled, in practice)
                 symmetryIndex = (symmetryIndex + 1) % Self.symmetrySequence.count
+                transitionElapsed = 0
                 timeSinceLastStep = 0
             }
-            return (atan2(fifthsIm, fifthsRe), Self.symmetrySequence[symmetryIndex])
+            return (atan2(fifthsIm, fifthsRe), interpolatedSymmetryN())
         }
         writeToGPU(smoothedFifths: snapshot.smoothedFifths, symmetryN: snapshot.symmetryN)
     }
 
     /// Reset on track change so a new track's fifths phase doesn't glide in from the old
-    /// one, and the symmetry order restarts at Whitney's stated base (5-fold).
+    /// one, and the symmetry order restarts at Whitney's stated base (5-fold) — settled,
+    /// not mid-transition from the previous track's shape.
     public func reset() {
         lock.withLock {
             fifthsRe = 1; fifthsIm = 0; fifthsSeeded = false
             symmetryIndex = 0
+            transitionFromN = Self.symmetrySequence[0]
+            transitionElapsed = Self.transitionDurationSeconds
             timeSinceLastStep = Self.minHoldSeconds
         }
         writeToGPU(smoothedFifths: 0, symmetryN: Self.symmetrySequence[0])
     }
 
-    // MARK: - Private: GPU write
+    // MARK: - Private: interpolation + GPU write
+
+    /// Must be called with `lock` already held.
+    private func interpolatedSymmetryN() -> Float {
+        let toN = Self.symmetrySequence[symmetryIndex]
+        guard transitionElapsed < Self.transitionDurationSeconds else { return toN }
+        let progress = transitionElapsed / Self.transitionDurationSeconds
+        let eased = progress * progress * (3 - 2 * progress)   // smoothstep — eases in/out
+        return transitionFromN + (toN - transitionFromN) * eased
+    }
 
     private func writeToGPU(smoothedFifths: Float, symmetryN: Float) {
         let gpu = RosetteUniformsGPU(smoothedFifths: smoothedFifths, symmetryN: symmetryN, pad0: 0, pad1: 0)
