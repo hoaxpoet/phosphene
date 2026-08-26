@@ -135,12 +135,6 @@ static uint arachHashU32(uint seed) {
     return seed;
 }
 
-/// Nearest distance from p to line segment a→b (used by spider legs only).
-static float arachSegDist(float2 p, float2 a, float2 b) {
-    float2 ab = b - a, ap = p - a;
-    float  t  = saturate(dot(ap, ab) / max(dot(ab, ab), 1e-8));
-    return length(ap - ab * t);
-}
 
 // ── Per-web seed-derived variation ─────────────────────────────────────────────
 // All functions are pure/deterministic from rng_seed so shader and Swift diagnostics

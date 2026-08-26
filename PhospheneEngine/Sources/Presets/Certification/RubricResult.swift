@@ -28,9 +28,6 @@ public enum RubricItemStatus: String, Codable, Sendable, Equatable {
     case pass
     /// Automated check failed.
     case fail
-    /// This item is not applicable for the preset's profile (e.g. lightweight presets
-    /// are exempt from detail-cascade / material-count requirements).
-    case exempt
     /// Automation cannot determine this; falls to Matt's `certified` flag. Item M7 only.
     case manual
 }
@@ -45,7 +42,7 @@ public struct RubricItem: Codable, Sendable, Equatable {
     public let label: String
     /// Which tier this item belongs to.
     public let category: RubricCategory
-    /// Pass / fail / exempt / manual outcome.
+    /// Pass / fail / manual outcome.
     public let status: RubricItemStatus
     /// One-line explanation: count found, callsite name, or reason for failure.
     public let detail: String
@@ -155,12 +152,8 @@ public struct RuntimeCheckResults: Sendable {
     /// True when the preset renders a non-black frame at silence (all-zero FeatureVector).
     /// From Increment 5.2's "Preset produces non-black output" invariant.
     public let silenceNonBlack: Bool
-    /// Estimated p95 frame time in ms, read from the descriptor's `complexityCost` field
-    /// or measured directly. The rubric compares this against `DeviceTier.frameBudgetMs`.
-    public let p95FrameTimeMs: Float
 
-    public init(silenceNonBlack: Bool, p95FrameTimeMs: Float) {
+    public init(silenceNonBlack: Bool) {
         self.silenceNonBlack = silenceNonBlack
-        self.p95FrameTimeMs = p95FrameTimeMs
     }
 }

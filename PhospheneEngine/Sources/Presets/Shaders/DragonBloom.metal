@@ -55,18 +55,6 @@ constant float kMVWarpRotGain    = 0.0020;  // slow swirl from mid_att_rel
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Sample the stereo PCM waveform at a fractional frame index, returning mono [-1, 1].
-// Buffer is 2048 floats arranged as 1024 stereo frames (idx*2 = L, idx*2+1 = R) —
-// see Waveform.metal for the same convention.
-static float sampleWaveformMono(constant float* wv, float frameF) {
-    constexpr int kFrames = WAVEFORM_CAPACITY / 2;   // 1024
-    int frame0 = clamp(int(frameF), 0, kFrames - 2);
-    int frame1 = frame0 + 1;
-    float t = fract(frameF);
-    float s0 = (wv[frame0 * 2] + wv[frame0 * 2 + 1]) * 0.5;
-    float s1 = (wv[frame1 * 2] + wv[frame1 * 2 + 1]) * 0.5;
-    return mix(s0, s1, t);
-}
 
 // Estimate the waveform buffer's RMS amplitude for this frame.
 // The waveform is RAW PCM (NOT AGC-normalised) so its peak amplitude varies

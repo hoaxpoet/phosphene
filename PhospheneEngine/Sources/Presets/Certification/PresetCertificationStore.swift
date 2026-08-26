@@ -22,10 +22,6 @@ private let logger = Logger(subsystem: "com.phosphene.presets", category: "Certi
 /// and caches results. Results are keyed by preset ID (`PresetDescriptor.id`).
 public actor PresetCertificationStore {
 
-    // MARK: Shared singleton
-
-    public static let shared = PresetCertificationStore()
-
     // MARK: Private state
 
     private var cache: [String: RubricResult]?
@@ -52,14 +48,6 @@ public actor PresetCertificationStore {
     /// Returns all cached rubric results, keyed by preset ID.
     public func results() -> [String: RubricResult] {
         loadIfNeeded()
-    }
-
-    // MARK: - Test Injection
-
-    /// Replace the in-process cache with a pre-built result set.
-    /// Subsequent calls to `result(for:)` / `results()` return these values.
-    public func setResults(_ results: [String: RubricResult]) {
-        cache = results
     }
 
     // MARK: - Private Load
@@ -94,7 +82,6 @@ public actor PresetCertificationStore {
 
         let metalFiles = contents
             .filter { $0.pathExtension == "metal" && !excluded.contains($0.lastPathComponent) }
-            .filter { !$0.lastPathComponent.hasPrefix("Stalker") }  // retired preset
 
         var out: [String: RubricResult] = [:]
         let decoder = JSONDecoder()
@@ -124,12 +111,8 @@ public actor PresetCertificationStore {
 
             let presetID = descriptor.id
 
-            // For the certification store, we use the complexity_cost field as the
-            // p95 frame time estimate. Live measurements are not available at load time.
-            let runtimeChecks = RuntimeCheckResults(
-                silenceNonBlack: true,    // assume 5.2 acceptance gate already enforces this
-                p95FrameTimeMs: descriptor.complexityCost.cost(for: deviceTier)
-            )
+            // assume the 5.2 acceptance gate already enforces non-black output at silence
+            let runtimeChecks = RuntimeCheckResults(silenceNonBlack: true)
 
             let result = rubric.evaluate(
                 presetID: presetID,
