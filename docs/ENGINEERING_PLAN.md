@@ -7504,3 +7504,71 @@ triangle draw, ~5.8ms, no G-buffer/lighting/SSGI/mesh-shaders/particles. Whether
 it is a real product decision (HDR bloom pass vs. a lit 3D ribbon sweep vs. leaving the minimalism
 as the faithful take) that needs Matt's call, not a default — pitched, not built, pending his
 direction.
+
+### Increment WHIT.1d-4 — BUG-104: the curve's nearest-point search locked onto the wrong branch, breaking continuity ✅ (2026-08-26)
+
+**Immediately after WHIT.1d-3's rebuild, Matt's next live look:** *"Still too basic... Still
+broken."* Given no interactive UI-automation access to his desktop, asked directly what "still
+broken" meant rather than guess (`AskUserQuestion`): **"Lines do not connect. The motion is all
+wrong."**
+
+**Diagnosed by rendering, not by reasoning about the live app.** Independently verified the
+running app first — single process, no crash report, no duplicate instance — but the actual
+window was hidden behind other windows on Matt's desktop and this session has no accessibility
+permission to drive the native app further. Rather than keep guessing from a screenshot that
+couldn't show the render, ran the existing env-gated visual-dump test
+(`ROSETTE_MVWARP_DIAG=1 swift test --filter test_rosette_visualDump`) to get real, inspectable
+frames from the exact same shader. **The tangle state (a=1.80) showed clear gaps cutting into
+the stroke at multiple points; the cusped-star state (a=0.30) showed small disconnected artifact
+dots at the cusps.** Matt's report was accurate and specific — this was never about the wing fix.
+
+**Root cause:** `rosetteDist`'s coarse-then-bisect search tracked only the SINGLE
+globally-closest raw coarse sample, then bisect-refined locally around just that one. Once the
+epicycle self-intersects (which the design doc's own state family says it does at higher `a`),
+several distinct curve branches can pass near the same query point — refining from one seed
+locks onto whichever branch happened to own the marginally-closest sample and never checks a
+different, ultimately-closer branch. Where the wrong branch won, the reported distance was too
+large and the pixel rendered as background instead of stroke — a literal gap. Quantified with a
+bright-pixel-coverage script against the actual before/after stills: **5.92% of the 1920×1080
+frame lit before the fix at the tangle state, 6.96% after — a measured 17.5% increase**, not an
+estimate.
+
+**Fixed:** find ALL local minima among the coarse samples (a small fixed top-3 candidate list,
+not just the single global-best raw value), bisect-refine each candidate branch separately, take
+the overall closest result. `rosetteCurve`, the wing arcs, and audio routing are untouched.
+
+**Verified the mechanism, not just the symptom:** temporarily set the fix's
+`kRosetteMaxBranchCandidates` from 3 to 1 (collapsing it back to the exact old single-branch
+search) and confirmed the regression test reproduces the pre-fix number **bit-for-bit**
+(0.0592139...), then restored the fix. New regression guard
+`test_rosette_curveIsContinuousAtHighA` asserts bright-pixel coverage at the tangle state stays
+above 0.063 — comfortably between the measured broken (0.0592) and fixed (0.0696) values.
+
+**One thing checked before treating it as more bug to chase:** the small loops still visible at
+the cusped-star state's cusp points (a=0.30) are REAL curve geometry, not a residual defect — the
+epicycle's second term has amplitude `4a` at n=5, which exceeds 1 (the exact-cusp threshold) for
+any `a > 0.25`; a=0.30 is mathematically just past that threshold, so small self-tangent loops at
+each cusp are an expected feature of that state, matching `ROSETTE_DESIGN.md`'s own "cusped-star"
+naming for it. Confirmed analytically (the tangent vector `dz/dt` cannot reach zero when `4a > 1`)
+before spending any more time re-tuning a shader that was already correct there.
+
+**Cost:** coarse-sampling phase unchanged (still 40 samples); refinement now runs on up to 3
+candidate branches instead of 1 — worst case ~1.8× the curve evaluations of the old search, most
+pixels far fewer since most query points have only one nearby branch in practice. Comfortably
+inside the pass's existing budget headroom (5.8ms measured at WHIT.1c against a 16.67ms @ 60fps
+target); the visual-dump's 300-frame sequence ran in 46.7s post-fix vs. 31.3s pre-fix (~1.5×),
+consistent with the estimate.
+
+**Verification.** Full existing Rosette suite (`test_rosette_multiFrameNonDegenerate`,
+`test_rosette_harmonyCoupling`, `test_rosette_rotationAndSymmetryCoupling`,
+`test_rosette_wingsVisibleAtNearSquareAspect`, `rosetteIsFlashSafe`, `RouteCoverageTests`
+206/22/0 red, `PresetLoaderCompileFailureTest`) re-run clean. `swiftlint --strict` clean across
+the full repo. Full engine suite (1898 tests) re-run clean.
+
+**Filed and closed same-session:** BUG-104 (`docs/QUALITY/KNOWN_ISSUES.md`), release note
+`docs/RELEASE_NOTES_DEV.md` `[dev-2026-08-26-141947]`.
+
+**Remaining before certification:** Matt's live M7 review against the curated references
+(`docs/VISUAL_REFERENCES/rosette/`) confirming the curve reads correctly through the full morph
+in motion — and his still-open, separately-tracked scope question on whether/how to uplift the
+preset beyond its current deliberately-lightweight rendering (see WHIT.1d-3's closeout).

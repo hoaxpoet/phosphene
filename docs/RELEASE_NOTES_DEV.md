@@ -10,6 +10,36 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-26-141947] BUG-104 fixed — Rosette's curve had visible gaps from a nearest-point search locking onto the wrong branch
+
+**RESOLVED.** Right after BUG-103's wing fix, Matt's next live look: *"Still too basic... Still
+broken."* Asked what "broken" meant specifically: *"Lines do not connect. The motion is all
+wrong."* Rendered diagnostic stills confirmed it directly — the tangle state (a=1.80) showed
+real gaps cutting into the stroke; the cusped-star state (a=0.30) showed small disconnected dots
+at the cusps.
+
+Root cause: `rosetteDist`'s coarse-then-bisect nearest-point search tracked only the single
+globally-closest raw coarse sample, then refined locally around it. Once the epicycle
+self-intersects (which it does at higher `a`), several curve branches can pass near the same
+query point — refining from one seed locks onto whichever branch owned the marginally-closest
+sample and never checks a different, ultimately-closer branch. Wrong branch selected → distance
+reported too large → pixels that should be stroke render as background. Quantified directly:
+5.92% of the frame lit before the fix at the tangle state, 6.96% after (+17.5%).
+
+Fixed by finding ALL local minima among the coarse samples (not just the global-best one, via a
+small top-3 candidate list) and bisect-refining each branch separately. Verified the mechanism
+by temporarily collapsing the fix back to 1 candidate — reproduced the exact pre-fix number
+(0.0592) bit-for-bit — then restored it. New regression guard
+`test_rosette_curveIsContinuousAtHighA`.
+
+One thing this specifically was NOT: the small loops remaining at the cusped-star state's cusps
+are real curve geometry (the second term's amplitude exceeds the threshold for an exact cusp
+past a=0.25), not a rendering defect — checked the math before treating it as more bug to chase.
+
+Filed and closed same-session as BUG-104 (`docs/QUALITY/KNOWN_ISSUES.md`).
+
+---
+
 ### [dev-2026-08-26-131626] BUG-103 fixed — Rosette's wing cartouche was rendering fully off-screen on real windows
 
 **RESOLVED.** Matt's first live look at Rosette (`2026-08-26T12-58-21Z`, Cherub Rock) called it
