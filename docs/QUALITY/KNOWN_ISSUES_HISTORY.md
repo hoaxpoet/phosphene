@@ -4,6 +4,814 @@ Resolved entries rotated out of [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §Resolved 
 
 ---
 
+### BUG-097 — A physics frame-time clamp corrupts a musical measurement: Witchlight loses two thirds of its off-beat accents when frames get heavy (2026-08-18)
+
+**Status: FIXED 2026-08-18 (WL.14), on Matt's instruction. Validated on three real sessions and
+gated by a new test that was confirmed to fail on the pre-fix code.**
+
+**The fix.** `advance` now derives `clockDt` — real elapsed time, unclamped — alongside the
+clamped `dt`, and the four quantities that measure a DURATION use it: `timeSinceWrap`
+(→ `barPeriod`), `gridSilentFor`, `flareRefractoryRemaining`, `offBeatRefractoryRemaining`. The
+integrators keep the clamp, which is what it was written for.
+
+| session | frames over cap | off-beats before | after |
+|---|---|---|---|
+| `2026-08-18T16-10-38Z` | 48.8 % | 6 | **105** |
+| `2026-08-18T14-09-35Z` | 25.3 % | 50 | **149** |
+| `2026-08-17T15-23-17Z` | 0.2 % | 79 | **83** |
+
+All three land at the designed ~3:1, and **the already-healthy session barely moves** — the
+signature of a fix rather than a re-tune. Flare alignment on the worst session rose 36 % → 54 %.
+
+**The gate that was missing.** `offBeatPulseSurvivesHeavyFrames` drives the path at 16.7 ms and
+50 ms frames and asserts the off-beat:downbeat ratio stays above 2:1. Reintroducing the defect
+takes it to **0 pulses**, so it demonstrably catches this rather than merely passing beside it.
+
+⚠ **STILL UN-VALIDATED LIVE.** The fix only changes behaviour when frames go long, and no
+recorded session yet carries it under load: the 2026-08-18 18:04 session ran the pre-fix WL.13
+binary and was healthy anyway (0.0 % of frames over the cap, accents already at 2.95:1). The
+bad case is evidenced offline only — 6 → 105 off-beat pulses replaying
+`2026-08-18T16-10-38Z`. A loaded session on a WL.14 build is still owed before this is closed
+with confidence.
+
+**A hypothesis raised and falsified while checking this (recorded so it is not re-run).** Stroke
+liveliness differed sharply between sessions — 22.9 turns/min at 30 fps vs 34.7/min at 60 fps —
+which looked like the same clamp slowing the phase EMAs, since they still use the clamped `dt`.
+It is not: switching those EMAs to real time moves the turn count by **1** on both sessions
+(42→43, 93→94). The EMAs are fine and the difference is session content. `dt` remains correct
+for the integrators.
+
+**How it was found.** Matt's BUG-095 M7 reported Witchlight as *"less coupled to the beat"*. The
+A/B on that session showed the beat events were bit-identical between builds, so the phase fix
+was exonerated — but the probe also showed **50 downbeat bursts and 50 off-beat pulses**, a 1:1
+ratio where 4/4 should give 3:1. That anomaly is this bug, and it is unrelated to BUG-095.
+
+**Mechanism.** `WitchlightPath.advance` begins:
+
+```swift
+let dt = min(max(deltaTime > 0 ? deltaTime : 1.0 / 60.0, 1.0 / 240.0), 1.0 / 30.0)
+```
+
+The 1/30 s ceiling is correct for what it was written for — integrators must not take a huge step
+after a stall. The defect is that **one consumer of `dt` is not a physics integrator**:
+
+```swift
+timeSinceWrap += dt
+if barDownbeatNow { barPeriod = timeSinceWrap; timeSinceWrap = 0 }
+```
+
+`barPeriod` is how long a bar lasted, and WL.9 gates the off-beat pulse on it:
+`offBeatsAllowed = barPeriod / beatsPerBar >= offBeatMinBeatSeconds` (0.55 s). Clamping `dt`
+makes a heavy-framed bar *measure* shorter than it was, so a 94 BPM track can be misread as too
+fast for an off-beat pulse to read — and the pulse is simply not emitted.
+
+**Measured, two sessions, same track (`Carry The Zero`, 94.1 BPM, true bar 2.55 s):**
+
+| session | frames > 33.3 ms | elapsed time discarded | measured bar period | downbeats : off-beats |
+|---|---|---|---|---|
+| `2026-08-17T15-23-17Z` | 0.2 % | 19.4 % | 2.52 s (1/28 short) | 28 : 79 — **2.8:1**, correct |
+| `2026-08-18T14-09-35Z` | **25.3 %** | **28.8 %** | **1.80 s (33/50 short)** | 50 : 50 — **1:1** |
+
+**Causally confirmed, not inferred.** Raising the cap alone on the affected session, changing
+nothing else: `offBeatsAllowed` rejections **101 → 3**, off-beat pulses **50 → 149**. 149:50 is
+the 3:1 the meter implies. Two earlier hypotheses were tested and **falsified** first — the meter
+(`beatsPerBar` is 4 in every session) and the WL.11 drift compensation (disabling it changed
+nothing) — and the raw `barPhase01` wrap intervals in the CSV are a clean 2.45–2.65 s under both
+the wall clock and summed `deltaTime`, which is what localised the fault to the clamp rather than
+to the grid.
+
+⚠ **Two things make this worse than its size suggests.**
+1. **It is self-reinforcing and points the wrong way.** More load → more long frames → fewer
+   accents. The preset reads least musical exactly when the machine is most stressed, which is
+   also when a viewer is most likely to blame the preset.
+2. **No gate can see it.** The committed fixtures replay at a steady synthetic frame rate and
+   never approach the cap, so every WL gate passes while production silently drops accents. This
+   is the `SessionReplayHarness` failure class again: the harness is not reproducing the
+   production time base.
+
+**Likely fix, and why it is not applied here.** Accumulate the musical clock from the unclamped
+`deltaTime` (keeping the clamp for the integrators), or clamp far higher for that one use. It is
+close to a one-line change, but it roughly **triples the off-beat accent rate** on affected
+sessions — a visible change to a CERTIFIED preset, so it needs Matt's pick and an M7 rather than
+being folded into an unrelated increment. Worth checking whether any other preset accumulates a
+musical quantity from a clamped `dt`.
+
+---
+
+
+### BUG-096 — RESOLVED (FTR.31): the hold was fine; the phase feeding it was not (2026-08-17, resolved 2026-08-18)
+
+**Status: RESOLVED in FTR.31. The original diagnosis was wrong in a way worth keeping, because it
+sent two increments down the wrong road.**
+
+**What was filed.** That `BeatHold`'s trust gate — eight beat intervals whose spread is ≤ 20 % of
+the mean — was too strict for a `beatPhase01` arriving at 14.6 Hz in 0.109-beat steps, and that the
+fix belonged in the tolerance, the phase's delivery rate, or wrap detection.
+
+**What was actually true.** The hold engages **immediately on a clean clock**: fed a smooth 60 Hz
+phase it reports a tempo of 0.6375 s with `isStepping` true within nine beats. The gate is correct.
+
+The real cause was in `DancePhase`, which FTR.28 wrote to work around this very bug. Its self-rate
+estimator measured **dφ/dt per render frame** — but the measured phase is a staircase that changes
+only on an analysis update, so a 0.109 jump inside one 17 ms frame reads as **6.5 cycles per second
+on a 1.57 Hz beat**. The lock's correction still dragged the phase onto the beat, which is why the
+gait measured well (in-step r +0.799, coordination R² 0.85) and why the error stayed hidden for
+three increments. But between corrections the phase free-ran four times too fast and was yanked
+back, crossing zero far more often than once per beat — and anything counting those crossings as
+beats saw intervals of ~0.15 s, under `periodRange`'s 0.25 s floor, and threw every one away.
+
+**The fix, one expression:** rate = `EMA(advance) / EMA(elapsed)`, both smoothed with the same τ.
+A frame with no update contributes 0 to the numerator and its dt to the denominator, which is
+exactly what a staircase requires. Measured on the same capture, the same hold:
+
+| | before | after |
+|---|---|---|
+| frames where `BeatHold` vouched for a tempo | **0 / 3000** | **2650 / 3000 (88 %)** |
+| tempo error vs the grid | — | **0.2 %** (0.6365 s vs 0.6378 s) |
+| sway in step with the bar | +0.799 | **+0.991** (decoy +0.043) |
+| coordination R² | 0.85 | **0.98** |
+
+**⚠ Two claims made in this entry's name are retracted.** (1) That the FTR.10 beat-step "has been
+engaging on ~1 frame in 8" — it was engaging on approximately none, for a reason that is now fixed,
+and FTR.29's decision to supersede it on the trunk was taken partly on that number. (2) That the
+gate's tolerance needed relaxing — it did not, and relaxing it would have masked this.
+
+**★ The transferable lesson: a per-frame derivative of a signal that updates slower than the frame
+rate measures the UPDATE CADENCE, not the signal.** Third instance of that family in four days —
+BUG-089's trailing minimum, FTR.28's 0.133 s "dominant period", and this. When a quantity is
+sampled coarser than it is consumed, every rate taken from it needs a window, not a difference.
+
+---
+
+
+### BUG-095 — Double-smoothed harmonic phase: a source EMA outlived its reason and every consumer was smoothing twice (2026-08-17)
+
+**Status: FIXED in code — `TonalAnalyzer` now emits `phaseFifths` RAW. Full engine suite green
+(1862 tests / 284 suites). ⚠ Witchlight is CERTIFIED and this changes its motion: needs an M7.**
+
+**What happened.** `2861140e [FTR.3g]` (2026-08-04) added a vector EMA to the circle-of-fifths
+phase inside `TonalAnalyzer`, because Fractal Tree read the field straight into hue. On
+2026-08-16 `acc3c935 [FTR.19]` gave Fractal Tree its own `CircularPhaseSmoother` (D-209) —
+superseding the reason the source EMA existed — but nobody removed it. **All four consumers
+already smooth this angle themselves**, so all four were smoothing an already-smoothed value:
+
+| consumer | its own circular EMA |
+|---|---|
+| Witchlight | τ = 1.5 s (`WitchlightPath.advanceHarmonicPhase`, D-198) |
+| Nacre | ~0.9 s (`RenderPipeline+Nacre.swift:129`) |
+| Cymatic | `hueTau` (`CymaticSandGeometry.swift:310`) |
+| Fractal Tree | D-209 `CircularPhaseSmoother` (`MeshGenerator.swift:269`) |
+
+A cascaded second pole does not merely lengthen the time constant — it attenuates *fast* motion
+far harder, which is why the worst loss landed on the track whose harmony moves most.
+
+**Measured, 30 s per track, total wrapped phase in circles (design: 2.1 / 1.7 / 15.4):**
+
+| track | double-smoothed | source RAW (fixed) | design §2.3 |
+|---|---|---|---|
+| so_what | 0.72 | **2.09** | 2.1 |
+| there_there | 1.00 | **1.80** | 1.7 |
+| love_rehab | 3.77 | **15.10** | 15.4 |
+
+love_rehab heading monotonicity recovers 0.24 → 0.38. **The §2.3 constants needed no
+re-derivation — they were right all along**, and the fix reproduces them to within 2 %.
+
+**The first wrong fix.** *Re-deriving the §2.3 constants* to make the gate green would have
+laundered a 4× regression in a certified preset's hero driver. The second candidate — removing
+Witchlight's own EMA — is treated below.
+
+⚠ **The fixture rate is NOT the production rate, and this nearly produced a wrong conclusion.**
+`TonalAnalyzer`'s α = 0.065 is a fixed *per-frame* factor, so its time constant depends on how
+often analysis runs. `FixtureSessionCaptureGenerator` emits at **43.07 Hz** (1024 frames at
+44.1 kHz), where α = 0.065 is τ ≈ **0.36 s**. Live analysis runs at **10.0–16.4 Hz** (BUG-087),
+where the same α is τ ≈ **0.94–1.54 s** — so the source comment's *"τ ≈ 1.5 s at the ~10 Hz
+analysis rate"* was accurate for production, and every τ figure in the sweep below is a
+**fixture-rate** number. The first draft of this entry asserted the comment was "stale, off by
+4×". It was not; the fixtures and production simply run the analyzer at different rates, which
+is its own fixture-fidelity problem and is why a per-frame α is the wrong construction. Every
+other smoother in that file takes `deltaTime`.
+
+**Why the fix is still the source EMA and not Witchlight's.** In production the double-smoothing
+was ~1.5 s (source) *plus* 1.5 s (Witchlight) — worse than the fixtures show, so the defect is
+real and the direction of the fix is unchanged. But the choice between the two candidates turns
+on rate-robustness rather than on the sweep: removing **Witchlight's** EMA leaves every consumer
+sharing one source pole whose length is set by the analysis rate, and that rate is actively
+moving (BUG-087 took it 10.0 → 16.4 Hz, and raising it further is an open increment). Removing
+the **source** EMA leaves each consumer on its own `deltaTime`-based pole at the τ it was
+designed and measured with, identical at any rate. Measured at fixture rate the Witchlight-side
+fix also overshoots outright — 6.66 / 5.90 / 30.69 circles with love_rehab monotonicity
+collapsing to **0.03**, a tangle, which is the preset's own anti-reference
+`10_anti_tangled_scribble_ball` — and a τ sweep (0 / 0.3 / 0.6 / 0.9 / 1.2 / 1.5) found no
+consumer τ reproducing the design figures, because the defect is the extra *pole*, not the
+time constant.
+
+**How it hid, and the order of events.** The committed QG.1 fixtures were captured *before*
+FTR.3g, so their `tonal_phase_fifths` column is raw and every gate kept passing against a
+pipeline that no longer existed (BUG-090). `WitchlightPathTests`' own comment describes it as
+*"the check that caught a stray second smoothing stage cutting the travel by 2.5×"* — it was
+built for exactly this failure and was blinded by its own fixture. Note the dates:
+**FTR.3g 08-04 → Witchlight certified 08-07 → FTR.19 08-16.** Matt's certification M7 was on
+the double-smoothed build, so this fix moves Witchlight *away* from what he signed off and
+*toward* what its design doc specifies. That is why it needs a fresh M7 rather than being
+treated as a restoration. Nacre is the opposite case — certified 2026-06-26, before FTR.3g, so
+for Nacre this restores the behaviour it was certified with.
+
+**Blast radius checked:** full engine suite 1862/1862 green, including the Nacre, Cymatic and
+Fractal Tree suites; Fractal Tree's hue holds 87.5–101.6° across its drive frames, its D-209
+smoother doing the job unaided.
+
+**FOLLOW-UP (M7, 2026-08-18): the engine fix was right and the preset fix was wrong, and only
+Matt's eye could separate them.** On the corrected single pole he reported Witchlight as
+*"slightly less coupled to the beat … drifts a bit more out of sync over time"* (Nacre: *"looks
+fine"*). Replaying his session `2026-08-18T14-09-35Z` through the production path under BOTH
+code paths returned **bit-identical** beat behaviour — 50 downbeat bursts, 50 off-beat pulses,
+flares within 10 % of a beat 86 % of the time, pen speed swing 4.13× — with **heading turns
+50 → 74** the single moved quantity. The complaint was real and it was about LEGIBILITY, not
+timing: unchanged accents against a stroke wandering 50 % more.
+
+Cause: Witchlight was tuned and certified (2026-08-07) *during* the double-smoothed window, so
+the cascade was the response Matt approved. `WitchlightTuning.phasePreTau` now makes that second
+pole explicit and local to Witchlight; the analyzer stays raw for every other consumer. ⚠ Note
+that raising `phaseTau` instead **cannot** substitute — it saturates at 68 turns however high it
+goes, the same "a cascade is not a longer single pole" asymmetry that caused this defect.
+
+Knock-on, fixed in the same increment: the calmer stroke sweeps fewer pixels, dropping ribbon
+share 0.406 % → 0.368 % against a 0.40 % floor (WL.2-g) that had only 1.5 % headroom. Widening
+the halo's falloff 2.8 → 2.1 *within* the existing sprite quad gives 0.433 % and 16 distinct
+beads (up from 13) — the shading remedy the gate itself prescribes, and pointedly NOT
+`WL_HALO_EXTENT`, which WL.2-j had to cut for fusing beads.
+
+---
+
+
+### BUG-090 — The QG.1 route-coverage fixtures cannot be regenerated: today's generator output reds two other presets' gates (2026-08-17)
+
+**Status: evidence only. No fix attempted, and deliberately so — see the last paragraph.**
+
+**What was tried and why.** FTR.25 declares a route on `spectral_level_rise`, a `FeatureVector`
+column added after the fixtures were captured at QG.1.3. QG.1 therefore cannot verify it: the
+fixtures are recorded CSVs with no audio beside them. `FixtureSessionCaptureGenerator`'s own header
+says *"Regenerate + re-copy when the CSV schema appends columns"*, so that was the first move, not
+the allowance.
+
+**The generator works.** 18 s, three vendored clips through the production chain, and the new
+column is live on all three: `love_rehab` nonzero 100 % / sd 0.242, `so_what` 99 % / 0.346,
+`there_there` 80 % / 0.165. With the regenerated set installed, `RouteCoverageTests` reads
+**209 routes across 21 presets, 0 red**.
+
+**But every row differs from the committed copy**, and two other presets' gates fail with it:
+
+| gate | preset | failure |
+|---|---|---|
+| `MeniscusStemDropsTests` — "the beat-locked regions never go dead" | Meniscus | `perRegion[region] == 0` on `so_what` |
+| `WitchlightPathTests` — "the smoothed harmonic phase travels the distance §2.3 measured" | **Witchlight (CERTIFIED)** | `circles` outside 0.7–1.4 × target on all three tracks |
+
+**Two candidate causes, not separated.** (a) The pipeline's output has genuinely moved since
+QG.1.3 — in which case those gates are asserting against a stale baseline and the drift is itself
+the finding. (b) The generator is not deterministic; it runs MPSGraph stem separation and the
+Beat This! grid, neither of which has been checked for run-to-run stability here.
+
+**Discriminator, one command:** run the generator twice into different directories and diff its own
+two outputs. Identical ⇒ (a), the pipeline moved, and the two gates need re-baselining as their own
+increment with Matt's sign-off (Witchlight is certified). Different ⇒ (b), and the fixtures cannot
+be regenerated at all until the generator is made reproducible.
+
+**Consequence today.** Any `FeatureVector` column added after QG.1.3 cannot be route-covered.
+Tracked explicitly as `RouteCoverageTests.columnsPostdatingFixtures`, which currently holds
+`spectral_level_rise` and prints a FIXTURE GAP line on every run.
+
+**Why this was filed rather than fixed.** Re-baselining a certified preset's gate as a side effect
+of an unrelated preset increment is not a quiet call, and "my change went green after I regenerated
+a shared fixture" is how a real regression gets laundered. The fixtures stay as committed.
+
+**UPDATE — discriminator run, and the drift fully localised (CHR.3g, 2026-08-17).**
+
+**The discriminator answers (a): the generator IS deterministic.** Run twice into separate
+directories, all six outputs are **byte-identical** (`cmp` clean on features.csv and stems.csv
+for all three tracks). So the fixtures CAN be regenerated reproducibly, and the two failing
+gates are asserting against a stale baseline rather than against noise.
+
+**The drift is not broad — it is five columns in two analyzers.** Comparing the committed
+fixtures against the regenerated set, per column, as mean |delta| over the shared rows:
+
+| column | love_rehab | so_what | there_there |
+|---|---|---|---|
+| `tonal_tension` | 63 % of range | 38 % | 50 % |
+| `harmonic_flux` | 55 % | 36 % | 58 % |
+| `valence` | 24 % | 25 % | 46 % |
+| `tonal_phase_fifths` | 20 % | 9 % | 9 % |
+| `arousal` | 17 % | 18 % | 43 % |
+
+**Everything else is stable.** 67 of 72 shared feature columns moved < 1 % of range, and
+**stems.csv is completely unchanged — 0 of 52 columns on all three tracks.** Bands, deviation
+primitives, beat, pulse, section and every per-stem field are identical.
+
+**The causes are named in git, and all are intentional.** The fixtures were captured at
+`cc1dfcd1` (QG.1.3). Since then: `2861140e [FTR.3g] Seed the density baseline, **smooth the
+harmonic phase**`, `c5b491ba [TONAL.2b] calibrate TonalAnalyzer gate from the 1000-track pilot`,
+`86169538 [DYN.6]` / `21651962 [DYN.6.2] MoodClassifier: refit the flux scaler on corpus
+statistics`, `a91a7915 [DYN.7] Mood: the prepared mood and the live mood become one
+measurement`. Each landed with its own increment. **This is not a regression.**
+
+**Both failures trace to exactly those columns**, confirmed by reproducing them with the
+regenerated set installed:
+
+- **Witchlight** — its hero driver IS `tonalPhaseFifths`, and the gate asserts how far the
+  smoothed harmonic phase travels. `circles` now falls **below** 0.7 × target on all three
+  tracks, which is the expected direction: FTR.3g deliberately *smoothed* that phase, and
+  smoothing reduces travel. The gate encodes a pre-FTR.3g target.
+- **Meniscus** — `MeniscusStemDrops` gates drop placement on `features.arousal`
+  (`MeniscusStemDrops.swift:219`, the MEN.4a musical-arc lift). Arousal moved 17–43 % of range,
+  so a beat-locked region that used to fire on `so_what` no longer does. Its stems are
+  identical, which is why the stem-side explanation never fitted.
+
+**Also found:** the committed fixtures predate more than `spectral_level_rise`. The regenerated
+set adds **six** columns — the whole DYN block (`spectral_density`, `_slow`, `spectral_surge`,
+`spectral_section_ratio`) plus `spectral_level_rise` (FTR.24) and `waveform_occupancy`
+(CHR.3c). So the fixture gap currently blocks route coverage for three separate increments'
+primitives, not one.
+
+**RESOLVED (same day).** Regenerating was safe and reproducible, and **neither failing gate was
+a stale baseline — both were real defects the frozen fixtures had been hiding** (BUG-094
+Meniscus, BUG-095 double-smoothed phase). With both fixed, the regenerated fixtures are
+committed and the full suite is green at 1862/1862. Drift is now **four** columns — `arousal`,
+`valence` (both moved by the DYN mood work) and `harmonic_flux`, `tonal_tension` — each traced
+to an intentional change, plus the six new columns above. `tonal_phase_fifths`, the fifth
+drifted column, is **gone from the list**: it was the regression, not drift.
+`RouteCoverageTests.columnsPostdatingFixtures` is now **empty** — every column added since
+QG.1.3 is present and covered, and the gate reads 199 routes / 20 presets, 0 red.
+
+**One thing regenerating did NOT unblock — and the second diagnosis was wrong too.** Stave's
+`waveformOccupancy` route was first recorded as blocked by BUG-090; regenerating did not help,
+so it was then recorded as the **QG.1.1** limitation ("offline fixtures cannot reach render-path
+values"), which read as a law rather than a fixable gap. ✅ **Fixed at CHR.3g (2026-08-19):**
+the generator now ticks the same `WaveformOccupancy` model from each hop's samples, exactly as
+`RenderPipeline.swift:773` does per frame. The column measures 0.003–0.368, 100 % nonzero on all
+three tracks; exactly one column changed in the regenerated fixtures; Stave declares
+`band_dispersion ← waveformOccupancy` and route coverage reads **203 routes / 21 presets,
+0 red**. Stave's certification is no longer blocked on tooling, and **Matt's M7 certified it on 2026-08-19 (CHR.3k)** — the 19th certified preset.
+
+**FOLLOW-UP (CHR.3h, same day): the two failures are NOT the same kind of thing, and only one
+is a re-baseline.** Investigated separately rather than treated as one fixture chore:
+
+- **Witchlight — ⚠ THIS CALL WAS WRONG, and it is the most useful thing in this entry.** CHR.3h
+  read the gate as a stale baseline: `circles` fell below 0.7 × target on all three tracks, which
+  is the direction FTR.3g predicts, so the constant was assumed to predate the change and the
+  preset was assumed sound. **It was a real regression** — filed as BUG-095 and fixed. The
+  reasoning failed in a specific, repeatable way: *a plausible mechanism that predicts the
+  direction of a change was accepted as an explanation for its magnitude.* FTR.3g does predict
+  less travel; it does not predict **4×**, and nothing checked whether the size was consistent
+  with one extra smoothing stage rather than two. The measurement that settled it took one
+  command — regenerate the fixtures with the source EMA disabled and read the number: 2.09 /
+  1.80 / 15.10 against a design of 2.1 / 1.7 / 15.4, i.e. the constant was never stale at all.
+  **Re-deriving the target would have written the regression into the doc as the new truth**, on
+  a certified preset, with the gate that was built to catch exactly this failure reporting green.
+- **Meniscus — a REAL DEFECT, now filed as BUG-094.** Not a stale target at all: it clamps
+  `arousal` to 0…1 when the contract is −1…+1, so on calm material the arc lift dies and a
+  beat-locked region goes silent. The gate was right to fail. **Re-baselining it would have
+  laundered a genuine bug in a certified preset** — which is precisely the outcome this defect
+  was originally filed to avoid, arrived at from the opposite direction.
+
+---
+
+
+### BUG-089 — `spectral_level_rise` shipped with a 22× analysis-rate dependence; its rate-invariance test passed (2026-08-17)
+
+**Status: root-caused and fixed the same day, in the increment that shipped it (FTR.24a). The
+consumer that exposed it was reverted separately.**
+
+> *Correction, 2026-08-26 audit pass:* the consumer came back. `FractalTree.json` now declares
+> `spectralLevelRise` on **two** routes (`growth_commit`, `event_spark`) and
+> `MeshGenerator+RenderClock` reads it — re-adopted at FTR.30/FTR.33 on the fixed statistic.
+> The revert was temporary; do not read this entry as "the field has no consumer."
+
+**How it surfaced.** Matt's live M7 on `2026-08-17T15-23-17Z`: *"Much worse now as the motion is
+herky-jerky. Looks defective. Considerable regression."* Measured on that capture, the shipped
+Fractal Tree size term against the build it replaced:
+
+| | evt/rand | travel | peak \|v\| | jerk p99 |
+|---|---|---|---|---|
+| FTR.23 base only | 0.27× | 8.72 | 1.62 | 23 |
+| FTR.24 with the accent | 2.37× | **31.88** | **17.37** | **589** |
+
+**Root cause (read, not inferred).** `advanceLevelRise` measured the rise as
+`levelDB − min(levelDB over the last 0.15 s)`. A minimum over a time window is not
+rate-invariant: raise the analysis rate and (a) the window spans more frames, (b) each frame's
+level is noisier because the hop — and therefore the RMS window — is shorter. Both push the
+floor down, so the same music produces a larger rise at a higher rate. Measured on one capture's
+`raw_tap.wav`, decoded once and analysed at four rates with the shipped constants:
+
+| analysis rate | fires/s | non-zero | mean | floor window |
+|---|---|---|---|---|
+| 10.0 Hz | 0.03 | 16 % | 0.012 | 2 frames |
+| 15.8 Hz (local files) | 0.04 | 37 % | 0.031 | 2 frames |
+| 30.0 Hz | 0.26 | 61 % | 0.086 | 4 frames |
+| 59.4 Hz (the tap) | **0.89** | 85 % | 0.184 | 9 frames |
+
+FTR.24 calibrated against the 15.8 Hz column and Matt played back through the 59.4 Hz one.
+
+**★★★ The test-adequacy finding, which is the part that generalises.** The suite HAD a
+rate-invariance test and it was green. It asked whether a synthetic **+12 dB** step still fires at
+10 Hz and 51 Hz — and a step that large saturates the band at every rate, so no rate dependence of
+any magnitude could have failed it. **A rate-invariance test must compare a DISTRIBUTION on
+realistic material — fire rate, duty cycle, mean — not whether one enormous input survives.** The
+replacement (`levelRise_distributionMatchesAcrossAnalysisRates`) drives a repeating multi-size
+amplitude pattern for 24 s of wall time at both real rates and asserts duty cycle and mean within
+1.6×. It fails on the old formulation by a factor of 22.
+
+**Fix.** A statistic with no sample-count term: a FIXED-LAG difference,
+`preSmoothedLevelDB(t) − preSmoothedLevelDB(t − 0.15 s)`, where the level carries a short 40 ms
+pre-smoothing so per-frame noise stops scaling with the hop (and ~19× shorter than the 0.76 s
+`levelSmoothingTau` whose transient-erasing is why this field exists at all). Band re-derived to
+2–7 dB, because a lag difference is a smaller number than a rise off a minimum — **swapping the
+statistic without re-deriving the band is how the first version shipped.** The two real paths now
+sit within 12 % (0.35 vs 0.41 fires/s; mean 0.098 vs 0.109).
+
+**Residual.** The 10 Hz end is still ~2× off the others. It is the pre-BUG-087-partial-fix rate
+and no current path runs there; if one ever does, the level needs a fixed-DURATION RMS window
+rather than a per-hop one.
+
+---
+
+
+### BUG-086 — Per-stem features reach presets ≈5.4 s late; lag is structurally pinned to the separation period (2026-08-11)
+
+Found while measuring driver viability for a plotting preset (CHR.1), where the
+lag is disqualifying rather than cosmetic. **Diagnosis increment only — no fix
+code.** Full measurement and method: `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md`
+§7b (evidence) and §8 (root cause + the fix trade).
+
+#### Expected behavior
+
+Per-stem features (`{stem}Energy`, `…EnergyRel`, `…EnergyDev`, onset rate,
+centroid, attack ratio, slope) describe the audio the listener is hearing now,
+to within roughly the same tolerance as the real-time band features.
+
+#### Actual behavior
+
+They describe audio from **≈5.4 s ago**, steady state, on the local-file path.
+The real-time band features (`bass`/`mid`/`treble`) are correct to 0.2–0.4 s, so
+a preset reading both gets two clocks that disagree by 5 s.
+
+#### Reproduction steps
+
+Any local-file session ≥ 90 s. Measured on `beat-match-test-session` (16
+full-length tracks) and `2026-08-11T01-07-17Z` (*Cherub Rock*).
+
+#### Session artifacts
+
+Three independent measurements, all agreeing, escalating in cleanliness:
+
+1. Tap cross-correlation, cold start (30 s tap): bands peak at −0.30…+0.08 s;
+   stems have no peak inside ±3 s, and a single broad unimodal peak at ≈10 s
+   (r +0.58) when widened to ±20 s.
+2. Tap cross-correlation, steady state (full 2.04 GB tap, four 60 s windows ≥ 90 s
+   into a track): control `bass` peaks at **0.20–0.40 s** — alignment confirmed —
+   while every stem peaks at **5.61 / 5.81 / 5.61 / 5.61 s**.
+3. CSV-internal, no WAV: each stem feature against the time-aligned `bass+mid`
+   sum, both at 60 Hz — **5.4 s on 39 of 40 stem × track pairs**, r up to +0.94.
+
+Corroborates TRK.2's independent 5–10 s finding.
+
+#### Suspected failure class
+
+`calibration` — a deliberate offset whose cost was never measured, not a coding
+error. Every line below does what it says it does.
+
+#### Root cause (read from source, not inferred)
+
+- `VisualizerEngine+Stems.swift:49` — `timer.schedule(deadline: .now() + 10, repeating: 5.0)`: separation every **5 s**.
+- `VisualizerEngine+Stems.swift:166` — `stemSampleBuffer.snapshotLatest(seconds: 10, …)`: the chunk is the latest **10 s**, so chunk sample 0 is audio from 10 s ago and the chunk's end is "now".
+- `VisualizerEngine+Audio.swift:333` — `let startSample = Int(5.0 * sampleRate)`: the per-frame read window starts **5 s into** the chunk, i.e. at audio already 5 s old, then advances at real time.
+
+So `lag = chunkLength − startOffset`, and the read can only advance for
+`chunkLength − startOffset` seconds before clamping at the chunk's end — which
+must cover one separation period. Hence:
+
+> **lag ≥ separationPeriod.** The 5 s head start is exactly the runway needed to
+> survive one 5 s period. It is not slack.
+
+**Chunk length is not a lever.** `StemSeparator.modelFrameCount = 431` is
+commented "Fixed number of STFT frames the model expects" → `requiredMonoSamples
+= 440320` ≈ 10 s at 44.1 kHz. Shortening the chunk needs a re-exported model.
+
+#### The fix trade
+
+Reducing lag means reducing the separation period, at one full inference per
+period (cost fixed, because the model always consumes 10 s):
+
+| period | resulting lag | inference duty |
+|---|---|---|
+| 5 s (today) | ≈5 s | ≈2.8 % |
+| 2 s | ≈2 s | ≈7.1 % |
+| 1 s | ≈1 s | ≈14.2 % |
+
+`startSample` must move to `chunkLength − period` in the same change, or the read
+clamps and the features freeze between separations (a stutter, which for a
+plotting preset is worse than the lag).
+
+⚠ **The 142 ms inference figure is the code comment at `VisualizerEngine+Stems.swift:211`,
+not independently measured** — no session artifact records separation cost, so
+the duty column is an estimate. Measuring it is step 1 of any fix increment.
+⚠ `MLDispatchScheduler` (D-059) already defers dispatch when frames run over
+budget, with a 2 s ceiling. At short periods deferral becomes common, so
+worst-case lag is `period + deferral`, not `period`.
+
+#### Verification criteria (written before any fix)
+
+- Automated: the CSV-internal measurement above, as a gate — stem features must
+  track the `bass+mid` band sum at a lag below the chosen target on a real
+  capture. Reuses recorded sessions, no new fixtures.
+- Automated: no regression in `stem_analyzer_ms` / frame budget; `MLDispatchScheduler`
+  deferral rate recorded before and after.
+- Manual: `dsp.stem` requires observed musical connection. Any change to stem
+  timing is felt on every stem-driven preset — Aurora Veil (whose
+  `other_energy_dev` route is load-bearing), Skein, Meniscus, FFO — so M7-class
+  observation on at least Aurora Veil before it is called fixed.
+
+#### Fix — code-complete 2026-08-11, NOT yet validated
+
+Period 5.0 s → **2.0 s**, and the read start **derived** from it rather than being a
+fourth independent literal:
+
+```
+stemChunkSeconds            10.0   (pinned to the model, asserted against
+                                    StemSeparator.requiredMonoSamples)
+stemSeparationPeriodSeconds  2.0   (was 5.0)
+stemReadMarginSeconds        0.5   (slack for inference + D-059 deferral)
+stemReadStartSeconds         7.5   (derived: chunk − period − margin)
+→ nominal latency            2.5 s (was ≈5.4 s measured)
+→ inference duty            ≈7 %   (was ≈2.8 %; estimate, see below)
+```
+
+Margin is deliberately > 0: clamping is **not** a stale freeze — the window pins to
+the chunk's *newest* audio, so latency momentarily collapses toward zero and jumps
+back when the next chunk lands, which reads as a glitch rather than a lag.
+
+`STEM_SEPARATION: inference=…ms period=…s duty=…% nominal_latency=…s` now goes to
+`session.log` every separation, so the duty estimate above becomes checkable from a
+capture — it previously rested on a 142 ms figure that existed only in a code
+comment, which is why the pre-fix cost was never verifiable.
+
+`StemSeparationCadenceRegressionTests` (7 tests) asserts the *relationship* rather
+than the values — runway ≥ period, margin > 0, latency < 3 s, read start derived,
+chunk pinned to the model — so retuning the cadence stays free while re-breaking the
+invariant does not.
+
+**The gate was verified to bite, not merely to be green.** Setting the period back
+to 5.0 and re-running fails the latency test with
+`stemNominalLatencySeconds → 5.5 < 3.0` — so the suite would have caught the pre-fix
+configuration. A green assertion that also passes against the defect is worthless;
+this one was checked against it.
+
+**Automated verification complete (2026-08-11):**
+
+- `swiftlint --strict` — 0 violations, 503 files
+- `xcodebuild build` — succeeded
+- Engine suite — **1809/1810**; sole failure is the pre-existing DOC.6 rotation gate,
+  identical to the branch point
+- App target — **411/411** (404 before this change, plus the 7 new tests; no existing
+  test moved). Required quitting a live `PhospheneApp` first — **BUG-072**.
+
+**Measured latency is NOT yet verified, and the constants test does not verify it.**
+`StemSeparationCadenceRegressionTests` gates the arithmetic that *produces* 2.5 s; it
+cannot observe what the pipeline delivers. `Scripts/measure_stem_latency.py <capture>`
+does, from a real session:
+
+```
+Scripts/measure_stem_latency.py ~/Documents/phosphene_sessions/<capture>
+```
+
+It cross-correlates each stem's `energyRel` against the time-aligned `bass+mid` band
+sum (both at ~60 Hz, CSV only — no WAV, whose per-capture sample rate differs and
+silently scaled the time axis by 8.8 % in an early version of this measurement),
+reports per-stem lag with correlation strength, and PASS/FAILs against a 3.0 s
+ceiling. Validated against the pre-fix corpus: 15 of 15 `beat-match-test-session`
+segments report **5.4–5.5 s**, matching the original finding. It also detects a
+pre-fix capture from the absence of `STEM_SEPARATION` and says so, so a stale capture
+cannot be misread as a regression.
+
+*Its verification-criteria form was corrected in building it.* This entry originally
+specified "an automated gate". The lag is a live-pipeline property of the ML timer,
+wallclock advance and `MLDispatchScheduler` deferral — no unit test can synthesize it,
+and a synthetic one would be the green-test-measuring-the-wrong-thing trap. The honest
+artifact is a measurement over a capture a human supplies.
+
+#### Post-fix captures — two sessions, 2026-08-11 (`23-35-27Z`, `23-44-40Z`)
+
+> **⚠ TWO CORRECTIONS, in order.**
+>
+> **(a)** This section first reported "measured lag 5.4 s → 2.9 s, PASS" from a single capture.
+> That single-capture PASS rested on r 0.42/0.48 with no peak behind it and squeaked past a
+> `MIN_R` floor of 0.40. The floor is **0.60** now, and no single short capture clears it.
+>
+> **(b)** The withdrawal then over-corrected. The 5.4 s baseline came from a **streaming**
+> capture while every post-fix capture is **local-file**, so the two were never comparable —
+> but the corpus also holds a *pre-fix local-file* capture, and comparing like with like the
+> fix does hold: **5.2 s → 2.9/3.0 s across two independent post-fix captures.** Weak
+> correlations make each number soft; three same-path captures agreeing does not.
+>
+> What remains genuinely unmeasured is the **streaming** path post-fix — the path the clean
+> baseline came from. The duty figures are direct log readouts and unaffected throughout.
+
+**Correlation quality tracks the PLAYBACK PATH, not capture length** (corrected 2026-08-11
+after Matt pointed out the 16-track corpus is a *streaming* playlist, which this entry had
+recorded as local files):
+
+| real capture | path | duration | best r | best lag |
+|---|---|---|---|---|
+| `beat-match-test-session` (pre-fix) | **streaming** | 88 min | **0.70–0.94** | 5.4 s |
+| `2026-08-11T01-07-17Z` (pre-fix) | local file | 255 s | 0.193 | 5.2 s |
+| `2026-08-11T23-44-40Z` (post-fix) | local file | 137 s | 0.372 | 3.0 s |
+| `2026-08-11T23-52-49Z` (post-fix) | local file | 102 s | 0.462 | 2.9 s |
+
+Length is not the driver: the 255 s local-file capture reads *worse* than the 102 s one.
+
+⚠ **`fixturegen-*` are not evidence.** They read r 0.886–0.975 at lag **0.0 s**, which is
+tempting and wrong: they carry no `raw_tap.wav` and their logs say
+`fixture=<file> stems=StemSeparator(MPSGraph)+StemAnalyzer hop=1024` — offline generation
+runs where features and stems are computed in lockstep from the same file, so zero lag is an
+artifact of the method. Excluded from every number here.
+
+**Same-path comparison — this IS like-for-like, and the fix holds.** Local-file pre-fix
+**5.2 s** → local-file post-fix **3.0 s and 2.9 s**, two independent captures agreeing,
+against a predicted 5.4 → 2.5 s nominal shift. The correlations are weak on this path, so each
+number alone is soft; three same-path captures agreeing on a ~2.2 s reduction is not.
+
+**Why local-file correlations are weak (0.19–0.46) where streaming reads 0.70–0.94 is
+UNEXPLAINED, after five tested and refuted hypotheses.** Listed so none is re-run:
+
+1. *Clamping degrades the features* — refuted. Correlation on clamped vs unclamped frames is
+   identical (drums 0.388 vs 0.381; bass 0.413 vs 0.368).
+2. *The reference signal is too flat* — refuted. Post-fix reference SD is **higher** than
+   pre-fix (0.118/0.142 vs 0.071/0.115).
+3. *Capture length* — refuted. A 21 s streaming clip beats a 255 s local-file capture, and
+   the 255 s capture reads worse than the 102 s one.
+4. *The `MIN_R` threshold* — that was a tool defect (a false PASS), fixed, and not an
+   explanation.
+5. **BUG-087's 10 Hz analysis rate — refuted 2026-08-12.** This was recorded here as the
+   most promising lead. Two tests killed it. First, stems and bands sit on the **same clock
+   within a path** (streaming: `beatPhase01` 85.4 %, stems 97.1 %; local: 16.7 % and
+   14.6–16.0 %), so the "different clocks" mechanism does not exist. Second, step-holding the
+   *streaming* capture's band and stem series down to 10 Hz — injecting the local-file rate
+   into strong-r data — **barely moves the result**: r 0.788→0.783, 0.822→0.824, 0.871→0.860,
+   0.895→0.898, 0.898→0.897, 0.937→0.938, with the 5.4 s lag intact in every case. 10 Hz
+   sampling does not destroy the correlation, and the tool resolves lag fine at 10 Hz.
+
+**One observation, offered without a conclusion:** local-file analysis frames are ~5× rougher
+step-to-step at their own analysis grid than streaming's (mean |Δ| / SD ≈ 0.63–0.69 vs 0.12),
+consistent with the 5× longer interval. Rough signals correlate worse in principle — but
+hypothesis 5 shows decimation alone does not reproduce the weakness, so roughness is not a
+sufficient explanation either. No sixth hypothesis is offered.
+
+**This is a measurement-precision question, not a question about whether the fix works.**
+BUG086.1's validity rests on the same-path lag comparison (local-file pre-fix 5.2 s →
+post-fix 2.9/3.0 s, two independent captures), which does not depend on explaining
+correlation strength.
+
+**Two hypotheses for the weak post-fix correlation were tested and both refuted**, recorded
+so they are not re-run: (1) *clamping degrades the features* — correlation on clamped vs
+unclamped frames is identical (drums 0.388 vs 0.381; bass 0.413 vs 0.368), so clamping costs
+timing fidelity nothing measurable; (2) *the reference signal is too flat* — post-fix
+reference SD is **higher** than pre-fix (0.118/0.142 vs 0.071/0.115). A third guess was not
+made; the honest state is that short captures are below this measurement's resolution.
+
+**What a like-for-like before/after needs:** the same 16-track BeatBench corpus replayed on a
+fixed build. That is the only capture that has ever produced a clean number, and reusing it
+makes the comparison identical-material rather than a different track at a different length.
+
+Two findings that DO stand, both from direct `session.log` readouts:
+
+| | assumed at BUG086.1 | **measured `23-35-27Z`** | **measured `23-44-40Z`** |
+|---|---|---|---|
+| inference per separation | 142 ms (a code comment) | **335 ms** median (284–649, n=33) | **478 ms** median (421–596, n=63) |
+| inference duty at 2 s period | ≈7 % | **≈20.5 %** | **≈25.6 %** |
+| preset-facing lag | 2.5 s nominal | inconclusive | inconclusive |
+
+**1. Inference is 2.4–3.4× the assumed cost, so duty is 20–26 %, not ≈7 %.** This is exactly
+the caveat this entry flagged — the 142 ms figure existed only in a code comment with no
+artifact behind it, and it was wrong. Note the second capture is *higher* than the first
+(478 ms vs 335 ms median, and its **minimum** 421 ms exceeds the first capture's median), so
+inference cost is variable across material or system load, not a single constant.
+
+**It is nonetheless sustainable, on the engine's own signal.** 33 separations over a 65 s
+span against 33 expected, and 63 over 124 s in the second capture — both at the nominal 2 s
+cadence: `MLDispatchScheduler` (D-059) is absorbing the
+load with jitter, not falling behind. Frame-pacing comparison against pre-fix captures is
+**inconclusive and should not be quoted** — the pre- and post-fix sessions ran different
+presets (`frame_gpu_ms` p50 0.15–0.21 vs 6.71), so the difference is preset-confounded, not
+attributable to the cadence. `deltaTime > 20 ms` is 3.51 % post-fix against a pre-fix range
+of 1.75–3.88 %, i.e. inside the existing spread.
+
+**2. The 0.5 s read margin is too small — the read window clamps on ~25 % of cycles.**
+Separation-to-separation gaps measured 0/1/2/3/4 s (×2/6/16/5/3). Runway is
+`period + margin` = 2.5 s, so the 3 s and 4 s gaps — 8 of 32 cycles — overrun it by 0.5–1.5 s
+and the window pins at the chunk's newest audio until the next chunk lands. Worst-case
+inference alone does it too: 2.0 + 0.649 = 2.649 s > 2.5 s.
+
+**The margin was sized against the wrong quantity.** It was set to absorb inference time;
+the binding constraint is *deferral-induced gap jitter*, which reaches 4 s.
+
+**Recommendation: do not re-tune now — and this is now tested, not assumed.** The earlier
+version of this paragraph argued clamping was probably imperceptible. It was then measured
+directly: correlation on clamped frames matches unclamped frames (drums 0.388 vs 0.381; bass
+0.413 vs 0.368), so clamping costs timing fidelity nothing detectable. It also costs no extra
+latency — pinning to the newest audio makes latency momentarily *better*. Covering a 4 s gap needs `margin ≥ 2.0 s`, i.e.
+**4.0 s nominal latency** — paying 1.1 s of permanent latency to remove a discontinuity that
+no shipping preset can currently show, since every stem consumer today drives slow envelopes
+where a sub-second freeze is imperceptible. **It becomes a real decision the moment a
+stem-plotting preset ships** (Stave is exactly that), and it is recorded here so that
+session does not rediscover it.
+
+#### Streaming path validated — session `2026-08-12T19-06-54Z` (Matt, 2026-08-12)
+
+**Both paths now measured post-fix, and the fix holds on each:**
+
+| path | pre-fix | post-fix |
+|---|---|---|
+| streaming | **5.4 s** | **3.0 s** |
+| local file | 5.2 s | 2.9 / 3.0 s |
+
+**The latency model in BUG086.1 was wrong, and this capture proved it.** The design claimed
+2.5 s nominal. Actual:
+
+    latency = (stemChunkSeconds − stemReadStartSeconds) + inference
+
+`latestSeparationTimestamp` is stamped **after** `separator.separate` returns, so the chunk's
+newest sample is already one inference old when the read window begins walking it. Predicted
+2.50 + 0.531 = **3.03 s**; measured **3.0 s**. Inference was priced as a duty cost only; it is
+also a latency cost, one-for-one.
+
+**Consequence: ≈3.0 s is the architectural floor at a 2 s period, not a number to tune
+toward.** Getting materially below it needs a smaller or faster model, not a cadence change —
+period 1 s would give 2.03 s latency at **53 % inference duty**, which the frame budget will
+not carry.
+
+**The 3.0 s ceiling in `Scripts/measure_stem_latency.py` is corrected to 3.5 s.** It was set
+from the wrong nominal and sat exactly on the floor, so it failed a working pipeline. 3.5 s
+accommodates measured p90 inference (868 ms → 3.37 s) and still fails the pre-fix 5.4 s
+decisively. **This is not floor-tuning (QG.1 / D-179)** — the gate was mis-set against a wrong
+model and the model is what changed; the regression it exists to catch still fails it.
+
+**Inference cost is higher again, and trending:** median 335 → 478 → **531 ms** across three
+post-fix captures of increasing length, duty **≈30 %**, with **37 of 479 separations over 1 s
+and one at 7105 ms**. The trend and the multi-second outliers are unexplained and worth
+watching — at 30 % duty this is competing with rendering, and `MLDispatchScheduler` is the only
+thing absorbing it.
+
+**Clamping is inherent, not a defect to fix.** 25 % of separation gaps exceed the 2.5 s runway
+(gaps ran 0–9 s). Removing clamping entirely needs `runway ≥ max gap` ≈ 9 s, i.e. **≈9.5 s
+latency — worse than the original defect.** Recorded so no future session tries to tune it out.
+
+**One observation, unresolved:** on the *same tracks*, post-fix streaming correlation is lower
+than pre-fix — Billie Jean 0.788 → 0.59, Around the World 0.822 → 0.63. Clamping is the
+obvious suspect, but the within-capture test (refuted hypothesis 1 above) found clamped and
+unclamped frames indistinguishable, so the two results are in tension. Not resolved, and no
+sixth hypothesis offered.
+
+#### `dsp.stem` manual gate — PASSED (Matt, 2026-08-12) → **RESOLVED**
+
+Session `2026-08-12T20-03-41Z`, local-file path, on a build carrying the fix (27
+`STEM_SEPARATION` lines). **Skein** active 20:03:59–20:04:36, then **Glaze** to session end.
+Matt: *"Session with Skein (and a little bit of Glaze as well) looks good."*
+
+**Target chosen by measurement, not memory** — the lesson of the first attempt. Skein declares
+28 routes of which 18 are stem routes, and `Scripts/check_route_liveness.py` verified in this
+capture: **22 ALIVE, 5 NARROW, 1 SPARSE, 1 ABSENT, zero DEAD**, including all eight
+stem-deviation routes (`painter_speed` and `flick_trigger` on all four stems). Glaze is the
+second-densest stem consumer (8 of 9 routes). So the observation was aimed where stem timing
+is actually visible.
+
+⚠ **The first attempt was aimed at Aurora Veil and returned nothing** — it declares no stem
+route at all, picked on a stale note claiming `other_energy_dev` was its anchor. That is
+**BUG-088**, and the tool above exists so it does not recur.
+
+Honest scope: Skein had ~37 s of a 63 s session. It is a felt judgement on a short window,
+which is what a `dsp.stem` gate is — not a measurement, and not a substitute for one. The
+measurements are separate and complete (both paths, above).
+
+**RESOLVED 2026-08-12.** Fix `e6c188e6` (`[BUG086.1] Stems: separation period 5 s → 2 s, read
+start derived from it`), merged in PR #77 (`f84d1eed`). Latency 5.4 s → 3.0 s streaming,
+5.2 s → 2.9/3.0 s local file, manual gate passed.
+
+**Carried forward, not blocking:** inference cost is trending (335 → 478 → 531 ms median, duty
+≈30 %, one 7105 ms outlier) and unexplained; ≈3.0 s is the architectural floor, so materially
+lower needs a different model; and the weak local-file stem/band correlation remains
+unexplained after five refuted hypotheses. None is a regression and none blocks closure — they
+are watch items for whoever next touches the stem path.
+2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
+   Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
+   Needs M7-class observation on at least Aurora Veil. No automated test substitutes.
+
+#### Related
+
+**⇄ BUG-084** is the other open `dsp.stem` calibration defect (deviation reaching
+35 against a ~3.4 ceiling). Same subsystem, independent causes; a fix increment
+touching `StemAnalyzer` timing should check it has not disturbed BUG-084's
+fixtures.
+
+---
+
 ### BUG-082 — Session retention keeps 6, not 10: fixture folders occupy the slots permanently (2026-08-03)
 
 > **Renumbered 080 → 082 at merge.** Filed as BUG-080 against a tree where 079 was the highest; a parallel session landed a *different* BUG-080 (gitignored-asset propagation) on `main` first, and `DocIntegrityTests` gates BUG-number uniqueness. **The commits on this branch are titled `[BUG-080]` — they mean this entry.** Its sibling was filed as BUG-081 and hit the SAME collision one merge later (a parallel `main` BUG-081, an unrelated beachball), so it is now **BUG-083**; its commits are titled `[BUG-081]`.

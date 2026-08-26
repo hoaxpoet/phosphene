@@ -34,27 +34,25 @@ has captured the trap" while 25 matching `.ips` reports sat in
 `~/Library/Logs/DiagnosticReports/`. **Before filing another sighting of an intermittent crash,
 read the crash reports already on disk.**)*
 
+*(Audit pass, 2026-08-26 — §Open was carrying **twelve entries whose own bodies said they were
+fixed**: BUG-086, BUG-089, BUG-090, BUG-092, BUG-093, BUG-094, BUG-095, BUG-096, BUG-097,
+BUG-098, BUG-099, BUG-101. All twelve verified against the tree (fix commit on `main`, and for
+the preset entries the sidecar/shader source) and moved out. Six went to §Resolved; the six with
+the oldest resolutions were **rotated early** to `KNOWN_ISSUES_HISTORY.md` — verbatim, the same
+move `Scripts/rotate_docs.sh` makes at 14 days — because moving all twelve into §Resolved would
+have put it at 90 KB against its 50 KB DOC.6 budget. §Open is now 20 entries, and every one of
+them is unfinished work. One factual correction landed in place: **BUG-088**'s "three undeclared
+reads" are not reads — see the entry.)*
+
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
-| BUG-101 | ✅ **CLOSED** · fullscreen 56 fps live with the cap Matt chose to keep (PERF.16, *"I would rather keep 60 fps"*) | preset.volumetriclithograph / performance | **VL now renders its G-buffer and lighting at 0.5× drawable (PERF.11) and Matt's M7 passed it — *"VL looks good"*.** Live on `2026-08-20T13-50-18Z`: **6.93 ms at 900×600** (was ~7 ms/frame equivalent at 12.8 ms/MP — comfortably inside budget) and **104 ms at 2884×1662**, stable across eight consecutive 10 s buckets with no ramp. Cost per megapixel at the large window went **32.56 → 21.8**, a **1.5×** improvement. ⚠ **The projected 4× did not materialise, and the reason is the finding:** quartering the marched pixels only quarters the marcher, and a large share of VL's frame does not scale with it — the post-process chain (bloom + ACES) is deliberately left at full drawable size, and the harness reproduces the same shape (71.20 → 27.43 ms at 2884×1662, 2.6×). **My "the harness understates production" claim in PERF.11 was wrong**: the harness predicted this correctly and I discounted it. **Where it stands:** VL is fixed for ordinary window sizes and still ~9.6 fps at a near-4K window. Further levers, in order of size: scale the post-process chain too (bigger win, more softness — it would put the entire image through the upscale rather than just the marched part), `render_scale` 0.4 (~1.25× more), or accept VL as a preset that does not run at fullscreen. All three are visible trades and none is mine to pick |
 | BUG-100 | P2 · evidence-only, filed 2026-08-19 from an M7 session; **not a preset defect** | app.performance / sustained-load | **The app degrades under sustained 4K rendering, and it is the machine or the frame loop, not the preset that happens to be on screen.** Matt's Stave M7 (`2026-08-19T17-01-15Z`) reported *"performance slowed over time, which led to some choppiness"*. Measured over a contiguous 70 s at 3840×2160: `frame_cpu_ms` **17.4 → 43.6** and `frame_gpu_ms` **2.9 → 11.7**, while the app's OWN CPU work stayed flat — `encode_cpu_ms` 12.9 → 15.2, `renderframe_cpu_ms` 9.8 → 11.0. Same work, less delivered. **Three hypotheses were falsified before filing:** (a) Stave accumulating — an offline soak of 1920 frames at 4K is flat at 22.3 ms with no drift; (b) the dispersion fan opening over the track — `waveformOccupancy` is flat at 0.081–0.095 across the whole segment, r(GPU, occupancy) = **−0.11**; (c) preset-specific — the degradation **persists into the next preset** (Witchlight `frame_cpu` 24.4 at 4K, against Stave's own 17.4 early) and partially recovers after a 2.16 MP interlude. ⚠ **A second finding sits inside this one:** `encode_cpu_ms` is **15–16 ms at 4K** — essentially the entire 60 fps budget spent on CPU encode before any GPU work — and it scales with resolution (9.1 ms at 2.07 MP). CPU encode should not scale with pixel count; that is worth its own look and is probably the more tractable half. Thermal throttling of the Mac mini under sustained 4K is the leading remaining explanation for the rest, and cannot be confirmed from the recordings — it needs `powermetrics` or equivalent alongside a session |
-| BUG-099 | P2 · ✅ **RESOLVED BY MEASUREMENT 2026-08-20 (PERF.12) — no product decision needed.** With the harness readback removed (which production never does), **all 20 covered presets are within 16.7 ms at 3840×2160**, Witchlight among them at **5.6 ms**. Neither route this entry proposed is required. ⚠ **PREMISE RE-MEASURED 2026-08-19 (PERF.12) — the "~30 fps at 4K" figure was an instrument artifact.** With the harness's CPU readback removed (a median **11.4 ms at 4K** that production never performs) Witchlight measures **8.4 ms at 3840×2160** — inside the 16.7 ms budget with headroom. **18 of 20 covered presets fit 60 fps at 4K.** The product decision this entry asked for is therefore not needed for Witchlight; what remains is Volumetric Lithograph (see BUG-101) and the live degradation in BUG-100. Matt's call on whether to close | preset.witchlight / performance | **Witchlight reaches ~30 fps at 3840×2160 after BUG-098's 8.2× fix, against 60 fps at 1080p.** `CLAUDE.md` promises 60 fps **at 1080p**, which is met with headroom, so this is a decision about what the product promises at fullscreen rather than a defect against the stated target. The remaining 4K cost is **balanced** — bloom 5.4 ms, three star layers 4.9 ms, beads/particles/feedback 6.0 ms — so there is no further micro-optimisation available that does not change what the preset looks like. **Two routes, both visible to the user:** drop or cheapen a star layer (the three-layer parallax is a documented WL.2 feature and the depth read would go with it), or render below full drawable resolution — ⚠ **which the existing `setDirectRenderScale` cannot do for this preset**: that path is `drawDirect`-only and Witchlight is `feedback`+`particles`, so it needs the half-res render extended to that path first (engine work, ~4× headroom, aliasing risk concentrated in the sub-pixel starfield). ⚠ Note Witchlight is the only preset measured that is anywhere near the budget; the next most expensive at 4K is Volumetric Lithograph at 16.44 ms. Matt's call |
-| BUG-098 | **P1** · **FIXED 2026-08-19 (PERF.2 + PERF.3), 8.2× measured. ✅ 1080p target met with margin; ⚠ 4K ≈ 30 fps, still 2× over** | preset.witchlight / performance | **Witchlight's sky ran ~64 Perlin evaluations per pixel across the whole frame — most of them multiplied by zero, the rest for detail that never reached the image.** Measured live at 4K on `2026-08-19T14-25-55Z`: **273.88 ms median GPU, 11.2 fps, 16× over budget**, while six other presets in the same session held 59–60 fps (Arachne 3.27 ms … Volumetric Lithograph 16.44 ms) — 84× Arachne, so a defect and not a cost. Two causes, both fixed: **(a)** `witchlight_bloom` computed `fbm8` + `warped_fbm` for EVERY pixel then multiplied by `body = exp(-r*r*70)`, a lobe a sixth of the frame wide — ~530 M Perlin evaluations per 4K frame to produce black; fixed with an early return at `body < 1e-3` (below an 8-bit LSB: 2.4e-4 vs 3.9e-3), **151.2 → 31.8 ms**, output identical to every printed digit. **(b)** the surviving noise was still 64 evaluations for what the code's own comment calls *"low-frequency structure only … one soft mass rather than cloud detail"*; replaced with `fbm4` + a one-level `fbm4` warp (**20 evaluations**), the same remedy `VolumetricLithograph.metal:634` applies to the same function for the same reason — **31.8 → 18.4 ms**, sky luma 9.22 → 9.23 and lit share 2.49 % → 2.51 %. **Total 151.3 → 14.9 ms (10.2×), measured back to back in one thermal state.** Extrapolated to production: **~6 ms at 1800×1200 (60 fps with large headroom, target met)** and **~27 ms at 3840×2160 (≈37 fps)**. ⚠ The residual is now balanced — stars 5.3 ms, beads/particles/feedback 5.8 ms, bloom 2.1 ms — so there is no further shader win that does not change the look; closing the 4K gap needs a product decision (fewer star layers, or `setDirectRenderScale` as Nimbus already does at 0.5×), tracked as **BUG-099** |
-| BUG-097 | **P1** · **FIXED 2026-08-18, validated on three real sessions + a new gate** | preset.witchlight / frame-rate-coupling | **A frame-time clamp meant for physics stability was corrupting a MUSICAL measurement, and Witchlight dropped most of its off-beat accents on exactly the sessions where the frame rate was worst.** `WitchlightPath.advance` clamps `dt` to 1/30 s so an integrator cannot take a wild step after a stall — correct for the integrators, wrong for the four quantities that measure how long something LASTED: `timeSinceWrap` (→ `barPeriod`), `gridSilentFor`, and the two refractories. WL.9 gates the off-beat pulse on `barPeriod / beatsPerBar >= 0.55 s`, so under load a 94 BPM bar measured **1.80 s against a true 2.55 s** and the pulse was never emitted. On `2026-08-18T16-10-38Z` — 48.8 % of frames over the cap, 38 % of elapsed time discarded — the preset fired **6 off-beat pulses in 110 s** where the meter implies ~130. **Fixed** by splitting `clockDt` (real elapsed time) from `dt` (the clamped integrator step). Validated on three real sessions: 6 → **105**, 50 → **149**, and the already-healthy session 79 → **83**, i.e. every one lands at the designed ~3:1 and the healthy case barely moves — the signature of a fix rather than a re-tune. Flare alignment on the worst session also rose 36 % → 54 % within 10 % of a beat. ⚠ It was invisible to the whole suite because every committed fixture replays at a steady ~60 Hz and never approaches the cap; `offBeatPulseSurvivesHeavyFrames` now drives at 50 ms frames and **was confirmed to fail (0 pulses) on the pre-fix code** |
-| BUG-095 | P1 · **FIXED 2026-08-17; M7 CONFIRMED LIVE 2026-08-18, twice** (WL.13 — Witchlight keeps its second pole, locally) | dsp.tonal / cross-preset-regression | **A source-side EMA in `TonalAnalyzer` outlived the reason it was added, and all four consumers were smoothing an already-smoothed angle — cutting Witchlight's hero driver's travel by up to 4×.** Removing it was correct for Nacre, Cymatic and Fractal Tree (Matt on Nacre, 2026-08-18: *"looks fine"*) but wrong for Witchlight, which had been tuned AND certified against the cascade. `WitchlightTuning.phasePreTau` restores that second pole locally. **Live-confirmed on `2026-08-18T16-10-38Z`: Matt *"Looks good overall"*, stroke measured at 42 heading turns against 74 pre-fix and 50 on the certified build.** ⚠ Note his sign-off covers the STROKE and the ribbon, not the beat accents — that session was the worst BUG-097 case measured (6 off-beat pulses in 110 s), so the accents were largely absent from what he judged |
-| BUG-096 | **RESOLVED 2026-08-18 (FTR.31) — and the original diagnosis was WRONG** | dsp.beat / calibration | **`BeatHold` was never the problem: it was being fed a staircase, and then fed a phase whose own rate estimator was 4× too fast.** Filed claiming the hold's trust gate (8 intervals within 20 % spread) was too strict for a 14.6 Hz phase. What FTR.31 measured instead: the hold engages **instantly on a clean synthetic clock** (tempo 0.6375 s, `isStepping` true), so the gate is fine. On real captures it reported 0/3000 frames because `DancePhase`'s self-rate measured **dφ/dt per RENDER frame** on a phase that only changes on analysis updates — a 0.109 jump in one 17 ms frame reads as **6.5 cycles/s on a 1.57 Hz beat**. The lock still pulled the phase onto the beat (so the gait measured fine, in-step +0.799) but it free-ran 4× fast between corrections and crossed zero far too often; anything counting those crossings as beats saw ~0.15 s intervals, below `periodRange`'s 0.25 s floor, and discarded every one. **Fix: rate = EMA(advance)/EMA(elapsed) — a frame with no update contributes 0 to the numerator and its dt to the denominator, which is what a staircase requires.** Same capture, after: **2650/3000 frames (88 %)** at 0.2 % tempo error. ⚠ **Two claims made against this entry are retracted:** that the FTR.10 beat-step "has been engaging on ~1 frame in 8" (it was engaging on ~none, for a reason that is now fixed), and that the tolerance needed relaxing (it did not). Detail below |
-| BUG-094 | ✅ **CLOSED 2026-08-24** — fix was committed 2026-08-17, doc text never caught up; Matt confirmed the resulting look live | preset.meniscus / primitive-contract | **Meniscus reads `arousal` as if it were 0…1 when its contract is −1…+1, discarding the entire calm half of the primitive.** `MeniscusStemDrops.swift:219` computes the MEN.4a musical-arc lift as `max(0, min(features.arousal, 1))`, which clamps rather than maps — and `MeniscusCamera.swift:106` repeats it for the camera envelope, so the preset discards the calm half twice. On calm material that zeroes the lift for a large fraction of the track — measured **35 % of frames on `so_what`** (arousal −0.393…+0.519) — collapsing `arcEnvelope`, then `density`, until the backbeat-gated **vocals region places 0 drops across the whole track**. Masked until now because MEN.4a was calibrated on one capture where arousal never went negative (its own code comment records the range as *0.19 → 0.52 → 0.27*), and because the committed QG.1 fixtures happen to bottom out at −0.077. It surfaced only when BUG-090's regenerated fixtures carried today's mood output. **Probe-verified:** replacing the clamp with a map (`(clamp(arousal,−1,1)+1)/2`) takes so_what's vocals region **0 → 24 drops** and turns the whole Meniscus suite green (14 tests / 9 suites). Probe reverted, not committed. **Not applied because it changes what a CERTIFIED preset looks like** — more drops on calm material — which is a product call, not a test fix. Needs Matt's pick and an M7. ⚠ **Transferable:** any consumer of a bipolar primitive that writes `max(0, x)` is silently discarding half its range. Worth grepping the other presets |
-| BUG-093 | **P1** · ✅ **RESOLVED 2026-08-19** — Fractal Tree CERTIFIED (FTR.5). The changed premise this entry demanded arrived in two parts: the tree needed to DANCE, not to react (FTR.28 — a phase, not an amplitude), and the three channels still illegible afterwards were each following a quantity no listener holds, so all three stopped following (FTR.33). Matt: *"Fractal Tree looks good. I think it's ready for certification finally."* | preset.fidelity | **Fractal Tree's geometry DOES move with the music by every measure available, and Matt still reports no clear connection — after nine live rejections.** Measured after 12 s on `2026-08-17T20-01-01Z`: `reach` spans 0.680, the size term 0.360, visible **trunk length 0.151 clip space ≈ 164 px of 1080**, branch spread 20°→34°, and the FTR.25 tip spark fires 0.37/s on events. So this is NOT a dead-channel or dead-route problem, and BUG-092 (which briefly claimed it was) is retracted on that point. **What IS established about the signals it tracks:** `spectral_surge`, which drives size, scores **0.25× event-versus-random specificity — it moves DOWN when the ear notices something** (FTR15 §9); `spectral_section_ratio`, which drives growth, is a slow density RANK, not a loudness or arrangement reading; `spectral_flux`, which drives the spread, is broadband change that fires as often between events as on them (1.50×). **The tree therefore moves a great deal while tracking three quantities that do not correspond to what a listener notices** — that is the standing hypothesis and it is consistent with every rejection in FTR.15→FTR.27, including the two where a more event-aligned driver was tried and rejected for its motion cost (FTR.24: 10.7× peak velocity). ⚠ **Do not open another tuning increment against this.** The next move needs a changed premise about WHICH quantity the tree should follow, and that is a product decision. Detail: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §§8–11 |
-| BUG-092 | P3 · ✅ **RESOLVED 2026-08-19 (FTR.33)** — the inert term and its route are both gone: `ArrivalStep` drives growth from `spectralSectionRatio`, and the sidecar declares that. Also **RE-SCOPED 2026-08-17, hours after filing — the original headline was WRONG** | preset.fidelity / documentation-drift | **Fractal Tree's declared `growth` route reads `arousal`, and `arousal` is INERT: it loses its own `max()` on 100 % of frames.** The shader computes `reach = max(0.10 · arousalReach, fullness) · musicGate`; measured after 12 s on `2026-08-17T20-01-01Z`, `0.10 · arousalReach` spans **0.032** against `fullness`'s **0.646** and never wins. So the sidecar's `growth ← arousal` is a manifest entry with no visible effect — the FTR.2 false-route class, which QG.1 cannot catch because `arousal` does *vary* (just at 3 % of the competing term's amplitude). `arousal` is separately near-constant within a track (mean 0.446…0.475, sd 0.048…0.069, same 0.26…0.51 bounds on five captures across three builds), which is fine for a MOOD classifier and is why nobody noticed. ⚠ **WHAT THIS ENTRY ORIGINALLY CLAIMED AND GOT WRONG:** that arousal was the preset's primary growth driver and that its flatness explained nine live rejections of "no clear connection". False. I measured the primitive's flatness and never checked its COEFFICIENT. Growth's real driver is `spectral_section_ratio` (span 0.646) and the visible trunk length swings **0.151 clip space ≈ 164 px of 1080** after 12 s — the geometry moves across two thirds of its range. **The connection complaint remains UNEXPLAINED**; see BUG-093. Fix here is small and cosmetic: either delete the inert arousal term and the route, or give it a coefficient that can compete — Matt's call, since one of those changes what he sees. Detail below |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
-| BUG-090 | P2 · **resolved 2026-08-17 — cause (a), and it concealed a real regression** | test-infrastructure / fixture-drift | **Regenerating the QG.1 route-coverage fixtures from their own committed audio produces different values on EVERY row, and reds three gates belonging to other presets — one of them CERTIFIED.** `FixtureSessionCaptureGenerator` still runs clean (18 s, three clips, real audio through the production chain) and its output is usable — it carries the new `spectral_level_rise` column live on all three tracks (nonzero 80–100 %, sd 0.17–0.35) and `RouteCoverageTests` reads **209 routes / 21 presets, 0 red** with it installed. But every features.csv row differs from the committed copy, and with the regenerated set in place `MeniscusStemDropsTests` ("the beat-locked regions never go dead", so_what) and `WitchlightPathTests` ("the smoothed harmonic phase travels the distance §2.3 measured", all three tracks) both fail. **Two candidate causes, not yet separated: (a) the pipeline's output has genuinely moved since the fixtures were captured at QG.1.3 — in which case those two gates are measuring a stale baseline and the drift is the finding; or (b) the generator is not deterministic** (it runs MPSGraph stem separation and the Beat This! grid). **Discriminator, for whoever picks this up: run the generator TWICE and diff its own two outputs.** Identical ⇒ (a), the pipeline moved. Different ⇒ (b), and the fixtures cannot be regenerated at all until it is made deterministic. **Consequence today:** any FeatureVector column added after QG.1.3 cannot be route-covered — tracked as `RouteCoverageTests.columnsPostdatingFixtures`, currently holding `spectral_level_rise`. Filed rather than fixed because re-baselining a certified preset's gate as a side effect of an unrelated increment is not a quiet call |
-| BUG-089 | P2 · **root-caused + fixed 2026-08-17 (same day it shipped); consumer REVERTED** | dsp.calibration / test-adequacy | **`spectral_level_rise` shipped with a 22× ANALYSIS-RATE dependence, and its own rate-invariance test passed.** The rise was measured against a trailing MINIMUM over 0.15 s — a statistic with a hidden sample-count term, because a higher rate spans more frames of a noisier per-frame level (shorter hop = shorter RMS window) so the floor digs deeper. Same audio: **0.04 fires/s at 15.8 Hz vs 0.89/s at 59.4 Hz**, i.e. near-dead on local files and hyperactive on the tap (BUG-087's two rates). FTR.24 calibrated its consumer on a 15.8 Hz capture and shipped it to the 59.4 Hz path, where it took total travel 8.72 → 31.88 and **peak velocity 1.62 → 17.37**; Matt rejected it on sight — *"Much worse now as the motion is herky-jerky. Looks defective. Considerable regression."* ★★★ **The test-adequacy lesson is the transferable half: `levelRise_sameStepFiresAtBothAnalysisRates` asked only whether a synthetic +12 dB step fires at 10 Hz and 51 Hz — a step that large saturates the band at any rate, so the test could not fail. A rate-invariance test must compare a DISTRIBUTION on realistic material (fire rate, duty cycle, mean), not whether one enormous input survives.** Fixed by replacing the trailing minimum with a FIXED-LAG difference on a 40 ms pre-smoothed level (no sample-count term): the two real paths now agree within 12 %. Gated by `levelRise_distributionMatchesAcrossAnalysisRates` (duty and mean within 1.6×; do not widen). The FTR.24 consumer was reverted for a separate reason — see `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §10 — so the field currently has NO consumer. Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
 | BUG-088 | P3 | preset.fidelity / documentation-drift | **Aurora Veil's `audio_routes` manifest does not describe the preset, and it is CERTIFIED.** It declares 5 routes; `pulseAmp01` is declared `kind: continuous` but the shader uses it as a **silence gate** (`aurora_stars(rd, f.bar_phase01, f.pulse_amp01)`, "fades the twinkle to zero at silence") — measured pinned at 1.000 with **zero p5–p95 range**, which is correct gate behaviour and useless as a driver. And it **omits three routes the code actually reads**: `drumsEnergyDev` (ALIVE, 61 % nonzero — the only live stem input, so QG.1 route coverage is blind to it) and `vocalsPitchHz` / `vocalsPitchConfidence` (**0.1 % nonzero**). Net: the manifest overstates coupling. Surfaced by Matt's M7 2026-08-12 — *"I don't really see how the preset responds to music beyond the flickering of the stars once per bar. The veil is just aurora-ing."* Measurement explains it exactly: of everything Aurora Veil reads, only `barPhase01` has large dynamic range. Tool: `Scripts/check_route_liveness.py`. Detail below |
 | BUG-087 | P2 · **partial fix 2026-08-13 (10 → 16.4 Hz); ≥40 Hz NOT met — audio arrival rate is the ceiling, not slicing** | audio.capture / calibration | **Local-file playback runs the whole MIR chain at 10 Hz where streaming runs it at 51 Hz — a 5.1× rate loss on the primary development session type.** `LocalFilePlaybackProvider` asks for `installTap(bufferSize: 1024)` (≈47 Hz) and AVAudioEngine ignores it, delivering **0.1-second** buffers instead — 4414 frames measured at 44.1 kHz, 4808/4810 at 48 kHz. `processAnalysisFrame` runs once per audio callback with no time gate, so the callback rate *is* the analysis rate: every `FeatureVector` field — bands, deviation primitives, `beatPhase01`, centroid, flux, mood inputs — updates at 10 Hz on local files. Proven a fixed *duration* rather than a frame count by the rate-independence discriminator (both sample rates land on 0.1 s). This is the same 10 Hz the FTR program hit from the preset side. Diagnosis only — no fix code. Detail below |
-| BUG-086 | P2 · **RESOLVED 2026-08-12** (`e6c188e6`) | dsp.stem / calibration | **Every per-stem feature reaches presets ≈5.4 s behind the audio, on the local-file path, in steady state — while the beat grid beside it is time-aligned to ≈0.3 s.** Root cause is read, not inferred: separation runs on a fixed 10 s chunk (`modelFrameCount = 431` — the exported Open-Unmix model cannot take a shorter one) every **5 s**, and `runPerFrameStemAnalysis` starts its read window **5 s into** that chunk to buy one separation period of runway. So `lag = chunkLength − startOffset ≥ separationPeriod`, exactly. Measured three independent ways, agreeing: 5.4 s on 39 of 40 stem × track pairs. Affects every stem-driven preset, Aurora Veil's `other_energy_dev` anchor included. Diagnosis only — no fix code, per the multi-increment process. Detail: `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` §7b + §8 |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files |
@@ -137,173 +135,6 @@ arbitration. Until then, **suite-4 numbers and any money/bleed metrical claim sh
 with this caveat**. solsbury_hill's separate ground-truth inconsistency (`meter_from_taps: 7`
 with downbeat taps ~12 tapped beats apart, flagged at FT.3 tasks 1–3) is still open and would
 be worth settling in the same pass.
-### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
-
-**Status: ✅ CLOSED 2026-08-20.** Fixed by rendering fewer pixels, not by cutting detail;
-M7-approved (*"VL looks good"*, `2026-08-20T13-50-18Z`). **Fullscreen closes at 56 fps delivered,
-live, WITH the marched-pixel cap in place** (Matt's final call, PERF.16: *"I would rather keep
-60 fps"* — session `2026-08-20T18-17-43Z`, p50 15.88 ms, 5.3 % of frames below the vsync floor,
-real headroom) — well past the *"run fullscreen even if not optimal"* bar this entry was opened
-against (9.6 fps). The harness-vs-live gap flagged below is also answered: that live session with
-the cap in place is the "one live session" the extrapolation asked for, and it landed above the
-extrapolated ~30 fps. Full arc (uncap → cost-model dispute → cap kept) in the update chain below.
-
-Matt's requirement was *"it needs to run fullscreen even if not optimal"* — **32 fps is running**
-where 9.6 fps was not, so the fullscreen half closes against the stated bar. It is **not** 60 fps at
-4K, and whether that matters is a product call he has not been asked to make. PERF.14 (now on `main`)
-reduces it further by capping marched pixels, ⚠ **but its key datapoint conflicts with this
-measurement by 5.6×, and the conflict is UNEXPLAINED — a proposed mechanism was checked and
-falsified. See PERF.15 for what is established and the one-session discriminator.**
-
-> **Update PERF.16 (2026-08-20) — fullscreen closes, and the cost model behind the cap does not
-> survive.** Two things landed after the status line above was written. **(1)** PERF.15's live
-> capture `2026-08-20T16-38-27Z` measured VL fullscreen at 3840×2160 with `render_scale=0.50`
-> **in the log** at **31.16 / 32.30 ms p50/p90 → 32 fps**, flat across seven 10 s buckets,
-> thermal nominal, 0.45 % of frames near the floor. Against Matt's stated bar — *"run fullscreen
-> even if not optimal"* — 9.6 → 32 fps clears it, so **the fullscreen half of this entry closes**.
-> **(2)** PERF.14 had meanwhile capped marched pixels at 1536×864 on the finding that ray-march
-> cost is a *step*: 175 ms at 0.5 and ≤ 15 ms at 0.4 at 4K. That is 5.6× from PERF.15's reading of
-> the same nominal configuration. **PERF.16 settled it offline** with a marched-pixel sweep
-> (`RayMarchCostCurveTests`, readback off, thermal-controlled, reproduced): the curve is smooth
-> and mildly **sub**linear — every neighbour pair's cost-ratio is 0.92–1.02× its area-ratio, and
-> across the disputed band cost rises **1.49× for 1.56× the area** where PERF.14 reports 11.7×.
-> The harness reads **28.19 ms** at the same 2.07 MP marched that PERF.15 measured live at
-> **31.16 ms** — 10 % apart, which corroborates the live reading and leaves 175 ms unexplained at
-> any scale interpretation. **⚠ Open, and Matt's:** the cap is still active, so VL marches
-> 1536×864 at 4K where 1920×1080 measures ~31 ms live. It is buying softness on a falsified
-> model. Removing it is a one-line change to a certified preset's fullscreen sharpness. Full
-> reasoning: `ENGINEERING_PLAN.md` §Increment PERF.16.
->
-> **Matt's call, same day: remove the cap.** `RenderPipeline.marchScale` now returns the
-> declared scale clamped to [0.4, 1.0] and nothing else, so VL marches 1920×1080 at 4K —
-> the configuration measured live at 31.16 ms — instead of 1536×864. `marchedPixelBudget`
-> is gone. ⚠ **Pending Matt's live M7:** the expected read is sharper at fullscreen at
-> ~32 fps. If the frame rate does not hold there, this entry reopens rather than the cap
-> returning by default.
->
-> ⚠ **CORRECTION, same day — the cap was NOT buying softness for nothing, and I told Matt it
-> was.** He ran the fullscreen M7 on session `2026-08-20T18-17-43Z`, which — verified by binary,
-> not assumed — ran the **capped** build: the session started 18:17:45Z, the cap-removal merge
-> landed 18:22:04Z, and the running binary (atime 13:17:47 local) was built from the primary
-> checkout at `f2f2b15f`, whose source still contains `marchedPixelBudget`. **Capped VL at 4K
-> fullscreen: p50 15.88 ms, p90 20.87 ms, 56 fps delivered over 165 s, with 5.3 % of frames
-> below the 15.3 ms vsync floor** — real headroom, not a floored reading. Against PERF.15's
-> uncapped 31.16 ms / 32 fps, **the cap is worth roughly double the frame rate at 4K.** The
-> recommendation to remove it was made without that number and is retracted as stated; the
-> decision is a genuine trade — 1920×1080 marched at ~32 fps, or 1536×864 at ~60 — and Matt has
-> now seen only the second one. **Reverting is one commit.**
->
-> ⚠ **And a caveat on PERF.16's curve.** The two live points (≤15.88 at 1.33 MP, 31.16 at
-> 2.07 MP) give **~2× cost for 1.56× area** where the harness gave 1.49×. That does not restore
-> PERF.14's 11.7× step — the finding that there is no cliff stands — but **live is steeper than
-> the harness in this band, so the harness curve understates the 4K penalty.** Do not use it to
-> predict an absolute 4K cost without a live check.
->
-> ✅ **DECIDED (Matt, 2026-08-20): *"I would rather keep 60 fps."*** The cap is restored;
-> `marchScale(declared:width:height:)` and `marchedPixelBudget` are back, and VL marches
-> 1536×864 at 4K. **The fullscreen half of BUG-101 closes at 56 fps delivered**, well past the
-> *"run fullscreen even if not optimal"* bar. VL is softer at fullscreen than it could be, by
-> choice. The doc comment at the call site was rewritten so the budget is justified by the
-> measured 2× frame-rate difference rather than by PERF.14's falsified step — the next reader
-> must not re-derive the step model from a surviving cap.
-
-Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
-`VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
-and lighting allocate at half linear scale and the composite pass upscales for free, post-process
-staying at full resolution. No MetalFX, no motion vectors, no extra pass.
-
-★ **The upscale is free because a linear-sampled pass already existed** — the same observation two
-sessions reached independently while building this in parallel (see PERF.12). Rendered side by side
-at 1080p the two builds are nearly indistinguishable; a 3× crop shows a slightly softer contour
-edge.
-
-| harness, 24-frame drive | before | after |
-|---|---|---|
-| 1920×1080 | 31.9 ms | **13.4–15.4 ms** |
-| 3840×2160 | 111.5 ms | **14.8 ms** |
-
-⚠ **THOSE ARE HARNESS FIGURES AND THE LIVE COST IS HIGHER.** The first instrumented session
-(PERF.10, `2026-08-19T22-45-50Z`) measured the *uncapped* VL at **269.89 ms at 4K — 3.5 fps**, and
-**32.56 ms per marched megapixel**, against this harness's 111.5 ms: the harness is **2.4× low** on
-this preset because its 24-frame drive starts the terrain flight from a standing start, which is the
-cheapest part of it. Taking the live ms/MP, a 0.92 MP cap predicts roughly **30 ms ≈ 30 fps, not
-60**. So the cap is a large, real improvement that probably does **not** reach the target live.
-**Do not tighten it against this extrapolation** — that is calibrating to a measurement of the build
-before the fix. One live session with the cap in place makes the number real; it is the same
-instrument that settles BUG-100.
-
-**Original analysis retained — it is still correct about where the cost is:**
-
-★★ **AND IT IS THE ONE PRESET THAT MISSES THE PRODUCT'S STATED TARGET (PERF.12, 2026-08-19).**
-The roster measured at three resolutions with the harness readback removed — so these are GPU cost,
-not instrument cost (see BUG-099):
-
-| resolution | Volumetric Lithograph | next most expensive | presets within 16.7 ms |
-|---|---|---|---|
-| 1920×1080 | **31.9 ms ≈ 31 fps** | Stave 11.2 ms | 19 of 20 |
-| 2560×1440 | 54.9 ms (readback on) | — | — |
-| 3840×2160 | **111.5 ms ≈ 9 fps** | Cytokinesis 18.4 ms | 18 of 20 |
-
-`CLAUDE.md` promises **60 fps at 1080p**, and VL is at roughly half that — **3.5× the budget, and
-2.8× the next most expensive preset at the same resolution.** Every other covered preset fits.
-This is no longer "expensive by construction" as a curiosity; it is the only measured breach of the
-stated target in the covered roster, in a **certified** preset.
-
-⚠ **And the frame-budget gate cannot catch it.** `PresetFrameBudgetTests` asserts a RATIO — no
-preset above 8× the median — which VL passes at 5.9×. Its header documents an `absoluteCeilingMs`
-as "a second, deliberately loose net", but **that constant appears exactly once in the file, in
-that comment: it was never implemented.** So nothing in the suite checks the 60 fps promise in
-milliseconds, which is why a preset at 31 fps at 1080p is green.
-
-**Both of those are Matt's calls** — adding the absolute net would ship red until VL is decided,
-and every lever on VL changes what it looks like (below).
-
-Matt: *"troubleshoot VL"*, after the PERF.4 gate flagged it at **5.2× the median preset**.
-
-**Where the cost is.** `sceneSDF` is evaluated ~135× per pixel — 128 march steps plus 4
-tetrahedral normal taps and 3 AO taps — and carries ~10 Perlin evaluations each:
-
-| term | evaluations | measured |
-|---|---|---|
-| terrain `fbm3D(_, VL_FBM_OCTAVES=4)` | 4 | ~2.7 ms/octave (4 → 1: **30.59 → 22.55 ms**) |
-| `vl_foldDomain` warp, 2 × `fbm3D(_,3)` | 6 | **~10.4 ms** (removed: 32.07 → 21.64 ms) |
-
-Together ~69 % of the frame. A same-session drift check re-measured the baseline at 30.58 ms
-against 30.59 — the rig is stable, and an **earlier contradictory reading** (octaves 4 → 2
-showing no change) was simply a bad measurement taken while the machine was busy.
-
-**The marcher is not at fault.** It sphere-traces with a correct early exit
-(`d < 0.001 · t → break`) and a `t < farPlane` bound, so rays that hit leave early rather than
-burning the full 128 steps.
-
-⚠ **Both noise terms are already twice-optimised, and the code says so.** VL-PSY.1 cut the warp
-from `warped_fbm` (112 evaluations; 1120 ms/frame at the time) down to 6, and took octaves 5 → 4.
-**3 octaves was tried and reverted** — below SHADER_CRAFT's ≥4-octave floor the render "went soft
-and airbrushed", a quality regression traded for ~1 ms. There is no multiply-by-zero waste of the
-BUG-098 kind here; this is what the preset costs to draw.
-
-**The one remaining lever, and why it is not mine to pull.** `VL_SDF_STEP_SCALE` is 0.55 (itself
-already re-reasoned up from 0.35, which was "buying safety at ~1.6× the frame time"). Raising it
-marches further per step:
-
-| step scale | frame time | vs 0.55, pixel-diffed |
-|---|---|---|
-| 0.55 | 31.8 ms | — |
-| 0.70 | 28.6 ms (−10 %) | 74 % of channels differ, 12.3 % beyond 16/255, mean 9.4 |
-| 0.80 | 26.9 ms (−16 %) | 74 % differ, **48.8 %** beyond 16/255, mean 14.3 |
-
-Unlike the Witchlight bloom (max delta 2/255, invisible), this is a visible change to a certified
-preset. Whether the render still reads correctly at 0.70 is Matt's judgement, not a measurement.
-
-⚠ **No trustworthy live figure exists for VL.** The single 4K session that carried it reported a
-median of 16.44 ms — but from **89 frames with a p90 of 101.73 ms**, a short sample spanning a
-preset transition, and that session has since been evicted by retention (BUG-082). The harness
-figure (30.6–31.2 ms at 1080p, five runs across two days) is the reliable one, and it does not
-reconcile with 16.44 ms at four times the pixels. A fresh session with VL held on screen would
-settle it.
-
----
-
 ### BUG-100 — Sustained 4K rendering degrades the whole app, not the preset on screen (2026-08-19)
 
 **Status: evidence-only. Not a preset defect — three preset-side hypotheses were falsified
@@ -391,587 +222,6 @@ closes the open half of this entry.
 
 ---
 
-### BUG-099 — Witchlight reaches ~30 fps at 4K after the 8.2× fix; closing the rest is a product decision (2026-08-19)
-
-**Status: ⚠ PREMISE RE-MEASURED 2026-08-19 (PERF.12). The 4K shortfall was largely the
-measuring instrument, not the preset.**
-
-★★ **`MultiPassRenderHarness` reads every rendered frame back to the CPU — ~8 MB per frame at
-1080p and ~33 MB at 3840×2160 — and production never does.** That cost scales with PIXELS, not with
-what the preset draws, so it lands on the 4K column far harder than the 1080p one and a resolution
-sweep that includes it measures the harness as much as the roster. Measured with
-`FRAME_BUDGET_NO_READBACK=1`, the same 20 presets in the same run shape:
-
-| | readback ON | readback OFF | readback cost |
-|---|---|---|---|
-| **Witchlight at 4K** | 18.6 ms | **8.4 ms** | 10.2 ms |
-| median preset at 4K | — | — | **11.4 ms** |
-| median preset at 1080p | — | — | 3.0 ms |
-| **presets within 16.7 ms at 4K** | **6 of 20** | **18 of 20** | — |
-
-So Witchlight holds 60 fps at 4K on GPU cost with room to spare, and **neither route this entry
-proposed is needed** — not the star-layer cut, not extending the half-res path to
-feedback/particles. Both were sized against a number that was 2.2× too high.
-
-⚠ **This does NOT explain what Matt saw.** He reported real 4K choppiness, and BUG-100 measured it
-degrading over 70 s while the app's own CPU work stayed flat — a *drift over minutes*, which a
-24-frame cost measurement cannot see and shader cost does not explain. **BUG-100 is the live
-question and its thermal instrumentation settles it; this entry is about steady-state cost only.**
-
-⚠ **Caveats on the readback-off numbers.** They still `waitUntilCompleted` per frame, so they are a
-serialised GPU-cost measurement rather than a production frame time (production overlaps CPU and
-GPU), and they are a 24-frame sample that cannot show thermal drift. They are a fair proxy for "how
-expensive is this preset's frame" and nothing more.
-
-**FOURTH TIME IN ONE DAY** that a performance metric did not mean what its name suggested — after
-`deltaTime` (vsync, not headroom), the harness milliseconds in general, and `encode_cpu_ms` (which
-includes a blocking drawable wait). The rule keeps holding: **read what the number is computed from
-before concluding anything from its trend.** Here the specific error was reusing a harness built for
-*comparing* presets to answer an *absolute* question about one.
-
-**Original analysis, retained — its component breakdown is still correct, its conclusion is not:**
-
-BUG-098 took Witchlight from 273.88 ms to an extrapolated ~27 ms at 3840×2160 (**10.2× measured
-in the harness, 151.3 → 14.9 ms back to back**). That **meets the stated target with large
-headroom** — `CLAUDE.md` promises 60 fps *at 1080p*, and 1800×1200 extrapolates to ~6 ms — but a
-4K panel still runs at about 37 fps.
-
-**Why there is no third shader fix.** After PERF.2/PERF.3 the remaining 4K cost is balanced
-rather than dominated:
-
-| component | 4K cost |
-|---|---|
-| beads / particles / feedback | 5.8 ms |
-| three star layers | 5.3 ms |
-| bloom | 2.1 ms |
-
-Nothing here is waste of the kind BUG-098 found (noise multiplied by zero, or octaves that never
-reached the image). Halving any of these means removing something the preset draws.
-
-**Two routes, both visible to the user — which is why this is Matt's:**
-
-1. **Drop or cheapen a star layer.** The three-layer parallax is a documented WL.2 feature — the
-   near layer crossing frame in ~4 minutes and outpacing the far ones ~13:1 is what gives the
-   backdrop its depth. Removing one takes ~1.8 ms and some of that read. ⚠ A micro-optimisation
-   was tried here and **rejected as worthless**: reordering the star layer so the `bright < 0.68`
-   early-out precedes the `jitter` hash (which is discarded for 68 % of cells, three times per
-   pixel) measured **14.9 → 14.9 ms** — the Metal compiler already sinks the dead hash. Recorded
-   so nobody spends the increment on it.
-2. **Render Witchlight below full drawable resolution.** ⚠ **CORRECTION (checked, 2026-08-19):
-   `setDirectRenderScale` CANNOT be used here.** Its half-res path lives in `drawDirect`
-   (`RenderPipeline+Draw.swift:309`) and Witchlight's passes are `["feedback", "particles"]`,
-   while Nimbus — the preset that uses it — has `passes: []`, i.e. the direct-fragment path.
-   Applying this to Witchlight means **extending the half-res render to the feedback/particles
-   path first**, which is engine work, not a per-preset config change. Worth noting the trade is
-   milder than it sounds at 4K: 0.7× of 3840×2160 is 2688×1512, still sharper than the 1920×1080
-   the target promises. The risk is concentrated in the starfield, which is sub-pixel to ~2 px by
-   design (WL.2-e) and would alias rather than merely soften.
-
-⚠ **Context for the decision: Witchlight is an outlier, not a symptom.** In the same 4K session
-the next most expensive preset measured was Volumetric Lithograph at 16.44 ms, and the rest sat
-at 3.27–4.94 ms. Six of seven measured presets hold 59–60 fps at 4K unaided.
-
-⚠ **Also unresolved and cheaper to act on:** the app renders 1920×1080 while idle and drops to
-**900×600** one second after a session starts. Every performance judgement made before
-2026-08-19 — including two Witchlight sign-offs — was at 0.54 MP, a quarter of the target. That
-default deserves its own decision.
-
----
-
-### BUG-098 — Witchlight is over the frame budget in production, and it is the only measured preset that is (2026-08-19)
-
-**Status: FIXED (PERF.2 + PERF.3, 2026-08-19), 8.2× measured end to end. ✅ The 60 fps @ 1080p
-target is met with headroom (~8 ms at 1800×1200). ⚠ Fullscreen 4K is ~33 ms (≈30 fps) and the
-remaining gap is a product decision, not a shader one — see BUG-099.** Filed after Matt asked
-the right question — *"Are all presets supposed to run at 60 fps? If so, isn't this something you
-can verify?"* — which turned out to have no instrument behind it.
-
-**Per-preset GPU cost, 10 recorded sessions, `frame_gpu_ms`:**
-
-| preset | frames | median | p90 | p99 |
-|---|---|---|---|---|
-| **Witchlight** | 12 109 | **13.75 ms** | **65.50 ms** | 82.37 ms |
-| Nacre | 1 791 | 1.73 ms | 2.84 ms | 76.82 ms |
-| Stave | 3 372 | 0.35 ms | 2.85 ms | 57.44 ms |
-| Fractal Tree | 26 887 | 0.16 ms | 1.03 ms | 11.31 ms |
-
-Witchlight's *median* consumes 82 % of the 16.7 ms budget and its p90 is 4× over. Everything else
-measured is two orders of magnitude cheaper.
-
-**It is a plateau, not a spike.** On `2026-08-18T16-10-38Z` the cost steps from 15.9 ms to ~60 ms
-at t≈25 s and holds ~60 ms for the remaining 85 s. On `2026-08-18T18-04-06Z` the same preset on
-the same track steps to ~12 ms and holds. Two stable regimes, 5× apart.
-
-✅ **The 5× WAS resolution, and the `RENDER_TARGET` line settled it in one session.** Cost is
-very close to linear in pixels: Witchlight measured 22.5 ms/MP at 900×600, 30.3 at 1800×1200 and
-33.0 at 3840×2160. Every earlier "looks good" session — including two Witchlight sign-offs — ran
-at **900×600 (0.54 MP), a quarter of the 1080p target**, which is the app's own default once a
-session starts (it renders 1920×1080 while idle and drops to 900×600 one second after playback
-begins). That default is why this went unseen for so long, and is worth its own decision.
-
-**ROOT CAUSE (2026-08-19).** `witchlight_bloom` evaluated `fbm8` + `warped_fbm` — ~64 Perlin
-evaluations — for every pixel, then multiplied by `body = exp(-r*r*70)`, which is ~0 outside a
-ball a sixth of the frame wide. ~530 M Perlin evaluations per 4K frame to produce black.
-**Fixed** with an early return when `body < 1e-3`: 151.2 → 31.8 ms/frame at 4K in the harness
-(4.9×), visually identical on every WL.2 gate figure.
-
-⚠ **Do NOT build an offline 1080p frame-budget gate until that is answered.** At 1080p Witchlight
-plausibly measures the cheap ~12 ms and the gate passes, while the real session ran at ~60 ms.
-That is precisely the BUG-097 failure class: a harness that does not reproduce the production
-condition is not testing production, and it would issue a green certificate over the defect.
-
-⚠ **Coverage: 4 of 29 presets.** Only four have enough continuous frames in the recordings to
-attribute, and they were selected by which presets Matt happened to leave on screen — a preset
-that is slow for two seconds before switching away is invisible to this method. **The other 25
-are unmeasured, not passing.** The only pre-existing performance test renders a *single* frame
-with no per-preset budget.
-
-**Method note worth keeping.** The first pass used `deltaTime` and concluded three presets were
-"rock solid at 16.7 ms". That is vsync: 16.7 ms means the frame waited for the 60 Hz refresh, and
-says nothing about headroom. `frame_gpu_ms` is the column that answers the question, and it
-separates the same four presets by ~80×. A metric that cannot distinguish a preset using 0.16 ms
-from one using 13.75 ms was never going to find this.
-
----
-
-### BUG-097 — A physics frame-time clamp corrupts a musical measurement: Witchlight loses two thirds of its off-beat accents when frames get heavy (2026-08-18)
-
-**Status: FIXED 2026-08-18 (WL.14), on Matt's instruction. Validated on three real sessions and
-gated by a new test that was confirmed to fail on the pre-fix code.**
-
-**The fix.** `advance` now derives `clockDt` — real elapsed time, unclamped — alongside the
-clamped `dt`, and the four quantities that measure a DURATION use it: `timeSinceWrap`
-(→ `barPeriod`), `gridSilentFor`, `flareRefractoryRemaining`, `offBeatRefractoryRemaining`. The
-integrators keep the clamp, which is what it was written for.
-
-| session | frames over cap | off-beats before | after |
-|---|---|---|---|
-| `2026-08-18T16-10-38Z` | 48.8 % | 6 | **105** |
-| `2026-08-18T14-09-35Z` | 25.3 % | 50 | **149** |
-| `2026-08-17T15-23-17Z` | 0.2 % | 79 | **83** |
-
-All three land at the designed ~3:1, and **the already-healthy session barely moves** — the
-signature of a fix rather than a re-tune. Flare alignment on the worst session rose 36 % → 54 %.
-
-**The gate that was missing.** `offBeatPulseSurvivesHeavyFrames` drives the path at 16.7 ms and
-50 ms frames and asserts the off-beat:downbeat ratio stays above 2:1. Reintroducing the defect
-takes it to **0 pulses**, so it demonstrably catches this rather than merely passing beside it.
-
-⚠ **STILL UN-VALIDATED LIVE.** The fix only changes behaviour when frames go long, and no
-recorded session yet carries it under load: the 2026-08-18 18:04 session ran the pre-fix WL.13
-binary and was healthy anyway (0.0 % of frames over the cap, accents already at 2.95:1). The
-bad case is evidenced offline only — 6 → 105 off-beat pulses replaying
-`2026-08-18T16-10-38Z`. A loaded session on a WL.14 build is still owed before this is closed
-with confidence.
-
-**A hypothesis raised and falsified while checking this (recorded so it is not re-run).** Stroke
-liveliness differed sharply between sessions — 22.9 turns/min at 30 fps vs 34.7/min at 60 fps —
-which looked like the same clamp slowing the phase EMAs, since they still use the clamped `dt`.
-It is not: switching those EMAs to real time moves the turn count by **1** on both sessions
-(42→43, 93→94). The EMAs are fine and the difference is session content. `dt` remains correct
-for the integrators.
-
-**How it was found.** Matt's BUG-095 M7 reported Witchlight as *"less coupled to the beat"*. The
-A/B on that session showed the beat events were bit-identical between builds, so the phase fix
-was exonerated — but the probe also showed **50 downbeat bursts and 50 off-beat pulses**, a 1:1
-ratio where 4/4 should give 3:1. That anomaly is this bug, and it is unrelated to BUG-095.
-
-**Mechanism.** `WitchlightPath.advance` begins:
-
-```swift
-let dt = min(max(deltaTime > 0 ? deltaTime : 1.0 / 60.0, 1.0 / 240.0), 1.0 / 30.0)
-```
-
-The 1/30 s ceiling is correct for what it was written for — integrators must not take a huge step
-after a stall. The defect is that **one consumer of `dt` is not a physics integrator**:
-
-```swift
-timeSinceWrap += dt
-if barDownbeatNow { barPeriod = timeSinceWrap; timeSinceWrap = 0 }
-```
-
-`barPeriod` is how long a bar lasted, and WL.9 gates the off-beat pulse on it:
-`offBeatsAllowed = barPeriod / beatsPerBar >= offBeatMinBeatSeconds` (0.55 s). Clamping `dt`
-makes a heavy-framed bar *measure* shorter than it was, so a 94 BPM track can be misread as too
-fast for an off-beat pulse to read — and the pulse is simply not emitted.
-
-**Measured, two sessions, same track (`Carry The Zero`, 94.1 BPM, true bar 2.55 s):**
-
-| session | frames > 33.3 ms | elapsed time discarded | measured bar period | downbeats : off-beats |
-|---|---|---|---|---|
-| `2026-08-17T15-23-17Z` | 0.2 % | 19.4 % | 2.52 s (1/28 short) | 28 : 79 — **2.8:1**, correct |
-| `2026-08-18T14-09-35Z` | **25.3 %** | **28.8 %** | **1.80 s (33/50 short)** | 50 : 50 — **1:1** |
-
-**Causally confirmed, not inferred.** Raising the cap alone on the affected session, changing
-nothing else: `offBeatsAllowed` rejections **101 → 3**, off-beat pulses **50 → 149**. 149:50 is
-the 3:1 the meter implies. Two earlier hypotheses were tested and **falsified** first — the meter
-(`beatsPerBar` is 4 in every session) and the WL.11 drift compensation (disabling it changed
-nothing) — and the raw `barPhase01` wrap intervals in the CSV are a clean 2.45–2.65 s under both
-the wall clock and summed `deltaTime`, which is what localised the fault to the clamp rather than
-to the grid.
-
-⚠ **Two things make this worse than its size suggests.**
-1. **It is self-reinforcing and points the wrong way.** More load → more long frames → fewer
-   accents. The preset reads least musical exactly when the machine is most stressed, which is
-   also when a viewer is most likely to blame the preset.
-2. **No gate can see it.** The committed fixtures replay at a steady synthetic frame rate and
-   never approach the cap, so every WL gate passes while production silently drops accents. This
-   is the `SessionReplayHarness` failure class again: the harness is not reproducing the
-   production time base.
-
-**Likely fix, and why it is not applied here.** Accumulate the musical clock from the unclamped
-`deltaTime` (keeping the clamp for the integrators), or clamp far higher for that one use. It is
-close to a one-line change, but it roughly **triples the off-beat accent rate** on affected
-sessions — a visible change to a CERTIFIED preset, so it needs Matt's pick and an M7 rather than
-being folded into an unrelated increment. Worth checking whether any other preset accumulates a
-musical quantity from a clamped `dt`.
-
----
-
----
-
-### BUG-096 — RESOLVED (FTR.31): the hold was fine; the phase feeding it was not (2026-08-17, resolved 2026-08-18)
-
-**Status: RESOLVED in FTR.31. The original diagnosis was wrong in a way worth keeping, because it
-sent two increments down the wrong road.**
-
-**What was filed.** That `BeatHold`'s trust gate — eight beat intervals whose spread is ≤ 20 % of
-the mean — was too strict for a `beatPhase01` arriving at 14.6 Hz in 0.109-beat steps, and that the
-fix belonged in the tolerance, the phase's delivery rate, or wrap detection.
-
-**What was actually true.** The hold engages **immediately on a clean clock**: fed a smooth 60 Hz
-phase it reports a tempo of 0.6375 s with `isStepping` true within nine beats. The gate is correct.
-
-The real cause was in `DancePhase`, which FTR.28 wrote to work around this very bug. Its self-rate
-estimator measured **dφ/dt per render frame** — but the measured phase is a staircase that changes
-only on an analysis update, so a 0.109 jump inside one 17 ms frame reads as **6.5 cycles per second
-on a 1.57 Hz beat**. The lock's correction still dragged the phase onto the beat, which is why the
-gait measured well (in-step r +0.799, coordination R² 0.85) and why the error stayed hidden for
-three increments. But between corrections the phase free-ran four times too fast and was yanked
-back, crossing zero far more often than once per beat — and anything counting those crossings as
-beats saw intervals of ~0.15 s, under `periodRange`'s 0.25 s floor, and threw every one away.
-
-**The fix, one expression:** rate = `EMA(advance) / EMA(elapsed)`, both smoothed with the same τ.
-A frame with no update contributes 0 to the numerator and its dt to the denominator, which is
-exactly what a staircase requires. Measured on the same capture, the same hold:
-
-| | before | after |
-|---|---|---|
-| frames where `BeatHold` vouched for a tempo | **0 / 3000** | **2650 / 3000 (88 %)** |
-| tempo error vs the grid | — | **0.2 %** (0.6365 s vs 0.6378 s) |
-| sway in step with the bar | +0.799 | **+0.991** (decoy +0.043) |
-| coordination R² | 0.85 | **0.98** |
-
-**⚠ Two claims made in this entry's name are retracted.** (1) That the FTR.10 beat-step "has been
-engaging on ~1 frame in 8" — it was engaging on approximately none, for a reason that is now fixed,
-and FTR.29's decision to supersede it on the trunk was taken partly on that number. (2) That the
-gate's tolerance needed relaxing — it did not, and relaxing it would have masked this.
-
-**★ The transferable lesson: a per-frame derivative of a signal that updates slower than the frame
-rate measures the UPDATE CADENCE, not the signal.** Third instance of that family in four days —
-BUG-089's trailing minimum, FTR.28's 0.133 s "dominant period", and this. When a quantity is
-sampled coarser than it is consumed, every rate taken from it needs a window, not a difference.
-
----
-
-### BUG-095 — Double-smoothed harmonic phase: a source EMA outlived its reason and every consumer was smoothing twice (2026-08-17)
-
-**Status: FIXED in code — `TonalAnalyzer` now emits `phaseFifths` RAW. Full engine suite green
-(1862 tests / 284 suites). ⚠ Witchlight is CERTIFIED and this changes its motion: needs an M7.**
-
-**What happened.** `2861140e [FTR.3g]` (2026-08-04) added a vector EMA to the circle-of-fifths
-phase inside `TonalAnalyzer`, because Fractal Tree read the field straight into hue. On
-2026-08-16 `acc3c935 [FTR.19]` gave Fractal Tree its own `CircularPhaseSmoother` (D-209) —
-superseding the reason the source EMA existed — but nobody removed it. **All four consumers
-already smooth this angle themselves**, so all four were smoothing an already-smoothed value:
-
-| consumer | its own circular EMA |
-|---|---|
-| Witchlight | τ = 1.5 s (`WitchlightPath.advanceHarmonicPhase`, D-198) |
-| Nacre | ~0.9 s (`RenderPipeline+Nacre.swift:129`) |
-| Cymatic | `hueTau` (`CymaticSandGeometry.swift:310`) |
-| Fractal Tree | D-209 `CircularPhaseSmoother` (`MeshGenerator.swift:269`) |
-
-A cascaded second pole does not merely lengthen the time constant — it attenuates *fast* motion
-far harder, which is why the worst loss landed on the track whose harmony moves most.
-
-**Measured, 30 s per track, total wrapped phase in circles (design: 2.1 / 1.7 / 15.4):**
-
-| track | double-smoothed | source RAW (fixed) | design §2.3 |
-|---|---|---|---|
-| so_what | 0.72 | **2.09** | 2.1 |
-| there_there | 1.00 | **1.80** | 1.7 |
-| love_rehab | 3.77 | **15.10** | 15.4 |
-
-love_rehab heading monotonicity recovers 0.24 → 0.38. **The §2.3 constants needed no
-re-derivation — they were right all along**, and the fix reproduces them to within 2 %.
-
-**The first wrong fix.** *Re-deriving the §2.3 constants* to make the gate green would have
-laundered a 4× regression in a certified preset's hero driver. The second candidate — removing
-Witchlight's own EMA — is treated below.
-
-⚠ **The fixture rate is NOT the production rate, and this nearly produced a wrong conclusion.**
-`TonalAnalyzer`'s α = 0.065 is a fixed *per-frame* factor, so its time constant depends on how
-often analysis runs. `FixtureSessionCaptureGenerator` emits at **43.07 Hz** (1024 frames at
-44.1 kHz), where α = 0.065 is τ ≈ **0.36 s**. Live analysis runs at **10.0–16.4 Hz** (BUG-087),
-where the same α is τ ≈ **0.94–1.54 s** — so the source comment's *"τ ≈ 1.5 s at the ~10 Hz
-analysis rate"* was accurate for production, and every τ figure in the sweep below is a
-**fixture-rate** number. The first draft of this entry asserted the comment was "stale, off by
-4×". It was not; the fixtures and production simply run the analyzer at different rates, which
-is its own fixture-fidelity problem and is why a per-frame α is the wrong construction. Every
-other smoother in that file takes `deltaTime`.
-
-**Why the fix is still the source EMA and not Witchlight's.** In production the double-smoothing
-was ~1.5 s (source) *plus* 1.5 s (Witchlight) — worse than the fixtures show, so the defect is
-real and the direction of the fix is unchanged. But the choice between the two candidates turns
-on rate-robustness rather than on the sweep: removing **Witchlight's** EMA leaves every consumer
-sharing one source pole whose length is set by the analysis rate, and that rate is actively
-moving (BUG-087 took it 10.0 → 16.4 Hz, and raising it further is an open increment). Removing
-the **source** EMA leaves each consumer on its own `deltaTime`-based pole at the τ it was
-designed and measured with, identical at any rate. Measured at fixture rate the Witchlight-side
-fix also overshoots outright — 6.66 / 5.90 / 30.69 circles with love_rehab monotonicity
-collapsing to **0.03**, a tangle, which is the preset's own anti-reference
-`10_anti_tangled_scribble_ball` — and a τ sweep (0 / 0.3 / 0.6 / 0.9 / 1.2 / 1.5) found no
-consumer τ reproducing the design figures, because the defect is the extra *pole*, not the
-time constant.
-
-**How it hid, and the order of events.** The committed QG.1 fixtures were captured *before*
-FTR.3g, so their `tonal_phase_fifths` column is raw and every gate kept passing against a
-pipeline that no longer existed (BUG-090). `WitchlightPathTests`' own comment describes it as
-*"the check that caught a stray second smoothing stage cutting the travel by 2.5×"* — it was
-built for exactly this failure and was blinded by its own fixture. Note the dates:
-**FTR.3g 08-04 → Witchlight certified 08-07 → FTR.19 08-16.** Matt's certification M7 was on
-the double-smoothed build, so this fix moves Witchlight *away* from what he signed off and
-*toward* what its design doc specifies. That is why it needs a fresh M7 rather than being
-treated as a restoration. Nacre is the opposite case — certified 2026-06-26, before FTR.3g, so
-for Nacre this restores the behaviour it was certified with.
-
-**Blast radius checked:** full engine suite 1862/1862 green, including the Nacre, Cymatic and
-Fractal Tree suites; Fractal Tree's hue holds 87.5–101.6° across its drive frames, its D-209
-smoother doing the job unaided.
-
-**FOLLOW-UP (M7, 2026-08-18): the engine fix was right and the preset fix was wrong, and only
-Matt's eye could separate them.** On the corrected single pole he reported Witchlight as
-*"slightly less coupled to the beat … drifts a bit more out of sync over time"* (Nacre: *"looks
-fine"*). Replaying his session `2026-08-18T14-09-35Z` through the production path under BOTH
-code paths returned **bit-identical** beat behaviour — 50 downbeat bursts, 50 off-beat pulses,
-flares within 10 % of a beat 86 % of the time, pen speed swing 4.13× — with **heading turns
-50 → 74** the single moved quantity. The complaint was real and it was about LEGIBILITY, not
-timing: unchanged accents against a stroke wandering 50 % more.
-
-Cause: Witchlight was tuned and certified (2026-08-07) *during* the double-smoothed window, so
-the cascade was the response Matt approved. `WitchlightTuning.phasePreTau` now makes that second
-pole explicit and local to Witchlight; the analyzer stays raw for every other consumer. ⚠ Note
-that raising `phaseTau` instead **cannot** substitute — it saturates at 68 turns however high it
-goes, the same "a cascade is not a longer single pole" asymmetry that caused this defect.
-
-Knock-on, fixed in the same increment: the calmer stroke sweeps fewer pixels, dropping ribbon
-share 0.406 % → 0.368 % against a 0.40 % floor (WL.2-g) that had only 1.5 % headroom. Widening
-the halo's falloff 2.8 → 2.1 *within* the existing sprite quad gives 0.433 % and 16 distinct
-beads (up from 13) — the shading remedy the gate itself prescribes, and pointedly NOT
-`WL_HALO_EXTENT`, which WL.2-j had to cut for fusing beads.
-
----
-
-### BUG-094 — Meniscus clamps `arousal` to 0…1 when its contract is −1…+1, and a beat-locked region goes dead on calm material (2026-08-17)
-
-**Status: ✅ CLOSED 2026-08-24.** The fix WAS applied — in the very commit that wrote the
-paragraphs below claiming otherwise. `f94860b6` (2026-08-17, filed as BUG-091 before an ID
-renumbering to BUG-094) both replaced the clamp with `arousal01` in `MeniscusStemDrops.swift` and
-`MeniscusCamera.swift`, AND added this entry's "Probe reverted, not committed" text — a
-same-commit self-contradiction, not a later drift. It survived unnoticed through the renumbering
-and seven days of production use. **Matt, asked directly on 2026-08-24 after Ricercar work
-surfaced the discrepancy: *"I'm fine with what I've already been seeing."*** That is the M7 this
-entry was blocked on — after the fact, but real. Certified Meniscus (MEN.5, 2026-08-05) has run
-with this behaviour, unreviewed, since 2026-08-17; his sign-off closes the gap retroactively.
-
-**The defect, as it read until 2026-08-17.** `MeniscusStemDrops.swift:219` computed the MEN.4a musical-arc lift as:
-
-```swift
-let lift = max(0, min(features.arousal, 1))
-```
-
-`arousal`'s declared contract is **−1 (calm) to +1 (energetic)** (`AudioFeatures+Analyzed.swift`).
-This clamps rather than maps, so the entire calm half of the primitive is discarded — every
-negative frame reads as identical to "not calm at all".
-
-**What it costs.** On `so_what` (Miles Davis, quiet modal jazz) today's mood output runs
-−0.393…+0.519 with **35 % of frames negative**. Those all collapse to zero, `arcEnvelope`
-(τ 6 s) sits low, `density = 0.35·arcEnvelope + 0.65·arrangement` never rises, and the
-backbeat-gated **vocals region places 0 drops across the entire track** — which
-`MeniscusStemDropsTests` correctly calls a dead route, since those three regions are beat-locked
-and absolute.
-
-**Why it stayed hidden.** MEN.4a was calibrated on a single capture where arousal never went
-negative — its own comment records the range as *"arousal 0.19 → 0.52 → 0.27"* — so the clamp
-never engaged. And the committed QG.1 fixtures bottom out at −0.077, roughly 0 % negative. The
-defect only surfaced when BUG-090's regenerated fixtures carried today's mood output, after
-DYN.6.2/DYN.7 refit the classifier.
-
-**The fix, applied in `f94860b6` (2026-08-17).** The clamp became a map:
-
-```swift
-let lift = features.arousal01   // (arousal + 1) * 0.5, i.e. (clamp(arousal,-1,1)+1)*0.5
-```
-
-took so_what's vocals region **0 → 24 drops** and turned the whole Meniscus suite green
-(14 tests / 9 suites), with the other two tracks unaffected in kind — this is the evidence the
-same commit measured before committing it.
-
-**Why this ran seven days without Matt's eye, when the process says it needs one.** The commit
-that applied the fix reasoned correctly that it makes a **certified** preset place more drops on
-calm material — a visible change, and therefore a product call plus an M7, not a test fix — and
-then applied the fix anyway while writing text saying it hadn't. Nobody caught the contradiction
-until the Ricercar certification work re-read this entry on 2026-08-24 and checked the source
-against it. Matt's *"I'm fine with what I've already been seeing"* is the M7, arriving after the
-fact rather than before it.
-
-**The sweep found a SECOND site, in the same preset — also fixed in `f94860b6`.**
-`MeniscusCamera.swift:106` did the identical thing to its own envelope:
-
-```swift
-arousalEnvelope += (max(0, min(features.arousal, 1)) - arousalEnvelope) * …   // fixed: arousal01
-```
-
-Meniscus discarded the calm half of `arousal` twice — once for drop density, once for camera
-motion (the dolly no longer pins at the hero distance through a calm passage). Both sites carry
-the same fix.
-
-**The codebase already has the correct idiom, two files away.** The orchestrator maps the same
-primitive properly:
-
-```swift
-SessionPlanner.swift:327    let energy       = max(0, min(1, 0.5 + 0.4 * profile.mood.arousal))
-PresetScorer.swift:277-279  let targetTemp   = max(0, min(1, 0.5 + 0.4 * valence))
-                            let targetDensity = max(0, min(1, 0.5 + 0.4 * arousal))
-```
-
-`0.5 + 0.4 · x` centres the bipolar range on 0.5 and keeps both halves. That is the shape the
-Meniscus sites should have used.
-
-⚠ **Also checked and NOT affected.** `RayMarchPipeline+MetalFX.swift:183–184` writes
-`max(0, valence)` / `max(0, -valence)` — that is a deliberate split of a bipolar signal into two
-unipolar channels (warm and cool), which loses nothing. And the deviation family (`*Dev`) is
-`max(0, *Rel)` **by definition**, not by accident. No MSL-side instances. The rule is not
-"`max(0, …)` is wrong" — it is "clamping a bipolar primitive to one side of zero throws away
-half of it".
-### BUG-093 — The tree moves plenty and still reads as disconnected; the drivers track the wrong quantities (2026-08-17, ✅ RESOLVED 2026-08-19)
-
-**Resolved by the premise change this entry insisted on, not by tuning.** The standing hypothesis
-here was right — the tree tracked three quantities that do not correspond to what a listener
-notices — but it under-stated the fix. Two things were needed:
-
-1. **FTR.28 — the tree had to DANCE rather than react.** Matt's reframe (*"the motion of the
-   broomsticks in Fantasia's The Sorcerer's Apprentice"*) turned the question from WHICH SIGNAL
-   sets a size into WHICH CLOCK sets a gait. Nine increments had been spent on the first question.
-   A dance is a phase; intensity only sets step size. That produced the first positive report in
-   eleven increments: *"it is swaying and bouncing on the beat."*
-2. **FTR.33 — the remaining three channels stopped following anything unnameable.** Colour became
-   a fixed palette, the tips joined the beat, the size went to held tiers stepped on an arrival.
-   ★ The load-bearing measurement: the size already followed true loudness at **r = +0.863** and
-   was still called random, so **accuracy was never the missing property** — a shared reference
-   with the listener is.
-
-**The one thing to carry forward:** this entry's instruction (*"do not open another tuning
-increment; the next move needs a changed premise about WHICH quantity the tree should follow, and
-that is a product decision"*) was correct and saved further wasted rounds. Both premise changes
-came from Matt, in his own visual language, after I asked what he PICTURED.
-
-**Status: P1, evidence only, and deliberately NOT a tuning ticket.**
-
-**Why this exists.** After nine live rejections of one complaint across FTR.15 → FTR.27, two
-explanations have now been ruled out by measurement rather than argument:
-
-1. **"The visual is not moving enough."** Ruled out. After 12 s on `2026-08-17T20-01-01Z`: `reach`
-   span 0.680, size span 0.360, **visible trunk length span 0.151 clip space ≈ 164 px at 1080p**,
-   spread 20°→34°, tip spark firing 0.37/s. The tree traverses two thirds of its geometric range.
-2. **"A primary channel is dead."** Ruled out (BUG-092, retracted on that point): the inert term is
-   `arousal`, whose coefficient is 0.10 inside a `max()` it never wins — removing or fixing it
-   changes nothing about how much the tree moves.
-
-**What remains, and it is a routing-semantics problem rather than a calibration one.** Every
-quantity the geometry follows has been measured against what a listener notices, and none of them
-correspond:
-
-| channel | driver | what it actually measures | event specificity |
-|---|---|---|---|
-| size | `spectral_surge` | this moment's rank in the track's loudness distribution, off a τ 0.76 s follower | **0.25× — moves DOWN at events** |
-| growth | `spectral_section_ratio` | a slow τ20 s density rank against the track's normal | not event-scaled at all |
-| canopy angle | `spectral_flux` | broadband spectral change | 1.50× — fires as often between events as on them |
-| tip light | `spectral_level_rise` | pre-AGC level rise (FTR.25) | event-aligned, but only 0.37/s |
-
-**So the standing hypothesis is: the tree moves a lot while tracking three quantities that are not
-what a listener attends to.** That is consistent with every rejection in the arc, including the two
-where a genuinely event-aligned driver WAS tried and rejected for its motion cost — FTR.24 put one
-on size and multiplied peak velocity 10.7× (*"herky-jerky… looks defective"*).
-
-**⚠ Do not open another tuning increment against this.** Six size formulations, two accent
-placements, three spread routes and a detector rewrite have all been tried. The next move needs a
-changed premise about WHICH musical quantity the tree should follow — arrangement? section
-boundaries? a beat-grid-derived structure? — and that is a product decision for Matt, not a
-coefficient.
-
-**Verification criteria for any future attempt:** a driver whose event specificity exceeds 2× AND
-whose total travel stays within 25 % of the FTR.23 baseline, measured on one capture, before any
-live review is requested.
-
----
-
-### BUG-092 — Fractal Tree's declared `growth` route is inert: `arousal` loses its own `max()` on every frame (2026-08-17, RE-SCOPED same day, ✅ RESOLVED 2026-08-19)
-
-**Resolved at FTR.33**, by removing the term rather than giving it a coefficient. Matt chose
-hold-and-step for the growth channel, so the size now reads DYN.2c's per-track density rank
-(`spectralSectionRatio`) through `ArrivalStep` and commits each change on a `spectral_level_rise`
-arrival. The `arousal` term is deleted from `fractal_growth`, and the sidecar's `growth ← arousal`
-route is replaced by `growth_tier ← spectralSectionRatio` plus `growth_commit ← spectralLevelRise`.
-The manifest and the shader agree again, which was the whole of this entry once its original
-headline was retracted.
-
-**Status: P3, evidence only. This entry was filed with a WRONG headline and corrected hours later;
-the correction is the more useful half.**
-
-**⚠ WHAT I FILED FIRST, AND WHY IT WAS WRONG.** The original entry claimed `arousal` was the
-preset's primary growth driver, that it flatlines after 12 s, and that this explained nine live
-rejections of *"the tree grows and shrinks with no clear connection to the music"*. The flatness is
-real. **The rest was false, because I measured the primitive and never checked its COEFFICIENT.**
-
-The shader computes:
-
-```metal
-reach = saturate(max(0.10f * arousalReach, fullness) * musicGate)
-```
-
-Measured after 12 s on `2026-08-17T20-01-01Z`:
-
-| term | p05 | p95 | span |
-|---|---|---|---|
-| `0.10 × arousalReach` | 0.038 | 0.070 | **0.032** |
-| `fullness` (= `spectral_section_ratio × 0.5`) | 0.316 | 0.961 | **0.646** |
-| `musicGate` (from `spectral_surge`) | 0.294 | 1.000 | 0.707 |
-| resulting `reach` | 0.270 | 0.950 | **0.680** |
-
-**`arousal` wins that `max()` on 0.0 % of frames.** It is not a dead driver; it is an inert term.
-And the growth channel is not dead at all — `reach` spans 0.680, and the visible trunk length spans
-**0.151 clip space ≈ 164 px of 1080**.
-
-**The actual defect, which is small.** The sidecar declares `growth ← arousal`, and that route has
-no visible effect. This is the FTR.2 false-manifest class, and QG.1 route coverage cannot catch it:
-the gate asks whether a declared primitive VARIES (it does, faintly), not whether it survives the
-arithmetic it feeds. `arousal`'s within-track flatness — mean 0.446…0.475, sd 0.048…0.069, the same
-0.258…0.509 bounds on five captures across three builds and two audio paths — is unremarkable for a
-*mood* classifier and is why it went unnoticed for the whole FTR program.
-
-**Two fixes, both Matt's call because one changes what he sees:** delete the inert term and its
-route (honest, no visual change), or raise its coefficient so a track's mood biases the tree's
-resting size (a visible change, and the thing the route was presumably *meant* to do).
-
-**★ The transferable lesson, which is why this entry is kept rather than quietly deleted: measuring
-a PRIMITIVE's range says nothing about whether it reaches the picture.** Check the coefficient and
-the surrounding arithmetic — a term inside a `max()` against something ten times larger is decor.
-This is the same species as FTR.24's model/shader mismatch (glide order) three days earlier.
-
----
-
 ### BUG-091 — A single local file selected: preparation succeeds, playback never starts, every audio field is exactly zero (2026-08-17)
 
 **Status: instrumentation increment landed. Root cause NOT asserted — one reproduction with the
@@ -1051,189 +301,6 @@ mode. If a future increment does need it there, split the file rather than trimm
 2. Manual (required — this is a UX-flow and audio-path defect): select a single local file, confirm
    audible playback, and confirm the capture shows `provider.start INSTANCE`, a `TAP_BUFFER` node-tap
    line, no `createProcessTap`, and `playback_time_s` advancing.
-
----
-
-### BUG-090 — The QG.1 route-coverage fixtures cannot be regenerated: today's generator output reds two other presets' gates (2026-08-17)
-
-**Status: evidence only. No fix attempted, and deliberately so — see the last paragraph.**
-
-**What was tried and why.** FTR.25 declares a route on `spectral_level_rise`, a `FeatureVector`
-column added after the fixtures were captured at QG.1.3. QG.1 therefore cannot verify it: the
-fixtures are recorded CSVs with no audio beside them. `FixtureSessionCaptureGenerator`'s own header
-says *"Regenerate + re-copy when the CSV schema appends columns"*, so that was the first move, not
-the allowance.
-
-**The generator works.** 18 s, three vendored clips through the production chain, and the new
-column is live on all three: `love_rehab` nonzero 100 % / sd 0.242, `so_what` 99 % / 0.346,
-`there_there` 80 % / 0.165. With the regenerated set installed, `RouteCoverageTests` reads
-**209 routes across 21 presets, 0 red**.
-
-**But every row differs from the committed copy**, and two other presets' gates fail with it:
-
-| gate | preset | failure |
-|---|---|---|
-| `MeniscusStemDropsTests` — "the beat-locked regions never go dead" | Meniscus | `perRegion[region] == 0` on `so_what` |
-| `WitchlightPathTests` — "the smoothed harmonic phase travels the distance §2.3 measured" | **Witchlight (CERTIFIED)** | `circles` outside 0.7–1.4 × target on all three tracks |
-
-**Two candidate causes, not separated.** (a) The pipeline's output has genuinely moved since
-QG.1.3 — in which case those gates are asserting against a stale baseline and the drift is itself
-the finding. (b) The generator is not deterministic; it runs MPSGraph stem separation and the
-Beat This! grid, neither of which has been checked for run-to-run stability here.
-
-**Discriminator, one command:** run the generator twice into different directories and diff its own
-two outputs. Identical ⇒ (a), the pipeline moved, and the two gates need re-baselining as their own
-increment with Matt's sign-off (Witchlight is certified). Different ⇒ (b), and the fixtures cannot
-be regenerated at all until the generator is made reproducible.
-
-**Consequence today.** Any `FeatureVector` column added after QG.1.3 cannot be route-covered.
-Tracked explicitly as `RouteCoverageTests.columnsPostdatingFixtures`, which currently holds
-`spectral_level_rise` and prints a FIXTURE GAP line on every run.
-
-**Why this was filed rather than fixed.** Re-baselining a certified preset's gate as a side effect
-of an unrelated preset increment is not a quiet call, and "my change went green after I regenerated
-a shared fixture" is how a real regression gets laundered. The fixtures stay as committed.
-
-**UPDATE — discriminator run, and the drift fully localised (CHR.3g, 2026-08-17).**
-
-**The discriminator answers (a): the generator IS deterministic.** Run twice into separate
-directories, all six outputs are **byte-identical** (`cmp` clean on features.csv and stems.csv
-for all three tracks). So the fixtures CAN be regenerated reproducibly, and the two failing
-gates are asserting against a stale baseline rather than against noise.
-
-**The drift is not broad — it is five columns in two analyzers.** Comparing the committed
-fixtures against the regenerated set, per column, as mean |delta| over the shared rows:
-
-| column | love_rehab | so_what | there_there |
-|---|---|---|---|
-| `tonal_tension` | 63 % of range | 38 % | 50 % |
-| `harmonic_flux` | 55 % | 36 % | 58 % |
-| `valence` | 24 % | 25 % | 46 % |
-| `tonal_phase_fifths` | 20 % | 9 % | 9 % |
-| `arousal` | 17 % | 18 % | 43 % |
-
-**Everything else is stable.** 67 of 72 shared feature columns moved < 1 % of range, and
-**stems.csv is completely unchanged — 0 of 52 columns on all three tracks.** Bands, deviation
-primitives, beat, pulse, section and every per-stem field are identical.
-
-**The causes are named in git, and all are intentional.** The fixtures were captured at
-`cc1dfcd1` (QG.1.3). Since then: `2861140e [FTR.3g] Seed the density baseline, **smooth the
-harmonic phase**`, `c5b491ba [TONAL.2b] calibrate TonalAnalyzer gate from the 1000-track pilot`,
-`86169538 [DYN.6]` / `21651962 [DYN.6.2] MoodClassifier: refit the flux scaler on corpus
-statistics`, `a91a7915 [DYN.7] Mood: the prepared mood and the live mood become one
-measurement`. Each landed with its own increment. **This is not a regression.**
-
-**Both failures trace to exactly those columns**, confirmed by reproducing them with the
-regenerated set installed:
-
-- **Witchlight** — its hero driver IS `tonalPhaseFifths`, and the gate asserts how far the
-  smoothed harmonic phase travels. `circles` now falls **below** 0.7 × target on all three
-  tracks, which is the expected direction: FTR.3g deliberately *smoothed* that phase, and
-  smoothing reduces travel. The gate encodes a pre-FTR.3g target.
-- **Meniscus** — `MeniscusStemDrops` gates drop placement on `features.arousal`
-  (`MeniscusStemDrops.swift:219`, the MEN.4a musical-arc lift). Arousal moved 17–43 % of range,
-  so a beat-locked region that used to fire on `so_what` no longer does. Its stems are
-  identical, which is why the stem-side explanation never fitted.
-
-**Also found:** the committed fixtures predate more than `spectral_level_rise`. The regenerated
-set adds **six** columns — the whole DYN block (`spectral_density`, `_slow`, `spectral_surge`,
-`spectral_section_ratio`) plus `spectral_level_rise` (FTR.24) and `waveform_occupancy`
-(CHR.3c). So the fixture gap currently blocks route coverage for three separate increments'
-primitives, not one.
-
-**RESOLVED (same day).** Regenerating was safe and reproducible, and **neither failing gate was
-a stale baseline — both were real defects the frozen fixtures had been hiding** (BUG-094
-Meniscus, BUG-095 double-smoothed phase). With both fixed, the regenerated fixtures are
-committed and the full suite is green at 1862/1862. Drift is now **four** columns — `arousal`,
-`valence` (both moved by the DYN mood work) and `harmonic_flux`, `tonal_tension` — each traced
-to an intentional change, plus the six new columns above. `tonal_phase_fifths`, the fifth
-drifted column, is **gone from the list**: it was the regression, not drift.
-`RouteCoverageTests.columnsPostdatingFixtures` is now **empty** — every column added since
-QG.1.3 is present and covered, and the gate reads 199 routes / 20 presets, 0 red.
-
-**One thing regenerating did NOT unblock — and the second diagnosis was wrong too.** Stave's
-`waveformOccupancy` route was first recorded as blocked by BUG-090; regenerating did not help,
-so it was then recorded as the **QG.1.1** limitation ("offline fixtures cannot reach render-path
-values"), which read as a law rather than a fixable gap. ✅ **Fixed at CHR.3g (2026-08-19):**
-the generator now ticks the same `WaveformOccupancy` model from each hop's samples, exactly as
-`RenderPipeline.swift:773` does per frame. The column measures 0.003–0.368, 100 % nonzero on all
-three tracks; exactly one column changed in the regenerated fixtures; Stave declares
-`band_dispersion ← waveformOccupancy` and route coverage reads **203 routes / 21 presets,
-0 red**. Stave's certification is no longer blocked on tooling, and **Matt's M7 certified it on 2026-08-19 (CHR.3k)** — the 19th certified preset.
-
-**FOLLOW-UP (CHR.3h, same day): the two failures are NOT the same kind of thing, and only one
-is a re-baseline.** Investigated separately rather than treated as one fixture chore:
-
-- **Witchlight — ⚠ THIS CALL WAS WRONG, and it is the most useful thing in this entry.** CHR.3h
-  read the gate as a stale baseline: `circles` fell below 0.7 × target on all three tracks, which
-  is the direction FTR.3g predicts, so the constant was assumed to predate the change and the
-  preset was assumed sound. **It was a real regression** — filed as BUG-095 and fixed. The
-  reasoning failed in a specific, repeatable way: *a plausible mechanism that predicts the
-  direction of a change was accepted as an explanation for its magnitude.* FTR.3g does predict
-  less travel; it does not predict **4×**, and nothing checked whether the size was consistent
-  with one extra smoothing stage rather than two. The measurement that settled it took one
-  command — regenerate the fixtures with the source EMA disabled and read the number: 2.09 /
-  1.80 / 15.10 against a design of 2.1 / 1.7 / 15.4, i.e. the constant was never stale at all.
-  **Re-deriving the target would have written the regression into the doc as the new truth**, on
-  a certified preset, with the gate that was built to catch exactly this failure reporting green.
-- **Meniscus — a REAL DEFECT, now filed as BUG-094.** Not a stale target at all: it clamps
-  `arousal` to 0…1 when the contract is −1…+1, so on calm material the arc lift dies and a
-  beat-locked region goes silent. The gate was right to fail. **Re-baselining it would have
-  laundered a genuine bug in a certified preset** — which is precisely the outcome this defect
-  was originally filed to avoid, arrived at from the opposite direction.
-
----
-
-### BUG-089 — `spectral_level_rise` shipped with a 22× analysis-rate dependence; its rate-invariance test passed (2026-08-17)
-
-**Status: root-caused and fixed the same day, in the increment that shipped it (FTR.24a). The
-consumer that exposed it was reverted separately.**
-
-**How it surfaced.** Matt's live M7 on `2026-08-17T15-23-17Z`: *"Much worse now as the motion is
-herky-jerky. Looks defective. Considerable regression."* Measured on that capture, the shipped
-Fractal Tree size term against the build it replaced:
-
-| | evt/rand | travel | peak \|v\| | jerk p99 |
-|---|---|---|---|---|
-| FTR.23 base only | 0.27× | 8.72 | 1.62 | 23 |
-| FTR.24 with the accent | 2.37× | **31.88** | **17.37** | **589** |
-
-**Root cause (read, not inferred).** `advanceLevelRise` measured the rise as
-`levelDB − min(levelDB over the last 0.15 s)`. A minimum over a time window is not
-rate-invariant: raise the analysis rate and (a) the window spans more frames, (b) each frame's
-level is noisier because the hop — and therefore the RMS window — is shorter. Both push the
-floor down, so the same music produces a larger rise at a higher rate. Measured on one capture's
-`raw_tap.wav`, decoded once and analysed at four rates with the shipped constants:
-
-| analysis rate | fires/s | non-zero | mean | floor window |
-|---|---|---|---|---|
-| 10.0 Hz | 0.03 | 16 % | 0.012 | 2 frames |
-| 15.8 Hz (local files) | 0.04 | 37 % | 0.031 | 2 frames |
-| 30.0 Hz | 0.26 | 61 % | 0.086 | 4 frames |
-| 59.4 Hz (the tap) | **0.89** | 85 % | 0.184 | 9 frames |
-
-FTR.24 calibrated against the 15.8 Hz column and Matt played back through the 59.4 Hz one.
-
-**★★★ The test-adequacy finding, which is the part that generalises.** The suite HAD a
-rate-invariance test and it was green. It asked whether a synthetic **+12 dB** step still fires at
-10 Hz and 51 Hz — and a step that large saturates the band at every rate, so no rate dependence of
-any magnitude could have failed it. **A rate-invariance test must compare a DISTRIBUTION on
-realistic material — fire rate, duty cycle, mean — not whether one enormous input survives.** The
-replacement (`levelRise_distributionMatchesAcrossAnalysisRates`) drives a repeating multi-size
-amplitude pattern for 24 s of wall time at both real rates and asserts duty cycle and mean within
-1.6×. It fails on the old formulation by a factor of 22.
-
-**Fix.** A statistic with no sample-count term: a FIXED-LAG difference,
-`preSmoothedLevelDB(t) − preSmoothedLevelDB(t − 0.15 s)`, where the level carries a short 40 ms
-pre-smoothing so per-frame noise stops scaling with the hop (and ~19× shorter than the 0.76 s
-`levelSmoothingTau` whose transient-erasing is why this field exists at all). Band re-derived to
-2–7 dB, because a lag difference is a smaller number than a rise off a minimum — **swapping the
-statistic without re-deriving the band is how the first version shipped.** The two real paths now
-sit within 12 % (0.35 vs 0.41 fires/s; mean 0.098 vs 0.109).
-
-**Residual.** The 10 Hz end is still ~2× off the others. It is the pre-BUG-087-partial-fix rate
-and no current path runs there; if one ever does, the level needs a fixed-DURATION RMS window
-rather than a per-hop one.
 
 ---
 
@@ -1613,13 +680,31 @@ chose mood envelopes over deviation primitives for a GENTLE preset and Matt cert
 2026-07-19. "Reads as uncoupled" may be the intended register. What is objectively wrong is
 the manifest. Flagged, not resolved.
 
+#### ⚠ CORRECTION 2026-08-26 (audit pass) — the "three undeclared reads" are not reads
+
+Read against the source rather than the capture: **`AuroraVeil.metal` reads exactly five audio
+fields** — `arousal`, `bar_phase`, `bass_att_rel`, `pulse_amp`, `valence` — which is precisely
+what the sidecar declares. There is no undeclared shader read. `drumsEnergyDev`,
+`vocalsPitchHz` and `vocalsPitchConfidence` are consumed by **`AuroraVeilState.swift`**, which
+still computes a kink charge and a smoothed pitch and flushes them to buffer(6) — and AV.7
+stopped reading that buffer (`AuroraVeil.metal` header: *"still flushes buffer(6) — also unused
+now; left in place to avoid loader churn"*). They are **dead computation on the per-frame path**,
+not coupling QG.1 is blind to.
+
+**This inverts the fix.** Declaring `drumsEnergyDev` in the manifest — the third verification
+criterion below — would declare a route that reaches nothing, and `RouteCoverageTests` would
+then gate a value with no consumer. The correct fix is deletion: drop the dead stem/pitch reads
+from `AuroraVeilState` (or the state object, if nothing survives), and fix `pulseAmp01`'s `kind`
+so a silence gate stops reading as a driver. That is a small increment, not a preset increment —
+no M7, no re-certification, because no rendered pixel changes.
+
 #### Verification criteria (before any fix)
 
 - The manifest matches what the code reads — ideally mechanized, since a hand-maintained
   list drifted here on a certified preset.
 - `kind` distinguishes a **gate** from a **driver**, so a silence gate cannot be declared as
   continuous coupling again.
-- `RouteCoverageTests` sees `drumsEnergyDev` for Aurora Veil after the fix.
+- ~~`RouteCoverageTests` sees `drumsEnergyDev` for Aurora Veil after the fix.~~ **Withdrawn by the 2026-08-26 correction above** — the shader never reads it; the route would be fictional. Replace with: no live-path code computes a primitive no consumer reads.
 - If Matt decides the coupling itself is too weak, that is a **separate** preset increment
   with its own M7 — not a manifest fix.
 
@@ -1769,382 +854,6 @@ test.
 explain BUG-086's weak local-file correlation is **refuted** (see Impact). A fix here should
 still re-run `Scripts/measure_stem_latency.py` on a local-file capture before and after — not
 because the correlation is expected to improve, but so the claim is checked rather than assumed.
-
-### BUG-086 — Per-stem features reach presets ≈5.4 s late; lag is structurally pinned to the separation period (2026-08-11)
-
-Found while measuring driver viability for a plotting preset (CHR.1), where the
-lag is disqualifying rather than cosmetic. **Diagnosis increment only — no fix
-code.** Full measurement and method: `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md`
-§7b (evidence) and §8 (root cause + the fix trade).
-
-#### Expected behavior
-
-Per-stem features (`{stem}Energy`, `…EnergyRel`, `…EnergyDev`, onset rate,
-centroid, attack ratio, slope) describe the audio the listener is hearing now,
-to within roughly the same tolerance as the real-time band features.
-
-#### Actual behavior
-
-They describe audio from **≈5.4 s ago**, steady state, on the local-file path.
-The real-time band features (`bass`/`mid`/`treble`) are correct to 0.2–0.4 s, so
-a preset reading both gets two clocks that disagree by 5 s.
-
-#### Reproduction steps
-
-Any local-file session ≥ 90 s. Measured on `beat-match-test-session` (16
-full-length tracks) and `2026-08-11T01-07-17Z` (*Cherub Rock*).
-
-#### Session artifacts
-
-Three independent measurements, all agreeing, escalating in cleanliness:
-
-1. Tap cross-correlation, cold start (30 s tap): bands peak at −0.30…+0.08 s;
-   stems have no peak inside ±3 s, and a single broad unimodal peak at ≈10 s
-   (r +0.58) when widened to ±20 s.
-2. Tap cross-correlation, steady state (full 2.04 GB tap, four 60 s windows ≥ 90 s
-   into a track): control `bass` peaks at **0.20–0.40 s** — alignment confirmed —
-   while every stem peaks at **5.61 / 5.81 / 5.61 / 5.61 s**.
-3. CSV-internal, no WAV: each stem feature against the time-aligned `bass+mid`
-   sum, both at 60 Hz — **5.4 s on 39 of 40 stem × track pairs**, r up to +0.94.
-
-Corroborates TRK.2's independent 5–10 s finding.
-
-#### Suspected failure class
-
-`calibration` — a deliberate offset whose cost was never measured, not a coding
-error. Every line below does what it says it does.
-
-#### Root cause (read from source, not inferred)
-
-- `VisualizerEngine+Stems.swift:49` — `timer.schedule(deadline: .now() + 10, repeating: 5.0)`: separation every **5 s**.
-- `VisualizerEngine+Stems.swift:166` — `stemSampleBuffer.snapshotLatest(seconds: 10, …)`: the chunk is the latest **10 s**, so chunk sample 0 is audio from 10 s ago and the chunk's end is "now".
-- `VisualizerEngine+Audio.swift:333` — `let startSample = Int(5.0 * sampleRate)`: the per-frame read window starts **5 s into** the chunk, i.e. at audio already 5 s old, then advances at real time.
-
-So `lag = chunkLength − startOffset`, and the read can only advance for
-`chunkLength − startOffset` seconds before clamping at the chunk's end — which
-must cover one separation period. Hence:
-
-> **lag ≥ separationPeriod.** The 5 s head start is exactly the runway needed to
-> survive one 5 s period. It is not slack.
-
-**Chunk length is not a lever.** `StemSeparator.modelFrameCount = 431` is
-commented "Fixed number of STFT frames the model expects" → `requiredMonoSamples
-= 440320` ≈ 10 s at 44.1 kHz. Shortening the chunk needs a re-exported model.
-
-#### The fix trade
-
-Reducing lag means reducing the separation period, at one full inference per
-period (cost fixed, because the model always consumes 10 s):
-
-| period | resulting lag | inference duty |
-|---|---|---|
-| 5 s (today) | ≈5 s | ≈2.8 % |
-| 2 s | ≈2 s | ≈7.1 % |
-| 1 s | ≈1 s | ≈14.2 % |
-
-`startSample` must move to `chunkLength − period` in the same change, or the read
-clamps and the features freeze between separations (a stutter, which for a
-plotting preset is worse than the lag).
-
-⚠ **The 142 ms inference figure is the code comment at `VisualizerEngine+Stems.swift:211`,
-not independently measured** — no session artifact records separation cost, so
-the duty column is an estimate. Measuring it is step 1 of any fix increment.
-⚠ `MLDispatchScheduler` (D-059) already defers dispatch when frames run over
-budget, with a 2 s ceiling. At short periods deferral becomes common, so
-worst-case lag is `period + deferral`, not `period`.
-
-#### Verification criteria (written before any fix)
-
-- Automated: the CSV-internal measurement above, as a gate — stem features must
-  track the `bass+mid` band sum at a lag below the chosen target on a real
-  capture. Reuses recorded sessions, no new fixtures.
-- Automated: no regression in `stem_analyzer_ms` / frame budget; `MLDispatchScheduler`
-  deferral rate recorded before and after.
-- Manual: `dsp.stem` requires observed musical connection. Any change to stem
-  timing is felt on every stem-driven preset — Aurora Veil (whose
-  `other_energy_dev` route is load-bearing), Skein, Meniscus, FFO — so M7-class
-  observation on at least Aurora Veil before it is called fixed.
-
-#### Fix — code-complete 2026-08-11, NOT yet validated
-
-Period 5.0 s → **2.0 s**, and the read start **derived** from it rather than being a
-fourth independent literal:
-
-```
-stemChunkSeconds            10.0   (pinned to the model, asserted against
-                                    StemSeparator.requiredMonoSamples)
-stemSeparationPeriodSeconds  2.0   (was 5.0)
-stemReadMarginSeconds        0.5   (slack for inference + D-059 deferral)
-stemReadStartSeconds         7.5   (derived: chunk − period − margin)
-→ nominal latency            2.5 s (was ≈5.4 s measured)
-→ inference duty            ≈7 %   (was ≈2.8 %; estimate, see below)
-```
-
-Margin is deliberately > 0: clamping is **not** a stale freeze — the window pins to
-the chunk's *newest* audio, so latency momentarily collapses toward zero and jumps
-back when the next chunk lands, which reads as a glitch rather than a lag.
-
-`STEM_SEPARATION: inference=…ms period=…s duty=…% nominal_latency=…s` now goes to
-`session.log` every separation, so the duty estimate above becomes checkable from a
-capture — it previously rested on a 142 ms figure that existed only in a code
-comment, which is why the pre-fix cost was never verifiable.
-
-`StemSeparationCadenceRegressionTests` (7 tests) asserts the *relationship* rather
-than the values — runway ≥ period, margin > 0, latency < 3 s, read start derived,
-chunk pinned to the model — so retuning the cadence stays free while re-breaking the
-invariant does not.
-
-**The gate was verified to bite, not merely to be green.** Setting the period back
-to 5.0 and re-running fails the latency test with
-`stemNominalLatencySeconds → 5.5 < 3.0` — so the suite would have caught the pre-fix
-configuration. A green assertion that also passes against the defect is worthless;
-this one was checked against it.
-
-**Automated verification complete (2026-08-11):**
-
-- `swiftlint --strict` — 0 violations, 503 files
-- `xcodebuild build` — succeeded
-- Engine suite — **1809/1810**; sole failure is the pre-existing DOC.6 rotation gate,
-  identical to the branch point
-- App target — **411/411** (404 before this change, plus the 7 new tests; no existing
-  test moved). Required quitting a live `PhospheneApp` first — **BUG-072**.
-
-**Measured latency is NOT yet verified, and the constants test does not verify it.**
-`StemSeparationCadenceRegressionTests` gates the arithmetic that *produces* 2.5 s; it
-cannot observe what the pipeline delivers. `Scripts/measure_stem_latency.py <capture>`
-does, from a real session:
-
-```
-Scripts/measure_stem_latency.py ~/Documents/phosphene_sessions/<capture>
-```
-
-It cross-correlates each stem's `energyRel` against the time-aligned `bass+mid` band
-sum (both at ~60 Hz, CSV only — no WAV, whose per-capture sample rate differs and
-silently scaled the time axis by 8.8 % in an early version of this measurement),
-reports per-stem lag with correlation strength, and PASS/FAILs against a 3.0 s
-ceiling. Validated against the pre-fix corpus: 15 of 15 `beat-match-test-session`
-segments report **5.4–5.5 s**, matching the original finding. It also detects a
-pre-fix capture from the absence of `STEM_SEPARATION` and says so, so a stale capture
-cannot be misread as a regression.
-
-*Its verification-criteria form was corrected in building it.* This entry originally
-specified "an automated gate". The lag is a live-pipeline property of the ML timer,
-wallclock advance and `MLDispatchScheduler` deferral — no unit test can synthesize it,
-and a synthetic one would be the green-test-measuring-the-wrong-thing trap. The honest
-artifact is a measurement over a capture a human supplies.
-
-#### Post-fix captures — two sessions, 2026-08-11 (`23-35-27Z`, `23-44-40Z`)
-
-> **⚠ TWO CORRECTIONS, in order.**
->
-> **(a)** This section first reported "measured lag 5.4 s → 2.9 s, PASS" from a single capture.
-> That single-capture PASS rested on r 0.42/0.48 with no peak behind it and squeaked past a
-> `MIN_R` floor of 0.40. The floor is **0.60** now, and no single short capture clears it.
->
-> **(b)** The withdrawal then over-corrected. The 5.4 s baseline came from a **streaming**
-> capture while every post-fix capture is **local-file**, so the two were never comparable —
-> but the corpus also holds a *pre-fix local-file* capture, and comparing like with like the
-> fix does hold: **5.2 s → 2.9/3.0 s across two independent post-fix captures.** Weak
-> correlations make each number soft; three same-path captures agreeing does not.
->
-> What remains genuinely unmeasured is the **streaming** path post-fix — the path the clean
-> baseline came from. The duty figures are direct log readouts and unaffected throughout.
-
-**Correlation quality tracks the PLAYBACK PATH, not capture length** (corrected 2026-08-11
-after Matt pointed out the 16-track corpus is a *streaming* playlist, which this entry had
-recorded as local files):
-
-| real capture | path | duration | best r | best lag |
-|---|---|---|---|---|
-| `beat-match-test-session` (pre-fix) | **streaming** | 88 min | **0.70–0.94** | 5.4 s |
-| `2026-08-11T01-07-17Z` (pre-fix) | local file | 255 s | 0.193 | 5.2 s |
-| `2026-08-11T23-44-40Z` (post-fix) | local file | 137 s | 0.372 | 3.0 s |
-| `2026-08-11T23-52-49Z` (post-fix) | local file | 102 s | 0.462 | 2.9 s |
-
-Length is not the driver: the 255 s local-file capture reads *worse* than the 102 s one.
-
-⚠ **`fixturegen-*` are not evidence.** They read r 0.886–0.975 at lag **0.0 s**, which is
-tempting and wrong: they carry no `raw_tap.wav` and their logs say
-`fixture=<file> stems=StemSeparator(MPSGraph)+StemAnalyzer hop=1024` — offline generation
-runs where features and stems are computed in lockstep from the same file, so zero lag is an
-artifact of the method. Excluded from every number here.
-
-**Same-path comparison — this IS like-for-like, and the fix holds.** Local-file pre-fix
-**5.2 s** → local-file post-fix **3.0 s and 2.9 s**, two independent captures agreeing,
-against a predicted 5.4 → 2.5 s nominal shift. The correlations are weak on this path, so each
-number alone is soft; three same-path captures agreeing on a ~2.2 s reduction is not.
-
-**Why local-file correlations are weak (0.19–0.46) where streaming reads 0.70–0.94 is
-UNEXPLAINED, after five tested and refuted hypotheses.** Listed so none is re-run:
-
-1. *Clamping degrades the features* — refuted. Correlation on clamped vs unclamped frames is
-   identical (drums 0.388 vs 0.381; bass 0.413 vs 0.368).
-2. *The reference signal is too flat* — refuted. Post-fix reference SD is **higher** than
-   pre-fix (0.118/0.142 vs 0.071/0.115).
-3. *Capture length* — refuted. A 21 s streaming clip beats a 255 s local-file capture, and
-   the 255 s capture reads worse than the 102 s one.
-4. *The `MIN_R` threshold* — that was a tool defect (a false PASS), fixed, and not an
-   explanation.
-5. **BUG-087's 10 Hz analysis rate — refuted 2026-08-12.** This was recorded here as the
-   most promising lead. Two tests killed it. First, stems and bands sit on the **same clock
-   within a path** (streaming: `beatPhase01` 85.4 %, stems 97.1 %; local: 16.7 % and
-   14.6–16.0 %), so the "different clocks" mechanism does not exist. Second, step-holding the
-   *streaming* capture's band and stem series down to 10 Hz — injecting the local-file rate
-   into strong-r data — **barely moves the result**: r 0.788→0.783, 0.822→0.824, 0.871→0.860,
-   0.895→0.898, 0.898→0.897, 0.937→0.938, with the 5.4 s lag intact in every case. 10 Hz
-   sampling does not destroy the correlation, and the tool resolves lag fine at 10 Hz.
-
-**One observation, offered without a conclusion:** local-file analysis frames are ~5× rougher
-step-to-step at their own analysis grid than streaming's (mean |Δ| / SD ≈ 0.63–0.69 vs 0.12),
-consistent with the 5× longer interval. Rough signals correlate worse in principle — but
-hypothesis 5 shows decimation alone does not reproduce the weakness, so roughness is not a
-sufficient explanation either. No sixth hypothesis is offered.
-
-**This is a measurement-precision question, not a question about whether the fix works.**
-BUG086.1's validity rests on the same-path lag comparison (local-file pre-fix 5.2 s →
-post-fix 2.9/3.0 s, two independent captures), which does not depend on explaining
-correlation strength.
-
-**Two hypotheses for the weak post-fix correlation were tested and both refuted**, recorded
-so they are not re-run: (1) *clamping degrades the features* — correlation on clamped vs
-unclamped frames is identical (drums 0.388 vs 0.381; bass 0.413 vs 0.368), so clamping costs
-timing fidelity nothing measurable; (2) *the reference signal is too flat* — post-fix
-reference SD is **higher** than pre-fix (0.118/0.142 vs 0.071/0.115). A third guess was not
-made; the honest state is that short captures are below this measurement's resolution.
-
-**What a like-for-like before/after needs:** the same 16-track BeatBench corpus replayed on a
-fixed build. That is the only capture that has ever produced a clean number, and reusing it
-makes the comparison identical-material rather than a different track at a different length.
-
-Two findings that DO stand, both from direct `session.log` readouts:
-
-| | assumed at BUG086.1 | **measured `23-35-27Z`** | **measured `23-44-40Z`** |
-|---|---|---|---|
-| inference per separation | 142 ms (a code comment) | **335 ms** median (284–649, n=33) | **478 ms** median (421–596, n=63) |
-| inference duty at 2 s period | ≈7 % | **≈20.5 %** | **≈25.6 %** |
-| preset-facing lag | 2.5 s nominal | inconclusive | inconclusive |
-
-**1. Inference is 2.4–3.4× the assumed cost, so duty is 20–26 %, not ≈7 %.** This is exactly
-the caveat this entry flagged — the 142 ms figure existed only in a code comment with no
-artifact behind it, and it was wrong. Note the second capture is *higher* than the first
-(478 ms vs 335 ms median, and its **minimum** 421 ms exceeds the first capture's median), so
-inference cost is variable across material or system load, not a single constant.
-
-**It is nonetheless sustainable, on the engine's own signal.** 33 separations over a 65 s
-span against 33 expected, and 63 over 124 s in the second capture — both at the nominal 2 s
-cadence: `MLDispatchScheduler` (D-059) is absorbing the
-load with jitter, not falling behind. Frame-pacing comparison against pre-fix captures is
-**inconclusive and should not be quoted** — the pre- and post-fix sessions ran different
-presets (`frame_gpu_ms` p50 0.15–0.21 vs 6.71), so the difference is preset-confounded, not
-attributable to the cadence. `deltaTime > 20 ms` is 3.51 % post-fix against a pre-fix range
-of 1.75–3.88 %, i.e. inside the existing spread.
-
-**2. The 0.5 s read margin is too small — the read window clamps on ~25 % of cycles.**
-Separation-to-separation gaps measured 0/1/2/3/4 s (×2/6/16/5/3). Runway is
-`period + margin` = 2.5 s, so the 3 s and 4 s gaps — 8 of 32 cycles — overrun it by 0.5–1.5 s
-and the window pins at the chunk's newest audio until the next chunk lands. Worst-case
-inference alone does it too: 2.0 + 0.649 = 2.649 s > 2.5 s.
-
-**The margin was sized against the wrong quantity.** It was set to absorb inference time;
-the binding constraint is *deferral-induced gap jitter*, which reaches 4 s.
-
-**Recommendation: do not re-tune now — and this is now tested, not assumed.** The earlier
-version of this paragraph argued clamping was probably imperceptible. It was then measured
-directly: correlation on clamped frames matches unclamped frames (drums 0.388 vs 0.381; bass
-0.413 vs 0.368), so clamping costs timing fidelity nothing detectable. It also costs no extra
-latency — pinning to the newest audio makes latency momentarily *better*. Covering a 4 s gap needs `margin ≥ 2.0 s`, i.e.
-**4.0 s nominal latency** — paying 1.1 s of permanent latency to remove a discontinuity that
-no shipping preset can currently show, since every stem consumer today drives slow envelopes
-where a sub-second freeze is imperceptible. **It becomes a real decision the moment a
-stem-plotting preset ships** (Stave is exactly that), and it is recorded here so that
-session does not rediscover it.
-
-#### Streaming path validated — session `2026-08-12T19-06-54Z` (Matt, 2026-08-12)
-
-**Both paths now measured post-fix, and the fix holds on each:**
-
-| path | pre-fix | post-fix |
-|---|---|---|
-| streaming | **5.4 s** | **3.0 s** |
-| local file | 5.2 s | 2.9 / 3.0 s |
-
-**The latency model in BUG086.1 was wrong, and this capture proved it.** The design claimed
-2.5 s nominal. Actual:
-
-    latency = (stemChunkSeconds − stemReadStartSeconds) + inference
-
-`latestSeparationTimestamp` is stamped **after** `separator.separate` returns, so the chunk's
-newest sample is already one inference old when the read window begins walking it. Predicted
-2.50 + 0.531 = **3.03 s**; measured **3.0 s**. Inference was priced as a duty cost only; it is
-also a latency cost, one-for-one.
-
-**Consequence: ≈3.0 s is the architectural floor at a 2 s period, not a number to tune
-toward.** Getting materially below it needs a smaller or faster model, not a cadence change —
-period 1 s would give 2.03 s latency at **53 % inference duty**, which the frame budget will
-not carry.
-
-**The 3.0 s ceiling in `Scripts/measure_stem_latency.py` is corrected to 3.5 s.** It was set
-from the wrong nominal and sat exactly on the floor, so it failed a working pipeline. 3.5 s
-accommodates measured p90 inference (868 ms → 3.37 s) and still fails the pre-fix 5.4 s
-decisively. **This is not floor-tuning (QG.1 / D-179)** — the gate was mis-set against a wrong
-model and the model is what changed; the regression it exists to catch still fails it.
-
-**Inference cost is higher again, and trending:** median 335 → 478 → **531 ms** across three
-post-fix captures of increasing length, duty **≈30 %**, with **37 of 479 separations over 1 s
-and one at 7105 ms**. The trend and the multi-second outliers are unexplained and worth
-watching — at 30 % duty this is competing with rendering, and `MLDispatchScheduler` is the only
-thing absorbing it.
-
-**Clamping is inherent, not a defect to fix.** 25 % of separation gaps exceed the 2.5 s runway
-(gaps ran 0–9 s). Removing clamping entirely needs `runway ≥ max gap` ≈ 9 s, i.e. **≈9.5 s
-latency — worse than the original defect.** Recorded so no future session tries to tune it out.
-
-**One observation, unresolved:** on the *same tracks*, post-fix streaming correlation is lower
-than pre-fix — Billie Jean 0.788 → 0.59, Around the World 0.822 → 0.63. Clamping is the
-obvious suspect, but the within-capture test (refuted hypothesis 1 above) found clamped and
-unclamped frames indistinguishable, so the two results are in tension. Not resolved, and no
-sixth hypothesis offered.
-
-#### `dsp.stem` manual gate — PASSED (Matt, 2026-08-12) → **RESOLVED**
-
-Session `2026-08-12T20-03-41Z`, local-file path, on a build carrying the fix (27
-`STEM_SEPARATION` lines). **Skein** active 20:03:59–20:04:36, then **Glaze** to session end.
-Matt: *"Session with Skein (and a little bit of Glaze as well) looks good."*
-
-**Target chosen by measurement, not memory** — the lesson of the first attempt. Skein declares
-28 routes of which 18 are stem routes, and `Scripts/check_route_liveness.py` verified in this
-capture: **22 ALIVE, 5 NARROW, 1 SPARSE, 1 ABSENT, zero DEAD**, including all eight
-stem-deviation routes (`painter_speed` and `flick_trigger` on all four stems). Glaze is the
-second-densest stem consumer (8 of 9 routes). So the observation was aimed where stem timing
-is actually visible.
-
-⚠ **The first attempt was aimed at Aurora Veil and returned nothing** — it declares no stem
-route at all, picked on a stale note claiming `other_energy_dev` was its anchor. That is
-**BUG-088**, and the tool above exists so it does not recur.
-
-Honest scope: Skein had ~37 s of a 63 s session. It is a felt judgement on a short window,
-which is what a `dsp.stem` gate is — not a measurement, and not a substitute for one. The
-measurements are separate and complete (both paths, above).
-
-**RESOLVED 2026-08-12.** Fix `e6c188e6` (`[BUG086.1] Stems: separation period 5 s → 2 s, read
-start derived from it`), merged in PR #77 (`f84d1eed`). Latency 5.4 s → 3.0 s streaming,
-5.2 s → 2.9/3.0 s local file, manual gate passed.
-
-**Carried forward, not blocking:** inference cost is trending (335 → 478 → 531 ms median, duty
-≈30 %, one 7105 ms outlier) and unexplained; ≈3.0 s is the architectural floor, so materially
-lower needs a different model; and the weak local-file stem/band correlation remains
-unexplained after five refuted hypotheses. None is a regression and none blocks closure — they
-are watch items for whoever next touches the stem path.
-2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
-   Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
-   Needs M7-class observation on at least Aurora Veil. No automated test substitutes.
-
-#### Related
-
-**⇄ BUG-084** is the other open `dsp.stem` calibration defect (deviation reaching
-35 against a ~3.4 ceiling). Same subsystem, independent causes; a fix increment
-touching `StemAnalyzer` timing should check it has not disturbed BUG-084's
-fixtures.
 
 ### BUG-084 — `StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4 (suspected EMA divide-by-tiny) (2026-08-03)
 
@@ -2592,6 +1301,523 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ## Resolved (recent)
 
 *(PUB.3 pruning pass, 2026-07-11: 24 resolved entries moved here from §Open; BUG-013/001/005 reclassified to §Known Limitations. rotate_docs.sh files these to KNOWN_ISSUES_HISTORY.md after 14 days.)*
+
+---
+
+### BUG-094 — Meniscus clamps `arousal` to 0…1 when its contract is −1…+1, and a beat-locked region goes dead on calm material (2026-08-17)
+
+**Status: ✅ CLOSED 2026-08-24.** The fix WAS applied — in the very commit that wrote the
+paragraphs below claiming otherwise. `f94860b6` (2026-08-17, filed as BUG-091 before an ID
+renumbering to BUG-094) both replaced the clamp with `arousal01` in `MeniscusStemDrops.swift` and
+`MeniscusCamera.swift`, AND added this entry's "Probe reverted, not committed" text — a
+same-commit self-contradiction, not a later drift. It survived unnoticed through the renumbering
+and seven days of production use. **Matt, asked directly on 2026-08-24 after Ricercar work
+surfaced the discrepancy: *"I'm fine with what I've already been seeing."*** That is the M7 this
+entry was blocked on — after the fact, but real. Certified Meniscus (MEN.5, 2026-08-05) has run
+with this behaviour, unreviewed, since 2026-08-17; his sign-off closes the gap retroactively.
+
+**The defect, as it read until 2026-08-17.** `MeniscusStemDrops.swift:219` computed the MEN.4a musical-arc lift as:
+
+```swift
+let lift = max(0, min(features.arousal, 1))
+```
+
+`arousal`'s declared contract is **−1 (calm) to +1 (energetic)** (`AudioFeatures+Analyzed.swift`).
+This clamps rather than maps, so the entire calm half of the primitive is discarded — every
+negative frame reads as identical to "not calm at all".
+
+**What it costs.** On `so_what` (Miles Davis, quiet modal jazz) today's mood output runs
+−0.393…+0.519 with **35 % of frames negative**. Those all collapse to zero, `arcEnvelope`
+(τ 6 s) sits low, `density = 0.35·arcEnvelope + 0.65·arrangement` never rises, and the
+backbeat-gated **vocals region places 0 drops across the entire track** — which
+`MeniscusStemDropsTests` correctly calls a dead route, since those three regions are beat-locked
+and absolute.
+
+**Why it stayed hidden.** MEN.4a was calibrated on a single capture where arousal never went
+negative — its own comment records the range as *"arousal 0.19 → 0.52 → 0.27"* — so the clamp
+never engaged. And the committed QG.1 fixtures bottom out at −0.077, roughly 0 % negative. The
+defect only surfaced when BUG-090's regenerated fixtures carried today's mood output, after
+DYN.6.2/DYN.7 refit the classifier.
+
+**The fix, applied in `f94860b6` (2026-08-17).** The clamp became a map:
+
+```swift
+let lift = features.arousal01   // (arousal + 1) * 0.5, i.e. (clamp(arousal,-1,1)+1)*0.5
+```
+
+took so_what's vocals region **0 → 24 drops** and turned the whole Meniscus suite green
+(14 tests / 9 suites), with the other two tracks unaffected in kind — this is the evidence the
+same commit measured before committing it.
+
+**Why this ran seven days without Matt's eye, when the process says it needs one.** The commit
+that applied the fix reasoned correctly that it makes a **certified** preset place more drops on
+calm material — a visible change, and therefore a product call plus an M7, not a test fix — and
+then applied the fix anyway while writing text saying it hadn't. Nobody caught the contradiction
+until the Ricercar certification work re-read this entry on 2026-08-24 and checked the source
+against it. Matt's *"I'm fine with what I've already been seeing"* is the M7, arriving after the
+fact rather than before it.
+
+**The sweep found a SECOND site, in the same preset — also fixed in `f94860b6`.**
+`MeniscusCamera.swift:106` did the identical thing to its own envelope:
+
+```swift
+arousalEnvelope += (max(0, min(features.arousal, 1)) - arousalEnvelope) * …   // fixed: arousal01
+```
+
+Meniscus discarded the calm half of `arousal` twice — once for drop density, once for camera
+motion (the dolly no longer pins at the hero distance through a calm passage). Both sites carry
+the same fix.
+
+**The codebase already has the correct idiom, two files away.** The orchestrator maps the same
+primitive properly:
+
+```swift
+SessionPlanner.swift:327    let energy       = max(0, min(1, 0.5 + 0.4 * profile.mood.arousal))
+PresetScorer.swift:277-279  let targetTemp   = max(0, min(1, 0.5 + 0.4 * valence))
+                            let targetDensity = max(0, min(1, 0.5 + 0.4 * arousal))
+```
+
+`0.5 + 0.4 · x` centres the bipolar range on 0.5 and keeps both halves. That is the shape the
+Meniscus sites should have used.
+
+⚠ **Also checked and NOT affected.** `RayMarchPipeline+MetalFX.swift:183–184` writes
+`max(0, valence)` / `max(0, -valence)` — that is a deliberate split of a bipolar signal into two
+unipolar channels (warm and cool), which loses nothing. And the deviation family (`*Dev`) is
+`max(0, *Rel)` **by definition**, not by accident. No MSL-side instances. The rule is not
+"`max(0, …)` is wrong" — it is "clamping a bipolar primitive to one side of zero throws away
+half of it".
+
+---
+
+
+### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
+
+**Status: ✅ CLOSED 2026-08-20.** Fixed by rendering fewer pixels, not by cutting detail;
+M7-approved (*"VL looks good"*, `2026-08-20T13-50-18Z`). **Fullscreen closes at 56 fps delivered,
+live, WITH the marched-pixel cap in place** (Matt's final call, PERF.16: *"I would rather keep
+60 fps"* — session `2026-08-20T18-17-43Z`, p50 15.88 ms, 5.3 % of frames below the vsync floor,
+real headroom) — well past the *"run fullscreen even if not optimal"* bar this entry was opened
+against (9.6 fps). The harness-vs-live gap flagged below is also answered: that live session with
+the cap in place is the "one live session" the extrapolation asked for, and it landed above the
+extrapolated ~30 fps. Full arc (uncap → cost-model dispute → cap kept) in the update chain below.
+
+Matt's requirement was *"it needs to run fullscreen even if not optimal"* — **32 fps is running**
+where 9.6 fps was not, so the fullscreen half closes against the stated bar. It is **not** 60 fps at
+4K, and whether that matters is a product call he has not been asked to make. PERF.14 (now on `main`)
+reduces it further by capping marched pixels, ⚠ **but its key datapoint conflicts with this
+measurement by 5.6×, and the conflict is UNEXPLAINED — a proposed mechanism was checked and
+falsified. See PERF.15 for what is established and the one-session discriminator.**
+
+> **Update PERF.16 (2026-08-20) — fullscreen closes, and the cost model behind the cap does not
+> survive.** Two things landed after the status line above was written. **(1)** PERF.15's live
+> capture `2026-08-20T16-38-27Z` measured VL fullscreen at 3840×2160 with `render_scale=0.50`
+> **in the log** at **31.16 / 32.30 ms p50/p90 → 32 fps**, flat across seven 10 s buckets,
+> thermal nominal, 0.45 % of frames near the floor. Against Matt's stated bar — *"run fullscreen
+> even if not optimal"* — 9.6 → 32 fps clears it, so **the fullscreen half of this entry closes**.
+> **(2)** PERF.14 had meanwhile capped marched pixels at 1536×864 on the finding that ray-march
+> cost is a *step*: 175 ms at 0.5 and ≤ 15 ms at 0.4 at 4K. That is 5.6× from PERF.15's reading of
+> the same nominal configuration. **PERF.16 settled it offline** with a marched-pixel sweep
+> (`RayMarchCostCurveTests`, readback off, thermal-controlled, reproduced): the curve is smooth
+> and mildly **sub**linear — every neighbour pair's cost-ratio is 0.92–1.02× its area-ratio, and
+> across the disputed band cost rises **1.49× for 1.56× the area** where PERF.14 reports 11.7×.
+> The harness reads **28.19 ms** at the same 2.07 MP marched that PERF.15 measured live at
+> **31.16 ms** — 10 % apart, which corroborates the live reading and leaves 175 ms unexplained at
+> any scale interpretation. **⚠ Open, and Matt's:** the cap is still active, so VL marches
+> 1536×864 at 4K where 1920×1080 measures ~31 ms live. It is buying softness on a falsified
+> model. Removing it is a one-line change to a certified preset's fullscreen sharpness. Full
+> reasoning: `ENGINEERING_PLAN.md` §Increment PERF.16.
+>
+> **Matt's call, same day: remove the cap.** `RenderPipeline.marchScale` now returns the
+> declared scale clamped to [0.4, 1.0] and nothing else, so VL marches 1920×1080 at 4K —
+> the configuration measured live at 31.16 ms — instead of 1536×864. `marchedPixelBudget`
+> is gone. ⚠ **Pending Matt's live M7:** the expected read is sharper at fullscreen at
+> ~32 fps. If the frame rate does not hold there, this entry reopens rather than the cap
+> returning by default.
+>
+> ⚠ **CORRECTION, same day — the cap was NOT buying softness for nothing, and I told Matt it
+> was.** He ran the fullscreen M7 on session `2026-08-20T18-17-43Z`, which — verified by binary,
+> not assumed — ran the **capped** build: the session started 18:17:45Z, the cap-removal merge
+> landed 18:22:04Z, and the running binary (atime 13:17:47 local) was built from the primary
+> checkout at `f2f2b15f`, whose source still contains `marchedPixelBudget`. **Capped VL at 4K
+> fullscreen: p50 15.88 ms, p90 20.87 ms, 56 fps delivered over 165 s, with 5.3 % of frames
+> below the 15.3 ms vsync floor** — real headroom, not a floored reading. Against PERF.15's
+> uncapped 31.16 ms / 32 fps, **the cap is worth roughly double the frame rate at 4K.** The
+> recommendation to remove it was made without that number and is retracted as stated; the
+> decision is a genuine trade — 1920×1080 marched at ~32 fps, or 1536×864 at ~60 — and Matt has
+> now seen only the second one. **Reverting is one commit.**
+>
+> ⚠ **And a caveat on PERF.16's curve.** The two live points (≤15.88 at 1.33 MP, 31.16 at
+> 2.07 MP) give **~2× cost for 1.56× area** where the harness gave 1.49×. That does not restore
+> PERF.14's 11.7× step — the finding that there is no cliff stands — but **live is steeper than
+> the harness in this band, so the harness curve understates the 4K penalty.** Do not use it to
+> predict an absolute 4K cost without a live check.
+>
+> ✅ **DECIDED (Matt, 2026-08-20): *"I would rather keep 60 fps."*** The cap is restored;
+> `marchScale(declared:width:height:)` and `marchedPixelBudget` are back, and VL marches
+> 1536×864 at 4K. **The fullscreen half of BUG-101 closes at 56 fps delivered**, well past the
+> *"run fullscreen even if not optimal"* bar. VL is softer at fullscreen than it could be, by
+> choice. The doc comment at the call site was rewritten so the budget is justified by the
+> measured 2× frame-rate difference rather than by PERF.14's falsified step — the next reader
+> must not re-derive the step model from a surviving cap.
+
+Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
+`VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
+and lighting allocate at half linear scale and the composite pass upscales for free, post-process
+staying at full resolution. No MetalFX, no motion vectors, no extra pass.
+
+★ **The upscale is free because a linear-sampled pass already existed** — the same observation two
+sessions reached independently while building this in parallel (see PERF.12). Rendered side by side
+at 1080p the two builds are nearly indistinguishable; a 3× crop shows a slightly softer contour
+edge.
+
+| harness, 24-frame drive | before | after |
+|---|---|---|
+| 1920×1080 | 31.9 ms | **13.4–15.4 ms** |
+| 3840×2160 | 111.5 ms | **14.8 ms** |
+
+⚠ **THOSE ARE HARNESS FIGURES AND THE LIVE COST IS HIGHER.** The first instrumented session
+(PERF.10, `2026-08-19T22-45-50Z`) measured the *uncapped* VL at **269.89 ms at 4K — 3.5 fps**, and
+**32.56 ms per marched megapixel**, against this harness's 111.5 ms: the harness is **2.4× low** on
+this preset because its 24-frame drive starts the terrain flight from a standing start, which is the
+cheapest part of it. Taking the live ms/MP, a 0.92 MP cap predicts roughly **30 ms ≈ 30 fps, not
+60**. So the cap is a large, real improvement that probably does **not** reach the target live.
+**Do not tighten it against this extrapolation** — that is calibrating to a measurement of the build
+before the fix. One live session with the cap in place makes the number real; it is the same
+instrument that settles BUG-100.
+
+**Original analysis retained — it is still correct about where the cost is:**
+
+★★ **AND IT IS THE ONE PRESET THAT MISSES THE PRODUCT'S STATED TARGET (PERF.12, 2026-08-19).**
+The roster measured at three resolutions with the harness readback removed — so these are GPU cost,
+not instrument cost (see BUG-099):
+
+| resolution | Volumetric Lithograph | next most expensive | presets within 16.7 ms |
+|---|---|---|---|
+| 1920×1080 | **31.9 ms ≈ 31 fps** | Stave 11.2 ms | 19 of 20 |
+| 2560×1440 | 54.9 ms (readback on) | — | — |
+| 3840×2160 | **111.5 ms ≈ 9 fps** | Cytokinesis 18.4 ms | 18 of 20 |
+
+`CLAUDE.md` promises **60 fps at 1080p**, and VL is at roughly half that — **3.5× the budget, and
+2.8× the next most expensive preset at the same resolution.** Every other covered preset fits.
+This is no longer "expensive by construction" as a curiosity; it is the only measured breach of the
+stated target in the covered roster, in a **certified** preset.
+
+⚠ **And the frame-budget gate cannot catch it.** `PresetFrameBudgetTests` asserts a RATIO — no
+preset above 8× the median — which VL passes at 5.9×. Its header documents an `absoluteCeilingMs`
+as "a second, deliberately loose net", but **that constant appears exactly once in the file, in
+that comment: it was never implemented.** So nothing in the suite checks the 60 fps promise in
+milliseconds, which is why a preset at 31 fps at 1080p is green.
+
+**Both of those are Matt's calls** — adding the absolute net would ship red until VL is decided,
+and every lever on VL changes what it looks like (below).
+
+Matt: *"troubleshoot VL"*, after the PERF.4 gate flagged it at **5.2× the median preset**.
+
+**Where the cost is.** `sceneSDF` is evaluated ~135× per pixel — 128 march steps plus 4
+tetrahedral normal taps and 3 AO taps — and carries ~10 Perlin evaluations each:
+
+| term | evaluations | measured |
+|---|---|---|
+| terrain `fbm3D(_, VL_FBM_OCTAVES=4)` | 4 | ~2.7 ms/octave (4 → 1: **30.59 → 22.55 ms**) |
+| `vl_foldDomain` warp, 2 × `fbm3D(_,3)` | 6 | **~10.4 ms** (removed: 32.07 → 21.64 ms) |
+
+Together ~69 % of the frame. A same-session drift check re-measured the baseline at 30.58 ms
+against 30.59 — the rig is stable, and an **earlier contradictory reading** (octaves 4 → 2
+showing no change) was simply a bad measurement taken while the machine was busy.
+
+**The marcher is not at fault.** It sphere-traces with a correct early exit
+(`d < 0.001 · t → break`) and a `t < farPlane` bound, so rays that hit leave early rather than
+burning the full 128 steps.
+
+⚠ **Both noise terms are already twice-optimised, and the code says so.** VL-PSY.1 cut the warp
+from `warped_fbm` (112 evaluations; 1120 ms/frame at the time) down to 6, and took octaves 5 → 4.
+**3 octaves was tried and reverted** — below SHADER_CRAFT's ≥4-octave floor the render "went soft
+and airbrushed", a quality regression traded for ~1 ms. There is no multiply-by-zero waste of the
+BUG-098 kind here; this is what the preset costs to draw.
+
+**The one remaining lever, and why it is not mine to pull.** `VL_SDF_STEP_SCALE` is 0.55 (itself
+already re-reasoned up from 0.35, which was "buying safety at ~1.6× the frame time"). Raising it
+marches further per step:
+
+| step scale | frame time | vs 0.55, pixel-diffed |
+|---|---|---|
+| 0.55 | 31.8 ms | — |
+| 0.70 | 28.6 ms (−10 %) | 74 % of channels differ, 12.3 % beyond 16/255, mean 9.4 |
+| 0.80 | 26.9 ms (−16 %) | 74 % differ, **48.8 %** beyond 16/255, mean 14.3 |
+
+Unlike the Witchlight bloom (max delta 2/255, invisible), this is a visible change to a certified
+preset. Whether the render still reads correctly at 0.70 is Matt's judgement, not a measurement.
+
+⚠ **No trustworthy live figure exists for VL.** The single 4K session that carried it reported a
+median of 16.44 ms — but from **89 frames with a p90 of 101.73 ms**, a short sample spanning a
+preset transition, and that session has since been evicted by retention (BUG-082). The harness
+figure (30.6–31.2 ms at 1080p, five runs across two days) is the reliable one, and it does not
+reconcile with 16.44 ms at four times the pixels. A fresh session with VL held on screen would
+settle it.
+
+---
+
+
+### BUG-099 — Witchlight reaches ~30 fps at 4K after the 8.2× fix; closing the rest is a product decision (2026-08-19)
+
+**Status: ⚠ PREMISE RE-MEASURED 2026-08-19 (PERF.12). The 4K shortfall was largely the
+measuring instrument, not the preset.**
+
+★★ **`MultiPassRenderHarness` reads every rendered frame back to the CPU — ~8 MB per frame at
+1080p and ~33 MB at 3840×2160 — and production never does.** That cost scales with PIXELS, not with
+what the preset draws, so it lands on the 4K column far harder than the 1080p one and a resolution
+sweep that includes it measures the harness as much as the roster. Measured with
+`FRAME_BUDGET_NO_READBACK=1`, the same 20 presets in the same run shape:
+
+| | readback ON | readback OFF | readback cost |
+|---|---|---|---|
+| **Witchlight at 4K** | 18.6 ms | **8.4 ms** | 10.2 ms |
+| median preset at 4K | — | — | **11.4 ms** |
+| median preset at 1080p | — | — | 3.0 ms |
+| **presets within 16.7 ms at 4K** | **6 of 20** | **18 of 20** | — |
+
+So Witchlight holds 60 fps at 4K on GPU cost with room to spare, and **neither route this entry
+proposed is needed** — not the star-layer cut, not extending the half-res path to
+feedback/particles. Both were sized against a number that was 2.2× too high.
+
+⚠ **This does NOT explain what Matt saw.** He reported real 4K choppiness, and BUG-100 measured it
+degrading over 70 s while the app's own CPU work stayed flat — a *drift over minutes*, which a
+24-frame cost measurement cannot see and shader cost does not explain. **BUG-100 is the live
+question and its thermal instrumentation settles it; this entry is about steady-state cost only.**
+
+⚠ **Caveats on the readback-off numbers.** They still `waitUntilCompleted` per frame, so they are a
+serialised GPU-cost measurement rather than a production frame time (production overlaps CPU and
+GPU), and they are a 24-frame sample that cannot show thermal drift. They are a fair proxy for "how
+expensive is this preset's frame" and nothing more.
+
+**FOURTH TIME IN ONE DAY** that a performance metric did not mean what its name suggested — after
+`deltaTime` (vsync, not headroom), the harness milliseconds in general, and `encode_cpu_ms` (which
+includes a blocking drawable wait). The rule keeps holding: **read what the number is computed from
+before concluding anything from its trend.** Here the specific error was reusing a harness built for
+*comparing* presets to answer an *absolute* question about one.
+
+**Original analysis, retained — its component breakdown is still correct, its conclusion is not:**
+
+BUG-098 took Witchlight from 273.88 ms to an extrapolated ~27 ms at 3840×2160 (**10.2× measured
+in the harness, 151.3 → 14.9 ms back to back**). That **meets the stated target with large
+headroom** — `CLAUDE.md` promises 60 fps *at 1080p*, and 1800×1200 extrapolates to ~6 ms — but a
+4K panel still runs at about 37 fps.
+
+**Why there is no third shader fix.** After PERF.2/PERF.3 the remaining 4K cost is balanced
+rather than dominated:
+
+| component | 4K cost |
+|---|---|
+| beads / particles / feedback | 5.8 ms |
+| three star layers | 5.3 ms |
+| bloom | 2.1 ms |
+
+Nothing here is waste of the kind BUG-098 found (noise multiplied by zero, or octaves that never
+reached the image). Halving any of these means removing something the preset draws.
+
+**Two routes, both visible to the user — which is why this is Matt's:**
+
+1. **Drop or cheapen a star layer.** The three-layer parallax is a documented WL.2 feature — the
+   near layer crossing frame in ~4 minutes and outpacing the far ones ~13:1 is what gives the
+   backdrop its depth. Removing one takes ~1.8 ms and some of that read. ⚠ A micro-optimisation
+   was tried here and **rejected as worthless**: reordering the star layer so the `bright < 0.68`
+   early-out precedes the `jitter` hash (which is discarded for 68 % of cells, three times per
+   pixel) measured **14.9 → 14.9 ms** — the Metal compiler already sinks the dead hash. Recorded
+   so nobody spends the increment on it.
+2. **Render Witchlight below full drawable resolution.** ⚠ **CORRECTION (checked, 2026-08-19):
+   `setDirectRenderScale` CANNOT be used here.** Its half-res path lives in `drawDirect`
+   (`RenderPipeline+Draw.swift:309`) and Witchlight's passes are `["feedback", "particles"]`,
+   while Nimbus — the preset that uses it — has `passes: []`, i.e. the direct-fragment path.
+   Applying this to Witchlight means **extending the half-res render to the feedback/particles
+   path first**, which is engine work, not a per-preset config change. Worth noting the trade is
+   milder than it sounds at 4K: 0.7× of 3840×2160 is 2688×1512, still sharper than the 1920×1080
+   the target promises. The risk is concentrated in the starfield, which is sub-pixel to ~2 px by
+   design (WL.2-e) and would alias rather than merely soften.
+
+⚠ **Context for the decision: Witchlight is an outlier, not a symptom.** In the same 4K session
+the next most expensive preset measured was Volumetric Lithograph at 16.44 ms, and the rest sat
+at 3.27–4.94 ms. Six of seven measured presets hold 59–60 fps at 4K unaided.
+
+⚠ **Also unresolved and cheaper to act on:** the app renders 1920×1080 while idle and drops to
+**900×600** one second after a session starts. Every performance judgement made before
+2026-08-19 — including two Witchlight sign-offs — was at 0.54 MP, a quarter of the target. That
+default deserves its own decision.
+
+---
+
+
+### BUG-098 — Witchlight is over the frame budget in production, and it is the only measured preset that is (2026-08-19)
+
+**Status: FIXED (PERF.2 + PERF.3, 2026-08-19), 8.2× measured end to end. ✅ The 60 fps @ 1080p
+target is met with headroom (~8 ms at 1800×1200). ⚠ Fullscreen 4K is ~33 ms (≈30 fps) and the
+remaining gap is a product decision, not a shader one — see BUG-099.** Filed after Matt asked
+the right question — *"Are all presets supposed to run at 60 fps? If so, isn't this something you
+can verify?"* — which turned out to have no instrument behind it.
+
+**Per-preset GPU cost, 10 recorded sessions, `frame_gpu_ms`:**
+
+| preset | frames | median | p90 | p99 |
+|---|---|---|---|---|
+| **Witchlight** | 12 109 | **13.75 ms** | **65.50 ms** | 82.37 ms |
+| Nacre | 1 791 | 1.73 ms | 2.84 ms | 76.82 ms |
+| Stave | 3 372 | 0.35 ms | 2.85 ms | 57.44 ms |
+| Fractal Tree | 26 887 | 0.16 ms | 1.03 ms | 11.31 ms |
+
+Witchlight's *median* consumes 82 % of the 16.7 ms budget and its p90 is 4× over. Everything else
+measured is two orders of magnitude cheaper.
+
+**It is a plateau, not a spike.** On `2026-08-18T16-10-38Z` the cost steps from 15.9 ms to ~60 ms
+at t≈25 s and holds ~60 ms for the remaining 85 s. On `2026-08-18T18-04-06Z` the same preset on
+the same track steps to ~12 ms and holds. Two stable regimes, 5× apart.
+
+✅ **The 5× WAS resolution, and the `RENDER_TARGET` line settled it in one session.** Cost is
+very close to linear in pixels: Witchlight measured 22.5 ms/MP at 900×600, 30.3 at 1800×1200 and
+33.0 at 3840×2160. Every earlier "looks good" session — including two Witchlight sign-offs — ran
+at **900×600 (0.54 MP), a quarter of the 1080p target**, which is the app's own default once a
+session starts (it renders 1920×1080 while idle and drops to 900×600 one second after playback
+begins). That default is why this went unseen for so long, and is worth its own decision.
+
+**ROOT CAUSE (2026-08-19).** `witchlight_bloom` evaluated `fbm8` + `warped_fbm` — ~64 Perlin
+evaluations — for every pixel, then multiplied by `body = exp(-r*r*70)`, which is ~0 outside a
+ball a sixth of the frame wide. ~530 M Perlin evaluations per 4K frame to produce black.
+**Fixed** with an early return when `body < 1e-3`: 151.2 → 31.8 ms/frame at 4K in the harness
+(4.9×), visually identical on every WL.2 gate figure.
+
+⚠ **Do NOT build an offline 1080p frame-budget gate until that is answered.** At 1080p Witchlight
+plausibly measures the cheap ~12 ms and the gate passes, while the real session ran at ~60 ms.
+That is precisely the BUG-097 failure class: a harness that does not reproduce the production
+condition is not testing production, and it would issue a green certificate over the defect.
+
+⚠ **Coverage: 4 of 29 presets.** Only four have enough continuous frames in the recordings to
+attribute, and they were selected by which presets Matt happened to leave on screen — a preset
+that is slow for two seconds before switching away is invisible to this method. **The other 25
+are unmeasured, not passing.** The only pre-existing performance test renders a *single* frame
+with no per-preset budget.
+
+**Method note worth keeping.** The first pass used `deltaTime` and concluded three presets were
+"rock solid at 16.7 ms". That is vsync: 16.7 ms means the frame waited for the 60 Hz refresh, and
+says nothing about headroom. `frame_gpu_ms` is the column that answers the question, and it
+separates the same four presets by ~80×. A metric that cannot distinguish a preset using 0.16 ms
+from one using 13.75 ms was never going to find this.
+
+---
+
+
+### BUG-093 — The tree moves plenty and still reads as disconnected; the drivers track the wrong quantities (2026-08-17, ✅ RESOLVED 2026-08-19)
+
+**Resolved by the premise change this entry insisted on, not by tuning.** The standing hypothesis
+here was right — the tree tracked three quantities that do not correspond to what a listener
+notices — but it under-stated the fix. Two things were needed:
+
+1. **FTR.28 — the tree had to DANCE rather than react.** Matt's reframe (*"the motion of the
+   broomsticks in Fantasia's The Sorcerer's Apprentice"*) turned the question from WHICH SIGNAL
+   sets a size into WHICH CLOCK sets a gait. Nine increments had been spent on the first question.
+   A dance is a phase; intensity only sets step size. That produced the first positive report in
+   eleven increments: *"it is swaying and bouncing on the beat."*
+2. **FTR.33 — the remaining three channels stopped following anything unnameable.** Colour became
+   a fixed palette, the tips joined the beat, the size went to held tiers stepped on an arrival.
+   ★ The load-bearing measurement: the size already followed true loudness at **r = +0.863** and
+   was still called random, so **accuracy was never the missing property** — a shared reference
+   with the listener is.
+
+**The one thing to carry forward:** this entry's instruction (*"do not open another tuning
+increment; the next move needs a changed premise about WHICH quantity the tree should follow, and
+that is a product decision"*) was correct and saved further wasted rounds. Both premise changes
+came from Matt, in his own visual language, after I asked what he PICTURED.
+
+**Status: P1, evidence only, and deliberately NOT a tuning ticket.**
+
+**Why this exists.** After nine live rejections of one complaint across FTR.15 → FTR.27, two
+explanations have now been ruled out by measurement rather than argument:
+
+1. **"The visual is not moving enough."** Ruled out. After 12 s on `2026-08-17T20-01-01Z`: `reach`
+   span 0.680, size span 0.360, **visible trunk length span 0.151 clip space ≈ 164 px at 1080p**,
+   spread 20°→34°, tip spark firing 0.37/s. The tree traverses two thirds of its geometric range.
+2. **"A primary channel is dead."** Ruled out (BUG-092, retracted on that point): the inert term is
+   `arousal`, whose coefficient is 0.10 inside a `max()` it never wins — removing or fixing it
+   changes nothing about how much the tree moves.
+
+**What remains, and it is a routing-semantics problem rather than a calibration one.** Every
+quantity the geometry follows has been measured against what a listener notices, and none of them
+correspond:
+
+| channel | driver | what it actually measures | event specificity |
+|---|---|---|---|
+| size | `spectral_surge` | this moment's rank in the track's loudness distribution, off a τ 0.76 s follower | **0.25× — moves DOWN at events** |
+| growth | `spectral_section_ratio` | a slow τ20 s density rank against the track's normal | not event-scaled at all |
+| canopy angle | `spectral_flux` | broadband spectral change | 1.50× — fires as often between events as on them |
+| tip light | `spectral_level_rise` | pre-AGC level rise (FTR.25) | event-aligned, but only 0.37/s |
+
+**So the standing hypothesis is: the tree moves a lot while tracking three quantities that are not
+what a listener attends to.** That is consistent with every rejection in the arc, including the two
+where a genuinely event-aligned driver WAS tried and rejected for its motion cost — FTR.24 put one
+on size and multiplied peak velocity 10.7× (*"herky-jerky… looks defective"*).
+
+**⚠ Do not open another tuning increment against this.** Six size formulations, two accent
+placements, three spread routes and a detector rewrite have all been tried. The next move needs a
+changed premise about WHICH musical quantity the tree should follow — arrangement? section
+boundaries? a beat-grid-derived structure? — and that is a product decision for Matt, not a
+coefficient.
+
+**Verification criteria for any future attempt:** a driver whose event specificity exceeds 2× AND
+whose total travel stays within 25 % of the FTR.23 baseline, measured on one capture, before any
+live review is requested.
+
+---
+
+
+### BUG-092 — Fractal Tree's declared `growth` route is inert: `arousal` loses its own `max()` on every frame (2026-08-17, RE-SCOPED same day, ✅ RESOLVED 2026-08-19)
+
+**Resolved at FTR.33**, by removing the term rather than giving it a coefficient. Matt chose
+hold-and-step for the growth channel, so the size now reads DYN.2c's per-track density rank
+(`spectralSectionRatio`) through `ArrivalStep` and commits each change on a `spectral_level_rise`
+arrival. The `arousal` term is deleted from `fractal_growth`, and the sidecar's `growth ← arousal`
+route is replaced by `growth_tier ← spectralSectionRatio` plus `growth_commit ← spectralLevelRise`.
+The manifest and the shader agree again, which was the whole of this entry once its original
+headline was retracted.
+
+**Status: P3, evidence only. This entry was filed with a WRONG headline and corrected hours later;
+the correction is the more useful half.**
+
+**⚠ WHAT I FILED FIRST, AND WHY IT WAS WRONG.** The original entry claimed `arousal` was the
+preset's primary growth driver, that it flatlines after 12 s, and that this explained nine live
+rejections of *"the tree grows and shrinks with no clear connection to the music"*. The flatness is
+real. **The rest was false, because I measured the primitive and never checked its COEFFICIENT.**
+
+The shader computes:
+
+```metal
+reach = saturate(max(0.10f * arousalReach, fullness) * musicGate)
+```
+
+Measured after 12 s on `2026-08-17T20-01-01Z`:
+
+| term | p05 | p95 | span |
+|---|---|---|---|
+| `0.10 × arousalReach` | 0.038 | 0.070 | **0.032** |
+| `fullness` (= `spectral_section_ratio × 0.5`) | 0.316 | 0.961 | **0.646** |
+| `musicGate` (from `spectral_surge`) | 0.294 | 1.000 | 0.707 |
+| resulting `reach` | 0.270 | 0.950 | **0.680** |
+
+**`arousal` wins that `max()` on 0.0 % of frames.** It is not a dead driver; it is an inert term.
+And the growth channel is not dead at all — `reach` spans 0.680, and the visible trunk length spans
+**0.151 clip space ≈ 164 px of 1080**.
+
+**The actual defect, which is small.** The sidecar declares `growth ← arousal`, and that route has
+no visible effect. This is the FTR.2 false-manifest class, and QG.1 route coverage cannot catch it:
+the gate asks whether a declared primitive VARIES (it does, faintly), not whether it survives the
+arithmetic it feeds. `arousal`'s within-track flatness — mean 0.446…0.475, sd 0.048…0.069, the same
+0.258…0.509 bounds on five captures across three builds and two audio paths — is unremarkable for a
+*mood* classifier and is why it went unnoticed for the whole FTR program.
+
+**Two fixes, both Matt's call because one changes what he sees:** delete the inert term and its
+route (honest, no visual change), or raise its coefficient so a track's mood biases the tree's
+resting size (a visible change, and the thing the route was presumably *meant* to do).
+
+**★ The transferable lesson, which is why this entry is kept rather than quietly deleted: measuring
+a PRIMITIVE's range says nothing about whether it reaches the picture.** Check the coefficient and
+the surrounding arithmetic — a term inside a `max()` against something ten times larger is decor.
+This is the same species as FTR.24's model/shader mismatch (glide order) three days earlier.
 
 ---
 
