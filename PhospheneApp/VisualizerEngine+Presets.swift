@@ -158,7 +158,6 @@ extension VisualizerEngine {
         skeinState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
-        ferrofluidMesh = nil
         spectralCartographOverlay = nil
         pipeline.setDynamicTextOverlay(nil)
         pipeline.setTextOverlayCallback(nil)
@@ -167,7 +166,6 @@ extension VisualizerEngine {
         pipeline.setDirectPresetFragmentBuffer3(nil)
         pipeline.setDirectRenderScale(1.0)   // NB.8: full-res unless a preset opts into half-res below
         pipeline.setRayMarchPresetHeightTexture(nil)
-        pipeline.setMeshGBufferEncoder(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
         pipeline.setFeedbackParams(nil)
@@ -302,47 +300,10 @@ extension VisualizerEngine {
                             ferrofluidParticles = particles
                             pipeline.setRayMarchPresetHeightTexture(particles.heightTexture)
 
-                            // V.9 Session 4.5c Phase 1 Step B (2026-05-15) —
-                            // mesh-displacement G-buffer path was introduced
-                            // to replace the SDF ray-march path for Ferrofluid
-                            // Ocean, mirroring Leitl's `spikes.vert.glsl`
-                            // architecture.
-                            //
-                            // **Round 57 (2026-05-17) — disabled.** The mesh
-                            // path's per-pixel normal computation (heightmap
-                            // sampling at ±0.039 wu eps) produced visible
-                            // "scoop" artifacts on foreground cones — eps
-                            // crosses cone-edge boundaries (cone radius 0.17
-                            // wu) and produces tilted normals that reflect
-                            // wrong sky directions. Diagnostics in rounds
-                            // 50-56 chased this across SDF tuning before
-                            // realizing the live render path was the mesh
-                            // path the whole time (test fixtures had been
-                            // exercising the SDF path; the test/prod gap was
-                            // structural). Switching live back to the SDF
-                            // path uses the round-56 Lipschitz-corrected
-                            // `sceneSDF` which renders cleanly. The mesh
-                            // path is preserved in the codebase for a future
-                            // increment that addresses its normal-computation
-                            // properly; this commit just unwires it from
-                            // live so users see clean cones immediately.
-                            //
-                            // Original mesh-encoder wire-up (preserved for
-                            // reference but commented out):
-                            //
-                            //   let gbufferFormats: [MTLPixelFormat] = [
-                            //       .rg16Float, .rgba8Snorm, .rgba8Unorm
-                            //   ]
-                            //   if let mesh = FerrofluidMesh(
-                            //       device: context.device,
-                            //       library: shaderLibrary.library,
-                            //       colorAttachmentFormats: gbufferFormats,
-                            //       depthAttachmentFormat: RayMarchPipeline.gbufferDepthPixelFormat) {
-                            //       ferrofluidMesh = mesh
-                            //       pipeline.setMeshGBufferEncoder(
-                            //           makeFerrofluidMeshEncoder(mesh: mesh))
-                            //   }
-                            _ = ferrofluidMesh  // intentionally unused under round 57
+                            // The V.9 Session 4.5c mesh-displacement G-buffer
+                            // path was disabled at round 57 (2026-05-17, "scoop"
+                            // normal artifacts) and deleted at RECON.15; Ferrofluid
+                            // Ocean renders through the SDF ray-march path.
                         } else {
                             // swiftlint:disable:next line_length
                             logger.error("FerrofluidParticles: failed to allocate particle scaffolding for preset '\(desc.name)' — falling back to placeholder (no spikes)")
@@ -877,29 +838,6 @@ extension VisualizerEngine {
     /// became unconditional once the conformance landed.
     private func activePresetSignaling() -> (any PresetSignaling)? {
         return arachneState
-    }
-
-    /// Build the per-frame G-buffer encode closure for Ferrofluid Ocean
-    /// (Phase 1 round 20). Reads the live BPM from
-    /// `mirPipeline.liveDriftTracker.currentBPM` each frame and converts
-    /// to `tempoScale = bpm / 60` for the Gerstner phase advancement.
-    /// At silence / pre-grid-lock state `currentBPM = 0` → tempoScale = 0
-    /// → waves freeze (also gated by amplitude `presenceGate`).
-    private func makeFerrofluidMeshEncoder(
-        mesh: FerrofluidMesh
-    ) -> RayMarchPipeline.MeshGBufferEncode {
-        return { [weak mesh, weak self] encoder, features, stems, sceneUniforms, heightTex in
-            guard let mesh = mesh else { return }
-            let bpm = self?.mirPipeline.liveDriftTracker.currentBPM ?? 0
-            let tempoScale = Float(bpm) / 60.0
-            var meshUniforms = FerrofluidMesh.MeshUniforms(tempoScale: tempoScale)
-            mesh.encodeGBufferPass(into: encoder,
-                                    features: &features,
-                                    stems: &stems,
-                                    sceneUniforms: &sceneUniforms,
-                                    meshUniforms: &meshUniforms,
-                                    heightTexture: heightTex)
-        }
     }
 
     /// Handle a `PresetSignaling.presetCompletionEvent` firing.

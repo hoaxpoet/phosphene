@@ -63,6 +63,20 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.15 — FerrofluidMesh disabled G-buffer path deleted ✅ (2026-08-26)
+
+Second item from the 2026-08-25 preset audit (after RECON.14/D-213), same precedent: **D-203 — good work is not a reason to keep code with no consumer.** The mesh G-buffer path was unwired at Ferrofluid Ocean round 57 (2026-05-17) for "scoop" normal artifacts on foreground cones and never re-enabled; it sat in tree for 3 months behind a "preserved for a future increment" comment — verbatim the reusable-infrastructure defense CLAUDE.md names as a failure mode.
+
+**Verified dead before deleting, on both sides:** production's only call was `setMeshGBufferEncoder(nil)`, and the fixture hook `useMeshPath: Bool = false` had **no caller passing `true`** — so the test wiring was dead too, not coverage being lost.
+
+Deleted: `Presets/FerrofluidOcean/FerrofluidMesh.swift` (378) + `Renderer/Shaders/FerrofluidMesh.metal` (620); `RayMarchPipeline.meshGBufferEncoder` / `MeshGBufferEncode` / `meshGBufferLock` / `setMeshGBufferEncoder` and the render-loop branch; `runMeshGBufferPass` (`+Passes`); the public `RenderPipeline.setMeshGBufferEncoder` (`+PresetSwitching`); `gbufferDepth` + `gbufferDepthPixelFormat` + their allocation (mesh-only consumers — verified); app-side `makeFerrofluidMeshEncoder`, the `ferrofluidMesh` property, the round-57 tombstone comment block and its reset/teardown lines; the test's `useMeshPath` parameter and mesh block.
+
+**KEPT (verified live, do not confuse with the above):** `FerrofluidParticles` and its baked height texture — `presetHeightTexture` feeds slot 10 on the **SDF** path and is unrelated to the mesh dispatch. Ferrofluid Ocean stays certified and renders through `sceneSDF` exactly as before; the round-59 deep-ocean Gerstner constants ported *from* the mesh path are live in `FerrofluidOcean.metal` and untouched.
+
+**One judgment call surfaced:** the generic dispatch (not just the FFO implementation) went too, because its only remaining claimed consumer was `docs/presets/GOLDENGROVE_PLAN.md` §2 — and Goldengrove is **SHELVED** (2026-06-01, "do not revive without a fundamentally stronger, signal-grounded musical hook"), i.e. a retained research record rather than a live plan. Both Goldengrove docs are annotated in place so a revival rebuilds rather than hunts for a deleted API.
+
+Pixel-identical by construction (the branch required a non-nil encoder that production never set); `PresetRegressionTests` dHash green across all 29 presets, `FerrofluidOceanVisualTests` green. Net −1,214 / +33 lines. Two superfluous SwiftLint disables fell away as the shrunken functions dropped under their gates.
+
 ### Increment BUG103.0 — BUG-103 filed + diagnosed to the throw site (docs-only) ✅ (2026-08-25)
 
 **What was done.** The parallel-suite killer RECON.14 hit (uncaught NSException `'player did not see an IO cycle'`) is now filed as **BUG-103** in `docs/QUALITY/KNOWN_ISSUES.md`, diagnosed to its throw site from fourteen on-disk `.ips` crash reports including one first-hand baseline reproduction (clean worktree at merge `8cbf936a`, fixtures linked, full suite → crash at 17:00). Established: the identical exception backtrace in all fourteen reports — `LocalFilePlaybackProvider._startLocked()` (`play()`, line 327) → `AVAudioPlayerNodeImpl::StartImpl` → NSException — and the process-kill mechanism (`play()` fails as an ObjC exception; the racing-start tests call `start()` on raw detached threads where nothing can catch it; unwinding off a pthread aborts the process, so the suite dies with no failing test line). Distinct from BUG-078 (`StopImpl`/dealloc `dispatch_sync`, SIGTRAP); same AVAudioPlayerNode-lifecycle-under-load family. NOT established (recorded as such): why the engine has no IO cycle at `play()` time — starvation vs stopped-out-from-under — and whether `resume()`'s `play()` site ever fires. One observed-once sequencing detail: the first-hand crash came from a thread the churn suite's watchdog had already abandoned and leaked. **No fix code** (evidence-before-implementation; verification criteria written in the entry). **Done-when:** entry filed with evidence, mechanism, class, and pre-written verification criteria — done. Next: the fix is its own increment against the entry's criteria (contained to the provider start path; must respect BUG-021/BUG-078 lock constraints).
@@ -679,88 +693,7 @@ PASS from too permissive a correlation floor: **an automated gate that cannot se
 it is named for will happily certify a claim the artifact refutes.**
 
 ### Increment BUG087.1 — Local-file playback analyses at 10 Hz, streaming at 51 Hz ✅ (2026-08-11)
-
-**Diagnosis increment. No fix code.** Filed as **BUG-087**. Found while chasing a
-`beatPhase01` discrepancy across captures that I had twice flagged as "one of two
-behaviours is wrong" — it is neither; both are real and the difference is the
-**playback path**.
-
-`LocalFilePlaybackProvider` requests `installTap(bufferSize: 1024)` (≈47 Hz).
-AVAudioEngine ignores it and delivers **0.1-second** buffers. `processAnalysisFrame`
-runs once per audio callback with no time gate, so the callback rate *is* the analysis
-rate: **10.0 Hz on local files against 51.1 Hz on streaming**, a 5.1× loss on the path
-essentially all development and preset work uses.
-
-**The discriminator that makes it a diagnosis rather than a correlation.** A fixed frame
-count would give different rates at 44.1 and 48 kHz. Measured: 4414 frames at 44.1 kHz
-and 4808 at 48 kHz — **both exactly 0.1 s**, and 100.0–100.2 ms on 8 of 10 captures. The
-size is duration-based, so the request is ignored rather than rounded. Streaming's 939
-frames ≈ the 1024 the system tap honours.
-
-**Method note worth keeping: path and date were perfectly confounded in the corpus** (the
-sole streaming capture is 2026-07-27, every local-file capture is 2026-08-07 or later), so
-the captures alone could not separate "local-file path" from "August regression". What
-settled it was the rate-independence discriminator plus the streaming capture's
-`TAP: startCapture: ENTER → createProcessTap` lines, which no local-file capture carries.
-Checking for that confound before theorising is the transferable part.
-
-`handleTapBuffer` was checked and cleared — it resizes its scratch for oversized buffers,
-so no samples are dropped. That would have been the more serious bug.
-
-**Consequence recorded in the capability registry**, because it is an authoring fact: a
-preset reading a deviation primitive per frame at 60 fps on the local-file path is sampling
-a **step function in 100 ms increments**, not a curve. This is the same 10 Hz the FTR program
-found from the preset side; it is a pipeline property and it is path-specific.
-
-**Left as a lead, not a conclusion:** it may also explain BUG-086's open question about
-local-file captures correlating stems against bands at r 0.19–0.46 where streaming reads
-0.70–0.94 (different clocks — stems advance per render frame, bands step at 10 Hz). Four
-other explanations for that gap were already tested and refuted; this one is untested.
-
-Tooling: `Scripts/measure_analysis_rate.py` recovers the rate from any capture with no
-app instrumentation, via `beatPhase01`'s advance rate against the CSV's own frame rate.
-
 ### Increment BUG086.1 — Stem features were 5.4 s late; the lag was the separation period ✅ (2026-08-11)
-
-**Nominal per-stem feature latency ≈5.4 s → 2.5 s.** Found inside CHR.1 while
-measuring whether per-stem energy could drive a plotting preset; it turned out not
-to be a preset problem. Filed as **BUG-086**, fixed in `BUG086.1`.
-
-**Root cause was read, not inferred** — three literals across two files encoding one
-relationship nothing named: separation every 5 s (`VisualizerEngine+Stems.swift`), on
-a 10 s chunk (same file), with the per-frame read window starting 5 s into that chunk
-(`VisualizerEngine+Audio.swift`). The chunk's newest sample is "now", so reading 5 s
-in reads 5-s-old audio; the window then advances in real time and can only do so for
-`chunkLength − startOffset` before clamping at the chunk's end — a span that must
-cover one separation period. **So `latency ≥ period`, and the 5 s head start was
-runway, not slack.** Chunk length is pinned by the exported Open-Unmix model
-(`modelFrameCount = 431`), leaving the period as the only lever.
-
-**Done-when, all met:** period 5.0 → 2.0 s; read start **derived** (`chunk − period −
-margin` = 7.5 s) rather than a fourth independent literal; the invariant stated once
-in code; a regression gate on the *relationship* not the values; measured inference
-cost logged to `session.log`. Engine 1809/1810 (sole failure the pre-existing DOC.6
-rotation gate — see Known risks), app **411/411** (404 + the 7 new tests, nothing else
-moved), lint clean.
-
-**Two things worth carrying forward.** The comment that hid this was not wrong, it was
-a non-sequitur — *"Features carry ~5-10s of latency … acceptable because musical
-sections persist longer than that."* True, and sound for section-scale coupling; but
-any preset pairing stems against the **time-aligned** beat grid (≈0.3 s) gets two
-clocks disagreeing by the whole lag, and nobody had checked. And the 142 ms inference
-figure the duty estimate rested on existed **only in a code comment** with no session
-artifact behind it, so the cost of the old cadence had never been verifiable —
-`STEM_SEPARATION:` now logs measured inference/duty/latency every separation.
-
-**The gate was verified to bite**: restoring the 5 s period fails it with
-`stemNominalLatencySeconds → 5.5 < 3.0`. A green assertion that also passes against
-the defect proves nothing.
-
-**BUG-086 stays OPEN.** Automated verification is complete; the `dsp.stem` manual gate
-is not. Stem timing is felt on every stem-driven preset — Aurora Veil
-(`other_energy_dev` load-bearing), Skein, Meniscus, FFO — so it needs M7-class
-observation on at least Aurora Veil, plus one real-session duty measurement.
-
 ### Increment CHR.1 — Stave: measurement done, concept parked at the driver decision ⏸ (2026-08-11)
 
 **Docs + measurement only. No `.metal`, no sidecar, no design doc, no references
