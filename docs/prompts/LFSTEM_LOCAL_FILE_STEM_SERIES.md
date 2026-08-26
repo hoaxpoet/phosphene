@@ -1,6 +1,8 @@
 # LFSTEM — Local-file stems land on the beat
 
-**Status:** scoped, not started. Costs measured 2026-08-26 (`LocalFilePrepCostHarness`).
+**Status:** scoped, decisions taken, not started. Costs measured 2026-08-26
+(`LocalFilePrepCostHarness`). **Two increments:** LFSTEM.1 (the series, §1–§8) and LFSTEM.2
+(retire live separation on the local path, §9) — sequential, each with its own M7.
 **Origin:** Matt, 2026-08-26 — *"i don't understand why we can't have stems land on the beat for
 local files vs streaming audio"*. The answer is that we can; nothing structural prevents it.
 
@@ -103,15 +105,17 @@ lands *before the first note* on a file's first play.
   when it is ready — the same progressive-readiness idea the session pipeline already uses. No
   waiting, but the first ~30 s of a new file plays with today's 2.5 s lag and then tightens
   mid-track, which is a visible change the viewer may notice.
-- **Recommendation: (1)**, with the existing preparation progress UI carrying it. The wait is
-  once per file, it is honest, and a visible mid-track change in coupling is the kind of thing
-  that reads as a bug rather than an improvement.
+- **DECIDED — Matt, 2026-08-26: (1) block.** The existing preparation progress UI carries it. The
+  wait is once per file, it is honest, and a visible mid-track change in coupling is the kind of
+  thing that reads as a bug rather than an improvement. No progressive path is to be built as a
+  fallback "just in case" — if the wait turns out to be intolerable in use, that is a new
+  decision with the real number in hand, not a second code path shipped on speculation.
 
-**B. Should local-file playback stop running live separation once the series is installed?** It
-becomes redundant, and dropping it removes a 142 ms MPSGraph job every 2 s from the GPU — which
-would help exactly the 4K frame budget BUG-100 and BUG-106 have been circling, and makes the ML
-dispatch gate moot on that path. Recommendation: **yes**, but as a follow-up increment with its
-own measurement, not folded into this one.
+**B. Should local-file playback stop running live separation once the series is installed?**
+**DECIDED — Matt, 2026-08-26: yes, and it gets its own increment.** See §9 (**LFSTEM.2**). It is
+kept out of LFSTEM.1 deliberately: LFSTEM.1's risk is *alignment* and LFSTEM.2's is *removal*, and
+folding them together would mean a single M7 that cannot tell "the series is misaligned" from
+"something else needed the live separator".
 
 ## 7. Risks
 
@@ -125,7 +129,7 @@ own measurement, not folded into this one.
 - **Cache invalidation.** The series is keyed by content hash like the rest of the entry; a schema
   bump must invalidate old entries rather than half-read them.
 
-## 8. Done-when
+## 8. Done-when (LFSTEM.1)
 
 - A local file plays with `stem_*` columns advancing from frame 1, sampled by playback position,
   with no 2.5 s settling ramp at track start.
@@ -135,3 +139,44 @@ own measurement, not folded into this one.
   extrapolated from 30 s fixtures.
 - Streaming behaviour byte-identical (the live path is untouched).
 - M7 on Skein at 1080p and 4K: does the paint now follow the music, and did anything get worse?
+
+---
+
+## 9. LFSTEM.2 — retire live separation on the local-file path
+
+**Decided 2026-08-26 (Matt). Runs after LFSTEM.1 has landed and been M7'd, not alongside it.**
+
+Once a local file plays from a pre-analysed series, the 2 s live separation timer on that path is
+computing something nothing reads. Stopping it is worth an increment of its own for what it gives
+back, not just for the tidiness:
+
+- **A 142 ms MPSGraph job every 2 s comes off the GPU** for the whole of local playback. That is
+  the same GPU the renderer is on, and it lands directly on the 4K frame budget that BUG-100 and
+  BUG-106 have both been circling. **The payoff must be measured, not asserted** — a 4K local-file
+  session before and after, `frame_gpu_ms` p50 either side, on the same file and preset.
+- **The ML dispatch gate becomes moot on the local path**, which is where BUG-106's defect was
+  most visible.
+- It removes a whole class of latency and cadence bug (BUG-086's family) from local playback by
+  removing the mechanism, not by tuning it.
+
+**Verify before removing — the live separator's output has more than one consumer.** Named here so
+the increment starts from a list rather than a grep:
+
+1. `latestSeparatedStems` → `runPerFrameStemAnalysis` → `setStemFeatures`. This is the one the
+   series replaces.
+2. **The diagnostic stem WAV dump** (the `stems/` directory in a session folder) is written from
+   live separation output. It is how separation quality gets listened to against real audio.
+   Losing it silently on the local path would be a real regression in diagnostic capability —
+   either write it from the prepared series instead, or state plainly that it is streaming-only now.
+3. `chain_health.json` / the ASH signal-health monitors: confirm neither treats "no separations
+   happening" as a fault before the timer stops firing. A health monitor that starts reporting a
+   dead pipeline because the pipeline was deliberately switched off is the BUG-070 shape.
+
+**Fallback policy is part of the increment, not an afterthought.** If a local file has no series
+(cache miss, schema mismatch, a file whose analysis failed), live separation must still run. The
+switch is "series installed for THIS track", not "the source is a local file".
+
+**Done-when.** Local playback with a series installed logs zero `STEM_SEPARATION` lines; a
+local file without a series still logs them at the old cadence; a 4K before/after shows the
+`frame_gpu_ms` delta the increment claims; the stem WAV dump is either preserved or its loss is
+documented and accepted.
