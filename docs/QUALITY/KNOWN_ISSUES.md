@@ -49,7 +49,6 @@ reads" are not reads — see the entry.)*
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
 | BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
-| BUG-100 | P2 · **the Stave reproduction ran 2026-08-26 and EXPLAINS the original evidence rather than reproducing it** — a Stave→Witchlight switch moves `frame_gpu` 4.94 → 11.44 ms, which is the reported 3.6 → 12.9 ramp with no mechanism; both candidate mechanisms measured dead. **Recommend closing as explained-not-reproduced** (Matt's call); **not a preset defect** | app.performance / sustained-load | **The app degrades under sustained 4K rendering, and it is the machine or the frame loop, not the preset that happens to be on screen.** Matt's Stave M7 (`2026-08-19T17-01-15Z`) reported *"performance slowed over time, which led to some choppiness"*. Measured over a contiguous 70 s at 3840×2160: `frame_cpu_ms` **17.4 → 43.6** and `frame_gpu_ms` **2.9 → 11.7**, while the app's OWN CPU work stayed flat — `encode_cpu_ms` 12.9 → 15.2, `renderframe_cpu_ms` 9.8 → 11.0. Same work, less delivered. **Three hypotheses were falsified before filing:** (a) Stave accumulating — an offline soak of 1920 frames at 4K is flat at 22.3 ms with no drift; (b) the dispersion fan opening over the track — `waveformOccupancy` is flat at 0.081–0.095 across the whole segment, r(GPU, occupancy) = **−0.11**; (c) preset-specific — the degradation **persists into the next preset** (Witchlight `frame_cpu` 24.4 at 4K, against Stave's own 17.4 early) and partially recovers after a 2.16 MP interlude. ⚠ **A second finding sits inside this one:** `encode_cpu_ms` is **15–16 ms at 4K** — essentially the entire 60 fps budget spent on CPU encode before any GPU work — and it scales with resolution (9.1 ms at 2.07 MP). CPU encode should not scale with pixel count; that is worth its own look and is probably the more tractable half. Thermal throttling of the Mac mini under sustained 4K is the leading remaining explanation for the rest, and cannot be confirmed from the recordings — it needs `powermetrics` or equivalent alongside a session |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
@@ -289,204 +288,6 @@ arbitration. Until then, **suite-4 numbers and any money/bleed metrical claim sh
 with this caveat**. solsbury_hill's separate ground-truth inconsistency (`meter_from_taps: 7`
 with downbeat taps ~12 tapped beats apart, flagged at FT.3 tasks 1–3) is still open and would
 be worth settling in the same pass.
-### BUG-100 — Sustained 4K rendering degrades the whole app, not the preset on screen (2026-08-19)
-
-**Status: evidence-only. Not a preset defect — three preset-side hypotheses were falsified
-before filing.**
-
-Matt's Stave M7 (`2026-08-19T17-01-15Z`): *"performance slowed over time, which led to some
-choppiness."* Measured over a contiguous 70 s window at 3840×2160:
-
-| t | frame_cpu | frame_gpu | encode_cpu | renderframe_cpu |
-|---|---|---|---|---|
-| 32 s | 17.6 ms | 3.6 ms | 13.9 ms | 9.8 ms |
-| 62 s | 19.7 ms | 3.9 ms | 15.5 ms | 12.0 ms |
-| 77 s | 37.4 ms | 6.8 ms | 16.2 ms | 12.6 ms |
-| 92 s | 44.9 ms | 12.9 ms | 15.2 ms | 11.0 ms |
-
-**The app's own CPU work is flat.** `encode_cpu_ms` and `renderframe_cpu_ms` barely move while
-total frame time rises 2.5× and GPU time 3.6×. The app is doing the same work and getting less
-back.
-
-**Falsified before filing:**
-
-1. **Stave accumulates something.** An offline soak — 1920 frames at 3840×2160 through the real
-   multi-pass path — is flat at 22.3 ms with no drift across eight blocks.
-2. **The dispersion fan opens over the track**, raising overdraw. `waveformOccupancy` is flat at
-   0.081–0.095 across the entire segment and **r(GPU, occupancy) = −0.11**.
-3. **It is preset-specific.** It is not: the degradation persists into the next preset
-   (Witchlight reads `frame_cpu` 24.4 ms at 4K, against Stave's own 17.4 ms early in the same
-   session) and partially recovers after a 2.16 MP interlude.
-
-⚠ **A "second finding" was filed here and is RETRACTED — the metric did not mean what its name
-says.** The entry originally claimed `encode_cpu_ms` was CPU work scaling with pixel count
-(9.1 ms at 2.07 MP → 16.4 ms at 8.29 MP) and called it "the more tractable half".
-
-**It is not CPU work.** `encode_cpu_ms` is wall-clock from `draw()` entry to `commit()`
-(`RenderPipeline.swift:752…822`), and `view.currentDrawable`
-(`DrawableLifecycleProbe.swift:256`) is called *inside* that window. `currentDrawable` **blocks**
-until CoreAnimation frees a drawable, so when the GPU is slower — which at 4K it is — the block
-is longer and the "CPU" number rises with it. The inflight semaphore is correctly excluded
-(waited at line 743, before `cpuDrawStart`), which is probably why the drawable wait was assumed
-excluded too. It is not.
-
-So there is **no separate CPU-encode defect**, and no fix to make there. At 4K the app is simply
-saturated: GPU 12.9 ms plus presentation waits, with `frame_cpu` (44.9 ms) measuring
-draw-start → completion and therefore carrying queue latency for a pipeline that cannot keep up.
-
-⚠ **Third time in one day** that a metric was read as its name rather than its definition —
-after `deltaTime` (vsync, not headroom) and the harness milliseconds (readback included). The
-rule that keeps holding: **read what the number is computed from before concluding anything from
-its trend.**
-
-⚠ **FIRST INSTRUMENTED SESSION (2026-08-19T22-45-50Z): thermal stayed `nominal`, and the
-degradation did not reproduce.** `THERMAL_STATE state=nominal low_power=false active_cpus=10`
-logged once and never changed, and Witchlight held **6.77 → 6.22 ms across 60 s at 4K — flat**,
-in a window comparable to the one where Stave degraded 2.9 → 11.7 ms. So this session supports
-neither the thermal hypothesis nor a general sustained-4K decay. ⚠ It does not refute them
-either: the degrading session ran a different preset mix, and one non-reproduction is not a
-falsification. **What it does establish is that the instrument works and reports cleanly**, so
-the next session that DOES degrade will carry the answer. Keep BUG-100 open pending that.
-
-**⚠ SECOND INDEPENDENT NON-REPRODUCTION, 2026-08-20 (PERF.15).** Session
-`2026-08-20T16-38-27Z`: **Volumetric Lithograph — the most expensive preset in the roster — flat
-across 172 s at 3840×2160 fullscreen**, `frame_gpu_ms` p50 30.92…31.28 over seven consecutive
-buckets, thermal `nominal` with no state change, 6,815 frames. Same reading as the Witchlight
-non-reproduction above: it does not falsify this entry, but two clean runs on two different presets
-at 4K make the general "sustained 4K decays" form less likely.
-
-⚠ **One contrary signal in the same window, and it is worth re-reading rather than filing:** the
-`2026-08-20T15-53-59Z` session shows VL rising ~175 → ~295 ms across its final two buckets — a real
-within-session degradation. **That is also the session whose 175 ms baseline PERF.15 disputes by
-5.6×**, so its trend should be re-derived once that conflict is settled; a ramp measured on a
-baseline that may be misattributed is not yet evidence for this entry.
-
-**★★★ THE STAVE REPRODUCTION RAN — AND IT EXPLAINS THE ORIGINAL EVIDENCE INSTEAD OF
-REPRODUCING IT. Session `2026-08-26T22-33-09Z` (2026-08-26).** 3840×2160, **Stave for 101 s,
-then Witchlight for 51 s** — the exact sequence this entry was filed from. Preset boundaries
-taken from the data (a 101-frame rolling median of `frame_gpu_ms` crossing 8 ms), not from log
-timestamps, so no bucket straddles the switch:
-
-| | t=0 | t=15 | t=30 | t=45 | t=60 | t=75 | t=90 |
-|---|---|---|---|---|---|---|---|
-| **Stave** `frame_gpu` p50 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 |
-| **Stave** `frame_cpu` p50 | 19.77 | 16.32 | 17.46 | 17.97 | 18.70 | 19.44 | 20.22 |
-
-**`frame_gpu_ms` is dead flat to two decimals across 101 s of Stave, and 11.44–11.48 across
-Witchlight.** `GPU_PRESSURE` holds `alloc_mb=489 used_pct=4.0 ml_forced=0` for all 15 lines.
-Thermal `nominal`. No degradation of any kind.
-
-**★ What the original evidence actually was.** Two independent pieces, both explained:
-
-1. **"The degradation persists into the next preset — Witchlight reads 24.4 ms against Stave's
-   own 17.4 ms early in the same session."** Measured here: **Witchlight at 4K costs 25.7 ms and
-   Stave costs 16–20 ms**, in a session where nothing degraded. That is not persistence — it is
-   two presets with different costs being compared to each other. Witchlight also measured
-   25.1–25.8 ms in the *previous* clean session, i.e. its normal price.
-2. **The ramp itself.** The original window reported `frame_gpu` **3.6 → 12.9 ms**. Measured
-   here, a Stave→Witchlight switch moves `frame_gpu` **4.94 → 11.44 ms**. A measurement window
-   spanning that switch produces the reported shape with no mechanism at all — which is the trap
-   the PERF program already documented ("short windows straddling a preset switch produce
-   garbage medians"; a 16.44 ms figure was published and retracted for exactly this). The CPU
-   endpoint (44.9 ms) is still higher than anything measured here, so this explains the GPU half
-   cleanly and the CPU half only partly. **Stated as the limit of the explanation, not papered
-   over** — the original artifacts have aged out of retention and cannot be re-segmented.
-
-**★ The one real trend, and why it is not this entry.** Inside Stave, `frame_cpu` p50 rises
-16.32 → 20.22 ms over 75 s (+24 %) while GPU is flat. That is *waiting*, not *working*:
-`renderframe_cpu_ms` wraps `renderFrame`, and Stave's feedback path calls `instrumentedDrawable`
-→ `view.currentDrawable` **inside** it (`RenderPipeline+FeedbackDraw.swift:90`), so the blocking
-present wait is inside the timer — the same definition trap that produced this entry's retracted
-`encode_cpu_ms` finding. The values drift from just under the 16.7 ms vsync interval to just
-over it, which is what pacing across a vsync boundary looks like, not what a resource leak looks
-like.
-
-**RECOMMENDATION: close BUG-100 as explained-not-reproduced, keeping the instruments.** Four 4K
-sessions (Witchlight ×2, Volumetric Lithograph ×1, Stave→Witchlight ×1) show no degradation;
-both candidate mechanisms are measured and dead; and both pieces of the original evidence have a
-measured explanation that needs no mechanism. What remains true and user-visible is that **Stave
-and Witchlight are simply over budget at 4K** — ~50 fps and ~39 fps respectively — which is
-BUG-098/099/101's territory, not an app-wide degradation. Matt's call.
-
-**⚠ THIRD NON-REPRODUCTION, AND THE FIRST WITH THE INSTRUMENTS IN — session
-`2026-08-26T22-04-58Z` (2026-08-26).** 3840×2160, Witchlight, 82 s inside one preset at one
-resolution (4,929 frames, well past the few-hundred-frame floor the PERF program set after a
-16.44 ms figure was published off 89 frames spanning a transition):
-
-| t (s) | frames | `frame_cpu` p50 | `frame_cpu` p90 | `frame_gpu` p50 | `frame_gpu` p90 |
-|---|---|---|---|---|---|
-| 20 | 120 | 25.12 | 28.33 | 11.44 | 11.50 |
-| 40 | 597 | 25.25 | 28.66 | 11.43 | 11.54 |
-| 60 | 600 | 25.55 | 28.67 | 11.46 | 11.53 |
-| 80 | 600 | 25.45 | 28.66 | 11.45 | 11.52 |
-| 100 | 600 | 25.80 | 28.65 | 11.43 | 11.50 |
-
-**Flat.** `frame_cpu` p50 moves +2.7 % across 80 s and `frame_gpu` p50 does not move at all,
-against the 2.5×/3.6× this entry was filed for over a comparable 70 s window. Thermal `nominal`,
-no state change.
-
-**★ The GPU-working-set hypothesis is FALSIFIED, not merely unobserved.** All ten `GPU_PRESSURE`
-lines read `alloc_mb=489 budget_mb=12124 used_pct=4.0` — dead flat, and **4 % of budget**. At 4K
-this app is nowhere near the eviction threshold, so pressure cannot be the mechanism on this
-machine at this resolution. That was the leading un-measured candidate; it is now dead.
-
-**The ML half is moot as well**: `ml_forced=0 ml_last=dispatchNow` throughout, because BUG-106
-was fixed in the same session's build. (It was already refuted as a mechanism by PERF.15's VL
-run.)
-
-**Where that leaves this entry.** One observed degradation (Stave M7, `2026-08-19T17-01-15Z`,
-artifacts since aged out of retention) against **three** clean 4K sessions — Witchlight twice,
-Volumetric Lithograph once — with both named mechanisms now measured and excluded. The one
-uncontrolled difference left is the **preset mix**: every clean session ran Witchlight or VL, and
-the only degrading one had **Stave** in it. That is not "Stave is slow" — the original session
-showed the degradation *persisting into* Witchlight after leaving Stave, which is what made it
-look whole-app. It means a session that CONTAINS Stave is the reproduction that has never been
-retried. **Next attempt: 4K fullscreen, Stave for ~90 s, then switch to Witchlight and hold.**
-If that is also flat, this entry should close as unreproducible with a note that its instruments
-stay in place.
-
-**Instrumented 2026-08-26 (BUG100.1) — the two dimensions nothing was recording.** Thermal came
-back `nominal` on both non-reproducing sessions, which rules that out for *those* and leaves the
-degrading one unexplained. Sessions now also log, on the same low-rate heartbeat bucket as
-`DRAWABLE_LIFECYCLE`:
-
-```
-GPU_PRESSURE alloc_mb=… budget_mb=… used_pct=… ml_forced=… ml_last=…
-```
-
-- **`alloc_mb` / `budget_mb`** — this process's Metal allocation against
-  `recommendedMaxWorkingSetSize`. At 4K every render target is 4× its 1080p size; if the working
-  set approaches the budget the driver evicts, which is slow **globally**, survives a preset
-  switch (the targets stay big) and recovers when a smaller target frees memory. That is
-  precisely this entry's signature — whole-app, cross-preset, partial recovery after the 2.16 MP
-  interlude — and it has never been measured. A ratio climbing through a degrading session
-  confirms it; a flat ratio rules it out.
-- **`ml_forced`** — `MLDispatchScheduler.forceDispatchCount`. Filed separately as **BUG-106**:
-  the gate's budget is a hardcoded 14/16 ms, so at 4K it can only defer-then-force. ⚠ **This is
-  not offered as this entry's mechanism** — the PERF.15 VL session was flat across 172 s at 4K
-  while permanently over that same budget, so forced dispatch is not sufficient to degrade. The
-  counter is here so the next degrading session can implicate or clear it with one grep instead
-  of an argument.
-
-**What is needed now is one reproduction on the instrumented build:** a fullscreen 4K session of
-about two minutes on a preset mix that has degraded before (Stave → Witchlight was the original).
-Both candidate mechanisms are then decided by three lines of log.
-
-**Instrumented 2026-08-19 (PERF.9).** Sessions now log
-`THERMAL_STATE state=… low_power=… active_cpus=…` whenever it changes, plus once at the start so
-an unchanging session still records its state.
-
-⚠ **NOT `powermetrics`, which is what was asked for.** It refuses to run unprivileged —
-*"powermetrics must be invoked as the superuser"*, verified — so the app cannot sample it, and
-shipping a privileged helper to read one counter is not proportionate.
-`ProcessInfo.thermalState` is the supported unprivileged primitive for exactly this question:
-the OS's own view of whether it is shedding performance for heat. It is coarse (nominal / fair /
-serious / critical), and coarse is enough here — **`nominal` throughout a degrading session
-falsifies the thermal hypothesis just as usefully as `serious` confirms it**, and either outcome
-closes the open half of this entry.
-
----
-
 ### BUG-091 — A single local file selected: preparation succeeds, playback never starts, every audio field is exactly zero (2026-08-17)
 
 **Status: instrumentation increment landed. Root cause NOT asserted — one reproduction with the
@@ -1558,262 +1359,6 @@ half of it".
 ---
 
 
-### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
-
-**Status: ✅ CLOSED 2026-08-20.** Fixed by rendering fewer pixels, not by cutting detail;
-M7-approved (*"VL looks good"*, `2026-08-20T13-50-18Z`). **Fullscreen closes at 56 fps delivered,
-live, WITH the marched-pixel cap in place** (Matt's final call, PERF.16: *"I would rather keep
-60 fps"* — session `2026-08-20T18-17-43Z`, p50 15.88 ms, 5.3 % of frames below the vsync floor,
-real headroom) — well past the *"run fullscreen even if not optimal"* bar this entry was opened
-against (9.6 fps). The harness-vs-live gap flagged below is also answered: that live session with
-the cap in place is the "one live session" the extrapolation asked for, and it landed above the
-extrapolated ~30 fps. Full arc (uncap → cost-model dispute → cap kept) in the update chain below.
-
-Matt's requirement was *"it needs to run fullscreen even if not optimal"* — **32 fps is running**
-where 9.6 fps was not, so the fullscreen half closes against the stated bar. It is **not** 60 fps at
-4K, and whether that matters is a product call he has not been asked to make. PERF.14 (now on `main`)
-reduces it further by capping marched pixels, ⚠ **but its key datapoint conflicts with this
-measurement by 5.6×, and the conflict is UNEXPLAINED — a proposed mechanism was checked and
-falsified. See PERF.15 for what is established and the one-session discriminator.**
-
-> **Update PERF.16 (2026-08-20) — fullscreen closes, and the cost model behind the cap does not
-> survive.** Two things landed after the status line above was written. **(1)** PERF.15's live
-> capture `2026-08-20T16-38-27Z` measured VL fullscreen at 3840×2160 with `render_scale=0.50`
-> **in the log** at **31.16 / 32.30 ms p50/p90 → 32 fps**, flat across seven 10 s buckets,
-> thermal nominal, 0.45 % of frames near the floor. Against Matt's stated bar — *"run fullscreen
-> even if not optimal"* — 9.6 → 32 fps clears it, so **the fullscreen half of this entry closes**.
-> **(2)** PERF.14 had meanwhile capped marched pixels at 1536×864 on the finding that ray-march
-> cost is a *step*: 175 ms at 0.5 and ≤ 15 ms at 0.4 at 4K. That is 5.6× from PERF.15's reading of
-> the same nominal configuration. **PERF.16 settled it offline** with a marched-pixel sweep
-> (`RayMarchCostCurveTests`, readback off, thermal-controlled, reproduced): the curve is smooth
-> and mildly **sub**linear — every neighbour pair's cost-ratio is 0.92–1.02× its area-ratio, and
-> across the disputed band cost rises **1.49× for 1.56× the area** where PERF.14 reports 11.7×.
-> The harness reads **28.19 ms** at the same 2.07 MP marched that PERF.15 measured live at
-> **31.16 ms** — 10 % apart, which corroborates the live reading and leaves 175 ms unexplained at
-> any scale interpretation. **⚠ Open, and Matt's:** the cap is still active, so VL marches
-> 1536×864 at 4K where 1920×1080 measures ~31 ms live. It is buying softness on a falsified
-> model. Removing it is a one-line change to a certified preset's fullscreen sharpness. Full
-> reasoning: `ENGINEERING_PLAN.md` §Increment PERF.16.
->
-> **Matt's call, same day: remove the cap.** `RenderPipeline.marchScale` now returns the
-> declared scale clamped to [0.4, 1.0] and nothing else, so VL marches 1920×1080 at 4K —
-> the configuration measured live at 31.16 ms — instead of 1536×864. `marchedPixelBudget`
-> is gone. ⚠ **Pending Matt's live M7:** the expected read is sharper at fullscreen at
-> ~32 fps. If the frame rate does not hold there, this entry reopens rather than the cap
-> returning by default.
->
-> ⚠ **CORRECTION, same day — the cap was NOT buying softness for nothing, and I told Matt it
-> was.** He ran the fullscreen M7 on session `2026-08-20T18-17-43Z`, which — verified by binary,
-> not assumed — ran the **capped** build: the session started 18:17:45Z, the cap-removal merge
-> landed 18:22:04Z, and the running binary (atime 13:17:47 local) was built from the primary
-> checkout at `f2f2b15f`, whose source still contains `marchedPixelBudget`. **Capped VL at 4K
-> fullscreen: p50 15.88 ms, p90 20.87 ms, 56 fps delivered over 165 s, with 5.3 % of frames
-> below the 15.3 ms vsync floor** — real headroom, not a floored reading. Against PERF.15's
-> uncapped 31.16 ms / 32 fps, **the cap is worth roughly double the frame rate at 4K.** The
-> recommendation to remove it was made without that number and is retracted as stated; the
-> decision is a genuine trade — 1920×1080 marched at ~32 fps, or 1536×864 at ~60 — and Matt has
-> now seen only the second one. **Reverting is one commit.**
->
-> ⚠ **And a caveat on PERF.16's curve.** The two live points (≤15.88 at 1.33 MP, 31.16 at
-> 2.07 MP) give **~2× cost for 1.56× area** where the harness gave 1.49×. That does not restore
-> PERF.14's 11.7× step — the finding that there is no cliff stands — but **live is steeper than
-> the harness in this band, so the harness curve understates the 4K penalty.** Do not use it to
-> predict an absolute 4K cost without a live check.
->
-> ✅ **DECIDED (Matt, 2026-08-20): *"I would rather keep 60 fps."*** The cap is restored;
-> `marchScale(declared:width:height:)` and `marchedPixelBudget` are back, and VL marches
-> 1536×864 at 4K. **The fullscreen half of BUG-101 closes at 56 fps delivered**, well past the
-> *"run fullscreen even if not optimal"* bar. VL is softer at fullscreen than it could be, by
-> choice. The doc comment at the call site was rewritten so the budget is justified by the
-> measured 2× frame-rate difference rather than by PERF.14's falsified step — the next reader
-> must not re-derive the step model from a surviving cap.
-
-Matt's call was to render VL below display resolution. Shipped as `render_scale: 0.5` in
-`VolumetricLithograph.json` → `PresetDescriptor.rayMarchRenderScale` → `RayMarchPipeline`: G-buffer
-and lighting allocate at half linear scale and the composite pass upscales for free, post-process
-staying at full resolution. No MetalFX, no motion vectors, no extra pass.
-
-★ **The upscale is free because a linear-sampled pass already existed** — the same observation two
-sessions reached independently while building this in parallel (see PERF.12). Rendered side by side
-at 1080p the two builds are nearly indistinguishable; a 3× crop shows a slightly softer contour
-edge.
-
-| harness, 24-frame drive | before | after |
-|---|---|---|
-| 1920×1080 | 31.9 ms | **13.4–15.4 ms** |
-| 3840×2160 | 111.5 ms | **14.8 ms** |
-
-⚠ **THOSE ARE HARNESS FIGURES AND THE LIVE COST IS HIGHER.** The first instrumented session
-(PERF.10, `2026-08-19T22-45-50Z`) measured the *uncapped* VL at **269.89 ms at 4K — 3.5 fps**, and
-**32.56 ms per marched megapixel**, against this harness's 111.5 ms: the harness is **2.4× low** on
-this preset because its 24-frame drive starts the terrain flight from a standing start, which is the
-cheapest part of it. Taking the live ms/MP, a 0.92 MP cap predicts roughly **30 ms ≈ 30 fps, not
-60**. So the cap is a large, real improvement that probably does **not** reach the target live.
-**Do not tighten it against this extrapolation** — that is calibrating to a measurement of the build
-before the fix. One live session with the cap in place makes the number real; it is the same
-instrument that settles BUG-100.
-
-**Original analysis retained — it is still correct about where the cost is:**
-
-★★ **AND IT IS THE ONE PRESET THAT MISSES THE PRODUCT'S STATED TARGET (PERF.12, 2026-08-19).**
-The roster measured at three resolutions with the harness readback removed — so these are GPU cost,
-not instrument cost (see BUG-099):
-
-| resolution | Volumetric Lithograph | next most expensive | presets within 16.7 ms |
-|---|---|---|---|
-| 1920×1080 | **31.9 ms ≈ 31 fps** | Stave 11.2 ms | 19 of 20 |
-| 2560×1440 | 54.9 ms (readback on) | — | — |
-| 3840×2160 | **111.5 ms ≈ 9 fps** | Cytokinesis 18.4 ms | 18 of 20 |
-
-`CLAUDE.md` promises **60 fps at 1080p**, and VL is at roughly half that — **3.5× the budget, and
-2.8× the next most expensive preset at the same resolution.** Every other covered preset fits.
-This is no longer "expensive by construction" as a curiosity; it is the only measured breach of the
-stated target in the covered roster, in a **certified** preset.
-
-⚠ **And the frame-budget gate cannot catch it.** `PresetFrameBudgetTests` asserts a RATIO — no
-preset above 8× the median — which VL passes at 5.9×. Its header documents an `absoluteCeilingMs`
-as "a second, deliberately loose net", but **that constant appears exactly once in the file, in
-that comment: it was never implemented.** So nothing in the suite checks the 60 fps promise in
-milliseconds, which is why a preset at 31 fps at 1080p is green.
-
-**Both of those are Matt's calls** — adding the absolute net would ship red until VL is decided,
-and every lever on VL changes what it looks like (below).
-
-Matt: *"troubleshoot VL"*, after the PERF.4 gate flagged it at **5.2× the median preset**.
-
-**Where the cost is.** `sceneSDF` is evaluated ~135× per pixel — 128 march steps plus 4
-tetrahedral normal taps and 3 AO taps — and carries ~10 Perlin evaluations each:
-
-| term | evaluations | measured |
-|---|---|---|
-| terrain `fbm3D(_, VL_FBM_OCTAVES=4)` | 4 | ~2.7 ms/octave (4 → 1: **30.59 → 22.55 ms**) |
-| `vl_foldDomain` warp, 2 × `fbm3D(_,3)` | 6 | **~10.4 ms** (removed: 32.07 → 21.64 ms) |
-
-Together ~69 % of the frame. A same-session drift check re-measured the baseline at 30.58 ms
-against 30.59 — the rig is stable, and an **earlier contradictory reading** (octaves 4 → 2
-showing no change) was simply a bad measurement taken while the machine was busy.
-
-**The marcher is not at fault.** It sphere-traces with a correct early exit
-(`d < 0.001 · t → break`) and a `t < farPlane` bound, so rays that hit leave early rather than
-burning the full 128 steps.
-
-⚠ **Both noise terms are already twice-optimised, and the code says so.** VL-PSY.1 cut the warp
-from `warped_fbm` (112 evaluations; 1120 ms/frame at the time) down to 6, and took octaves 5 → 4.
-**3 octaves was tried and reverted** — below SHADER_CRAFT's ≥4-octave floor the render "went soft
-and airbrushed", a quality regression traded for ~1 ms. There is no multiply-by-zero waste of the
-BUG-098 kind here; this is what the preset costs to draw.
-
-**The one remaining lever, and why it is not mine to pull.** `VL_SDF_STEP_SCALE` is 0.55 (itself
-already re-reasoned up from 0.35, which was "buying safety at ~1.6× the frame time"). Raising it
-marches further per step:
-
-| step scale | frame time | vs 0.55, pixel-diffed |
-|---|---|---|
-| 0.55 | 31.8 ms | — |
-| 0.70 | 28.6 ms (−10 %) | 74 % of channels differ, 12.3 % beyond 16/255, mean 9.4 |
-| 0.80 | 26.9 ms (−16 %) | 74 % differ, **48.8 %** beyond 16/255, mean 14.3 |
-
-Unlike the Witchlight bloom (max delta 2/255, invisible), this is a visible change to a certified
-preset. Whether the render still reads correctly at 0.70 is Matt's judgement, not a measurement.
-
-⚠ **No trustworthy live figure exists for VL.** The single 4K session that carried it reported a
-median of 16.44 ms — but from **89 frames with a p90 of 101.73 ms**, a short sample spanning a
-preset transition, and that session has since been evicted by retention (BUG-082). The harness
-figure (30.6–31.2 ms at 1080p, five runs across two days) is the reliable one, and it does not
-reconcile with 16.44 ms at four times the pixels. A fresh session with VL held on screen would
-settle it.
-
----
-
-
-### BUG-099 — Witchlight reaches ~30 fps at 4K after the 8.2× fix; closing the rest is a product decision (2026-08-19)
-
-**Status: ⚠ PREMISE RE-MEASURED 2026-08-19 (PERF.12). The 4K shortfall was largely the
-measuring instrument, not the preset.**
-
-★★ **`MultiPassRenderHarness` reads every rendered frame back to the CPU — ~8 MB per frame at
-1080p and ~33 MB at 3840×2160 — and production never does.** That cost scales with PIXELS, not with
-what the preset draws, so it lands on the 4K column far harder than the 1080p one and a resolution
-sweep that includes it measures the harness as much as the roster. Measured with
-`FRAME_BUDGET_NO_READBACK=1`, the same 20 presets in the same run shape:
-
-| | readback ON | readback OFF | readback cost |
-|---|---|---|---|
-| **Witchlight at 4K** | 18.6 ms | **8.4 ms** | 10.2 ms |
-| median preset at 4K | — | — | **11.4 ms** |
-| median preset at 1080p | — | — | 3.0 ms |
-| **presets within 16.7 ms at 4K** | **6 of 20** | **18 of 20** | — |
-
-So Witchlight holds 60 fps at 4K on GPU cost with room to spare, and **neither route this entry
-proposed is needed** — not the star-layer cut, not extending the half-res path to
-feedback/particles. Both were sized against a number that was 2.2× too high.
-
-⚠ **This does NOT explain what Matt saw.** He reported real 4K choppiness, and BUG-100 measured it
-degrading over 70 s while the app's own CPU work stayed flat — a *drift over minutes*, which a
-24-frame cost measurement cannot see and shader cost does not explain. **BUG-100 is the live
-question and its thermal instrumentation settles it; this entry is about steady-state cost only.**
-
-⚠ **Caveats on the readback-off numbers.** They still `waitUntilCompleted` per frame, so they are a
-serialised GPU-cost measurement rather than a production frame time (production overlaps CPU and
-GPU), and they are a 24-frame sample that cannot show thermal drift. They are a fair proxy for "how
-expensive is this preset's frame" and nothing more.
-
-**FOURTH TIME IN ONE DAY** that a performance metric did not mean what its name suggested — after
-`deltaTime` (vsync, not headroom), the harness milliseconds in general, and `encode_cpu_ms` (which
-includes a blocking drawable wait). The rule keeps holding: **read what the number is computed from
-before concluding anything from its trend.** Here the specific error was reusing a harness built for
-*comparing* presets to answer an *absolute* question about one.
-
-**Original analysis, retained — its component breakdown is still correct, its conclusion is not:**
-
-BUG-098 took Witchlight from 273.88 ms to an extrapolated ~27 ms at 3840×2160 (**10.2× measured
-in the harness, 151.3 → 14.9 ms back to back**). That **meets the stated target with large
-headroom** — `CLAUDE.md` promises 60 fps *at 1080p*, and 1800×1200 extrapolates to ~6 ms — but a
-4K panel still runs at about 37 fps.
-
-**Why there is no third shader fix.** After PERF.2/PERF.3 the remaining 4K cost is balanced
-rather than dominated:
-
-| component | 4K cost |
-|---|---|
-| beads / particles / feedback | 5.8 ms |
-| three star layers | 5.3 ms |
-| bloom | 2.1 ms |
-
-Nothing here is waste of the kind BUG-098 found (noise multiplied by zero, or octaves that never
-reached the image). Halving any of these means removing something the preset draws.
-
-**Two routes, both visible to the user — which is why this is Matt's:**
-
-1. **Drop or cheapen a star layer.** The three-layer parallax is a documented WL.2 feature — the
-   near layer crossing frame in ~4 minutes and outpacing the far ones ~13:1 is what gives the
-   backdrop its depth. Removing one takes ~1.8 ms and some of that read. ⚠ A micro-optimisation
-   was tried here and **rejected as worthless**: reordering the star layer so the `bright < 0.68`
-   early-out precedes the `jitter` hash (which is discarded for 68 % of cells, three times per
-   pixel) measured **14.9 → 14.9 ms** — the Metal compiler already sinks the dead hash. Recorded
-   so nobody spends the increment on it.
-2. **Render Witchlight below full drawable resolution.** ⚠ **CORRECTION (checked, 2026-08-19):
-   `setDirectRenderScale` CANNOT be used here.** Its half-res path lives in `drawDirect`
-   (`RenderPipeline+Draw.swift:309`) and Witchlight's passes are `["feedback", "particles"]`,
-   while Nimbus — the preset that uses it — has `passes: []`, i.e. the direct-fragment path.
-   Applying this to Witchlight means **extending the half-res render to the feedback/particles
-   path first**, which is engine work, not a per-preset config change. Worth noting the trade is
-   milder than it sounds at 4K: 0.7× of 3840×2160 is 2688×1512, still sharper than the 1920×1080
-   the target promises. The risk is concentrated in the starfield, which is sub-pixel to ~2 px by
-   design (WL.2-e) and would alias rather than merely soften.
-
-⚠ **Context for the decision: Witchlight is an outlier, not a symptom.** In the same 4K session
-the next most expensive preset measured was Volumetric Lithograph at 16.44 ms, and the rest sat
-at 3.27–4.94 ms. Six of seven measured presets hold 59–60 fps at 4K unaided.
-
-⚠ **Also unresolved and cheaper to act on:** the app renders 1920×1080 while idle and drops to
-**900×600** one second after a session starts. Every performance judgement made before
-2026-08-19 — including two Witchlight sign-offs — was at 0.54 MP, a quarter of the target. That
-default deserves its own decision.
-
----
-
-
 ### BUG-088 — RESOLVED (BUG088.1): Aurora Veil's "undeclared reads" were dead computation, and a silence gate is not a driver (2026-08-12, resolved 2026-08-26)
 
 **Status: ✅ RESOLVED 2026-08-26.** The diagnosis below is kept in full because the correction
@@ -1941,6 +1486,220 @@ no M7, no re-certification, because no rendered pixel changes.
 **⇄ BUG-086** — this is why that entry's `dsp.stem` gate is still owed. Re-aimed at
 **Skein**, verified first: 20 of 28 routes ALIVE, **all eight stem-deviation routes alive**
 (`painter_speed` and `flick_trigger` on all four stems, ranges 0.60–1.39), zero DEAD.
+### BUG-100 — CLOSED (explained, not reproduced): the "sustained 4K degradation" was a preset switch inside the measurement window (2026-08-19, closed 2026-08-26)
+
+**Status: ✅ CLOSED 2026-08-26 on Matt's call.** Not a defect. Four 4K sessions found no
+degradation, both candidate mechanisms were measured and excluded, and both pieces of the
+original evidence have a measured explanation that needs no mechanism — a Stave→Witchlight
+switch moves `frame_gpu_ms` 4.94 → 11.44 ms, which is the reported 3.6 → 12.9 "ramp", and
+Witchlight simply costs more at 4K than Stave does, which is the reported "persists into the
+next preset". The instruments added while chasing it (`GPU_PRESSURE`, `THERMAL_STATE`) stay.
+
+⚠ **The honest residual:** the original CPU endpoint (44.9 ms) is higher than anything measured
+in any reproduction attempt, and that session's artifacts have aged out of retention, so it
+cannot be re-segmented. The GPU half is explained cleanly; the CPU half only partly. Reopen only
+on a NEW capture that shows `frame_gpu_ms` rising inside a single preset at a single resolution —
+that is the claim, and it is now three times contradicted.
+
+**What remains true and user-visible:** Stave and Witchlight are over budget at 4K (~50 fps and
+~39 fps measured). That is BUG-098/099/101's territory — steady-state cost, not degradation.
+
+**Status: evidence-only. Not a preset defect — three preset-side hypotheses were falsified
+before filing.**
+
+Matt's Stave M7 (`2026-08-19T17-01-15Z`): *"performance slowed over time, which led to some
+choppiness."* Measured over a contiguous 70 s window at 3840×2160:
+
+| t | frame_cpu | frame_gpu | encode_cpu | renderframe_cpu |
+|---|---|---|---|---|
+| 32 s | 17.6 ms | 3.6 ms | 13.9 ms | 9.8 ms |
+| 62 s | 19.7 ms | 3.9 ms | 15.5 ms | 12.0 ms |
+| 77 s | 37.4 ms | 6.8 ms | 16.2 ms | 12.6 ms |
+| 92 s | 44.9 ms | 12.9 ms | 15.2 ms | 11.0 ms |
+
+**The app's own CPU work is flat.** `encode_cpu_ms` and `renderframe_cpu_ms` barely move while
+total frame time rises 2.5× and GPU time 3.6×. The app is doing the same work and getting less
+back.
+
+**Falsified before filing:**
+
+1. **Stave accumulates something.** An offline soak — 1920 frames at 3840×2160 through the real
+   multi-pass path — is flat at 22.3 ms with no drift across eight blocks.
+2. **The dispersion fan opens over the track**, raising overdraw. `waveformOccupancy` is flat at
+   0.081–0.095 across the entire segment and **r(GPU, occupancy) = −0.11**.
+3. **It is preset-specific.** It is not: the degradation persists into the next preset
+   (Witchlight reads `frame_cpu` 24.4 ms at 4K, against Stave's own 17.4 ms early in the same
+   session) and partially recovers after a 2.16 MP interlude.
+
+⚠ **A "second finding" was filed here and is RETRACTED — the metric did not mean what its name
+says.** The entry originally claimed `encode_cpu_ms` was CPU work scaling with pixel count
+(9.1 ms at 2.07 MP → 16.4 ms at 8.29 MP) and called it "the more tractable half".
+
+**It is not CPU work.** `encode_cpu_ms` is wall-clock from `draw()` entry to `commit()`
+(`RenderPipeline.swift:752…822`), and `view.currentDrawable`
+(`DrawableLifecycleProbe.swift:256`) is called *inside* that window. `currentDrawable` **blocks**
+until CoreAnimation frees a drawable, so when the GPU is slower — which at 4K it is — the block
+is longer and the "CPU" number rises with it. The inflight semaphore is correctly excluded
+(waited at line 743, before `cpuDrawStart`), which is probably why the drawable wait was assumed
+excluded too. It is not.
+
+So there is **no separate CPU-encode defect**, and no fix to make there. At 4K the app is simply
+saturated: GPU 12.9 ms plus presentation waits, with `frame_cpu` (44.9 ms) measuring
+draw-start → completion and therefore carrying queue latency for a pipeline that cannot keep up.
+
+⚠ **Third time in one day** that a metric was read as its name rather than its definition —
+after `deltaTime` (vsync, not headroom) and the harness milliseconds (readback included). The
+rule that keeps holding: **read what the number is computed from before concluding anything from
+its trend.**
+
+⚠ **FIRST INSTRUMENTED SESSION (2026-08-19T22-45-50Z): thermal stayed `nominal`, and the
+degradation did not reproduce.** `THERMAL_STATE state=nominal low_power=false active_cpus=10`
+logged once and never changed, and Witchlight held **6.77 → 6.22 ms across 60 s at 4K — flat**,
+in a window comparable to the one where Stave degraded 2.9 → 11.7 ms. So this session supports
+neither the thermal hypothesis nor a general sustained-4K decay. ⚠ It does not refute them
+either: the degrading session ran a different preset mix, and one non-reproduction is not a
+falsification. **What it does establish is that the instrument works and reports cleanly**, so
+the next session that DOES degrade will carry the answer. Keep BUG-100 open pending that.
+
+**⚠ SECOND INDEPENDENT NON-REPRODUCTION, 2026-08-20 (PERF.15).** Session
+`2026-08-20T16-38-27Z`: **Volumetric Lithograph — the most expensive preset in the roster — flat
+across 172 s at 3840×2160 fullscreen**, `frame_gpu_ms` p50 30.92…31.28 over seven consecutive
+buckets, thermal `nominal` with no state change, 6,815 frames. Same reading as the Witchlight
+non-reproduction above: it does not falsify this entry, but two clean runs on two different presets
+at 4K make the general "sustained 4K decays" form less likely.
+
+⚠ **One contrary signal in the same window, and it is worth re-reading rather than filing:** the
+`2026-08-20T15-53-59Z` session shows VL rising ~175 → ~295 ms across its final two buckets — a real
+within-session degradation. **That is also the session whose 175 ms baseline PERF.15 disputes by
+5.6×**, so its trend should be re-derived once that conflict is settled; a ramp measured on a
+baseline that may be misattributed is not yet evidence for this entry.
+
+**★★★ THE STAVE REPRODUCTION RAN — AND IT EXPLAINS THE ORIGINAL EVIDENCE INSTEAD OF
+REPRODUCING IT. Session `2026-08-26T22-33-09Z` (2026-08-26).** 3840×2160, **Stave for 101 s,
+then Witchlight for 51 s** — the exact sequence this entry was filed from. Preset boundaries
+taken from the data (a 101-frame rolling median of `frame_gpu_ms` crossing 8 ms), not from log
+timestamps, so no bucket straddles the switch:
+
+| | t=0 | t=15 | t=30 | t=45 | t=60 | t=75 | t=90 |
+|---|---|---|---|---|---|---|---|
+| **Stave** `frame_gpu` p50 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 |
+| **Stave** `frame_cpu` p50 | 19.77 | 16.32 | 17.46 | 17.97 | 18.70 | 19.44 | 20.22 |
+
+**`frame_gpu_ms` is dead flat to two decimals across 101 s of Stave, and 11.44–11.48 across
+Witchlight.** `GPU_PRESSURE` holds `alloc_mb=489 used_pct=4.0 ml_forced=0` for all 15 lines.
+Thermal `nominal`. No degradation of any kind.
+
+**★ What the original evidence actually was.** Two independent pieces, both explained:
+
+1. **"The degradation persists into the next preset — Witchlight reads 24.4 ms against Stave's
+   own 17.4 ms early in the same session."** Measured here: **Witchlight at 4K costs 25.7 ms and
+   Stave costs 16–20 ms**, in a session where nothing degraded. That is not persistence — it is
+   two presets with different costs being compared to each other. Witchlight also measured
+   25.1–25.8 ms in the *previous* clean session, i.e. its normal price.
+2. **The ramp itself.** The original window reported `frame_gpu` **3.6 → 12.9 ms**. Measured
+   here, a Stave→Witchlight switch moves `frame_gpu` **4.94 → 11.44 ms**. A measurement window
+   spanning that switch produces the reported shape with no mechanism at all — which is the trap
+   the PERF program already documented ("short windows straddling a preset switch produce
+   garbage medians"; a 16.44 ms figure was published and retracted for exactly this). The CPU
+   endpoint (44.9 ms) is still higher than anything measured here, so this explains the GPU half
+   cleanly and the CPU half only partly. **Stated as the limit of the explanation, not papered
+   over** — the original artifacts have aged out of retention and cannot be re-segmented.
+
+**★ The one real trend, and why it is not this entry.** Inside Stave, `frame_cpu` p50 rises
+16.32 → 20.22 ms over 75 s (+24 %) while GPU is flat. That is *waiting*, not *working*:
+`renderframe_cpu_ms` wraps `renderFrame`, and Stave's feedback path calls `instrumentedDrawable`
+→ `view.currentDrawable` **inside** it (`RenderPipeline+FeedbackDraw.swift:90`), so the blocking
+present wait is inside the timer — the same definition trap that produced this entry's retracted
+`encode_cpu_ms` finding. The values drift from just under the 16.7 ms vsync interval to just
+over it, which is what pacing across a vsync boundary looks like, not what a resource leak looks
+like.
+
+**RECOMMENDATION: close BUG-100 as explained-not-reproduced, keeping the instruments.** Four 4K
+sessions (Witchlight ×2, Volumetric Lithograph ×1, Stave→Witchlight ×1) show no degradation;
+both candidate mechanisms are measured and dead; and both pieces of the original evidence have a
+measured explanation that needs no mechanism. What remains true and user-visible is that **Stave
+and Witchlight are simply over budget at 4K** — ~50 fps and ~39 fps respectively — which is
+BUG-098/099/101's territory, not an app-wide degradation. Matt's call.
+
+**⚠ THIRD NON-REPRODUCTION, AND THE FIRST WITH THE INSTRUMENTS IN — session
+`2026-08-26T22-04-58Z` (2026-08-26).** 3840×2160, Witchlight, 82 s inside one preset at one
+resolution (4,929 frames, well past the few-hundred-frame floor the PERF program set after a
+16.44 ms figure was published off 89 frames spanning a transition):
+
+| t (s) | frames | `frame_cpu` p50 | `frame_cpu` p90 | `frame_gpu` p50 | `frame_gpu` p90 |
+|---|---|---|---|---|---|
+| 20 | 120 | 25.12 | 28.33 | 11.44 | 11.50 |
+| 40 | 597 | 25.25 | 28.66 | 11.43 | 11.54 |
+| 60 | 600 | 25.55 | 28.67 | 11.46 | 11.53 |
+| 80 | 600 | 25.45 | 28.66 | 11.45 | 11.52 |
+| 100 | 600 | 25.80 | 28.65 | 11.43 | 11.50 |
+
+**Flat.** `frame_cpu` p50 moves +2.7 % across 80 s and `frame_gpu` p50 does not move at all,
+against the 2.5×/3.6× this entry was filed for over a comparable 70 s window. Thermal `nominal`,
+no state change.
+
+**★ The GPU-working-set hypothesis is FALSIFIED, not merely unobserved.** All ten `GPU_PRESSURE`
+lines read `alloc_mb=489 budget_mb=12124 used_pct=4.0` — dead flat, and **4 % of budget**. At 4K
+this app is nowhere near the eviction threshold, so pressure cannot be the mechanism on this
+machine at this resolution. That was the leading un-measured candidate; it is now dead.
+
+**The ML half is moot as well**: `ml_forced=0 ml_last=dispatchNow` throughout, because BUG-106
+was fixed in the same session's build. (It was already refuted as a mechanism by PERF.15's VL
+run.)
+
+**Where that leaves this entry.** One observed degradation (Stave M7, `2026-08-19T17-01-15Z`,
+artifacts since aged out of retention) against **three** clean 4K sessions — Witchlight twice,
+Volumetric Lithograph once — with both named mechanisms now measured and excluded. The one
+uncontrolled difference left is the **preset mix**: every clean session ran Witchlight or VL, and
+the only degrading one had **Stave** in it. That is not "Stave is slow" — the original session
+showed the degradation *persisting into* Witchlight after leaving Stave, which is what made it
+look whole-app. It means a session that CONTAINS Stave is the reproduction that has never been
+retried. **Next attempt: 4K fullscreen, Stave for ~90 s, then switch to Witchlight and hold.**
+If that is also flat, this entry should close as unreproducible with a note that its instruments
+stay in place.
+
+**Instrumented 2026-08-26 (BUG100.1) — the two dimensions nothing was recording.** Thermal came
+back `nominal` on both non-reproducing sessions, which rules that out for *those* and leaves the
+degrading one unexplained. Sessions now also log, on the same low-rate heartbeat bucket as
+`DRAWABLE_LIFECYCLE`:
+
+```
+GPU_PRESSURE alloc_mb=… budget_mb=… used_pct=… ml_forced=… ml_last=…
+```
+
+- **`alloc_mb` / `budget_mb`** — this process's Metal allocation against
+  `recommendedMaxWorkingSetSize`. At 4K every render target is 4× its 1080p size; if the working
+  set approaches the budget the driver evicts, which is slow **globally**, survives a preset
+  switch (the targets stay big) and recovers when a smaller target frees memory. That is
+  precisely this entry's signature — whole-app, cross-preset, partial recovery after the 2.16 MP
+  interlude — and it has never been measured. A ratio climbing through a degrading session
+  confirms it; a flat ratio rules it out.
+- **`ml_forced`** — `MLDispatchScheduler.forceDispatchCount`. Filed separately as **BUG-106**:
+  the gate's budget is a hardcoded 14/16 ms, so at 4K it can only defer-then-force. ⚠ **This is
+  not offered as this entry's mechanism** — the PERF.15 VL session was flat across 172 s at 4K
+  while permanently over that same budget, so forced dispatch is not sufficient to degrade. The
+  counter is here so the next degrading session can implicate or clear it with one grep instead
+  of an argument.
+
+**What is needed now is one reproduction on the instrumented build:** a fullscreen 4K session of
+about two minutes on a preset mix that has degraded before (Stave → Witchlight was the original).
+Both candidate mechanisms are then decided by three lines of log.
+
+**Instrumented 2026-08-19 (PERF.9).** Sessions now log
+`THERMAL_STATE state=… low_power=… active_cpus=…` whenever it changes, plus once at the start so
+an unchanging session still records its state.
+
+⚠ **NOT `powermetrics`, which is what was asked for.** It refuses to run unprivileged —
+*"powermetrics must be invoked as the superuser"*, verified — so the app cannot sample it, and
+shipping a privileged helper to read one counter is not proportionate.
+`ProcessInfo.thermalState` is the supported unprivileged primitive for exactly this question:
+the OS's own view of whether it is shedding performance for heat. It is coarse (nominal / fair /
+serious / critical), and coarse is enough here — **`nominal` throughout a degrading session
+falsifies the thermal hypothesis just as usefully as `serious` confirms it**, and either outcome
+closes the open half of this entry.
+
+---
+
 ### BUG-104 — RESOLVED (WHIT.1d-4): Rosette's curve had visible gaps — the nearest-point search locked onto the wrong branch (2026-08-26)
 
 **Severity:** P1

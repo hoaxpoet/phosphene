@@ -10,6 +10,50 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-26-224840] BUG-100 closed — the "sustained 4K degradation" was a preset switch inside the measurement window
+
+**CLOSED, not fixed — there was nothing to fix.** BUG-100 held that sustained 4K rendering
+degraded the whole app rather than the preset on screen: `frame_cpu` 17.6 → 44.9 ms and
+`frame_gpu` 3.6 → 12.9 ms over 70 s, persisting into the next preset. Four 4K sessions have now
+been measured with instruments in place, and both pieces of that evidence have an explanation
+that needs no mechanism.
+
+Matt ran the one reproduction never tried — **Stave for 101 s, then Witchlight, at 3840×2160**
+(`2026-08-26T22-33-09Z`), the exact sequence the entry was filed from. With preset boundaries
+taken from the data (a 101-frame rolling median of `frame_gpu_ms`) rather than log timestamps,
+so no bucket straddles the switch:
+
+- **Stave's `frame_gpu` p50 is 4.94 ms in every one of seven 15 s buckets across 101 s.** Flat to
+  two decimals. Witchlight's is 11.44–11.48.
+- `GPU_PRESSURE` holds `alloc_mb=489 used_pct=4.0 ml_forced=0` throughout; thermal `nominal`.
+
+**The "persists into the next preset" evidence** was Witchlight's 24.4 ms compared against
+*Stave's own* 17.4 ms — two presets with different costs, not one preset degrading. Measured
+here in a session where nothing degraded: Witchlight 25.7 ms, Stave 16–20 ms.
+
+**The ramp** matches a preset switch almost exactly: Stave→Witchlight moves `frame_gpu`
+4.94 → 11.44 ms against the reported 3.6 → 12.9. A window spanning that switch produces the
+reported shape by itself — the trap this program already documented when a 16.44 ms figure was
+published off 89 frames spanning a transition.
+
+⚠ **Residual, stated rather than papered over:** the original CPU endpoint (44.9 ms) exceeds
+anything measured in any reproduction, and that session's artifacts have aged out of retention.
+The GPU half is explained cleanly; the CPU half only partly. Reopen only on a new capture showing
+`frame_gpu_ms` rising inside ONE preset at ONE resolution.
+
+**One trend seen and correctly not filed as this defect:** inside Stave, `frame_cpu` p50 drifts
+16.3 → 20.2 ms over 75 s with GPU flat. That is waiting, not working — `renderframe_cpu_ms` wraps
+`renderFrame`, and the feedback path calls `view.currentDrawable` inside it, so the blocking
+present wait is inside the timer (the same definition trap behind this entry's retracted
+`encode_cpu_ms` finding). The values drift from just under the 16.7 ms vsync interval to just
+over it.
+
+What remains true and user-visible is that Stave and Witchlight are over budget at 4K — ~50 and
+~39 fps. That is steady-state cost (BUG-098/099/101), not degradation. The instruments added
+while chasing this (`GPU_PRESSURE`, `THERMAL_STATE`) stay.
+
+---
+
 ### [dev-2026-08-26-215039] BUG-106 fixed — the ML dispatch gate now measures jank, not resolution
 
 **Matt's call: (a) stems on time.** `MLDispatchScheduler` held the 142 ms MPSGraph stem
