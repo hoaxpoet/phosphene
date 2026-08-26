@@ -26,16 +26,18 @@ final class RayMarchPipelineTests: XCTestCase {
     // Minimal sphere SDF preset: unit sphere at origin, matte grey material.
     // Signature matches the preamble forward-declarations in
     // PresetLoader+Preamble.swift `rayMarchGBufferPreamble` — including
-    // StemFeatures (per the "expose stems" change) and `outMatID`
-    // (LM.1 / D-LM-matid). The sphere stays on the standard dielectric
-    // path so outMatID is left at the caller's default 0.
+    // StemFeatures (per the "expose stems" change), `outMatID`
+    // (LM.1 / D-LM-matid), and `RosetteUniforms` (WHIT.2b — buffer(6), unused
+    // here like every non-Rosette preset).
     private static let spherePresetSource = """
     float sceneSDF(float3 p,
                    constant FeatureVector& f,
                    constant SceneUniforms& s,
                    constant StemFeatures& stems,
+                   constant RosetteUniforms& rosette,
                    texture2d<float> ferrofluidHeight) {
         (void)ferrofluidHeight;
+        (void)rosette;
         return length(p) - 1.0;
     }
 
@@ -48,9 +50,11 @@ final class RayMarchPipelineTests: XCTestCase {
                        thread float& roughness,
                        thread float& metallic,
                        thread int& outMatID,
-                       constant LumenPatternState& lumen) {
+                       constant LumenPatternState& lumen,
+                       constant RosetteUniforms& rosette) {
         (void)outMatID;
         (void)lumen;
+        (void)rosette;
         albedo    = float3(0.7, 0.7, 0.7);
         roughness = 0.5;
         metallic  = 0.0;
