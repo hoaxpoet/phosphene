@@ -33,7 +33,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     /// Optional particle geometry — compute update + point-sprite rendering.
     /// Typed as `any ParticleGeometry` so per-preset conformers (Murmuration's
-    /// `ProceduralGeometry`, future siblings) can attach via `setParticleGeometry`. D-097.
+    /// `Murmuration3DGeometry`, `Physarum`, siblings) attach via `setParticleGeometry`. D-097.
     var particleGeometry: (any ParticleGeometry)?
     let particleLock = NSLock()
 
