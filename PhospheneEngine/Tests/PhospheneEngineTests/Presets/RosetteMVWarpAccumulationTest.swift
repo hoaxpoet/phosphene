@@ -132,6 +132,33 @@ struct RosetteMVWarpAccumulationTest {
                 "Rosette bassDev=1.0 mean luma (\(brightMean)) is not brighter than bassDev=0.0 (\(dimMean)) — stroke_presence may not be reaching bassDev")
     }
 
+    // MARK: - BUG-104: curve-continuity regression guard
+
+    @Test("Rosette: the tangle-state curve renders as one continuous stroke, no branch-lock gaps (BUG-104)")
+    func test_rosette_curveIsContinuousAtHighA() throws {
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Rosette" }) else {
+            Issue.record("Rosette preset not found in _acceptanceFixture — is it registered?")
+            return
+        }
+        guard let mvWarp = preset.mvWarpPipelines, let geo = mvWarp.sceneGeometryState else {
+            Issue.record("Rosette preset compiled with no scene-geometry overlay pipeline")
+            return
+        }
+        let ctx = try MetalContext()
+        // The tangle state (a=1.80) is where rosetteDist's coarse-then-bisect search used
+        // to lock onto the single globally-closest coarse sample and never consider a
+        // different, ultimately-closer curve branch — visible live as literal gaps in the
+        // stroke (Matt: "Lines do not connect. The motion is all wrong."). Measured
+        // directly against the pre-fix render: bright-pixel coverage was 5.92% of the
+        // frame (gappy); fixed (checking all local minima among the coarse samples, not
+        // just the global one) it is 6.96%. 6.3% sits with margin on both sides.
+        let pixels = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                         width: Self.hiWidth, height: Self.hiHeight, time: Self.period / 2.0)
+        let fraction = brightPixelFraction(pixels, threshold: 100)
+        #expect(fraction > 0.063,
+                "Rosette tangle-state (a=1.80) bright-pixel coverage \(String(format: "%.4f", fraction)) is at or below the pre-fix (gappy) measurement of 0.0592 — rosetteDist may be locking onto a single curve branch again (BUG-104)")
+    }
+
     // MARK: - BUG-103: wing visibility at non-16:9 aspect regression guard
 
     @Test("Rosette: wing arcs stay on-screen at a near-square aspect (BUG-103)")
@@ -430,6 +457,18 @@ struct RosetteMVWarpAccumulationTest {
             }
         }
         return maxL
+    }
+
+    private func brightPixelFraction(_ pixels: [UInt8], threshold: Float) -> Double {
+        var count = 0
+        var n = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let b = Float(pixels[i]), g = Float(pixels[i + 1]), r = Float(pixels[i + 2])
+            let luma = 0.114 * b + 0.587 * g + 0.299 * r
+            if luma > threshold { count += 1 }
+            n += 1
+        }
+        return Double(count) / Double(n)
     }
 
     private func meanLuma(_ pixels: [UInt8]) -> Double {

@@ -281,6 +281,18 @@ tuning**: profile it live; if it doesn't clear budget, the fallback options name
 task 4 are an SDF-swept triangle-strip ribbon (vertex-stage geometry, no per-pixel search) or a
 reduced coarse-sample count with a correspondingly coarser bisection tolerance.
 
+**BUG-104 (found live at WHIT.1d-4, 2026-08-26): the same search also had a CORRECTNESS defect,
+not just an unmeasured performance one.** Refining from only the single globally-closest coarse
+sample locks the search onto whichever curve branch owned that sample and never considers a
+different, ultimately-closer branch — once the epicycle self-intersects (any `a` past the loosest
+states), several branches can pass near the same query point. Visible live as literal gaps in the
+stroke at the tangle state (a=1.80) and small disconnected dots at cusps (a=0.30). Matt: *"Lines
+do not connect. The motion is all wrong."* Fixed by finding ALL local minima among the coarse
+samples (a small top-3 candidate list) and bisect-refining each branch separately — see
+`Rosette.metal`'s `rosetteDist` for the implementation and its BUG-104 comment. The remaining
+small loops at a=0.30's cusps are real curve geometry (the second term's amplitude exceeds the
+exact-cusp threshold past `a=0.25`), not a residual defect.
+
 ## 7. Audio-routing table — all 5 declared (WHIT.1d / WHIT.1d-2)
 
 `WHITNEY_PROGRAM.md` §7 proposed five routes. **All shipped, audited against code, green on

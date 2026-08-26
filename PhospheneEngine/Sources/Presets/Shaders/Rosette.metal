@@ -78,28 +78,65 @@ static float2 rosetteCurve(float t, float a, float n) {
 }
 
 // Coarse-then-bisect nearest-point search on the closed curve — no closed-form SDF
-// exists for a two-term epicycle once it self-intersects. Cheap enough for a spike;
-// a per-pixel numerical search is not a shipped-perf pattern anywhere else in this
-// codebase, so WHIT.1c should revisit this for a 60fps budget (flagged in the
-// closeout, not solved here — out of WHIT.0 scope).
+// exists for a two-term epicycle once it self-intersects.
+//
+// BUG-104 (found live, Matt: "Lines do not connect. The motion is all wrong."):
+// bisecting from only the SINGLE globally-closest coarse sample locks the search onto
+// whichever curve branch happened to own that one sample, and never considers a
+// different, ultimately-closer branch passing nearby — a self-intersecting curve can
+// have several branches near the same query point. Visible live as literal gaps in the
+// rendered stroke at branch-crossing regions (worst at high `a`/tangle, where the second
+// term dominates and crossings are dense) and small disconnected artifact dots at cusps
+// (worst-case reproduction: `docs/VISUAL_REFERENCES/rosette/` motion review; regression
+// guard: `test_rosette_curveIsContinuousAtHighA`). Fixed by finding ALL local minima
+// among the coarse samples (not just the global-best raw value) and bisect-refining each
+// candidate branch separately, then taking the overall closest result.
+constant int kRosetteMaxBranchCandidates = 3;
 static float rosetteDist(float2 p, float a, float n) {
-    float bestD2 = 1e9;
-    float bestT = 0.0;
+    float d2arr[kRosetteCoarse];
     for (int i = 0; i < kRosetteCoarse; i++) {
         float t = 2.0 * M_PI_F * float(i) / float(kRosetteCoarse);
         float2 d = p - rosetteCurve(t, a, n);
-        float d2 = dot(d, d);
-        if (d2 < bestD2) { bestD2 = d2; bestT = t; }
+        d2arr[i] = dot(d, d);
     }
-    float span = M_PI_F / float(kRosetteCoarse);
-    for (int r = 0; r < kRosetteRefine; r++) {
-        float tA = bestT - span, tB = bestT + span;
-        float2 dA = p - rosetteCurve(tA, a, n);
-        float2 dB = p - rosetteCurve(tB, a, n);
-        float d2A = dot(dA, dA), d2B = dot(dB, dB);
-        if (d2A < bestD2) { bestD2 = d2A; bestT = tA; }
-        if (d2B < bestD2) { bestD2 = d2B; bestT = tB; }
-        span *= 0.5;
+
+    // Keep the smallest kRosetteMaxBranchCandidates LOCAL MINIMA (each a candidate
+    // distinct branch), not just the single smallest raw sample.
+    float candT[kRosetteMaxBranchCandidates];
+    float candD2[kRosetteMaxBranchCandidates];
+    for (int c = 0; c < kRosetteMaxBranchCandidates; c++) { candD2[c] = 1e9; candT[c] = 0.0; }
+    for (int i = 0; i < kRosetteCoarse; i++) {
+        int iPrev = (i - 1 + kRosetteCoarse) % kRosetteCoarse;
+        int iNext = (i + 1) % kRosetteCoarse;
+        if (d2arr[i] <= d2arr[iPrev] && d2arr[i] <= d2arr[iNext]) {
+            int worst = 0;
+            for (int c = 1; c < kRosetteMaxBranchCandidates; c++) {
+                if (candD2[c] > candD2[worst]) worst = c;
+            }
+            if (d2arr[i] < candD2[worst]) {
+                candD2[worst] = d2arr[i];
+                candT[worst] = 2.0 * M_PI_F * float(i) / float(kRosetteCoarse);
+            }
+        }
+    }
+
+    float bestD2 = 1e9;
+    float span0 = M_PI_F / float(kRosetteCoarse);
+    for (int c = 0; c < kRosetteMaxBranchCandidates; c++) {
+        if (candD2[c] >= 1e9) continue;   // fewer than kRosetteMaxBranchCandidates branches nearby
+        float bestT = candT[c];
+        float bestLocalD2 = candD2[c];
+        float span = span0;
+        for (int r = 0; r < kRosetteRefine; r++) {
+            float tA = bestT - span, tB = bestT + span;
+            float2 dA = p - rosetteCurve(tA, a, n);
+            float2 dB = p - rosetteCurve(tB, a, n);
+            float d2A = dot(dA, dA), d2B = dot(dB, dB);
+            if (d2A < bestLocalD2) { bestLocalD2 = d2A; bestT = tA; }
+            if (d2B < bestLocalD2) { bestLocalD2 = d2B; bestT = tB; }
+            span *= 0.5;
+        }
+        bestD2 = min(bestD2, bestLocalD2);
     }
     return sqrt(bestD2);
 }
