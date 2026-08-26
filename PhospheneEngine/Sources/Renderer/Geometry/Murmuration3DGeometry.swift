@@ -4,8 +4,8 @@
 // (Particles.metal — birds spring-pulled to home slots in a morphing ellipse,
 // dense and framed by construction) lifted into 3D with perspective depth and
 // real banking. A `ParticleGeometry` sibling (D-097) — owns its own M3DParticle
-// layout + `murmuration3d_*` kernels rather than parameterising ProceduralGeometry
-// or the (retired) emergent Flock2. See `docs/presets/MURMURATION_DESIGN.md`.
+// layout + `murmuration3d_*` kernels rather than parameterising the 2D
+// ProceduralGeometry (retired at RECON.17) or the (retired) emergent Flock2. See `docs/presets/MURMURATION_DESIGN.md`.
 
 import Metal
 import Shared

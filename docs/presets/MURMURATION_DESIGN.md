@@ -224,7 +224,8 @@ waves, flash expansion, breathing) are biology-grounded; *mapping them to stems*
   (D-097 "siblings, not subclasses").
 - **New conformer** `MurmurationFlockGeometry: ParticleGeometry` (replaces `ProceduralGeometry` as
   Murmuration's geometry; `ProceduralGeometry`/`Particles.metal` retired if no other consumer — grep
-  confirms Murmuration is the only one). `ParticleGeometryRegistry.knownPresetNames` stays
+  confirms Murmuration is the only one). **Done: the live conformer is `Murmuration3DGeometry`, and
+  `ProceduralGeometry`/`Particles.metal` were deleted at RECON.17 (2026-08-26) once the grep held.** `ParticleGeometryRegistry.knownPresetNames` stays
   `["Murmuration"]`; `resolveParticleGeometry` returns the new conformer.
 - **Particle struct.** The existing 64-byte `Particle` already carries `packed_float3 position`
   (z currently 0) and `velocity` — enough for 3D + banking phase packed into `size`/`age`/`_pad`.

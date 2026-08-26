@@ -63,6 +63,20 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.17 — the 2D Murmuration flock and hardware ray tracing deleted ✅ (2026-08-26)
+
+Matt's park-or-delete call on the first two of the four dormant capabilities from the 2026-08-25 preset audit (2026-08-26). Both were built to capability-complete, both work, and neither has a consumer — the **D-203** precedent: *good work is not a reason to keep code with no consumer.* **−2,562 lines.**
+
+**A. The 2D Murmuration flock** (`Geometry/ProceduralGeometry.swift` 333 + `Shaders/Particles.metal` 297 + `ProceduralGeometryTests` 237 + `MurmurationStemRoutingTests` 496). Murmuration has rendered through `Murmuration3DGeometry` since MM.3; the generic 2D path was constructed *only* by those two test files — and `MurmurationStemRoutingTests` was validating the stem routing of a kernel no preset runs. `Particles.metal` went whole: its `Particle` struct, `ParticleConfig`, `particle_update`, `particle_vertex`/`particle_fragment` were each verified to have no consumer outside `ProceduralGeometry` (the public Swift `Particle` type survived only in a doc comment). **`MURMURATION_DESIGN.md` §12 anticipated exactly this** — *"`ProceduralGeometry`/`Particles.metal` retired if no other consumer — grep confirms Murmuration is the only one"* — and the registry row carried its own retirement condition, *"retiring it is a later cleanup once nothing else consumes it."* Both are now marked done rather than left as standing intentions.
+
+**B. Hardware ray tracing** (`Renderer/RayTracing/` — `BVHBuilder` 269, `RayIntersector` 378, `+Internal` 101 — plus `Shaders/RayTracing.metal` 147 and `BVHBuilderTests`/`RayIntersectorTests` ~300). The capability row said it itself: *"Available; not yet wired into a shipping preset."* Both types are constructed only in their own tests; the `rt_nearest_hit_kernel` / `rt_shadow_kernel` entry points are looked up nowhere but `RayIntersector`. Its single design-doc mention is `ARACHNE_3D_DESIGN.md` §C **Option C.2 — the option that was not chosen** (C.1 screen-space was). Annotated in place so a future revival rebuilds rather than hunts. Note this was a hand-rolled BVH, not a platform dependency: Metal's `MTLAccelerationStructure` / `MPSRayIntersector` remain available to any future preset.
+
+**Verified before cutting, per the RECON.16 lesson.** Every symbol was grepped individually rather than trusting the audit's counts, and the shared-layer trap was checked first: `Particles.metal` looked shared (its header claims the `Particle` layout is "shared across all conformers"), so each of its five declarations was traced to a consumer before the file went — the claim turned out to be a convention other conformers follow, not a dependency they link against.
+
+Full engine suite green (**1,873 tests in 288 suites**), app builds, SwiftLint 0 violations across 514 files. No preset's rendering changes: nothing deleted was reachable from any shipping preset.
+
+**Remaining dormant capabilities:** ICB (~830 lines) and SSGI (~700), both still awaiting the same call.
+
 ### Increment RECON.16 — ShaderUtilities.metal reduced to its live surface ✅ (2026-08-26)
 
 Third item from the 2026-08-25 preset audit. The preamble concatenated **two parallel utility libraries** into every preset compile: the V.1–V.3 `Utilities/` tree (canonical, snake_case) and legacy `ShaderUtilities.metal` (camelCase). A transitive reachability census over every preset shader, every Renderer shader, every preamble string and every Swift call site found **38 of its 42 functions had no caller anywhere** — the entire SDF-primitive, ray-marching, PBR and UV-transform sections (the ray-march helpers additionally required a user-defined `map()` no preset ever defined), plus the unused noise and colour helpers. **639 → 128 lines.**
