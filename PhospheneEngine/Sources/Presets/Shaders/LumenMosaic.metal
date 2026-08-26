@@ -622,9 +622,11 @@ float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s,
                constant StemFeatures& stems,
+               constant RosetteUniforms& rosette,
                texture2d<float> ferrofluidHeight) {
     (void)f;
     (void)stems;
+    (void)rosette;           // WHIT.2b slot-6; Rosette only.
     (void)ferrofluidHeight;  // V.9 Session 4.5b slot-10; Ferrofluid Ocean only.
 
     // Panel half-extents: oversized so the box bleeds past the visible
@@ -703,9 +705,11 @@ void sceneMaterial(float3 p,
                    thread float& roughness,
                    thread float& metallic,
                    thread int& outMatID,
-                   constant LumenPatternState& lumen) {
+                   constant LumenPatternState& lumen,
+                   constant RosetteUniforms& rosette) {
     (void)matID;
     (void)stems;
+    (void)rosette;  // WHIT.2b slot-6; Rosette only.
 
     // Project hit position into the panel-face uv frame (`[-1, +1]`
     // exactly at the visible frame edges; `[-1.5, +1.5]` at the SDF

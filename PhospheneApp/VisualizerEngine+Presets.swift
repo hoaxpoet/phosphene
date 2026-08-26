@@ -257,6 +257,12 @@ extension VisualizerEngine {
                     // re-entering a ray-march preset doesn't jump forward by
                     // the distance accumulated during its previous activation.
                     rmPipeline.cameraDollyOffset = 0
+
+                    // WHIT.2b — camera orbit (Rosette's turntable). Same rationale as
+                    // the dolly wiring above: lives in the sidecar so the engine-side
+                    // SessionReplayHarness renders the same motion production does.
+                    rmPipeline.cameraOrbitSpeed = desc.sceneOrbitSpeed
+                    rmPipeline.cameraOrbitAngle = 0
                     rmPipeline.lastDollyFrameTime = nil
 
                     // MFX.1 — MetalFX Temporal opt-in. `metalFXEnabled` must be set

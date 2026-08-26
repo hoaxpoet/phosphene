@@ -71,10 +71,9 @@ struct MultiPassRenderHarness {
         // until this increment: PresetFrameBudgetTests carried "Ricercar" in its UNVERIFIED
         // list, so its mandatory performance and D-157 flash gates had never actually run.
         "Ricercar",
-        // WHIT.1d — Rosette needs no per-preset CPU state (unlike Skein), so it falls
-        // straight into the shared `renderMVWarp` path's `else` branch. Wired at
-        // authoring time, not certification (the Meniscus/Ricercar lesson) — measured
-        // now that stroke_presence (bassDev) gives it real audio-driven brightness.
+        // WHIT.2b — Rosette converted from `direct + mv_warp` to `ray_march` (a real 3D
+        // swept-tube figure + wing arcs, PBR lighting). Wired at authoring time, not
+        // certification (the Meniscus/Ricercar lesson).
         "Rosette"
     ]
 
@@ -103,7 +102,8 @@ struct MultiPassRenderHarness {
         case "Nacre":        return try renderBespokeMVWarp("Nacre", features, stems, reduce)
         case "Floret":       return try renderBespokeMVWarp("Floret", features, stems, reduce)
         case "Glaze":        return try renderBespokeMVWarp("Glaze", features, stems, reduce)
-        case "Dragon Bloom", "Skein", "Rosette": return try renderMVWarp(presetName, features, stems, reduce)
+        case "Dragon Bloom", "Skein": return try renderMVWarp(presetName, features, stems, reduce)
+        case "Rosette":      return try renderRosette(features, stems, reduce)
         case "Fractal Tree": return try renderMeshPreset(presetName, features, stems,
                                                          settle: settle, reduce)
         case "Nebula", "Plasma", "Spectral Cartograph", "Waveform":
@@ -530,6 +530,85 @@ struct MultiPassRenderHarness {
         }
     }
 
+    // MARK: - Render: ray-march (Rosette — WHIT.2b)
+
+    /// Rosette's per-preset state (`RosetteState`, fragment slot 6 — WHIT.2b's
+    /// `presetFragmentBuffer1`) plus the camera orbit (`RayMarchPipeline.applyAudioModulation`,
+    /// WHIT.2b) — an unbound slot-6 buffer here would collapse `rosetteDist`'s `n` to 0 and
+    /// degenerate the swept tube to a fixed unit circle regardless of audio input, the exact
+    /// class of bug that hit the retired 2D mv_warp path's own flash-safety measurement.
+    private func renderRosette<T>(_ drive: [FeatureVector], _ stems: [StemFeatures],
+                                  _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Rosette" }) else {
+            throw HarnessError.presetNotFound("Rosette")
+        }
+        guard let gbufferState = preset.rayMarchPipelineState else {
+            throw HarnessError.setupFailed("Rosette rayMarchPipelineState missing")
+        }
+        let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
+        pipeline.allocateTextures(width: width, height: height)
+        let uniforms = preset.descriptor.makeSceneUniforms()
+        pipeline.sceneUniforms = uniforms
+        pipeline.sceneUniforms.sceneParamsA.y = Float(width) / Float(height)
+        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
+        // Seed baseScene + the orbit speed exactly as VisualizerEngine+Presets.applyPreset
+        // does (same BUG-074-class parity requirement the dolly already has) — without this
+        // the orbit reads off zeros and the camera never moves.
+        var snap = RayMarchPipeline.BaseSceneSnapshot()
+        snap.cameraPosition = SIMD3(uniforms.cameraOriginAndFov.x,
+                                    uniforms.cameraOriginAndFov.y,
+                                    uniforms.cameraOriginAndFov.z)
+        snap.lightIntensity = uniforms.lightPositionAndIntensity.w
+        snap.lightColor = SIMD3(uniforms.lightColor.x, uniforms.lightColor.y, uniforms.lightColor.z)
+        snap.fogFar = uniforms.sceneParamsB.y
+        snap.fov = uniforms.cameraOriginAndFov.w
+        pipeline.baseScene = snap
+        pipeline.cameraOrbitSpeed = preset.descriptor.sceneOrbitSpeed
+
+        let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
+        let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
+        let postChain: PostProcessChain?
+        if preset.descriptor.passes.contains(.postProcess) {
+            let chain = try PostProcessChain(context: ctx, shaderLibrary: lib)
+            chain.allocateTextures(width: width, height: height)
+            postChain = chain
+        } else {
+            postChain = nil
+        }
+        guard let state = RosetteState(device: ctx.device) else {
+            throw HarnessError.setupFailed("RosetteState allocation")
+        }
+
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            throw HarnessError.setupFailed("audio buffers")
+        }
+        let outTex = try makeOutputTexture(ctx)
+        return try renderLoop(drive, ctx, outTex, reduce) { i, pixels in
+            var fv = drive[i]
+            let stem = stems[i]
+            state.tick(deltaTime: fv.deltaTime, features: fv)
+            pipeline.sceneUniforms.sceneParamsA.x = fv.accumulatedAudioTime
+            pipeline.applyAudioModulation(features: fv)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw HarnessError.renderFailed }
+            pipeline.render(
+                gbufferPipelineState: gbufferState,
+                features: &fv,
+                fftBuffer: fft, waveformBuffer: wav,
+                stemFeatures: stem,
+                outputTexture: outTex,
+                commandBuffer: cmd,
+                noiseTextures: noise,
+                iblManager: ibl,
+                postProcessChain: postChain,
+                presetFragmentBuffer1: state.rosetteBuffer)
+            try commit(cmd, outTex, into: &pixels)
+        }
+    }
+
     // MARK: - Render: ray-march, no follower (Volumetric Lithograph)
 
     // VL is the Lumen ray_march path minus the 4-light follower, plus the two
@@ -637,22 +716,6 @@ struct MultiPassRenderHarness {
             skein = nil
         }
 
-        // WHIT.1d-2: Rosette's rotation (tonalPhaseFifths) and symmetry-order step
-        // (harmonicFlux) both read RosetteUniforms at fragment buffer(6) — an unbound
-        // slot here reads zeros, collapsing `rosetteDist`'s `n` to 0 and degenerating the
-        // curve to a fixed unit circle regardless of audio input (found live: the flash
-        // harness read the preset as falsely "static" under its worst-case drive).
-        let rosette: RosetteState?
-        if presetName == "Rosette" {
-            guard let state = RosetteState(device: ctx.device) else {
-                throw HarnessError.setupFailed("RosetteState allocation")
-            }
-            pipeline.setDirectPresetFragmentBuffer(state.rosetteBuffer)   // slot 6
-            rosette = state
-        } else {
-            rosette = nil
-        }
-
         let outTex = try makeOutputTexture(ctx)
         return try renderLoop(drive, ctx, outTex, reduce) { i, pixels in
             var fv = drive[i]
@@ -661,7 +724,6 @@ struct MultiPassRenderHarness {
                 skein.tick(deltaTime: fv.deltaTime, features: fv, stems: stem)
                 pipeline.setMVWarpWetnessDecay(skein.wetnessDecay)
             }
-            rosette?.tick(deltaTime: fv.deltaTime, features: fv)
             guard let cmd = ctx.commandQueue.makeCommandBuffer(),
                   let warpState = pipeline.mvWarpState else { throw HarnessError.renderFailed }
             pipeline.renderMVWarpToTexture(
