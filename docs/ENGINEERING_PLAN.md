@@ -7746,3 +7746,38 @@ performance fixes. Documentation still to update after this closeout:
 `docs/ARCHITECTURE.md` (Module Map entry for `Rosette.metal`; GPU Contract Details note for
 buffer(6)'s ray-march-specific `RosetteUniforms` meaning) and `docs/presets/ROSETTE_DESIGN.md`
 (architecture section rewrite reflecting the ray-march conversion).
+
+### Increment WHIT.2c — Rosette: camera orbit removed ✅ (2026-08-26)
+
+**Matt's live M7 on the completed WHIT.2b build:** *"I hate it. It's just a few objects rotating
+360 degrees and moving poorly with the music. Movement of the patterns is minimal and feels
+completely disconnected from the music. I dislike the rotation and hate the way the pattern
+moves."* He attached the real session folder from that look.
+
+**Diagnosed from his session data before touching code (D-223's full diagnosis).** Two findings,
+both from `features.csv`: (1) the camera orbit ran at a fixed 0.12 rad/s with zero audio coupling
+— the single most dominant motion in the frame, moving the ENTIRE composition every frame,
+completely unrelated to the music; (2) replaying his actual session
+(`SessionReplayHarness`/`REPLAY_SESSION`) showed the orbit periodically pointing the camera near
+edge-on to the WHOLE scene — figure and both wing arcs all lie flat in the z=0 plane, so any
+near-edge-on angle flattens everything at once, not just one element. Stills pulled at several of
+his session's timestamps showed the composition collapse to a plain ring plus two thin lines even
+where the underlying curve was not actually that simple. A third finding — `tonal_consonance` on
+this track averaging 0.071 against the corpus calibration's 0.117 median / 0.32 p99, so 84% of
+frames sit below half-weight on the harmony signal versus the audio-independent floor-drift clock
+— was surfaced and presented to Matt as a SEPARATE, still-open question, not folded into this fix.
+
+**Fixed:** `scene_orbit_speed` removed from `Rosette.json` — Matt: *"eliminate the orbit"*. Camera
+reverts to the fixed position already verified against the jaggedness/perf fixes. The generic
+engine feature is NOT deleted (cheap, generic, mirrors the kept `scene_dolly_speed` — Rosette's
+failure was a constant rate on a flat scene, not a defect in the mechanism itself).
+
+**Verification.** `RosetteRayMarchTests`, `PresetFrameBudgetTests`, and
+`MultiPassFlashHarnessTests.rosetteIsFlashSafe` re-run green (flash-safety Δ0.010→Δ0.008, still
+comfortably above the 0.003 floor, still 0.00 flashes/s). Full engine suite green.
+
+**Filed:** D-223 (`docs/DECISIONS.md`).
+
+**Remaining:** the open tightness-calibration question (finding 3 above) — presented to Matt, not
+yet decided. Whether the orbit capability gets a second life on Rosette or elsewhere (an
+audio-modulated rate was offered as an option) is also open.

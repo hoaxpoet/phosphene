@@ -197,10 +197,8 @@ as history — the bugs and lessons in it are durable even though the architectu
 - **Camera + lighting.** `scene_camera`/`scene_lights`/`scene_backdrop: "dark"` set up a
   conventional key+fill two-light rig against a near-black void (the `scene_backdrop` field
   decouples background darkness from light intensity — see `docs/ARCHITECTURE.md`'s GPU Contract
-  Details for the mechanism). `scene_orbit_speed=0.12` (a new, engine-generic camera feature —
-  §SHADER_CRAFT.md's preset metadata table) slowly turntables the camera around the world origin,
-  because a static shot undersells a ray-marched tube's actual roundness (self-occlusion and depth
-  read mainly through parallax, not a still frame).
+  Details for the mechanism). The camera is STATIC — see §6.10 (WHIT.2c) for why the WHIT.2b
+  camera orbit was tried and removed.
 - **Nearest-point search.** `rosetteDist` (the figure's distance-to-curve function) is a dense
   150-segment point-to-segment polyline scan, matching the wing arcs' own long-proven technique —
   see §6.7 for why this replaced the earlier coarse+bisect search, and §6.8 for the performance
@@ -323,6 +321,44 @@ fix's CONTINUITY property (no gaps at self-crossings) carried cleanly into the W
 conversion and is re-verified there by `test_rosette_curveIsContinuousAtHighA` — but the search
 TECHNIQUE itself was later replaced entirely (§6.7) once ray-march normals exposed a smoothness
 defect the flat 2D fragment never could.
+
+### 6.10 WHIT.2c: the camera orbit was tried and removed (Matt live: "eliminate the orbit")
+
+Matt's first live look at the completed conversion (jaggedness/perf fixes included): *"I hate it.
+It's just a few objects rotating 360 degrees and moving poorly with the music. Movement of the
+patterns is minimal and feels completely disconnected from the music. I dislike the rotation and
+hate the way the pattern moves."* Diagnosis, from his own attached session
+(`features.csv`/`stems.csv`), before any fix was attempted (per the codebase's diagnose-first
+discipline):
+
+- **The orbit itself carries zero audio information.** `scene_orbit_speed=0.12` ran at a constant
+  rate regardless of the music — the single most visually dominant motion in the frame (it moves
+  the ENTIRE composition every frame) had no coupling to anything Matt was hearing. This is very
+  likely the direct cause of "moving poorly with the music" / "disconnected from the music" — the
+  one thing his eye tracked as "the pattern moving" wasn't reading the song at all.
+- **Compounding, found by replaying his actual session through the real render path**: because the
+  figure AND both wing arcs all lie flat in the z=0 plane, orbiting the camera around the world
+  origin periodically points it near edge-on to the ENTIRE scene at once — not just one element.
+  Stills pulled from his session at several timestamps (`SessionReplayHarness`, `REPLAY_SESSION`)
+  showed the whole composition flattened to a plain ring plus two thin lines at multiple points
+  across the track, even though the underlying curve (verified via the same session's
+  `tonal_consonance`/`harmonic_flux` values) was not actually that simple at those moments — the
+  orbit was periodically HIDING real geometric complexity behind a bad viewing angle, not just
+  failing to add anything.
+- A second, independent finding from the same session data — **`tonal_consonance` on this specific
+  track averaged 0.071 against the corpus calibration's median of 0.117 and p99 of 0.32, so 84% of
+  frames sat below the point where the harmony signal even reaches half-weight against the
+  audio-independent floor-drift clock** — was also surfaced but is a SEPARATE, still-open question
+  (the tightness calibration's fit to real tracks), not yet decided by Matt and not addressed by
+  this fix.
+
+**Decision:** `scene_orbit_speed` removed from `Rosette.json` (reverts to the engine default,
+camera-static — the same fixed position `[1.15, 1.0, -1.9]` the earlier jaggedness/perf fixes were
+verified against). The generic `scene_orbit_speed` engine feature itself is NOT deleted — it is
+cheap, generic camera plumbing (mirrors the already-kept `scene_dolly_speed` pattern), and the
+failure mode here was Rosette-specific (an unmodulated rate against a wholly planar scene), not a
+defect in the mechanism. A future preset with real out-of-plane geometry, or an audio-modulated
+orbit rate, is a different case and can still use it.
 
 ## 7. Audio-routing table — all 5 declared (WHIT.1d / WHIT.1d-2)
 
