@@ -173,7 +173,7 @@ struct MitosisGen2GeometryTests {
         let tex = try target(ctx, w, h)
         var base = URL(fileURLWithPath: #filePath)
         for _ in 0..<5 { base.deleteLastPathComponent() }
-        let dir = base.appendingPathComponent("tools/mitosis_gen2_sketch/frames/geometry", isDirectory: true)
+        let dir = base.appendingPathComponent("tools/mitosis_gen2_renders", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var t: Float = 0; var shot = 0
         for fr in 0..<(50 * 60) {
