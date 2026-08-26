@@ -77,9 +77,17 @@ struct PresetSessionReplay: AsyncParsableCommand {
         print("  inferred fps: \(String(format: "%.2f", data.inferredFPS))")
         print("  video: \(data.videoURL?.lastPathComponent ?? "—")")
 
-        let routes = try resolvePreset(preset)
-        let routeAnalysis = try analyzeAllRoutes(
-            routes: routes, data: data, outputURL: outputURL)
+        // Hand-written specs win where they exist: they encode the preset's real
+        // gate edges and derived inputs, which the sidecar cannot express. Every
+        // other preset resolves from its `audio_routes` manifest (SR.2).
+        let routeAnalysis: RouteAnalysisBundle
+        if let routes = handWrittenSpecs(for: preset) {
+            routeAnalysis = try analyzeAllRoutes(
+                routes: routes, data: data, outputURL: outputURL)
+        } else {
+            routeAnalysis = try analyzeSidecarRoutes(
+                presetName: preset, sessionURL: sessionURL)
+        }
 
         let (motion, gridURLs) = try maybeAnalyzeMotion(data: data, outputURL: outputURL)
 
@@ -265,18 +273,61 @@ struct PresetSessionReplay: AsyncParsableCommand {
 
     // MARK: - Preset registry
 
-    private func resolvePreset(_ name: String) throws -> [RouteSpec] {
+    /// Presets whose routes are hand-written because the spec encodes something the
+    /// sidecar cannot: a real smoothstep edge, or a derived multi-primitive input.
+    ///
+    /// Both surviving entries were re-verified against their sources at RECON.21 —
+    /// Skein's 0.13 onset gate is `SkeinState.onsetDevThreshold`, and Murmuration's
+    /// `(drums+bass+other)/3 + 0.4·vocals` is `Murmuration3DGeometry`'s `stemEnergy`.
+    /// `nil` means "resolve from the sidecar", which is now the default path.
+    ///
+    /// (Aurora Veil's hand-written specs were deleted at RECON.21: they described the
+    /// pre-AV.7 AV.2.h.1 shader — vocals→hue, bass→brightness, drums→kink, citing a
+    /// line number past the end of the 225-line file — so replay was reporting on
+    /// routes that could not fire. Its real routes are in its sidecar.)
+    private func handWrittenSpecs(for name: String) -> [RouteSpec]? {
         switch name.lowercased() {
-        case "aurora_veil", "aurora-veil", "auroraveil":
-            return AuroraVeilRouteSpecs.all
         case "murmuration":
             return MurmurationRouteSpecs.all
         case "skein":
             return SkeinRouteSpecs.all
         default:
-            throw ValidationError(
-                "Unknown preset '\(name)'. Registered: aurora_veil, murmuration, skein. "
-                + "Add new presets in PresetSessionReplay.swift::resolvePreset.")
+            return nil
         }
+    }
+
+    /// Resolve and analyse routes from the preset's `audio_routes` sidecar.
+    private func analyzeSidecarRoutes(
+        presetName: String,
+        sessionURL: URL
+    ) throws -> RouteAnalysisBundle {
+        guard let descriptor = SidecarLocator.descriptor(forPresetNamed: presetName) else {
+            throw ValidationError(
+                "No routes for preset '\(presetName)': no hand-written spec set, and no "
+                + "sidecar found whose `name` matches. Check the spelling against the "
+                + "preset's JSON sidecar `name` field.")
+        }
+        let (inputs, unmapped) = SidecarRouteSpecs.resolve(descriptor: descriptor)
+        guard !inputs.isEmpty else {
+            throw ValidationError(
+                "Preset '\(presetName)' declares no usable `audio_routes` in its sidecar. "
+                + "QG.1 requires a non-empty manifest for certification — add the routes "
+                + "there and replay picks them up with no code change.")
+        }
+        for skipped in unmapped {
+            print("  ⚠︎ \(skipped): primitive not in AudioRoutePrimitives.map — skipped")
+        }
+        let columns = try SessionColumnSeries.load(directory: sessionURL)
+        print("Analyzing \(inputs.count) sidecar-declared route inputs for \(presetName)...")
+        let reports = SidecarRouteSpecs.analyze(inputs: inputs, columns: columns)
+        for report in reports {
+            let pct = String(format: "%.2f", report.firingPercent)
+            let note = report.totalFrames == 0 ? " (column not recorded in this session)" : ""
+            print("  \(report.route.name): \(pct)% firing\(note)")
+        }
+        // Event montage needs a SessionFrame extractor, which sidecar specs do not
+        // carry — the firing table is the deliverable here, stated not implied.
+        return RouteAnalysisBundle(
+            routeReports: reports, eventsByRoute: [:], eventImages: [:])
     }
 }

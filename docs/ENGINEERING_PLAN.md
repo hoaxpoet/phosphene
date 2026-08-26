@@ -63,6 +63,29 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.21 — replay routes resolve from the `audio_routes` sidecars ✅ (2026-08-26)
+
+The audit's one structural item, and the only one that makes future presets *cheaper* rather than the tree smaller. **Replayable presets: 3 → 21.**
+
+**The problem.** Replay route specs were hand-written Swift, one file per preset. That stalled coverage at 3 of 26 because each new preset cost a ~90-line file plus a registry edit, and the files duplicated gate constants their own headers admitted had to be "kept in sync by code review" (`AuroraVeilRoutes` even promised "SR.2 will centralize these"). Meanwhile QG.1 (D-179) already requires every preset to declare its routes in the sidecar, `AudioRoutePrimitives` already maps each primitive to its recorded column, and `RouteCoverageTests` already asserts they fire. The manifest existed; replay just wasn't reading it.
+
+**`SidecarRouteSpecs` + `SidecarLocator`** resolve a preset name to its sidecar and build specs from `audio_routes`. A preset is now replayable by shipping the entry it must ship anyway for certification. `resolvePreset`'s "Unknown preset" wall is gone.
+
+**Two things the sidecar cannot express — stated, not guessed:**
+
+1. **Gate thresholds.** A sidecar route declares `kind`, not the shader's smoothstep edges. Sidecar-derived specs use the QG.1 per-kind coverage floors (`accent` → 0.02, matching `RouteCoverageTests.accentThreshold`; `continuous` → just above zero, since the assertion is that it varies). Those measure *whether the input is live*, not the visual amplitude — the spec text says so in the report.
+2. **Multi-primitive arithmetic.** 38 of 121 declared routes list several primitives, and the sidecar does not say how the shader combines them — Skein's painter speed takes `mean(max(0, ·))` of four stem deviations while its stem-mix gate takes their SUM. Rather than invent a rule, the resolver emits **one spec per (route, primitive)**, labelled with both.
+
+**Hand-written specs still win where they exist**, because they encode exactly what the sidecar cannot. Both survivors were re-verified against their sources rather than assumed: Skein's 0.13 gate is `SkeinState.onsetDevThreshold`, and Murmuration's `(drums+bass+other)/3 + 0.4·vocals` is `Murmuration3DGeometry`'s `stemEnergy`.
+
+**`AuroraVeilRoutes` deleted — it was reporting on a preset that no longer exists.** Its specs described the pre-AV.7 AV.2.h.1 shader (vocals→hue, bass→brightness, drums→kink) and cited `AuroraVeil.metal:515` in a file that is 225 lines; AV.7 removed all audio routing. Anyone running AV replay diagnostics was reading a report about a retired shader. The sidecar path reports its real routes (`star_beat_twinkle`, `veil_breathe`, `mood_colour`). This was surfaced during RECON.20 and flagged rather than silently patched; it is fixed here as the side effect predicted.
+
+**Reads through `SessionColumnSeries`, not `SessionFrame`** — the latter carries 16 fields while a declared primitive may be any recorded column, which is why the frame-based path could never have covered the corpus. `RouteSpec.inputValue` became optional to express "this spec reads a column, not a frame"; the event-montage extractor guards it and yields no events rather than a wrong one.
+
+`SidecarRouteSpecsTests` holds the coverage claim to the tree (every declaring preset resolves; ≥20 expected), plus name-normalisation, per-kind gate selection, and an Aurora Veil case asserting the retired route names cannot reappear.
+
+Engine suite 1,859 / 287 green, SwiftLint 0 in 511, doc gates 13/13.
+
 ### Increment RECON.20 — three preset residues deleted (sketch, Aurora Veil state, Arachne pool) ✅ (2026-08-26)
 
 The audit's three remaining ordinary deletions. **−1,314 lines.** Each was verified dead individually rather than inherited from the report.
