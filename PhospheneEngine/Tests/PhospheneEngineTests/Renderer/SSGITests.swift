@@ -33,10 +33,8 @@ final class SSGITests: XCTestCase {
                    constant FeatureVector& f,
                    constant SceneUniforms& s,
                    constant StemFeatures& stems,
-                   constant RosetteUniforms& rosette,
                    texture2d<float> ferrofluidHeight) {
         (void)ferrofluidHeight;
-        (void)rosette;
         return length(p) - 1.0;
     }
 
@@ -49,11 +47,9 @@ final class SSGITests: XCTestCase {
                        thread float& roughness,
                        thread float& metallic,
                        thread int& outMatID,
-                       constant LumenPatternState& lumen,
-                       constant RosetteUniforms& rosette) {
+                       constant LumenPatternState& lumen) {
         (void)outMatID;
         (void)lumen;
-        (void)rosette;
         albedo    = float3(0.7, 0.7, 0.7);
         roughness = 0.5;
         metallic  = 0.0;
@@ -67,10 +63,8 @@ final class SSGITests: XCTestCase {
                    constant FeatureVector& f,
                    constant SceneUniforms& s,
                    constant StemFeatures& stems,
-                   constant RosetteUniforms& rosette,
                    texture2d<float> ferrofluidHeight) {
         (void)ferrofluidHeight;
-        (void)rosette;
         return length(p) - 1.0;
     }
 
@@ -83,11 +77,9 @@ final class SSGITests: XCTestCase {
                        thread float& roughness,
                        thread float& metallic,
                        thread int& outMatID,
-                       constant LumenPatternState& lumen,
-                       constant RosetteUniforms& rosette) {
+                       constant LumenPatternState& lumen) {
         (void)outMatID;
         (void)lumen;
-        (void)rosette;
         albedo    = float3(1.0, 1.0, 1.0);   // pure white for max luminance
         roughness = 0.1;                       // low roughness = strong specular
         metallic  = 0.9;

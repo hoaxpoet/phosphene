@@ -528,9 +528,7 @@ float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s,
                constant StemFeatures& stems,
-               constant RosetteUniforms& rosette,
                texture2d<float> ferrofluidHeight) {
-    (void)rosette;  // WHIT.2b slot-6; Rosette only.
     (void)s;
     // Round 58 (2026-05-17): switch Gerstner time source from
     // `accumulated_audio_time` to `features.time`. The accumulated_audio_time
@@ -633,9 +631,8 @@ void sceneMaterial(float3 p,
                    thread float& roughness,
                    thread float& metallic,
                    thread int& outMatID,
-                   constant LumenPatternState& lumen,
-                   constant RosetteUniforms& rosette) {
-    (void)p; (void)matID; (void)f; (void)s; (void)stems; (void)lumen; (void)rosette;
+                   constant LumenPatternState& lumen) {
+    (void)p; (void)matID; (void)f; (void)s; (void)stems; (void)lumen;
     albedo    = float3(0.02, 0.03, 0.05);  // §4.6 ferrofluid base
     roughness = 0.08;                       // near-mirror
     metallic  = 1.0;

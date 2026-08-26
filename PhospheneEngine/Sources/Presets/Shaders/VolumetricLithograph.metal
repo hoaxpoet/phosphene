@@ -775,9 +775,7 @@ float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s,
                constant StemFeatures& stems,
-               constant RosetteUniforms& rosette,
                texture2d<float> ferrofluidHeight) {
-    (void)rosette;           // WHIT.2b slot-6; Rosette only.
     (void)ferrofluidHeight;  // V.9 Session 4.5b slot-10; Ferrofluid Ocean only.
     float audioPhase = s.sceneParamsA.x;                            // accumulated audio time
 
@@ -860,12 +858,10 @@ void sceneMaterial(float3 p,
                    thread float& roughness,
                    thread float& metallic,
                    thread int& outMatID,
-                   constant LumenPatternState& lumen,
-                   constant RosetteUniforms& rosette) {
+                   constant LumenPatternState& lumen) {
     // outMatID stays at the caller's default (0 = standard dielectric); VL
     // ships through the existing Cook-Torrance dielectric path.
     (void)outMatID;
-    (void)rosette;  // WHIT.2b slot-6; Rosette only.
     // `lumen` (LM.2 / D-LM-buffer-slot-8) is the trailing slot-8 buffer used
     // by Lumen Mosaic. Non-Lumen presets ignore it.
     (void)lumen;

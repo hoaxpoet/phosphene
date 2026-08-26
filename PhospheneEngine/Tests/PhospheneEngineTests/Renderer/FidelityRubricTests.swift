@@ -146,12 +146,6 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Murmuration":          false,   // full; M3 fails (file: Murmuration.metal)
     "Nebula":               false,   // lightweight; L2 fails — no deviation primitives in source
     "Plasma":               false,   // lightweight; L2 fails — no deviation primitives in source
-    "Rosette":              true,    // lightweight; L1/L2/L3 all pass (WHIT.1d) — tonalConsonance,
-                                     // bassDev and midAttRel are read directly in Rosette.metal
-                                     // (unlike Skein/Witchlight's CPU-side-only routing), so the
-                                     // MSL-source heuristic sees them. certified:false pending
-                                     // Matt's M7; tonalPhaseFifths/harmonicFlux deferred to
-                                     // WHIT.1d-2 (need new per-preset held-state infrastructure).
     "Skein":                false,   // lightweight; L2 fails BY CONSTRUCTION — Skein's deviation
                                      // primitives (stems.*EnergyDev, midAttRel — D-026) are consumed
                                      // CPU-side in SkeinState and reach the shader pre-computed via

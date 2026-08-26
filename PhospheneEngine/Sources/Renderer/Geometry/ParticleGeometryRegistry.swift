@@ -60,9 +60,6 @@ public enum StatefulRuntimeRegistry {
         // `ParticleGeometry.update` signature cannot carry: the CPU-only
         // `StructuralPrediction`. It binds a tick (no slot-6 buffer) purely to feed
         // `WitchlightStroke.path.ingestStructure` — the Skein.ENGINE.3 / D-151 bridge.
-        "Witchlight",
-        // WHIT.1d-2: circular-phase smoother (tonalPhaseFifths) + hold-timer
-        // (harmonicFlux symmetry-order step) — RosetteState, slot-6 buffer.
-        "Rosette"
+        "Witchlight"
     ]
 }

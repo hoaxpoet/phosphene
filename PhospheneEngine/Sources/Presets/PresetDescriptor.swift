@@ -429,12 +429,15 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
     /// Camera orbit angular speed in radians/second around `sceneCamera.target`, on the
     /// world Y axis (`scene_orbit_speed`). `0` (the default) is camera-static, so every
-    /// preset that omits the key is byte-identical. WHIT.2b's first consumer: Rosette —
-    /// a static shot undersells a ray-marched tube's actual depth (roundness/occlusion
-    /// read mainly through parallax), so a slow turntable makes the 3D-ness legible in
-    /// motion rather than only in a single still. Applied in `RenderPipeline+RayMarch`
-    /// by rotating the camera's position/forward/right basis around `target` each frame
-    /// — `up` stays world-up, so this only suits a level, non-rolling orbit.
+    /// preset that omits the key is byte-identical. A slow turntable can make a ray-marched
+    /// shape's depth legible via parallax when a static shot wouldn't sell it — Rosette
+    /// shipped it (WHIT.2b) then removed it (D-223: a constant-rate orbit read as
+    /// disconnected from the music, and periodically flattened its wholly-planar scene
+    /// edge-on) before being retired itself (D-224). No current consumer; kept as generic,
+    /// cheap camera plumbing for a future preset with real out-of-plane geometry and/or an
+    /// audio-modulated rate. Applied in `RenderPipeline+RayMarch` by rotating the camera's
+    /// position/forward/right basis around `target` each frame — `up` stays world-up, so
+    /// this only suits a level, non-rolling orbit.
     public let sceneOrbitSpeed: Float
 
     // MARK: - Shader Function Names
