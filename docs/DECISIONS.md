@@ -26,7 +26,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-053 | Accepted | PresetScoringContext gains excludedFamilies + qualityCeiling, backward-compatible |
 | D-057 | Accepted | Frame Budget Manager: governor design, OR-gate, tier targets |
 | D-058 | Accepted | U.6b live-adaptation keyboard semantics and undo architecture |
-| D-059 | Accepted | ML dispatch scheduling: scheduler design, budget signal, deferral caps |
+| D-059 | Accepted | ML dispatch scheduling: scheduler design, budget signal, deferral caps *(budget signal amended at BUG-106, 2026-08-26 — the tier constant became `max(tierFloor, sessionMedian × 1.5)`; the constant could not be met at 4K, so the gate never opened there)* |
 | D-064 | Accepted | Visual references library structure, exemptions, lint tool, quality reel |
 | D-065 | Accepted | Composite-preset image counts; AI-generated anti-reference carve-out |
 | D-067 | Accepted | Certification pipeline placement, lightweight exemptions, manual gate |

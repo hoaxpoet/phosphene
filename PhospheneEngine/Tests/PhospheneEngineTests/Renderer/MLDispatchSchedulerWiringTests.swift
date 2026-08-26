@@ -16,6 +16,9 @@ import Testing
 private struct StubFrameTimingProvider: FrameTimingProviding {
     var recentMaxFrameMs: Float
     var recentFramesObserved: Int
+    /// BUG-106. Defaults to 0 so every pre-existing case keeps judging against the tier
+    /// floor, exactly as it did before the budget became median-derived.
+    var recentMedianFrameMs: Float = 0
 }
 
 // MARK: - MLDispatchSchedulerWiringTests
@@ -149,5 +152,74 @@ struct MLDispatchSchedulerWiringTests {
         let cleanStub = StubFrameTimingProvider(recentMaxFrameMs: 12.0, recentFramesObserved: 30)
         let dispatch = decide(sched, provider: cleanStub, budgetMs: 14.0)
         #expect(dispatch == .dispatchNow)
+    }
+
+    // MARK: - BUG-106: the budget follows the session, not a constant
+
+    /// At 4K the render never fits a 14/16 ms constant, so the gate could only defer to its
+    /// ceiling and force-fire — every stem update a full 2 s period late for no jank saved.
+    /// A steady 4K session must now read as clean.
+    @Test
+    func budget_atFourK_steadySessionDispatchesInsteadOfDeferring() {
+        let sched = makeScheduler(requireCount: 30)
+        // A steady 4K session: median 25 ms, worst frame 27 — normal for the resolution.
+        let steady4K = StubFrameTimingProvider(
+            recentMaxFrameMs: 27.0, recentFramesObserved: 30, recentMedianFrameMs: 25.0
+        )
+        let budget = MLDispatchScheduler.budgetMs(
+            floorMs: 16.0, recentMedianFrameMs: steady4K.recentMedianFrameMs
+        )
+        #expect(abs(budget - 37.5) < 0.01)
+        #expect(decide(sched, provider: steady4K, budgetMs: budget) == .dispatchNow)
+
+        // The old constant is what made this impossible — proves the case bites.
+        #expect(decide(sched, provider: steady4K, budgetMs: 16.0) == .defer(retryInMs: 100))
+    }
+
+    /// The change must not become "never defer": a spike inside the SAME 4K session — the
+    /// thing the gate exists to catch — still defers.
+    @Test
+    func budget_atFourK_genuineJankStillDefers() {
+        let sched = makeScheduler(requireCount: 30)
+        let janky4K = StubFrameTimingProvider(
+            recentMaxFrameMs: 60.0, recentFramesObserved: 30, recentMedianFrameMs: 25.0
+        )
+        let budget = MLDispatchScheduler.budgetMs(
+            floorMs: 16.0, recentMedianFrameMs: janky4K.recentMedianFrameMs
+        )
+        #expect(decide(sched, provider: janky4K, budgetMs: budget) == .defer(retryInMs: 100))
+    }
+
+    /// 1080p behaviour is unchanged: the floor wins there, so the same windows decide the
+    /// same way they did before the budget became median-derived.
+    @Test
+    func budget_at1080p_isUnchangedByTheFloor() {
+        // Typical 1080p median (8 ms) x 1.5 = 12 ms, under both tier floors.
+        #expect(MLDispatchScheduler.budgetMs(floorMs: 14.0, recentMedianFrameMs: 8.0) == 14.0)
+        #expect(MLDispatchScheduler.budgetMs(floorMs: 16.0, recentMedianFrameMs: 8.0) == 16.0)
+        // A cold window (no frames observed) also falls back to the floor.
+        #expect(MLDispatchScheduler.budgetMs(floorMs: 16.0, recentMedianFrameMs: 0) == 16.0)
+
+        let sched = makeScheduler(requireCount: 30)
+        let janky1080p = StubFrameTimingProvider(
+            recentMaxFrameMs: 18.0, recentFramesObserved: 30, recentMedianFrameMs: 8.0
+        )
+        let budget = MLDispatchScheduler.budgetMs(
+            floorMs: 16.0, recentMedianFrameMs: janky1080p.recentMedianFrameMs
+        )
+        #expect(decide(sched, provider: janky1080p, budgetMs: budget) == .defer(retryInMs: 100))
+    }
+
+    /// The median is taken over the same window the max comes from, and one hitch must not
+    /// raise the bar the next dispatch is judged against (which a mean would).
+    @Test
+    func recentMedianFrameMs_isRobustToASingleHitch() {
+        let mgr = makeManager()
+        feed(mgr, cpuMs: 25.0, count: 29)
+        feed(mgr, cpuMs: 200.0, count: 1)
+        #expect(abs(mgr.recentMedianFrameMs - 25.0) < 0.01)
+        #expect(abs(mgr.recentMaxFrameMs - 200.0) < 0.01)
+        // Cold: no samples yet → 0, so the floor decides.
+        #expect(makeManager().recentMedianFrameMs == 0)
     }
 }
