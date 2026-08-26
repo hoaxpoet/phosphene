@@ -384,6 +384,19 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// flight (BUG-074 replay-harness parity gap). Volumetric Lithograph = 5.0.
     public let sceneDollySpeed: Float
 
+    /// Camera orbit angular speed in radians/second around `sceneCamera.target`, on the
+    /// world Y axis (`scene_orbit_speed`). `0` (the default) is camera-static, so every
+    /// preset that omits the key is byte-identical. A slow turntable can make a ray-marched
+    /// shape's depth legible via parallax when a static shot wouldn't sell it — Rosette
+    /// shipped it (WHIT.2b) then removed it (D-223: a constant-rate orbit read as
+    /// disconnected from the music, and periodically flattened its wholly-planar scene
+    /// edge-on) before being retired itself (D-224). No current consumer; kept as generic,
+    /// cheap camera plumbing for a future preset with real out-of-plane geometry and/or an
+    /// audio-modulated rate. Applied in `RenderPipeline+RayMarch` by rotating the camera's
+    /// position/forward/right basis around `target` each frame — `up` stays world-up, so
+    /// this only suits a level, non-rolling orbit.
+    public let sceneOrbitSpeed: Float
+
     // MARK: - Shader Function Names
 
     /// Fragment function name in the .metal file. Defaults to "preset_fragment".
@@ -633,6 +646,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sceneFogNear = "scene_fog_near"
         case sceneFarPlane = "scene_far_plane"
         case sceneDollySpeed = "scene_dolly_speed"
+        case sceneOrbitSpeed = "scene_orbit_speed"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
         case shaderFileName = "shader_file"
@@ -694,6 +708,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0
         sceneFarPlane    = try container.decodeIfPresent(Float.self, forKey: .sceneFarPlane) ?? 30.0
         sceneDollySpeed  = try container.decodeIfPresent(Float.self, forKey: .sceneDollySpeed) ?? 0
+        sceneOrbitSpeed  = try container.decodeIfPresent(Float.self, forKey: .sceneOrbitSpeed) ?? 0
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction   = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName   = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""

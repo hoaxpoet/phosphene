@@ -122,6 +122,14 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-211 | Accepted | **Reference/diagnostic images leave git; the LFS purge is a separate, explicit step** (LFS.2, Matt 2026-07-31). Raster images under `docs/VISUAL_REFERENCES/` + `docs/diagnostics/` are gitignored and **untracked** — dev-only material no build target reads. Supersedes an earlier attempt that added the `.gitignore` rules but never ran `git rm --cached`: because gitignore does not affect already-tracked paths, dropping the LFS filter converted 189 pointers into real blobs and would have added **~100 MB to git history** (25.7 KB → 100.6 MB measured) while leaving the LFS objects — and the bill — in place. **Untracking stops NEW objects; it does not reclaim the old ones.** GitHub does not GC unreferenced LFS objects, so reclaiming storage needs a history rewrite (`Scripts/reclaim-lfs-visual-refs.sh`) followed by a GitHub Support purge request — deliberately NOT done here. Text records in those dirs stay in git. Worktree consequence handled: `Scripts/link_fixtures.sh` now symlinks the images too, since the preset workflow is "read the README and LOOK at the images" and a worktree without them degrades silently rather than failing. §Rationale below. |
 | D-213 | Accepted — executed (RECON.14, 2026-08-25) | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
+| D-224 | Accepted | **Rosette retired** (WHIT-RETIRE.1, Matt's call, 2026-08-26). After the WHIT.2b ray-march conversion's jaggedness fix and the WHIT.2c orbit removal, Matt's next live look, on a fresh session: *"Ugh, it's terrible. The camera angle is weird, the design is ugly, the motion is basic. It's a loser across the board. This feels like it's going nowhere fast. Thinking we should just move to retire."* Offered a bounded, concrete two-item fix (camera recomposition so the epicycle reads as the hero rather than the wing arcs; tightness-calibration recalibration against real track data) or retirement as the alternative; Matt: *"Even a harness difference will not be enough to save this preset, I'm afraid."* Six live rounds (WHIT.0 through WHIT.2c) each landed a technically-correct fix for the specific defect raised and the overall verdict never turned positive — the D-201/D-204 pattern (a correct, working mechanism that still doesn't produce a compelling image) rather than an unfixed bug. All preset code deleted: `Rosette.metal`, `Rosette.json`, `Rosette/RosetteState.swift`, `RosetteRayMarchTests.swift`, `RosetteStateTests.swift`, `docs/presets/ROSETTE_DESIGN.md`, `docs/VISUAL_REFERENCES/rosette/`. `expectedProductionPresetCount` 30 → 29. The `RosetteUniforms` ray-march buffer-6 ABI parameter (D-220/WHIT.2b) is also fully removed from the shared preamble and all three other ray-march presets (Volumetric Lithograph, Lumen Mosaic, Ferrofluid Ocean) — unlike `scene_orbit_speed`/`scene_dolly_speed` (a generic scalar reusable by any future preset) or `LumenPatternState`/slot 8 (a live, actively-shipping consumer), `RosetteUniforms` was a bespoke struct with zero remaining consumers; a future preset needing cross-frame CPU state can reintroduce the same pattern from git history rather than carrying dead ABI weight in the meantime (D-097 — siblings, not subclasses; "reusable infrastructure" is not a defense for a failed concept). `scene_orbit_speed` itself, and the generic `presetFragmentBuffer1`-style slot-6 mechanism, are kept per the RMENV/D-188 zero-consumer-capability precedent. Phase WHIT itself is NOT closed — `docs/presets/WHITNEY_PROGRAM.md` governs three siblings (Rosette/WHIT.A built and retired; Frieze/WHIT.B and Unison/WHIT.C unstarted), and this decision retires only WHIT.A. §Rationale below. |
+| D-223 | Accepted | **Rosette's camera orbit removed — a constant-rate turntable on a wholly planar scene reads as disconnected from the music and periodically flattens the whole composition** (WHIT.2c, Matt live 2026-08-26, immediately after D-222 shipped: *"I hate it. It's just a few objects rotating 360 degrees and moving poorly with the music... I dislike the rotation and hate the way the pattern moves."*). Diagnosed from Matt's own attached session (`features.csv`) before any fix: the orbit ran at a fixed 0.12 rad/s regardless of the music, the single most visually dominant motion in the frame with zero audio coupling; and because the figure and both wing arcs all lie flat in the z=0 plane, the orbit periodically pointed the camera near edge-on to the ENTIRE scene at once — confirmed by replaying his actual session (`SessionReplayHarness`) and finding several timestamps where the whole composition flattened to a plain ring plus two thin lines even though the underlying curve was not that simple at those moments. **Decision:** `scene_orbit_speed` removed from `Rosette.json` (camera reverts to the fixed position `[1.15,1.0,-1.9]` already verified against the WHIT.2b jaggedness/perf fixes); the generic engine feature itself is kept (cheap, generic, mirrors the already-kept `scene_dolly_speed` — the failure was Rosette's unmodulated rate against a flat scene, not the mechanism). **A separate, still-open finding from the same session** (not addressed here, not yet decided by Matt): `tonal_consonance` on this track averaged 0.071 against the corpus calibration's 0.117 median / 0.32 p99, so 84% of frames sat below the point where harmony reaches even half-weight against the audio-independent floor-drift clock — a tightness-calibration question, separate from the orbit. §Rationale below. |
+| D-222 | Accepted | **Rosette converted from flat 2D `direct+mv_warp` to a `ray_march` preset — genuine 3D swept-tube geometry** (WHIT.2b, Matt live 2026-08-26, same message as D-221: *"The final preset should also be 3D, not 2D, to take better advantage of the latest Apple processors."*). Wraps the UNCHANGED 2D distance-to-curve functions (`rosetteDist`/`rosetteWingDist`/`rosetteWingEllipseDist`) in a Pythagorean tube SDF (`sqrt(dist2D²+z²)-radius`) and renders through the engine's existing ray-march/PBR/IBL/SSGI pipeline — the same one Volumetric Lithograph/Lumen Mosaic/Ferrofluid Ocean already run on (D-021 `sceneSDF`/`sceneMaterial` contract), not an invented technique. New engine-generic `scene_orbit_speed` feature (mirrors the existing dolly) makes the tube's roundness legible in motion. `RosetteUniforms` (rotation + symmetry state, D-220's carry-forward) moves from the old `direct+mv_warp` buffer to ray-march fragment buffer(6) — discovered `RayMarchPipeline`'s buffer 6/7 were completely unused, and `directPresetFragmentBuffer` was already a pipeline-agnostic Swift property, so no new engine state was needed. **Two defects found on the FIRST live look at the converted preset, both fixed in the same increment, neither a surprise given the technique change:** (1) *"fidelity is poor - lines are really jagged"* — the 2D version's coarse-then-bisect nearest-point search (BUG-104's fix) produced a distance field smooth enough for a flat, non-lit 2D fragment but not smooth enough for the ray-march G-buffer's finite-difference normals; replaced with a dense point-to-segment polyline scan (the wing arcs' own already-proven technique, adopted verbatim per FA #65/#73 rather than re-derived) — confirmed by isolating a self-crossing-free outer loop (ruling out branch-seam theory) and comparing directly against the wing tubes in the same frame. (2) A previously-invisible **150ms/frame regression** (14.8x the median preset, over `PresetFrameBudgetTests`' 60ms ceiling) — the dense search ran on every ray-march step across the ENTIRE frame, including empty background; fixed with a bounding-sphere SDF lower bound around the figure and wing tubes (mathematically exact from the curve's own `|z|<=1` identity), cut to 28ms. **Found live within that fix:** a bare `boundD > 0` cutoff is unsound — the bound is TANGENT to the true surface at specific points (the curve reaches its bounding radius exactly, for every state), so the cheap branch can return a near-zero value the march loop's hit epsilon reads as a false, audio-independent hit, silently collapsing every RosetteRayMarchTests coupling measurement toward zero; fixed with a safety margin (15x the march loop's relative hit epsilon) between the true surface and where the cheap branch is trusted. Also surfaced and fixed as part of this increment: `SessionReplayHarness` never carried the TONAL block (`tonalPhaseFifths`/`tonalConsonance`/`harmonicFlux`/`midAttRel`) for any ray-march preset — Rosette is the first to route off it — now mapped from the real CSV columns `AudioRoutePrimitives.swift` already names; and `rubric_profile` briefly (incorrectly) set to `full` mid-session — reverted to `lightweight`, since the `full` cascade (triplanar textures, volumetric fog motes, parallax occlusion) is built for painterly/terrain presets and does not conceptually apply to a spare line-art emblem. §Rationale below. |
+| D-221 | Accepted | **Rosette: symmetry-order steps became a smooth multi-second transition, not an instant jump** (WHIT.2a, Matt live 2026-08-26: *"this preset MUST use motion to smoothly transition from one pattern to another, with lines separating and reattaching at different points."*). `rosetteCurve`'s formula is already continuous in `n` (no shader change needed) — `RosetteState` now interpolates `n` from the old symmetry order to the new one over `transitionDurationSeconds=4s` (smoothstep-eased) instead of writing the new integer instantly; feeding the shader a smoothly-varying `n` is itself the transition, since the curve's crossing points visibly slide, split, and re-merge as `n` moves between integers — verified by rendering the actual mid-transition frames (n=5.5 shows one lobe of the 5-fold flower visibly opening into a loose end mid-split before the 6th lobe closes). Comfortably shorter than `minHoldSeconds` (24s), so a transition always finishes well before the next one can start. Broke `test_rosette_rotationAndSymmetryCoupling`'s single-tick assumption (the old test exploited the instant-jump behavior this decision removes) — fixed by advancing two independent states to settlement before comparing, not by weakening the assertion. §Rationale below. |
+| D-220 | Accepted | **Rosette: the remaining two harmony routes shipped — `RosetteState` built** (WHIT.1d-2). `morph_position`<-`tonalPhaseFifths` (a D-209 circular smoother, cos/sin EMA recombined via `atan2`, applied as a ROTATION of the figure only — wings stay fixed, D-217's frame preserved — resolving the D-219 FA #67 conflict with `figure_tightness`) and `symmetry_order_step`<-`harmonicFlux` (a 24s hold-timer stepping the epicycle's `n` through Whitney's own sequence 5→6→4 on a qualifying spike, never per-beat). New per-preset state object (`Presets/Rosette/RosetteState.swift`, Skein/Gossamer's minimal-shape pattern) wired through `VisualizerEngine`/`VisualizerEngine+Presets.swift` (`bindRosetteRuntime`, `StatefulRuntimeRegistry.knownPresetNames`) and bound at fragment buffer(6) (`RosetteUniforms`, matching `RosetteUniformsGPU` byte-for-byte) — the first WHIT increment to touch the app-layer runtime rather than staying preset-local. All 5 declared routes now green on `RouteCoverageTests` (206 routes / 22 presets / 0 red). Found live: `MultiPassRenderHarness`'s `renderMVWarp` case only special-cased Skein's CPU state — an unbound buffer(6) collapses `rosetteDist`'s `n` to 0, which degenerates the two-term epicycle to a fixed unit circle regardless of audio input, and `MultiPassFlashHarnessTests` correctly read that as a harness fault ("rendered static... the harness is not reaching its real multi-pass response") rather than silently passing; fixed by binding `RosetteState` there too. §Rationale below. |
+| D-219 | Accepted | **Rosette: 3 of 5 harmony routes shipped; tonalPhaseFifths/harmonicFlux filed to WHIT.1d-2** (WHIT.1d). `figure_tightness`<-`tonalConsonance` (sqrt-calibrated against TONAL.2b's 1000-track corpus so the median lands mid-range, not linear/smoothstep — harmony SETS the sweep position, the clock demotes to a floor drift, the Nacre-round-1 lesson honoured structurally), `stroke_presence`<-`bassDev`, `morph_floor_rate`<-`midAttRel` — all stateless, all green on `RouteCoverageTests` (204 routes / 22 presets / 0 red). **`tonalPhaseFifths` (proposed as a rotation) and `harmonicFlux` (proposed as a discrete symmetry-order step) are deferred, not dropped**: both need a value held ACROSS FRAMES — a stateful circular smoother for the raw +/-pi sawtooth (D-209; the exact defect that hit Fractal Tree, "color changes feel glitchy, not intentional") and a hold-timer so a step lasts "tens of seconds" per the temporal contract — which means wiring a new per-preset state object through the shared RenderPipeline dispatch files (RenderPipeline+PresetSwitching.swift etc.), the same infrastructure Skein/Witchlight/Nacre already carry. Rosette has none of it yet; building it is real, separate, scoped work (WHIT.1d-2), not folded silently into "add audio routes." `WHITNEY_PROGRAM.md`'s own WHIT.1d gate explicitly sanctions this ("RouteCoverageTests green on all five routes, **or a filed defect**"). Also measured: `MultiPassFlashHarnessTests.rosetteIsFlashSafe` (0.00 flashes/s, luma Δ0.004) and `FidelityRubricTests`' automated L2 gate now reads true (consonance/bassDev/midAttRel appear directly in Rosette.metal, unlike Skein/Witchlight's CPU-side-only routing). §Rationale below. |
+| D-218 | Accepted | **Rosette maquette landed** (count 29 → 30; `certified:false`). John Whitney Sr.'s *Arabesque* morphing emblem, registered from the WHIT.0 look-spike (verdict GO) after WHIT.1a curated its reference set and WHIT.1b wrote its design doc. Fullscreen-triangle SDF-in-fragment marks-on-top overlay (Skein's pattern, not Dragon Bloom's raw `line_strip` as the program doc originally proposed); the numerical nearest-point stroke search was profiled at 1080p (~5.8ms p50 on an M2 Pro, well inside the 16.67ms @60fps budget) before authoring. Halation retuned against the curated reference (`06_specular_stroke_core_halo.jpg`) from WHIT.0's too-generous thumbnail estimate. **No audio coupling** (WHIT.1d); the morph runs on a clock only. `PresetAcceptanceTests` gained the same standalone-fragment-is-intentionally-black exemption Dragon Bloom/Skein/Nacre/etc. already carry (Rosette's real content is entirely in the scene-geometry overlay). Pending Matt's live M7. §Rationale below. |
+| D-217 | Accepted | **Rosette: full cartouche — the mirrored coloured wing arcs + small ellipses ship as part of the frame, not as an optional extra** (WHIT.0, Matt 2026-08-25, DECISION-NEEDED #1). The look-spike rendered the same morph moment with and without the wings (`RosetteLookSpikeTests.swift`); without them the figure floats in a large dead black field, with them it reads as a composed picture — Matt's call after seeing both frames, no default assumed. Recorded alongside WHIT.0's overall GO verdict (the two-term epicycle morph reads on the real engine dispatch path; see `docs/ENGINEERING_PLAN.md` Phase WHIT). |
 | D-214 | Accepted | **Meniscus CERTIFIED — and the sync came from the audio hierarchy, not from timing accuracy** (MEN.5, Matt's M7 2026-08-05: *"Ready to certify. Looks good!!!"*). First `mesh_animation` member of the Milkdrop-inspired family and the catalog's first projected line-surface preset; count 26 -> 16 certified. **Eleven live rounds, and the first ten optimised the wrong driver.** Drop timing reached a median **6 ms** from the beat and was verified against Beat This! ground truth at +4/+8/+8/+8 ms across a track — and Matt's verdict stayed "not synced" throughout. Three causes, each measured and each invisible to the gates that existed: **(1)** the live stem path lags **5.2 s** (`2026-08-05T13-17-18Z`: drums +5.25 s r=0.550, vs r=0.363 at lag 0) and is documented in-tree as section-scale by design, so MEN.3's per-stem event routing could never work live — offline fixtures hid it by feeding stems in sync; **(2)** the surface had **no continuous audio-driven motion at all** during music (the swell was gated off as volume rose), inverting CLAUDE.md's central rule that continuous energy is the PRIMARY driver — Matt's "feels less tethered" is that rule's predicted failure, and cutting drop density made it WORSE, which is what ruled density out; **(3)** the beat drop scattered **±0.34 (68 % of the sheet)**, so it appeared somewhere different every beat — **visual sync needs an anchor to pulse in place**, and scattered impacts read as noise however perfectly timed. **Two design claims retired on evidence:** §1's "a listener can point at a ripple and say that was the snare" (§7 R3 flagged it ungrounded; eleven viewings never produced it — regions are now spatial variety keyed to bar position), and **§7 R5's jitter**, which was added because "orderly may read as mechanical" and turned out to be what destroyed the connection. **Per-note melodic routing is closed, not deferred** — MEL.1 measured guitar note events at 31 % grid coherence against a 20 % random baseline with a 41 % drums control; distortion adds harmonics rather than amplitude, so notes inside a chord wall have no attack. D-157 flash gate added at cert and measured maxΔ/frame **0.0048** against a 0.05 bar. §Rationale below. |
 | D-216 | Accepted | **Stave: the stem channel comes OFF the traces and onto the field; trace marks stay purely band-driven and in-time** (CHR.2, Matt 2026-08-14, DECISION-NEEDED #1 option D). CHR.2's look spike gated the 2026-08-13 split driver (position <- EMA-centred band split ~0.3 s; colour+weight <- stem pairs ~3.0 s) and **half 1 passed, half 2 failed**. Position passed on its own terms: **median trace-to-beat offset 0 ms** on all four captures, gridline rate matching `grid_bpm` exactly (71/71, 97/98, 172/174.6). Colour failed on a measurement, not a taste call: **at the moment a mark is drawn, `r(position, colour)` = -0.15..+0.25** — the colour peaks against its own trace at **3.0 s** (post-BUG086.1; 5.4 s on the pre-fix capture the renders used), so a mark wears a colour describing a moment **38 % of an 8 s window** in its past. Compounding it, hue is a **static label assigned by frequency band**, so it is asserted even where the named stems do not exist — Clair De Lune is solo piano and its traces still read `drums+bass` / `vocals+other`, both false. **The fix is to stop pairing a fast mark with a slow channel at all.** Stems keep their place in the preset but move to a surface with no per-beat commitment (field tint / backdrop / grid luminance), where 3 s of lag is invisible; the traces carry only band-derived, in-time information. **Consequence, accepted deliberately: the preset can no longer say "this trace is the drums".** The D-121 divergence argument survives on different ground — stems still shape the image (Milkdrop has none) and the beat grid is still structurally un-fakeable — but per-mark instrument identity is out of scope, and the concept sentence changes from four/two *instrument* voices to **low against high, ruled by the beat, in a room the stems tint.** Rejected: **A** (drop stems entirely) discards a real capability for free; **B** (weight/texture instead of hue) changes the medium, not the lag, so it does not touch the defect; **C** (stem-driven position) was weighed and rejected 2026-08-13 and CHR.2 only strengthens the case against — the cost of the split is now measured rather than assumed. **Also retired at CHR.2, both from CHR.1:** the **"converge and diverge"** reading (its divergence ratio 0.75-vs-1.45-null is dominated by the rhythm/melodic **amplitude mismatch**, std ratio **4.4-17.5x**, and collapses onto `sqrt(2(1-r))` once both traces are drawn at visible scale — what survives is near-independence, r -0.27..+0.27 on 13 of 15, which is the property the concept actually wants); and CHR.1 §4's **common-mode table, whose track labels are shifted** — re-measured, worst is **Bohemian Rhapsody 93.4 %** / Superstition 93.1 %, and **Take Five 82.9 % is among the easiest**, so §5's "jazz is the worst case" is false. **Bleed remains an unfixed miss** (r +0.695): its two traces collapse into one flat band, which is what the material does, not something tuning reaches. Preset count unchanged at 28; CHR.3 authors. §Rationale below. |
 | D-215 | Accepted | **Phase MD reconciled to practice — taxonomy, layout, source form and candidate list; Milkdrop Settings toggle deleted; D-115 resolved to C'** (MD.0, 2026-08-07). `MILKDROP_STRATEGY.md` has five commits, all 2026-05-12, and none since; seven Milkdrop-inspired presets shipped and certified between then and now (Dragon Bloom, Fata Morgana, Floret, Glaze, Nacre, Meniscus, Witchlight), every one authored by a process the strategy doc does not describe, producing sidecars its schema would reject. **Four supersessions written back** as `MILKDROP_STRATEGY.md` §13: **(1) taxonomy** — no `family: "milkdrop_inspired"` and no `.milkdropInspired` enum case (**D-123**, 2026-05-13); uplifts file into the 11-case cream-of-crop `PresetCategory` (measured: `hypnotic` ×6, `particles` ×1), and the `inspired_by` sidecar block — documentation-only, no `PresetDescriptor` coding key, ignored by `Codable` — is the only marker of origin; **(2) layout** — `Shaders/Milkdrop/<theme>_<source_name>` was never adopted; all 28 sidecars are flat in `Shaders/`, named for the Phosphene preset, and a source-named file contradicts D-113 besides; **(3) source form** — the operative corpus is the **butterchurn built-in set rendered through `tools/milkdrop-render/`**, not `.milk` (the runtime `.milk` converter renders directory presets poorly, so the gallery Matt picks from is built from built-ins); 6 of 7 uplifts read a butterchurn JSON, only Dragon Bloom read a `.milk` (removed at PUB.1); `sha256` is the hash of the artifact **actually read** and `source_form` names what that was — both normalised across all seven sidecars at MD.0; **(4) candidate list** — `docs/presets/MILKDROP_UPLIFT_PICKS.md` (2026-06-01) is operative; D-112's nine named `.milk` candidates are historical and **none was used**. Plus: **MD.1 retired** (its consumer does not exist — no author opens a `.milk`); **D-120 residue stripped** from `Meniscus.json` + `CymaticResonance.json` — and it is a **recurrence, not a leftover**: the CA.4 audit's 2026-05-20 grep was correct, and both sidecars were created *after* it (CR.1 2026-07-22, MEN.2a 2026-08-03) by authors following design docs that still prescribe the reverted fields; those docs are corrected here, but the durable fix is unknown-key rejection at decode, not built at MD.0. **Measured catalog state:** 28 sidecars − 2 diagnostics = **26 production, 18 certified, 7 inspired-by (all certified)** = **27 % of roster / 39 % of certified**, against D-119's ≥ 50 % — **D-122 trigger 4 fires on the letter**; MD.0 does not halt Phase MD and routes the reading to Matt with D-115 (both open). Also recorded: the failure mode D-122 trigger 3 watches for (over-fidelity) has **never been observed** — Witchlight's 2026-08-03 M7 rejected it for being too *unlike* the source. **Matt's two calls, same day:** (a) **delete the Milkdrop Settings toggle** (DECISION-NEEDED #1, option A) — the QR.4 / D-091 "Coming in a future update" stub, its store property, key, view-model flag, view row, two strings and three tests are removed (app tests 407 → 404); shipping it was impossible to wire honestly through `family`, since `hypnotic` + `particles` also hold **seven Phosphene-native presets** (Aurora Veil, Plasma, Filigree, Mitosis, Cytokinesis, Murmuration, Nebula — five certified), and a per-preset check needs `inspired_by` decoding that does not exist; (b) **D-115 resolved to C' (10 + 10)** after twelve weeks open — **three more uplifts to the D-114 threshold** against six under the superseded A' (7+13), making D-119's ≥ 50 % a **steady-state target rather than a first-release gate**, which in turn resolves **D-122 trigger 4** to `proceed` (the 27 % share is a pre-composition transient, not drift). **§12 is not rewritten in place**; §13 supersedes it on the same terms §12 supersedes §§1–11. §Rationale below. |
@@ -3706,3 +3714,536 @@ rounds on it.
 **References.** `docs/diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md` (full verdict, per-capture
 tables, repro), `docs/presets/STAVE_PLAN.md` §CHR.1 AMENDMENT, D-121 (divergence axis),
 D-215 (Phase MD), BUG-086 / BUG086.1 (the stem latency this decision routes around).
+
+## D-217: Rosette — full cartouche, the frame ships with the wings (WHIT.0, Matt 2026-08-25)
+
+**Status:** Accepted. Resolves WHIT.0 DECISION-NEEDED #1. Unblocks WHIT.1a.
+
+### What was gated
+
+WHIT.0 was a throwaway, motion-gated look spike for the Rosette preset (a two-term epicycle
+port of *Arabesque*'s morphing emblem). Task 5 asked whether the mirrored coloured wing arcs +
+small ellipses at the frame edges (`ARABESQUE_FILM_NOTES` F4) carry real compositional weight
+or are decoration, per `WHITNEY_PROGRAM.md` §12 #1's thinness worry. Rendered the same morph
+moment (`a=0.75`, five broad petals) with and without the wings, same figure, same scale.
+
+### The evidence
+
+Without the wings, the figure floats alone in a large dead black field — legible, but reads as
+a diagram. With them, the same figure reads as a composed picture: the wings anchor the frame's
+edges, add colour where the figure itself is deliberately white/pale (F3), and give the
+composition a sense of scale the bare figure lacks. Both renders went to Matt rather than being
+described.
+
+### Decision
+
+**Full cartouche — the wings ship as part of the frame, not an optional extra or a later
+uplift.** No qualifications recorded.
+
+### Consequence
+
+WHIT.1a (reference curation) and WHIT.1b (design doc) should treat the wing arcs + ellipses as
+in-scope for the base preset from the start, not a stretch feature to defer.
+
+**References.** `docs/ENGINEERING_PLAN.md` Phase WHIT / Increment WHIT.0 (full verdict, all six
+tasks); `docs/prompts/WHIT0_LOOK_SPIKE.md`; `docs/presets/ARABESQUE_FILM_NOTES_2026-08-19.md` F4;
+`docs/presets/WHITNEY_PROGRAM.md` §12 #1.
+
+## D-218: Rosette maquette landed (WHIT.1c, count 29 → 30)
+
+**Status:** Accepted. `certified: false`. Pending Matt's live M7.
+
+### What landed
+
+`PhospheneEngine/Sources/Presets/Shaders/Rosette.{metal,json}`, moved and adapted from the WHIT.0
+look-spike's throwaway location (`Tests/PhospheneEngineTests/Presets/Fixtures/Rosette/`) after
+WHIT.1a curated `docs/VISUAL_REFERENCES/rosette/` and WHIT.1b wrote
+`docs/presets/ROSETTE_DESIGN.md`. Family `geometric`, `rubric_profile: "lightweight"`,
+`passes: ["direct", "mv_warp"]`. **No audio coupling** — the morph runs on a triangle-wave clock
+only; `audio_routes: []`. That is WHIT.1d.
+
+### Architecture, revised from the program doc's original proposal
+
+`WHITNEY_PROGRAM.md` §6 proposed porting Dragon Bloom's raw `line_strip` marks configuration.
+WHIT.0 built and validated a **fullscreen-triangle SDF-in-fragment overlay instead** (Skein's
+`skein_geometry_vertex`/`_fragment` pattern) — Metal's line-primitive rasterization has no
+antialiasing and no variable width, which would have undercut the stroke fidelity the whole
+concept depends on. `ROSETTE_DESIGN.md` §6 records this as the authoritative architecture for
+Rosette; the program doc's §6 is superseded for this preset specifically.
+
+### Pre-authoring checklist, run before writing anything (`ROSETTE_DESIGN.md` §10)
+
+1. **Profiled the numerical nearest-point search at 1080p before any other work.** The
+   coarse-40 + bisect-7 search (no closed-form SDF exists for a self-intersecting two-term
+   epicycle) measures **5.8ms p50 / 6.2ms p95** for the geometry-overlay pass alone, on an M2 Pro,
+   against a 16.67ms/frame @60fps total budget — comfortably inside, resolving the design doc's
+   one flagged open engineering risk. `complexity_cost.tier1` set from this measurement;
+   `tier2` (M3+) is an unverified ~0.6x scaling estimate, not measured.
+2. **Halation retuned.** WHIT.0's shipped value came from a thumbnail-based estimate (~4.4x core
+   width) that read too generous once viewed at the curated reference's proper crop scale
+   (`06_specular_stroke_core_halo.jpg`, ~1.5–2x). Retuned to ~1.75x.
+3. **`PresetAcceptanceTests` needed the same exemption five other marks-on-top presets already
+   carry** (Dragon Bloom, Fata Morgana, Nacre, Floret, Glaze, Skein): the standalone
+   `rosette_fragment` is an intentional flat-black stub — real content lives entirely in the
+   scene-geometry overlay (`strandsOnTop`), which the acceptance harness's fragment-only render
+   cannot see. Added to `test_nonBlack_atSteadyEnergy` and `test_readableForm_atSteadyEnergy`;
+   `test_noWhiteClip_steadyEnergy` and `test_beatResponse_bounded` pass without exemption (a flat
+   black frame trivially clears both).
+
+### What did not land
+
+No `.metal`/JSON changes beyond the move; no audio routing; no certification. The two-term
+epicycle's known miss (never producing a true straight-edged pentagon — confirmed against
+`05_macro_pentagon_straight_edges.jpg`) is unchanged and not chased.
+
+**References.** `docs/presets/ROSETTE_DESIGN.md` (full architecture + grounding audit);
+`docs/ENGINEERING_PLAN.md` Phase WHIT / Increment WHIT.1c; D-217 (full cartouche, unchanged).
+
+## D-219: Rosette harmony coupling — 3 of 5 routes; two filed to WHIT.1d-2 (WHIT.1d)
+
+**Status:** Accepted. `certified: false` unchanged. Unblocks WHIT.1d-2 (a scoped follow-up, not a
+blocker to certification of the three shipped routes).
+
+### What was gated
+
+`WHITNEY_PROGRAM.md` §7 proposed five audio routes for Rosette. QG.1 requires auditing the code
+before declaring a route, and the increment ladder for WHIT.1d states the gate as "RouteCoverageTests
+green on all five routes, **or a filed defect**" — explicitly anticipating that not all five would
+land cleanly in one pass.
+
+### The audit finding
+
+Two of the five routes need a value held **across frames**, and Rosette carries zero CPU-side
+per-preset state (unlike Skein/Witchlight/Nacre, each of which has its own state object wired
+through the shared `RenderPipeline` dispatch files):
+
+1. **`tonalPhaseFifths`** is a raw ±π sawtooth (`TonalAnalyzer` emits it RAW; `CircularPhaseSmoother.swift`
+   documents why: D-209 found that reading it straight into a visual channel produces a jump at the
+   seam — measured on Fractal Tree, 144°/p95 per-update jump, Matt's M7: *"Color changes feel
+   glitchy, not intentional."* Fixed there by a stateful two-pole circular smoother, `mutating`,
+   genuinely needs memory.
+2. **`harmonicFlux`** "spikes at chord changes" (`kind: accent`) — a discrete symmetry-order step
+   driven directly off it would flicker every spike, violating `WHITNEY_PROGRAM.md` §2's explicit
+   anti-contract ("the symmetry order must never flicker... held for tens of seconds"). Needs a
+   hold-timer, which is state.
+
+A secondary finding on `tonalPhaseFifths`: the original mapping ("where in the morph family") and
+`tonalConsonance`'s mapping ("how tight the figure is") both target the SAME single scalar DOF
+(`a`) in the two-term epicycle generator that WHIT.0 validated — an FA #67 one-primitive-per-layer
+conflict baked into the pre-spike design docs, not discovered until this audit. Resolution when
+WHIT.1d-2 builds it: map the smoothed phase to a rotation of the figure only (wings stay fixed,
+preserving D-217's frame) — a genuinely distinct visual channel.
+
+### Decision
+
+**Ship the three routes that need no new state now** (`figure_tightness`←`tonalConsonance`,
+`stroke_presence`←`bassDev`, `morph_floor_rate`←`midAttRel` — all continuous, all stateless, all
+green on `RouteCoverageTests`). **File `tonalPhaseFifths`/`harmonicFlux` as deferred, not build
+blind.** Building either means adding a new per-preset state object and wiring it through
+`RenderPipeline+PresetSwitching.swift` / `RenderPipeline+MVWarpSetup.swift` /
+`RenderPipeline+MVWarpScene.swift` — real, separate, scoped engine-adjacent work, not something to
+fold silently into "add audio routes" the way the three stateless routes could be.
+
+### Consequence
+
+WHIT.1d-2 is a real follow-up increment, not busywork: build `RosetteState` (circular-phase
+smoother + symmetry hold-timer), wire it through the shared dispatch files the same way
+Skein/Witchlight/Nacre already do, add the rotation + symmetry-order-step behaviour, declare the
+two remaining routes, and re-run `RouteCoverageTests` for all five green.
+
+**References.** `docs/presets/ROSETTE_DESIGN.md` §5 (full implementation + the sqrt calibration
+curve); `docs/ENGINEERING_PLAN.md` Phase WHIT / Increment WHIT.1d; `CircularPhaseSmoother.swift`
+(D-209); D-217/D-218 (unchanged).
+
+## D-220: Rosette — the remaining two harmony routes shipped (WHIT.1d-2)
+
+**Status:** Accepted. `certified: false` unchanged. Closes the WHIT.1d-2 follow-up D-219 filed.
+
+### What was built
+
+`RosetteState` (`Presets/Rosette/RosetteState.swift`) — Skein/Gossamer's minimal per-preset-state
+shape: one `storageModeShared` `MTLBuffer`, a `tick(deltaTime:features:)` that updates internal
+state then flushes a fixed-stride GPU mirror struct (`RosetteUniformsGPU`, matching `RosetteUniforms`
+in `Rosette.metal` byte-for-byte, bound at fragment buffer(6)).
+
+1. **`morph_position` <- `tonalPhaseFifths`.** A D-209 circular smoother — cos/sin tracked
+   separately via EMA (τ=3s, matching `CircularPhaseSmoother`'s own default), recombined via
+   `atan2` — feeding a 2D rotation applied to the figure's sample coordinate (`pf`) only, before
+   the distance search. `q` (the wing arcs) is untouched, so D-217's fixed frame is preserved.
+   Resolves the D-219 FA #67 finding: `figure_tightness` and `morph_position` are now genuinely
+   distinct visual channels (tightness of the curve vs. its orientation), not two routes fighting
+   over the same scalar `a`.
+2. **`symmetry_order_step` <- `harmonicFlux`.** A hold-timer (`minHoldSeconds=24s`,
+   `fluxStepThreshold=0.09`, calibrated against TONAL.2b's p99=0.110) steps the epicycle's `n`
+   through Whitney's own sequence (5→6→4, `WHITNEY_PROGRAM.md` §2) on a qualifying spike, never
+   more often than the hold window — honouring the explicit anti-contract ("the symmetry order
+   must never flicker"). `rosetteCurve`/`rosetteDist` took `n` as a third parameter (previously
+   the fixed constant `kRosetteN = 5.0`); the `aMin`/`aMax` tightness calibration (task 2's CPU
+   sweep, n=5) is reused as-is for the stepped orders — a reasonable approximation, not re-swept
+   per `n`.
+
+### Wiring — the first WHIT increment to touch the app layer
+
+Unlike WHIT.1c/1d (preset-local, engine-package only), the two stateful routes needed
+`RosetteState` threaded through `PhospheneApp`: a `var rosetteState: RosetteState?` on
+`VisualizerEngine`, a `bindRosetteRuntime` in `VisualizerEngine+Presets.swift` (mirrors
+`bindGossamerRuntime` — allocate, bind `rosetteBuffer` at fragment slot 6, wire
+`setMeshPresetTick` to call `.tick(deltaTime:features:)` every frame), a
+`case "Rosette": bindRosetteRuntime(desc)` in the `bindStatefulPresetRuntime(for:)` switch, a
+`rosetteState = nil` teardown in `applyPreset()`'s shared reset block, `"Rosette"` added to
+`StatefulRuntimeRegistry.knownPresetNames` (`ParticleGeometryRegistry.swift`), and
+`rosetteState?.reset()` on track change (a new track's fifths phase starts fresh rather than
+gliding in from the previous track's smoothed value; the symmetry order restarts at the stated
+base, 5-fold).
+
+### Found live: a second harness with its own hardcoded preset registry
+
+`MultiPassRenderHarness`'s `renderMVWarp` case (used by `MultiPassFlashHarnessTests`, a real-dispatch
+flash-safety measurement — separate from `_acceptanceFixture`) only special-cased `SkeinState`
+binding at buffer(6); Rosette fell into the `else` branch with the slot unbound. An unbound
+buffer(6) reads zeros, collapsing `rosetteDist`'s `n` to 0 — the epicycle's second term becomes
+identical to the first (`t2 = -(n-1)*t = t` at n=0), so `rosetteCurve` degenerates to a fixed
+unit circle regardless of `a`, meaning the figure stops responding to ANY audio input including
+the three already-shipped WHIT.1d routes. `rosetteIsFlashSafe` correctly measured this as a
+harness fault, not a false pass: *"'Rosette' rendered static (Δ0.0026) under the worst-case
+beat+stem train — the harness is not reaching its real multi-pass response, so the measurement
+is INVALID (not safe). Fix the harness setup; do not weaken this guard."* Fixed by binding a
+`RosetteState` in `renderMVWarp` the same way Skein's is bound, ticked once per rendered frame.
+
+### Verification
+
+All 5 declared `audio_routes` green on `RouteCoverageTests` (206 routes / 22 presets / 0 red).
+`RosetteMVWarpAccumulationTest` gained a new regression guard (`test_rosette_rotationAndSymmetryCoupling`)
+directly exercising the rotation and symmetry-step behaviour through the real geometry-overlay
+dispatch. `MultiPassFlashHarnessTests.rosetteIsFlashSafe` re-measured post-fix: MEASURED (not the prior
+invalid UNMEASURED(static)), 0.00 flashes/s, luma 0.033–0.037 (Δ0.004) — SAFE.
+
+**References.** `docs/presets/ROSETTE_DESIGN.md` §5.3/§7 (updated); `RosetteState.swift`;
+D-219 (the audit this closes); D-209 (`CircularPhaseSmoother` precedent).
+
+## D-221: Rosette symmetry-order steps become a smooth transition, not an instant jump (WHIT.2a)
+
+**Status:** Accepted. `certified: false` unchanged.
+
+### What was gated
+
+Immediately after BUG-104's curve-continuity fix, Matt's next live look at Rosette: *"Still too
+basic."* Asked what specifically read as unfinished, he gave two concrete directions — this
+decision covers the first: *"Like arabesque by Whitney, this preset MUST use motion to smoothly
+transition from one pattern to another, with lines separating and reattaching at different
+points."* (The second — a full 3D conversion — is tracked separately; see the WHIT.2a closeout
+in `docs/ENGINEERING_PLAN.md`.)
+
+### The finding
+
+`RosetteState`'s symmetry-order hold-timer (D-220) wrote the new integer `n` to the GPU buffer
+the instant a qualifying `harmonicFlux` spike fired — a hard cut from 5-fold to 6-fold with no
+intermediate frames. Whitney's own films (and Matt's literal ask) treat a pattern change as
+motion, not a state swap.
+
+The fix required no shader change: `rosetteCurve`'s formula (`z(t) = e^{it} + a·e^{-i(n-1)t}`)
+is already a continuous function of `n` — it was only ever WRITTEN discretely. Feeding it a
+smoothly-varying `n` (rather than an instantly-stepped one) produces the transition for free: as
+`n` moves from 5 toward 6, the curve's self-intersections continuously slide, and one lobe
+visibly opens into a loose end mid-transition before the sixth lobe closes — confirmed by
+rendering the actual mid-transition frame (n=5.5) and inspecting it, not by assuming the math
+would look right.
+
+### Decision
+
+`RosetteState` interpolates `n` from the old symmetry order to the new one over
+`transitionDurationSeconds = 4.0s`, smoothstep-eased (`t²(3−2t)`), instead of writing the target
+value instantly. `minHoldSeconds` (24s) is unchanged and stays comfortably longer than the
+transition, so a transition always finishes well before the next one can start — no overlapping
+transitions to reason about. `reset()` (track change) snaps to the base order with the
+transition already marked settled, so a new track never inherits an in-progress animation from
+the previous one.
+
+### Consequence: an existing test's assumption broke, and the test was wrong
+
+`test_rosette_rotationAndSymmetryCoupling`'s symmetry-step assertion rendered a SINGLE tick after
+triggering a spike and expected to see the target order already active — true under the old
+instant-jump behavior, false under this one (a transition's first tick reports the ORIGINAL
+value; visible movement starts on the following tick). This is the correct new behavior, not a
+regression to work around: fixed the test by advancing two independent `RosetteState` instances
+past `transitionDurationSeconds` (one spiked once, one never spiked) and comparing their SETTLED
+renders, added `renderOneFrame`'s `externalState` parameter to support it. Never weaken an
+assertion to match an accidental old behavior when the new behavior is the one that's correct.
+
+### Verification
+
+New unit suite `RosetteStateTests.swift` (no Metal rendering — direct Swift API, matching
+`GossamerStateTests`' pattern): initial state is the settled base order; a triggering spike does
+NOT move `n` within its own frame (only starts the clock); the transition is monotonic and
+settles at exactly the target value once `transitionDurationSeconds` has elapsed; `reset()`
+leaves no lingering animation. New env-gated diagnostic `test_rosette_transitionMotionDump`
+renders named stills across an actual triggered transition for human review. Full existing
+Rosette suite, `swiftlint --strict`, and the full engine suite re-run clean.
+
+**References.** `docs/ENGINEERING_PLAN.md` Increment WHIT.2a; `RosetteState.swift`;
+`RosetteStateTests.swift`; D-220 (the symmetry-order-step mechanism this refines).
+
+## D-222: Rosette converted from 2D `direct+mv_warp` to `ray_march` — real 3D swept-tube geometry (WHIT.2b)
+
+**Status:** Accepted. `certified: false` unchanged.
+
+### What was gated
+
+The same live-feedback message as D-221 gave two directions; this decision covers the second:
+*"The final preset should also be 3D, not 2D, to take better advantage of the latest Apple
+processors."* Scoped as its own increment at D-221's filing, not attempted blind in the same
+session as the symmetry-transition fix.
+
+### The architectural approach
+
+Rather than build a parallel forward-lit vertex-mesh system, Rosette wraps its EXISTING,
+already-debugged 2D distance functions (`rosetteCurve`/`rosetteDist`/`rosetteWingDist`/
+`rosetteWingEllipseDist`) in a Pythagorean tube SDF: for a planar curve lying in the z=0 plane,
+`tubeSDF(p) = sqrt(dist2D(p.xy, curve)^2 + p.z^2) - tubeRadius`. The tube renders through the
+engine's existing ray-march / Cook-Torrance PBR / IBL / AO / screen-space-shadow pipeline — the
+same one Volumetric Lithograph, Lumen Mosaic, and Ferrofluid Ocean already run on (D-021's
+`sceneSDF`/`sceneMaterial` contract) — not an invented rendering technique. `RosetteUniforms`
+(rotation + symmetry-order state, carried forward from D-220) moves from the old `direct+mv_warp`
+overlay buffer onto ray-march fragment buffer(6): `RayMarchPipeline`'s buffer slots 6/7 turned out
+to be completely unused by the G-buffer fragment (unlike the direct/mv_warp/staged paths, which
+reserve them), and `RenderPipeline.directPresetFragmentBuffer` was already a pipeline-agnostic
+Swift property reused across mv_warp/direct/ray-march — so the conversion needed zero new
+engine-wide Swift state, only threading the existing property into the ray-march call site too.
+A new, generically reusable engine feature, `scene_orbit_speed` (JSON key, mirrors the existing
+`scene_dolly_speed`), rotates the camera around the world Y-axis through the origin — a static
+shot undersells a ray-marched tube's actual depth (roundness and self-occlusion read mainly
+through parallax), so Rosette is `scene_orbit_speed`'s first consumer, not the only intended one.
+`scene_backdrop: "dark"` (a real, pre-existing field — `SceneUniforms.lightingParams.w >= 0.5`)
+gives a genuinely dark background decoupled from light intensity, replacing an earlier prototype
+hack of near-zero light colors at very high intensity.
+
+### Two defects found on the first live look at the converted preset
+
+Both surfaced immediately after the conversion rendered, in the same increment, and both trace to
+the technique change itself rather than a new mistake:
+
+1. **"fidelity is poor - lines are really jagged."** The 2D version's coarse-then-bisect nearest-
+   point search (BUG-104's branch-lock fix) produced a distance field accurate enough for a flat,
+   unlit 2D fragment but not smooth enough for the ray-march G-buffer's tetrahedral finite-
+   difference normals (`eps=0.001`) — visible as faceted, unstable shading, worst at self-
+   crossings but present even on an isolated loop with no competing branch (ruling out the
+   branch-seam theory two prior attempts, a smooth-min blend and more bisection precision,
+   assumed). Confirmed by direct comparison: the wing arcs, which already use a dense point-to-
+   segment polyline scan with no bisection, rendered perfectly smooth in the SAME frame.
+   `rosetteDist` was rewritten to the same technique (FA #65/#73 — adopt a working reference
+   verbatim rather than keep patching a different one) at 150 segments, chosen empirically:
+   segment counts as low as 70-110 still showed visible faceting on the same test loop, while 150
+   and 600 were pixel-identical at the same extreme zoom — 150 is past the point of diminishing
+   return, not under it.
+
+2. **A previously-invisible 150 ms/frame regression** (`PresetFrameBudgetTests`: 14.8x the median
+   preset, over the 60 ms absolute ceiling), uncovered only once the full engine suite was run
+   against the completed conversion. The dense polyline search ran on every ray-march step of
+   every pixel, including the ~90% of the 1080p frame that is empty background far from the small
+   (~0.3-radius) figure. Fixed with a bounding-sphere SDF lower bound: the curve's own magnitude
+   identity (`|z1+a*z2| <= |z1|+a|z2| = 1+a`, divided by the curve's own `(1+a)` normalizer) proves
+   the whole tube lies within a sphere of exactly `kRosetteRadius + tubeRadius`, centered at the
+   origin — a mathematically exact, not approximate, bound. The same bound was added to the wing
+   tubes (their arc's own endpoints sit at a known fixed radius from a known center), since the
+   figure bound alone only partially closed the gap. **Found live within that fix:** a bare
+   `boundD > 0` cutoff is unsound, not just imprecise — the bounding sphere is TANGENT to the true
+   surface at specific points (the curve reaches exactly its bounding radius at `t=0`, for every
+   morph state), so the cheap branch can return a near-zero value there, and the ray-march loop's
+   relative hit epsilon (`d < 0.001*t`) reads any near-zero SDF as a genuine surface hit — this
+   rendered a false, audio-INDEPENDENT sphere silhouette that swallowed every aMorph/rotation/
+   symmetry difference `RosetteRayMarchTests` measures (caught because those three coupling tests
+   collapsed to near-zero diffs, not because the render looked visibly wrong at a glance). Fixed
+   with a safety margin (0.03, ~15x the hit epsilon at this scene's camera distance) between the
+   bounding radius and where the cheap branch is trusted — only a thin shell around the true
+   boundary falls through to the exact search. Final measured cost: 28 ms/frame at 1080p (4.8x
+   the median preset), comfortable margin under both gates.
+
+### Also found and fixed in the same increment
+
+`SessionReplayHarness` never mapped the TONAL block (`tonalPhaseFifths`/`tonalConsonance`/
+`harmonicFlux`/`midAttRel`) for any ray-march preset — Rosette is the first ray-march preset
+routed off it, and `ReplayHarnessRouteCoverageTests` (built exactly to catch this class of gap)
+correctly flagged it the moment the route existed. Mapped from the real CSV columns
+`AudioRoutePrimitives.swift` already names (`tonal_phase_fifths`, `tonal_consonance`,
+`harmonic_flux`, `mid_att_rel`) — the columns were always written by `SessionRecorder+CSV.swift`,
+just never read on the replay side. `Rosette.json`'s `rubric_profile` was briefly (incorrectly)
+set to `full` mid-session on the theory that real materials now warranted the full cascade rubric
+— reverted to `lightweight` once `FidelityRubricTests` showed the `full` profile's checks
+(triplanar textures, detail normal maps, volumetric fog motes, parallax occlusion, chroma thin-
+film) are built for painterly/terrain-style ray-march presets and do not conceptually apply to a
+deliberately spare line-art emblem; Rosette's visual language was never meant to need them.
+
+### Verification
+
+Full `RosetteRayMarchTests` suite (non-degenerate render, harmony/rotation/symmetry coupling,
+BUG-104 continuity re-verified under the new distance search) green. `MultiPassFlashHarnessTests`
+green with real measured motion (Δ0.010, 0.00 flashes/s) after extending
+`FlashHarnessSupport.withHarmonicMotion` with an optional consonance sweep — Rosette's dominant
+visual dimension (`aMorph`, the swept tube's shape) is gated by `tonalConsonance`, which the
+existing decorator (built for Witchlight's rotation-only response) pinned at a constant, leaving
+the geometry frozen. `PresetAcceptanceTests`' Rosette-specific black-stub exemptions (dating from
+the old `direct+mv_warp` `rosette_fragment` stub) removed — Rosette now passes both checks through
+the genuine ray-march path, same as the other three ray-march presets. Full engine suite (1903
+tests) green; `swiftlint --strict` clean (one pre-existing function-length/identifier-name
+violation in `RayMarchPipeline+MetalFX.swift`, introduced by this increment's camera-orbit code,
+fixed by extracting `applyCameraOrbit` as its own function).
+
+**References.** `docs/ENGINEERING_PLAN.md` Increment WHIT.2b; `Rosette.metal`; `Rosette.json`;
+`RosetteRayMarchTests.swift`; D-220/D-221 (the state and transition mechanism this renders);
+D-021 (the `sceneSDF`/`sceneMaterial` ray-march contract this preset now uses).
+
+## D-223: Rosette's camera orbit removed (WHIT.2c)
+
+**Status:** Accepted. `certified: false` unchanged.
+
+### What was gated
+
+Immediately after D-222 shipped and was rebuilt for a live look, Matt: *"I hate it. It's just a
+few objects rotating 360 degrees and moving poorly with the music. Movement of the patterns is
+minimal and feels completely disconnected from the music. I dislike the rotation and hate the way
+the pattern moves."* He attached a real session folder (`features.csv`/`stems.csv`/`session.log`)
+from the live look.
+
+### The diagnosis, before any fix was attempted
+
+Per this codebase's diagnose-first discipline, the session data was read before touching code:
+
+1. **The orbit itself is 100% audio-independent.** `scene_orbit_speed=0.12` (D-222) advances the
+   camera angle at a fixed rate every frame regardless of the music — the single most visually
+   dominant motion in the scene (it moves the ENTIRE composition, not a subtle local change) had
+   no coupling to anything in the session. This alone is a strong candidate for "moving poorly
+   with the music" / "completely disconnected from the music."
+2. **Replaying Matt's actual session through the real render path** (`SessionReplayHarness`,
+   `REPLAY_SESSION=<his session dir>`) surfaced a second, independent failure mode: because the
+   figure and both wing-arc tubes all lie flat in the z=0 plane, the orbit periodically points the
+   camera near edge-on to the WHOLE scene simultaneously — every element, not just one. Stills
+   pulled at several timestamps across his session showed the composition flattened to a plain
+   ring plus two thin lines, even at moments where the underlying curve (per that same session's
+   `tonal_consonance`/`harmonic_flux` values) was not actually that simple. The orbit was not
+   merely failing to help — it was periodically hiding real geometric complexity behind a bad
+   viewing angle.
+3. A third, SEPARATE finding surfaced by the same data pull, explicitly NOT addressed by this
+   decision: `tonal_consonance` on this specific track averages 0.071 against the shader's
+   corpus-calibrated median of 0.117 and p99 of 0.32 (`Rosette.metal`'s `rosetteMorphState`
+   comment cites TONAL.2b's 1000-track calibration) — 84% of frames sit below the point where the
+   `presence` smoothstep gate even reaches half-weight, meaning the audio-independent floor-drift
+   clock dominates the figure's tightness for most of the track, not the harmony signal. This is a
+   real, evidenced gap, but it is a tightness-CALIBRATION question distinct from the orbit, and
+   Matt had not yet weighed in on it when this decision was made — presented to him separately,
+   not folded into this fix.
+
+### Decision
+
+`scene_orbit_speed` removed from `Rosette.json` — the field is simply absent, so
+`PresetDescriptor.sceneOrbitSpeed` decodes to its default `0` (camera-static) and the camera holds
+the fixed position `[1.15, 1.0, -1.9]` already visually verified against the WHIT.2b jaggedness
+and performance fixes (§D-222). **The generic `scene_orbit_speed` engine feature is NOT deleted.**
+It is cheap, fully generic camera plumbing that mirrors the already-retained `scene_dolly_speed`
+pattern (D-020-era precedent: a capability kept at low-or-zero live consumers because the cost is
+optionality only, e.g. RMENV.1's multi-light rig, D-213). The failure diagnosed here is specific to
+Rosette's use of it — a constant, unmodulated rate applied to a scene with no out-of-plane
+geometry — not a defect in the orbit mechanism itself. A future preset with real 3D depth
+variation, or an audio-modulated orbit rate (direction/speed keyed off arousal or the bar, an
+option offered to Matt and not yet decided), remains a live option for this capability.
+
+### Verification
+
+Full `RosetteRayMarchTests` suite, `PresetFrameBudgetTests`, and
+`MultiPassFlashHarnessTests.rosetteIsFlashSafe` re-run green with the orbit removed (flash-safety
+measurement drops slightly, Δ0.010→Δ0.008, since the orbit had been contributing some of the
+measured frame-to-frame luma variation — still comfortably above the 0.003 responsiveness floor
+and still 0.00 flashes/s / SAFE).
+
+**References.** `docs/ENGINEERING_PLAN.md` Increment WHIT.2c; `Rosette.json`; D-222 (the orbit
+this removes); `docs/presets/ROSETTE_DESIGN.md` §6.10.
+
+## D-224: Rosette retired (WHIT-RETIRE.1)
+
+**Status:** Accepted (Matt's call, 2026-08-26).
+
+**Decision.** Rosette is retired in its entirety. All preset code (`Rosette.metal`,
+`Rosette.json`, `Sources/Presets/Rosette/RosetteState.swift`), its dedicated tests
+(`RosetteRayMarchTests.swift`, `RosetteStateTests.swift`), its design doc
+(`docs/presets/ROSETTE_DESIGN.md`), and its visual reference set
+(`docs/VISUAL_REFERENCES/rosette/`) are deleted. `PresetLoaderCompileFailureTest.
+expectedProductionPresetCount` drops **30 → 29**. Recover from git history if a future concept
+revives it — `git log --all --oneline -- '**/Rosette*'` finds every commit.
+
+**Context — what makes this different from Faraday (D-204) but the same shape.** Like Faraday,
+Rosette did not die on an unfixed bug: the WHIT.2b ray-march conversion, the jaggedness fix, and
+the WHIT.2c orbit removal were each root-caused correctly and verified working (full test suite
+green, real measured flash-safety numbers, direct visual confirmation at every step). What never
+moved was Matt's verdict. Six live rounds, from WHIT.0's initial look-spike through WHIT.2c's
+orbit removal, each addressed the SPECIFIC defect raised in that round — and each time, the next
+live look found a new specific defect rather than approval. The final round made this explicit:
+offered a bounded, two-item fix (recompose the camera so the epicycle reads as the hero rather
+than the wing arcs; recalibrate `figure_tightness <- tonalConsonance` against real track data,
+since the shader's assumed corpus range didn't match observed sessions) as an alternative to
+retirement. Matt: *"Even a harness difference will not be enough to save this preset, I'm
+afraid."* That is a statement about the CONCEPT's ceiling, not about any specific remaining bug —
+the same category as D-201's motion-incoherence ceiling and D-204's "a correct mapping cannot
+rescue an intrinsically low-energy image," not the KS/Truchet/Kleinian Froth
+reference-vs-mechanism misses.
+
+**What survives.** The ray-march / PBR / IBL / SSGI pipeline itself (`RayMarchPipeline`,
+`RayMarch.metal`, `IBL.metal`, `PresetDescriptor+SceneUniforms`) is untouched — Volumetric
+Lithograph, Lumen Mosaic, and Ferrofluid Ocean all still run on it. The generic camera-orbit
+feature (`scene_orbit_speed`, `RayMarchPipeline.cameraOrbitSpeed`/`cameraOrbitAngle`,
+`applyCameraOrbit`) is KEPT, per the same reasoning D-223 already gave and the RMENV/D-188
+zero-consumer-capability precedent: it is cheap, generic scalar plumbing, and the failure
+diagnosed was Rosette's specific use of it (constant rate, wholly planar scene), not the
+mechanism. It currently has zero consumers, same as RMENV after Kinetic Sculpture's retirement,
+and awaits a future preset the same way.
+
+**What does NOT survive, and why this is a different call than the orbit.** The
+`RosetteUniforms` ray-march buffer-6 ABI parameter (D-220/WHIT.2b) — `smoothedFifths`/`symmetryN`,
+threaded as a mandatory trailing parameter through `sceneSDF`/`sceneMaterial` in the shared
+preamble AND all three other ray-march presets (each silencing it via `(void)rosette;`) — is
+fully removed, not kept-as-capability. Unlike `scene_orbit_speed` (a generic float scalar any
+future preset can trivially reuse by name) or `LumenPatternState`/buffer 8 (kept because Lumen
+Mosaic is a LIVE, currently-shipping consumer), `RosetteUniforms` was a bespoke 2-float struct
+whose FIELDS encode Rosette's own specific algorithm (a circular-phase smoother and a
+symmetry-order hold-timer) — renaming it away from "Rosette" would not have made it reusable, since
+a future preset wanting cross-frame CPU state would need different fields anyway. Keeping a
+zero-consumer, preset-shaped struct as permanent ABI weight on every ray-march preset's signature
+is exactly the "reusable infrastructure" trap CLAUDE.md's Authoring Discipline warns against
+(D-097 — siblings, not subclasses); a future preset can rebuild the identical pattern from git
+history (this decision, or D-220) in about the time it took to build originally. The matching
+`presetFragmentBuffer1` Swift-side plumbing (`RayMarchPipeline.render`, `runGBufferPass`,
+`rosettePlaceholderBuffer`) and the `varyConsonance`/`consonanceSweep` flash-harness parameters
+(added at WHIT.2b/D-222 specifically for Rosette's flash-safety measurement, zero other callers)
+are removed for the same reason.
+
+**Phase WHIT is NOT closed.** `docs/presets/WHITNEY_PROGRAM.md` is the program-level doc governing
+three sibling presets after John Whitney Sr.: Rosette (WHIT.A, built through WHIT.2c, retired by
+this decision), Frieze (WHIT.B, unstarted), and Unison (WHIT.C, unstarted) — explicitly "three
+different Whitney mechanisms, not one engine with three configs" (D-097 cited in that doc). This
+decision retires only WHIT.A/Rosette; Frieze and Unison remain open future work under the same
+program, unaffected by Rosette's specific concept not landing. `WHITNEY_PROGRAM.md` is annotated
+to mark WHIT.A retired with a pointer here, not deleted.
+
+**Wiring removed.** `expectedProductionPresetCount` 30 → 29; `FidelityRubricTests.
+expectedAutomatedGate` Rosette entry removed; `MultiPassRenderHarness`'s `renderRosette` method +
+its `"Rosette"` dispatch case + its ray-march-preset-name-set entry removed;
+`MultiPassFlashHarnessTests.rosetteIsFlashSafe` removed; `StatefulRuntimeRegistry.
+knownPresetNames`'s `"Rosette"` entry removed (`ParticleGeometryRegistry.swift`);
+`VisualizerEngine`'s `rosetteState` property + `bindRosetteRuntime` + its dispatch case + its
+track-change reset + its teardown nil-out all removed (`VisualizerEngine.swift`,
+`VisualizerEngine+Presets.swift`). Comments in `PresetDescriptor.swift`, `RayMarchPipeline+
+MetalFX.swift`, `SessionReplayHarness.swift`, and `ReplayHarnessRouteCoverageTests.swift` that
+named Rosette as a still-live consumer of `scene_orbit_speed` or the TONAL-block CSV mapping are
+reworded to reflect retirement while the underlying generic capabilities stay documented and
+available.
+
+**Carry-forward.** `docs/ENGINEERING_PLAN.md` (Phase WHIT header annotated, WHIT-RETIRE.1
+Recently-Completed entry), `docs/ARCHITECTURE.md` (Module Map entries removed, GPU Contract
+Details buffer-6 section reverted to its pre-WHIT.2b text), `docs/ENGINE/RENDER_CAPABILITY_
+REGISTRY.md` and `docs/SHADER_CRAFT.md` (`scene_orbit_speed` rows updated to note zero consumers,
+Rosette retired), `docs/presets/WHITNEY_PROGRAM.md` (WHIT.A marked retired). D-217 through D-223
+(Rosette's full decision history) are kept in place as historical record, per the D-188 precedent
+— superseded, not deleted.
+
+**References.** `docs/ENGINEERING_PLAN.md` Increment WHIT-RETIRE.1; D-217–D-223 (Rosette's full
+decision history, all superseded by this one); D-188 / D-201 / D-204 (the retirement precedents
+this follows); D-097 (siblings not subclasses — why `RosetteUniforms` does not survive as
+"reusable infrastructure").

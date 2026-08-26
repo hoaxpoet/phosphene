@@ -439,7 +439,13 @@ extension PresetLoader {
         // and silenced via `(void)lumen;`). `ferrofluidHeight` is the V.9
         // Session 4.5b slot-10 baked spike-field texture; only Ferrofluid
         // Ocean samples it, every other ray-march preset silences via
-        // `(void)ferrofluidHeight;`.
+        // `(void)ferrofluidHeight;`. Ray-march buffer slots 6/7 carry no
+        // meaning here — Rosette (WHIT.2b) briefly used slot 6 for its own
+        // cross-frame CPU state (`RosetteUniforms`) via this same forward-
+        // declaration mechanism, removed along with the preset at its
+        // retirement (D-224); a future ray-march preset needing cross-frame
+        // state can reintroduce the same pattern (see git history at WHIT.2b/
+        // D-220 for the recipe) with its own struct shape.
         float sceneSDF(float3 p,
                        constant FeatureVector& f,
                        constant SceneUniforms& s,

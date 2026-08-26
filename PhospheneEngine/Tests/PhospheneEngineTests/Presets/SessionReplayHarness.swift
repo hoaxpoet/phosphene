@@ -68,6 +68,15 @@ struct SessionReplayHarness {
         var pulsePhase01: Float = 0
         var pulseBeatIndex: Float = 0
         var pulseRegionalBlend01: Float = 0
+        // TONAL block (D-178) — Rosette (WHIT.2b) was the first ray-march preset to route
+        // off these (retired at D-224; the mapping stays as generic harness capability for
+        // whichever future ray-march preset routes off it next). ReplayHarnessRouteCoverageTests
+        // catches an unmapped route the moment a preset newly declares it (see that suite's
+        // own history of silent-zero gaps).
+        var tonalPhaseFifths: Float = 0
+        var tonalConsonance: Float = 0
+        var harmonicFlux: Float = 0
+        var midAttRel: Float = 0
     }
 
     private static func loadRows(_ csv: URL) throws -> [Row] {
@@ -104,6 +113,10 @@ struct SessionReplayHarness {
             r.pulsePhase01 = get(f, "pulse_phase01")
             r.pulseBeatIndex = get(f, "pulse_beat_index")
             r.pulseRegionalBlend01 = get(f, "pulse_regional_blend01")
+            r.tonalPhaseFifths = get(f, "tonal_phase_fifths")
+            r.tonalConsonance = get(f, "tonal_consonance")
+            r.harmonicFlux = get(f, "harmonic_flux")
+            r.midAttRel = get(f, "mid_att_rel")
             out.append(r)
         }
         return out
@@ -122,6 +135,10 @@ struct SessionReplayHarness {
         f.pulsePhase01 = r.pulsePhase01
         f.pulseBeatIndex = r.pulseBeatIndex
         f.pulseRegionalBlend01 = r.pulseRegionalBlend01
+        f.tonalPhaseFifths = r.tonalPhaseFifths
+        f.tonalConsonance = r.tonalConsonance
+        f.harmonicFlux = r.harmonicFlux
+        f.midAttRel = r.midAttRel
         f.aspectRatio = aspect
         return f
     }
@@ -249,6 +266,8 @@ struct SessionReplayHarness {
         // dollying preset (Volumetric Lithograph) replays with its real forward
         // flight instead of a static camera (BUG-074 replay-harness parity gap).
         pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed
+        // WHIT.2b — same BUG-074-class parity fix for the orbit as the dolly above.
+        pipeline.cameraOrbitSpeed = preset.descriptor.sceneOrbitSpeed
 
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
