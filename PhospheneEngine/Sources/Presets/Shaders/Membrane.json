@@ -5,7 +5,6 @@
   "description": "A luminous drumskin stretched across the screen — bass displaces the surface, spectrum sculpts topology, beats strike it with shockwaves, feedback loop is its memory",
   "author": "Matt",
   "passes": ["feedback"],
-  "beat_source": "bass",
   "beat_zoom": 0.02,
   "beat_rot": 0.01,
   "base_zoom": 0.01,

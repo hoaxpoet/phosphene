@@ -7,7 +7,6 @@
   "passes": [],
   "fragment_function": "aurora_fragment",
   "vertex_function": "fullscreen_vertex",
-  "beat_source": "composite",
   "decay": 0.945,
   "stem_affinity": {},
   "audio_routes": [

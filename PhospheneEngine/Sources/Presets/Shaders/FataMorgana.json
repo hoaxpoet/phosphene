@@ -13,7 +13,6 @@
   "passes": ["direct", "mv_warp"],
   "fragment_function": "fata_morgana_fragment",
   "vertex_function": "fullscreen_vertex",
-  "beat_source": "composite",
   "decay": 1.0,
   "feedback_pixel_format": "bgra8Unorm",
   "stem_affinity": {

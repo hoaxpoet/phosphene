@@ -34,67 +34,6 @@ public struct SceneCamera: Sendable, Codable, Equatable {
     }
 }
 
-/// Ferrofluid Ocean-specific material parameters (V.9 Session 4.5 / D-124).
-///
-/// Declared in the preset's JSON sidecar under the `"ferrofluid"` block.
-///
-/// Session 4 added five fields driving four material detail layers (meso warp,
-/// Cassie-Baxter droplets, micro-normal perturbation, thin-film thickness).
-/// Session 4 M7 review (2026-05-13) rejected the first three layers as
-/// decoration without a load-bearing musical role (Failed Approach #62);
-/// Session 4.5 Phase 0 reverted them. Only the audio-modulated thin-film
-/// thickness remains:
-///
-///   - `thin_film_thickness_baseline_nm`: center of the iridescent thin-film
-///     interference band. Defaults to 220 nm (silicone-oil-like, blue-to-cyan
-///     band). The matID == 2 lighting branch modulates ± `thin_film_arousal_range_nm`
-///     from arousal.
-///   - `thin_film_arousal_range_nm`: half-range of the audio-driven thickness
-///     modulation. 40 nm keeps the band inside the "subtle blue-to-cyan" range
-///     and well below the "rainbow oil-slick" failure mode.
-///
-/// All fields decode with sensible defaults; out-of-range values warn and
-/// fall back to the spec default. The block as a whole is optional — a nil
-/// `ferrofluid` block means the consumer (currently only Ferrofluid Ocean)
-/// uses hardcoded MSL constants matching these defaults.
-public struct FerrofluidParams: Sendable, Codable, Equatable {
-    public var thinFilmThicknessBaselineNm: Float
-    public var thinFilmArousalRangeNm: Float
-
-    public init(
-        thinFilmThicknessBaselineNm: Float = 220,
-        thinFilmArousalRangeNm: Float = 40
-    ) {
-        self.thinFilmThicknessBaselineNm = thinFilmThicknessBaselineNm
-        self.thinFilmArousalRangeNm = thinFilmArousalRangeNm
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case thinFilmThicknessBaselineNm = "thin_film_thickness_baseline_nm"
-        case thinFilmArousalRangeNm = "thin_film_arousal_range_nm"
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        // Helper: decode with default; if the decoded value is negative, warn
-        // and use the default. Negative thicknesses are not physically
-        // meaningful and silently flooring would mask author error.
-        func decodeNonNegative(_ key: CodingKeys, default defaultValue: Float, name: String) throws -> Float {
-            let value = try container.decodeIfPresent(Float.self, forKey: key) ?? defaultValue
-            if value < 0 {
-                Logging.renderer.warning(
-                    "PresetDescriptor.FerrofluidParams: \(name) \(value) is negative — using default \(defaultValue)")
-                return defaultValue
-            }
-            return value
-        }
-        self.thinFilmThicknessBaselineNm = try decodeNonNegative(
-            .thinFilmThicknessBaselineNm, default: 220, name: "thin_film_thickness_baseline_nm")
-        self.thinFilmArousalRangeNm = try decodeNonNegative(
-            .thinFilmArousalRangeNm, default: 40, name: "thin_film_arousal_range_nm")
-    }
-}
-
 /// A single scene light declared in a ray march preset's JSON sidecar.
 public struct SceneLight: Sendable, Codable, Equatable {
     /// World-space light position.
@@ -224,9 +163,8 @@ public struct MarksConfig: Sendable, Codable, Equatable {
 /// { "passes": ["feedback", "particles"] }
 /// ```
 ///
-/// If the JSON uses the legacy `use_feedback` / `use_mesh_shader` / `use_post_process` /
-/// `use_ray_march` / `use_particles` boolean flags instead of `"passes"`, the decoder
-/// synthesises the `passes` array automatically for backward compatibility.
+/// Omitting `passes` (or declaring it empty) means the preset renders through the
+/// default direct fragment.
 public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public var id: String { name }
 
@@ -252,9 +190,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public let author: String
 
     // MARK: - Audio Routing
-
-    /// Which onset drives the beat uniform: "bass", "mid", "treble", "composite".
-    public let beatSource: BeatSource
 
     // MARK: - Feedback Parameters
 
@@ -301,11 +236,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to 64 (the standard threadgroup size for production preset mesh shaders).
     public let meshThreadCount: Int
 
-    /// When true, the mesh pipeline uses additive blending (src=one, dst=one).
-    /// Used by presets with emissive overlapping geometry (e.g. Arachne bioluminescent strands).
-    /// Defaults to false (no blending).
-    public let meshAdditiveBlend: Bool
-
     // MARK: - Scene Configuration (Ray March Presets)
 
     /// Camera configuration for ray march presets. Nil uses `SceneUniforms` defaults.
@@ -338,17 +268,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         guard let scale = renderScale else { return 1.0 }
         return min(max(scale, 0.4), 1.0)
     }
-
-    /// Ferrofluid Ocean-specific material detail parameters (V.9 Session 4 / D-124).
-    ///
-    /// Optional block under the `"ferrofluid"` JSON key. When present, declares
-    /// the material detail baselines for meso turbulence, micro normal,
-    /// Cassie-Baxter droplets, and thin-film thickness modulation range.
-    /// Phase A wires the schema; Phase B routes audio modulation through these
-    /// baselines. A nil value means the consumer falls back to MSL constants
-    /// matching the documented defaults. Ferrofluid Ocean-specific — not a
-    /// catalog-wide schema.
-    public let ferrofluid: FerrofluidParams?
 
     /// Fog density for ray march presets (0 = no fog; 0.05 ≈ heavy fog).
     /// Maps `fogFar = max(1, 1/sceneFog)` and is stored in `sceneParamsB.y`.
@@ -408,13 +327,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
     /// Source .metal file name (populated by PresetLoader, not from JSON).
     public var shaderFileName: String = ""
-
-    public enum BeatSource: String, Sendable, Codable {
-        case bass
-        case mid
-        case treble
-        case composite
-    }
 
     // MARK: - Orchestrator Scoring Metadata (Increment 4.0)
 
@@ -628,7 +540,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case name, family, duration, description, author
         case naturalCycleSeconds = "natural_cycle_seconds"
-        case beatSource = "beat_source"
         case beatZoom = "beat_zoom"
         case beatRot = "beat_rot"
         case baseZoom = "base_zoom"
@@ -637,11 +548,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case beatSensitivity = "beat_sensitivity"
         case passes
         case meshThreadCount = "mesh_thread_count"
-        case meshAdditiveBlend = "additive_blend"
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
         case renderScale = "render_scale"
-        case ferrofluid
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
         case sceneFarPlane = "scene_far_plane"
@@ -671,16 +580,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case marks
     }
 
-    /// Keys for legacy boolean flags — decode-only, not stored as properties.
-    /// Used in `synthesizePasses(from:)` for backward-compatible JSON parsing.
-    private enum LegacyCodingKeys: String, CodingKey {
-        case useFeedback    = "use_feedback"
-        case useMeshShader  = "use_mesh_shader"
-        case useParticles   = "use_particles"
-        case usePostProcess = "use_post_process"
-        case useRayMarch    = "use_ray_march"
-    }
-
     // MARK: - Decoding
 
     public init(from decoder: Decoder) throws { // swiftlint:disable:this function_body_length
@@ -691,7 +590,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         naturalCycleSeconds = try container.decodeIfPresent(Float.self, forKey: .naturalCycleSeconds)
         description      = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         author           = try container.decodeIfPresent(String.self, forKey: .author) ?? ""
-        beatSource       = try container.decodeIfPresent(BeatSource.self, forKey: .beatSource) ?? .bass
         beatZoom         = try container.decodeIfPresent(Float.self, forKey: .beatZoom) ?? 0.03
         beatRot          = try container.decodeIfPresent(Float.self, forKey: .beatRot) ?? 0.01
         baseZoom         = try container.decodeIfPresent(Float.self, forKey: .baseZoom) ?? 0.12
@@ -699,11 +597,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         decay            = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
         beatSensitivity  = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
         meshThreadCount  = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
-        meshAdditiveBlend = try container.decodeIfPresent(Bool.self, forKey: .meshAdditiveBlend) ?? false
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
         renderScale      = try container.decodeIfPresent(Float.self, forKey: .renderScale)
-        ferrofluid       = try container.decodeIfPresent(FerrofluidParams.self, forKey: .ferrofluid)
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0
         sceneFarPlane    = try container.decodeIfPresent(Float.self, forKey: .sceneFarPlane) ?? 30.0
@@ -713,18 +609,18 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         vertexFunction   = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName   = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""
 
-        // Render graph: prefer the new "passes" key; fall back to legacy boolean flags.
-        // An explicit empty array normalises to [.direct] — identical to omitting the key
-        // (see synthesizePasses / renderPassDefaultIsDirect): a preset with no declared
-        // passes renders via the default direct fragment. This keeps activePasses
-        // non-empty for direct-fragment presets (Nimbus, Aurora Veil ship "passes": []),
-        // so draw(in:)'s BUG-061 empty-passes skip — which treats an empty activePasses as
-        // a transient preset-swap state — can never permanently freeze them (BUG-062).
-        if let decoded = try container.decodeIfPresent([RenderPass].self, forKey: .passes) {
-            passes = decoded.isEmpty ? [.direct] : decoded
-        } else {
-            passes = try Self.synthesizePasses(from: decoder)
-        }
+        // Render graph. An explicit empty array normalises to [.direct] — identical to
+        // omitting the key: a preset with no declared passes renders via the default
+        // direct fragment. This keeps activePasses non-empty for direct-fragment presets
+        // (Nimbus, Aurora Veil ship "passes": []), so draw(in:)'s BUG-061 empty-passes
+        // skip — which treats an empty activePasses as a transient preset-swap state —
+        // can never permanently freeze them (BUG-062).
+        //
+        // The legacy `use_feedback` / `use_ray_march` / … boolean-flag synthesis was
+        // deleted at RECON.22: all 29 shipped sidecars declare `passes`, and the compat
+        // path served only hypothetical out-of-tree copies.
+        let decoded = try container.decodeIfPresent([RenderPass].self, forKey: .passes) ?? []
+        passes = decoded.isEmpty ? [.direct] : decoded
 
         // MARK: Orchestrator Scoring Metadata (Increment 4.0)
         visualDensity = try container.decodeIfPresent(Float.self, forKey: .visualDensity) ?? 0.5
@@ -811,31 +707,5 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
         // MARK: Marks-on-top Overlay (Skein.ENGINE.1.1)
         marks = try container.decodeIfPresent(MarksConfig.self, forKey: .marks)
-    }
-
-    /// Synthesise a `passes` array from legacy boolean flags.
-    /// Used when JSON predates the `"passes"` key (Increment 3.6).
-    private static func synthesizePasses(from decoder: any Decoder) throws -> [RenderPass] {
-        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
-        // Use optional-chaining to silently ignore missing or malformed keys.
-        let hasMesh      = (try? legacy.decodeIfPresent(Bool.self, forKey: .useMeshShader)) == .some(true)
-        let hasRayMarch  = (try? legacy.decodeIfPresent(Bool.self, forKey: .useRayMarch)) == .some(true)
-        let hasPostProc  = (try? legacy.decodeIfPresent(Bool.self, forKey: .usePostProcess)) == .some(true)
-        let hasFeedback  = (try? legacy.decodeIfPresent(Bool.self, forKey: .useFeedback)) == .some(true)
-        let hasParticles = (try? legacy.decodeIfPresent(Bool.self, forKey: .useParticles)) == .some(true)
-
-        if hasMesh {
-            return [.meshShader]
-        }
-        if hasRayMarch {
-            return hasPostProc ? [.rayMarch, .postProcess] : [.rayMarch]
-        }
-        if hasPostProc {
-            return [.postProcess]
-        }
-        if hasFeedback {
-            return hasParticles ? [.feedback, .particles] : [.feedback]
-        }
-        return [.direct]
     }
 }

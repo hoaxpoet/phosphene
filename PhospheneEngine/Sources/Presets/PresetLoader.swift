@@ -770,14 +770,10 @@ public final class PresetLoader: @unchecked Sendable {
             case .rgba16Float: return .rgba16Float
             }
         }
-        // DEPRECATED fallback (delete once no shipped sidecar relies on it):
-        // the pre-PUB.4 display-name matches, kept so an out-of-tree preset
-        // copy without the new field renders as before.
-        switch descriptor.name {
-        case "Fata Morgana":             return .bgra8Unorm
-        case "Nacre", "Floret", "Glaze": return .rgba16Float
-        default:                         return pixelFormat
-        }
+        // The pre-PUB.4 display-name fallback was deleted at RECON.22: its own
+        // delete-when condition ("once no shipped sidecar relies on it") was met —
+        // Fata Morgana, Nacre, Floret and Glaze all declare feedback_pixel_format.
+        return pixelFormat
     }
 
     private func makeWarpPipelines(
