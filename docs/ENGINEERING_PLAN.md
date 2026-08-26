@@ -63,6 +63,20 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.16 — ShaderUtilities.metal reduced to its live surface ✅ (2026-08-26)
+
+Third item from the 2026-08-25 preset audit. The preamble concatenated **two parallel utility libraries** into every preset compile: the V.1–V.3 `Utilities/` tree (canonical, snake_case) and legacy `ShaderUtilities.metal` (camelCase). A transitive reachability census over every preset shader, every Renderer shader, every preamble string and every Swift call site found **38 of its 42 functions had no caller anywhere** — the entire SDF-primitive, ray-marching, PBR and UV-transform sections (the ray-march helpers additionally required a user-defined `map()` no preset ever defined), plus the unused noise and colour helpers. **639 → 128 lines.**
+
+**Four survive, with their live consumers named:** `hash21` ← `perlin3D` ← `fbm3D` ← VolumetricLithograph (3 sites); `toneMapACES` ← Nimbus (2 sites). All four are **byte-identical to their previous text** (verified by per-function checksum against HEAD), so `PresetRegressionTests`' 29-preset dHash gate holds — as it must, since unused `static inline` code cannot affect the codegen of used code.
+
+**Two audit claims corrected by the census.** The audit report asserted `fog` was consumed by Meniscus/Arachne/VL — it has **zero** shader call sites; only a test used it. It also read `calcNormal`/`opTwist` as live, but both hits are ASCII-diagram comments in `Utilities/`, and `hash21` in `tools/mitosis_gen2_sketch` is that sketch's own definition. Verified name-by-name rather than inherited.
+
+**Certification risk checked and cleared:** the E3 fog rubric item greps for `"fog("`, but `FidelityRubric.evaluate` receives `metalSource` read from the preset's own `.metal` file, never the preamble — so no rubric outcome can shift.
+
+**`ShaderUtilityTests` retargeted, not gutted.** Tests whose subject had a canonical successor moved to it (`cookTorranceBRDF` → `brdf_cook_torrance`, `perlin2D` → `perlin3D`, `fbm2D` → `fbm3D`); three whose subject had none (`rayMarch`, `uvKaleidoscope`, `fog`) were removed. One genuine finding fell out: the old `test_cookTorrance_energyConservation` asserted `output <= input energy`, which is **not** a property of the V.1 BRDF — at roughness 0.1 the mirror-direction specular lobe measures ~10.3, because a BRDF is a density and energy conservation is a property of the hemispherical integral, not one sample. The assertion was **not** weakened to pass; the test was rewritten around properties that do transfer (positive + finite, zero for sub-surface light, smooth peak > rough peak).
+
+**Consequence for QR.7:** its migration table named `perlin2D` / `fbm2D` / `sdRoundBox`, all of which turned out to have no consumers (Glass Brutalist D-186 and Kinetic Sculpture D-188 had been their only callers) and were simply deleted. QR.7 is annotated in place; what remains of it is migrating VL and Nimbus off the last four, after which the file disappears.
+
 ### Increment RECON.15 — FerrofluidMesh disabled G-buffer path deleted ✅ (2026-08-26)
 
 Second item from the 2026-08-25 preset audit (after RECON.14/D-213), same precedent: **D-203 — good work is not a reason to keep code with no consumer.** The mesh G-buffer path was unwired at Ferrofluid Ocean round 57 (2026-05-17) for "scoop" normal artifacts on foreground cones and never re-enabled; it sat in tree for 3 months behind a "preserved for a future increment" comment — verbatim the reusable-infrastructure defense CLAUDE.md names as a failure mode.
@@ -5378,6 +5392,9 @@ Pick one source of truth (recommended: `Presets/Shaders/`). Remove the duplicate
 ---
 
 ### Increment QR.7 (CLEAN.2) — Shader noise algorithm consolidation
+
+> **⚠ SCOPE REDUCED at RECON.16 (2026-08-26).** The census that increment ran found `perlin2D`, `fbm2D` and `sdRoundBox` had **zero consumers** — Glass Brutalist and Kinetic Sculpture had been their only callers and both are retired — so they were deleted outright rather than migrated, along with 35 other unreachable functions. The table and consumer list below still name them; treat those rows as historical. **What actually remains for QR.7:** migrate `VolumetricLithograph.metal` (3 × `fbm3D`) and `Nimbus.metal` (2 × `toneMapACES`) — the only surviving legacy consumers — then `ShaderUtilities.metal` disappears entirely. The value/gradient-noise distinction below is still the reason it is a deliberate refactor and not a rename.
+
 
 **Goal.** Resolve the deferred B.3 + B.4 items from QR.5: migrate production presets calling legacy `perlin2D` / `perlin3D` / `fbm3D` / `fbm2D` (and `sdRoundBox`) to a single canonical noise / SDF algorithm, then delete the legacy bodies from `ShaderUtilities.metal`. **This increment is NOT mechanical — it accepts visual change at the affected call sites.**
 

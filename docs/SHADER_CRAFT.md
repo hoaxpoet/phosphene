@@ -1096,7 +1096,8 @@ Every ray-march preset should have at least this level of atmosphere. Hero geome
 
 ```metal
 // Volume/ParticipatingMedia.metal — apply_fog (snake_case alias, Increment V.4)
-// Legacy camelCase equivalent: fog(color, fogColor, dist, density) in ShaderUtilities.metal.
+// (A legacy camelCase `fog()` once lived in ShaderUtilities.metal; it had no callers
+// and was deleted at RECON.16 — use apply_fog.)
 static inline float3 apply_fog(float3 color, float depth,
                                 float3 fog_color, float fog_density) {
     float transmittance = exp(-depth * fog_density);
