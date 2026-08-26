@@ -105,7 +105,10 @@ enum FlashHarnessSupport {
     /// defaults to 3.2 rad/s — the fastest smoothed harmonic motion in the measured corpus
     /// (love_rehab, 15.4 circles per 30 s, WITCHLIGHT_DESIGN §2.3), i.e. the worst case for a
     /// harmonically-steered visual.
-    static func withHarmonicMotion(_ drive: [FeatureVector], radPerSecond: Float = 3.2) -> [FeatureVector] {
+    ///
+    static func withHarmonicMotion(
+        _ drive: [FeatureVector], radPerSecond: Float = 3.2
+    ) -> [FeatureVector] {
         drive.enumerated().map { index, frame in
             var out = frame
             let t = Float(index) / Float(fps)

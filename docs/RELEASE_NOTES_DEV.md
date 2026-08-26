@@ -10,6 +10,62 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-26-141947] BUG-104 fixed — Rosette's curve had visible gaps from a nearest-point search locking onto the wrong branch
+
+**RESOLVED.** Right after BUG-103's wing fix, Matt's next live look: *"Still too basic... Still
+broken."* Asked what "broken" meant specifically: *"Lines do not connect. The motion is all
+wrong."* Rendered diagnostic stills confirmed it directly — the tangle state (a=1.80) showed
+real gaps cutting into the stroke; the cusped-star state (a=0.30) showed small disconnected dots
+at the cusps.
+
+Root cause: `rosetteDist`'s coarse-then-bisect nearest-point search tracked only the single
+globally-closest raw coarse sample, then refined locally around it. Once the epicycle
+self-intersects (which it does at higher `a`), several curve branches can pass near the same
+query point — refining from one seed locks onto whichever branch owned the marginally-closest
+sample and never checks a different, ultimately-closer branch. Wrong branch selected → distance
+reported too large → pixels that should be stroke render as background. Quantified directly:
+5.92% of the frame lit before the fix at the tangle state, 6.96% after (+17.5%).
+
+Fixed by finding ALL local minima among the coarse samples (not just the global-best one, via a
+small top-3 candidate list) and bisect-refining each branch separately. Verified the mechanism
+by temporarily collapsing the fix back to 1 candidate — reproduced the exact pre-fix number
+(0.0592) bit-for-bit — then restored it. New regression guard
+`test_rosette_curveIsContinuousAtHighA`.
+
+One thing this specifically was NOT: the small loops remaining at the cusped-star state's cusps
+are real curve geometry (the second term's amplitude exceeds the threshold for an exact cusp
+past a=0.25), not a rendering defect — checked the math before treating it as more bug to chase.
+
+Filed and closed same-session as BUG-104 (`docs/QUALITY/KNOWN_ISSUES.md`).
+
+---
+
+### [dev-2026-08-26-131626] BUG-103 fixed — Rosette's wing cartouche was rendering fully off-screen on real windows
+
+**RESOLVED.** Matt's first live look at Rosette (`2026-08-26T12-58-21Z`, Cherub Rock) called it
+"completely broken... no additional ornamentation" — a bare star with no frame. Root cause: the
+mirrored wing arcs (D-217's "full cartouche") were placed at a hardcoded absolute x-coordinate
+tuned only against 16:9-family renders (960×540 / 1920×1080). Matt's actual window rendered at
+1080×1018 — aspect 1.061, nearly square — where the visible frame is narrower than the wings'
+hardcoded position, so they fell **entirely outside the frame**. Every test and visual-dump this
+program had run used a wide aspect; nobody had ever rendered Rosette at a square or narrow window.
+
+`features.csv` for the same session ruled out a routing failure first: `tonal_consonance`,
+`tonal_phase_fifths`, `harmonic_flux`, and `bassDev` all varied actively and in-range — the
+"broken" read was the missing cartouche exposing a real, validated (if low-consonance,
+self-intersecting) generator state with nothing signaling it was intentional.
+
+**Fixed** by scaling the wings' x-placement proportionally to the frame's actual visible
+half-width, referenced against the 16:9 aspect they were originally tuned at — reproduces the
+approved D-217 look exactly there, stays on-screen at any other aspect. New regression guard
+(`test_rosette_wingsVisibleAtNearSquareAspect`) renders at Matt's exact reported window size and
+checks luma in the independently-derived expected wing column bands; confirmed to fail without
+the fix (max luma 12/255) and pass with it.
+
+Filed and closed same-session as BUG-103 (`docs/QUALITY/KNOWN_ISSUES.md`).
+
+---
+
 ### [dev-2026-08-13-163115] BUG-087 partially fixed — and the remedy was wrong about what limits the rate
 
 Local-file analysis goes **10.0 → 16.4 Hz**. BUG-087's ≥ 40 Hz target is **not met**, and the

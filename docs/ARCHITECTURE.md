@@ -1168,7 +1168,17 @@ buffer(6) = per-preset fragment buffer #1 — bound by setDirectPresetFragmentBu
               RenderPipeline+Staged.swift). Other presets that need additional
               buffers must use slot 8 (setDirectPresetFragmentBuffer3) or
               extend RenderPipeline with directPresetFragmentBuffer4 / 5;
-              never overload 6/7.
+              never overload 6/7. `RayMarchPipeline` leaves buffer slots 6/7
+              completely UNBOUND at the G-buffer pass — only 0/1/2/3/4/8 are
+              wired. (Rosette, WHIT.2b, briefly threaded a `RosetteUniforms`
+              struct onto buffer(6) here as a proof that ray-march presets
+              can use this slot for their own cross-frame CPU state, the same
+              role slot 8/`LumenPatternState` plays for Lumen Mosaic; removed
+              along with the preset at its retirement, D-224, since the
+              struct's fields were Rosette-specific and had zero remaining
+              consumers. A future ray-march preset needing cross-frame state
+              can reintroduce the identical pattern — see git history at
+              WHIT.2b/D-220 for the recipe.)
 buffer(7) = per-preset fragment buffer #2 — bound by setDirectPresetFragmentBuffer2.
               Reserved for: Arachne spider state (ArachneSpiderGPU — 80 bytes,
               V.7.7D contract). Same per-frame uniform binding contract as

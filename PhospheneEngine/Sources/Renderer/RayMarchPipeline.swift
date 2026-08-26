@@ -182,6 +182,18 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// exactly that).
     public var cameraDollyOffset: Float = 0
 
+    /// Camera orbit angular speed in radians/second around the world origin, on the
+    /// world Y axis (WHIT.2b). `0` disables the orbit. Set by `applyPreset` from
+    /// `PresetDescriptor.sceneOrbitSpeed`. Orthogonal to the dolly above — no current
+    /// preset uses both, so each is computed purely from `base.cameraPosition`,
+    /// independent of the other's offset.
+    public var cameraOrbitSpeed: Float = 0
+
+    /// Integrated orbit angle (radians). Advanced each frame by
+    /// `deltaTime × cameraOrbitSpeed` in `applyAudioModulation`, the same
+    /// wall-clock-integrator pattern `cameraDollyOffset` uses.
+    public var cameraOrbitAngle: Float = 0
+
     /// Timestamp of the previous drawWithRayMarch invocation — used to
     /// compute `deltaTime` for the dolly integrator.  `nil` before the
     /// first draw.  Reset on preset change.

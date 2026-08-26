@@ -250,6 +250,14 @@ extension VisualizerEngine {
                     // re-entering a ray-march preset doesn't jump forward by
                     // the distance accumulated during its previous activation.
                     rmPipeline.cameraDollyOffset = 0
+
+                    // Camera orbit (`scene_orbit_speed`, WHIT.2b — no current preset
+                    // consumer; Rosette shipped it then removed it, D-223/WHIT.2c,
+                    // before being retired itself, D-224). Same rationale as the dolly
+                    // wiring above: lives in the sidecar so the engine-side
+                    // SessionReplayHarness renders the same motion production does.
+                    rmPipeline.cameraOrbitSpeed = desc.sceneOrbitSpeed
+                    rmPipeline.cameraOrbitAngle = 0
                     rmPipeline.lastDollyFrameTime = nil
 
                     // BUG-101 — resolution scale for ray-march presets declaring `render_scale`.

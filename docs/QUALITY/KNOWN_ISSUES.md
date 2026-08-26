@@ -2677,3 +2677,151 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ---
 
+### BUG-104 — RESOLVED (WHIT.1d-4): Rosette's curve had visible gaps — the nearest-point search locked onto the wrong branch (2026-08-26)
+
+**Severity:** P1
+**Domain tag:** preset.fidelity / sdf-geometry
+**Status:** Resolved
+**Introduced:** WHIT.0 (`rosetteDist`'s coarse-then-bisect search, 2026-08-25)
+**Resolved:** WHIT.1d-4 (2026-08-26)
+
+**Expected behavior.** The two-term epicycle renders as a single continuous closed stroke at
+every point in the morph (`a` from 0.05 to 1.80), matching the validated state family
+(circle/cusped-star/petals/petals-with-loops/tangle, `ROSETTE_DESIGN.md` §4.1).
+
+**Actual behavior.** After BUG-105's wing fix, Matt's next live look reported: *"Still too
+basic... Still broken."* Asked directly what "still broken" meant: *"Lines do not connect. The
+motion is all wrong."* Rendered diagnostic stills (`test_rosette_visualDump`,
+`ROSETTE_MVWARP_DIAG=1`) confirmed it directly: the tangle state (a=1.80) showed clear gaps
+cutting into the stroke at multiple points around the loops; the cusped-star state (a=0.30)
+showed small disconnected artifact dots near the cusps.
+
+**Reproduction steps.** Render Rosette's geometry-overlay fragment at `a=1.80` (time =
+`kRosettePeriod/2`) at any resolution and inspect the stroke for gaps.
+
+**Minimum reproducer:** `test_rosette_curveIsContinuousAtHighA`
+(`RosetteMVWarpAccumulationTest.swift`), or `ROSETTE_MVWARP_DIAG=1`'s `tangle_a180` still.
+
+**Session artifacts.** Diagnostic PNGs generated via the existing env-gated visual-dump test
+(not a live session — reproduced directly and deterministically from the shader, no audio
+involved). Quantified with a bright-pixel-coverage script against the pre-fix and post-fix
+`tangle_a180` stills: **5.92% of the 1920×1080 frame lit before the fix, 6.96% after** — a
+17.5% increase in stroke coverage from filling in the gaps, measured, not estimated.
+
+**Suspected failure class:** sdf-geometry.
+
+**Evidence for this class:** `rosetteDist`'s coarse-then-bisect nearest-point search tracked
+only the SINGLE globally-closest raw coarse sample, then bisect-refined locally around it. A
+self-intersecting curve (which the two-term epicycle becomes at higher `a`, per its own design
+doc) can have several distinct branches passing near the same query point; refining from only
+one seed locks the search onto whichever branch happened to own the marginally-closest coarse
+sample and never considers a different, ultimately-closer branch. Where the wrong branch was
+selected, the reported distance was too large, so pixels that should render as stroke rendered
+as background — a literal gap. Verified the mechanism directly: temporarily reducing the fix's
+`kRosetteMaxBranchCandidates` from 3 to 1 (collapsing it back to old single-branch behavior)
+reproduced the exact pre-fix measurement (0.0592) bit-for-bit.
+
+**Verification criteria:**
+- [x] New regression guard `test_rosette_curveIsContinuousAtHighA` passes (bright-pixel
+      coverage at the tangle state > 0.063, comfortably between the measured broken value
+      0.0592 and fixed value 0.0696).
+- [x] Confirmed the guard actually bites: temporarily set `kRosetteMaxBranchCandidates = 1`,
+      confirmed the test fails reproducing the exact pre-fix number, then restored the fix.
+- [x] Visually confirmed via regenerated diagnostic stills: tangle state fully continuous
+      (5 clean overlapping loops, no gaps); cusped-star state's remaining small loops at the
+      cusps confirmed as REAL curve geometry, not an artifact — the two-term epicycle's second
+      term amplitude (`4a` at n=5) exceeds 1 for any `a > 0.25`, so a=0.30 is mathematically
+      past the exact-cusp threshold and small self-tangent loops are an expected feature of
+      that state, matching `ROSETTE_DESIGN.md`'s own "cusped-star" naming.
+- [x] Full existing Rosette suite, `swiftlint --strict`, and the full engine suite (1898
+      tests) re-run clean.
+
+**Manual validation required:** Yes — Matt's next live look confirms the curve now reads as
+one continuous, correctly-formed stroke through the full morph. Not yet performed as of this
+fix landing.
+
+**Fix scope.** Contained to `rosetteDist`: find ALL local minima among the coarse samples
+(not just the single global-best raw value, done via a small fixed-size top-3 candidate list),
+bisect-refine each candidate branch separately, take the overall closest result. No change to
+`rosetteCurve`, the wing arcs, audio routing, or any other function. Cost: coarse phase
+unchanged (still 40 samples); refinement now runs on up to 3 candidate branches instead of 1
+(worst case ~1.8× the curve evaluations of the old search, most pixels far fewer since most
+query points have only one nearby branch) — comfortably within the pass's existing 5.8ms
+budget headroom (16.67ms @ 60fps target). Trivial single-increment collapse (root cause
+confirmed by direct rendering + a bit-exact revert/restore test, contained to one function, no
+architectural risk) — same-session, Matt actively testing live.
+
+**Related:** Increment WHIT.1d-4. Adjacent finding, not itself a defect: `ROSETTE_DESIGN.md`
+§6.6 already flagged the coarse-then-bisect search as an unprofiled *performance* risk; this is
+the same search's *correctness* failure mode, found live rather than by review.
+
+---
+
+### BUG-105 — RESOLVED (WHIT.1d-3): Rosette's wing cartouche rendered fully off-screen on a real window (2026-08-26)
+
+**Severity:** P2
+**Domain tag:** preset.fidelity / renderer
+**Status:** Resolved
+**Introduced:** WHIT.0 (wing arcs added, 2026-08-25)
+**Resolved:** WHIT.1d-3 (2026-08-26)
+**Note (2026-08-26):** originally filed as BUG-103; renumbered to BUG-105 when a concurrent
+session's unrelated BUG-103 (AVAudioPlayerNode NSException) merged to main first, creating a
+duplicate. Content unchanged. Rosette itself is retired (D-224) — this entry is historical.
+
+**Expected behavior.** Rosette's mirrored coloured wing arcs + small ellipses (D-217, "full
+cartouche") render near the frame edges on every real window size, as they do in every recorded
+test (960×540 / 1920×1080).
+
+**Actual behavior.** On Matt's first live look at Rosette (`2026-08-26T12-58-21Z`, Cherub Rock),
+the wings did not render at all — Matt: *"Looks completely broken. A star shape with a broken line
+pattern, no additional ornamentation."*
+
+**Reproduction steps.** Run Rosette in the live app at a near-square window (any window with
+aspect ratio ≲ 1.2 reproduces it; Matt's session measured exactly 1080×1018, aspect 1.061). Observe
+that only the bare epicycle stroke renders — no wing arcs, no ellipses, at any point in the morph.
+
+**Minimum reproducer:** `test_rosette_wingsVisibleAtNearSquareAspect`
+(`RosetteMVWarpAccumulationTest.swift`) at 1080×1018.
+
+**Session artifacts.** Session directory: `~/Documents/phosphene_sessions/2026-08-26T12-58-21Z/`.
+`session.log`: `RENDER_TARGET width=1080 height=1018 megapixels=1.10 render_scale=1.00`, set before
+Rosette became active and unchanged for the rest of the session. `features.csv`: checked first to
+rule out a routing failure — `tonal_consonance` (mean 0.076, actively varying), `tonal_phase_fifths`
+(full ±π sweep), `harmonic_flux` (peaks just over the 0.09 step-threshold), `bassDev` (mean 0.082,
+max 1.665) — all alive and in-range for the whole session. The routing was never the problem.
+
+**Suspected failure class:** sdf-geometry.
+
+**Evidence for this class:** `rosetteWingArc`/`rosetteWingEllipseDist` (`Rosette.metal`) placed the
+wings at a hardcoded absolute `x≈0.62–0.67` in the fragment's aspect-scaled coordinate space, where
+visible `q.x` spans `±0.5·aspect`. At aspect 1.061 (Matt's window) that visible range is `±0.53` —
+strictly inside the wings' hardcoded position, so they render fully off-screen on every frame,
+unconditionally. Every test, visual-dump, and flash-safety measurement this program has ever run
+used a 16:9-family aspect (1.78, `±0.89` visible), where the wings sit comfortably inside frame —
+nobody had ever rendered Rosette at a square or narrow window, so this was invisible to the whole
+suite by construction.
+
+**Verification criteria:**
+- [x] New regression guard `test_rosette_wingsVisibleAtNearSquareAspect` passes at 1080×1018.
+- [x] Confirmed the guard actually bites: temporarily reverted the fix in-place, confirmed the
+      test fails (max luma 12/255, background-only) against the pre-fix code, then restored the
+      fix and confirmed it passes.
+- [x] Full existing Rosette suite (`test_rosette_multiFrameNonDegenerate`,
+      `test_rosette_harmonyCoupling`, `test_rosette_rotationAndSymmetryCoupling`,
+      `rosetteIsFlashSafe`, `RouteCoverageTests`) re-run clean at the 16:9 reference aspect — the
+      scale factor is exactly 1.0 there, so the approved D-217 look is bit-for-bit reproduced.
+- [x] `swiftlint --strict` clean; full engine suite (1898 tests) clean.
+
+**Manual validation required:** Yes — Matt's next live look confirms the cartouche is visible on
+his actual window. Not yet performed as of this fix landing.
+
+**Fix scope.** Contained: `rosetteWingArc`/`rosetteWingDist`/`rosetteWingEllipseDist` gained an
+`aspect` parameter; x-placement scales by `aspect / kRosetteReferenceAspect` (16:9). No change to
+`y` placement (already aspect-independent), the figure geometry, or any audio routing. Trivial
+single-increment collapse (root cause obvious from the session log + math, <20 lines, no
+architectural risk) — approved by Matt in the same session ("yes, fix the aspect-ratio bug").
+
+**Related:** Decision D-217 (the cartouche this bug silently defeated); Increment WHIT.1d-3.
+
+---
+
