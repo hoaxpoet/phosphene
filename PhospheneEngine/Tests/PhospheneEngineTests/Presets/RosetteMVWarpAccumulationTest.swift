@@ -230,18 +230,40 @@ struct RosetteMVWarpAccumulationTest {
         #expect(rotDiff > 2.0,
                 "Rosette at t0=\(t0): tonalPhaseFifths=0 vs pi/2 renders are near-identical (meanAbsDiff=\(rotDiff)) — morph_position may not be reaching the figure rotation")
 
-        // (b) symmetry_order_step <- harmonicFlux: a qualifying spike (RosetteState starts
-        // with timeSinceLastStep == minHoldSeconds, so the very first tick's spike steps
-        // immediately) must change the figure's symmetry order (5-fold -> 6-fold).
+        // (b) symmetry_order_step <- harmonicFlux: a qualifying spike starts a SMOOTH
+        // multi-second transition (WHIT.2a), not an instant step, so a single-tick render
+        // can't observe it directly — advance two independent states past
+        // transitionDurationSeconds (one spiked once at the start, one never spiked) and
+        // compare their SETTLED renders (5-fold vs 6-fold).
+        let device = ctx.device
+        guard let stateFive = RosetteState(device: device), let stateSix = RosetteState(device: device) else {
+            Issue.record("RosetteState allocation failed")
+            return
+        }
+        let dt: Float = 1.0 / 60.0
+        let settleFrames = Int((RosetteState.transitionDurationSeconds / dt).rounded(.up)) + 5
+        for i in 0..<settleFrames {
+            var fFive = FeatureVector(time: Float(t0), deltaTime: dt)
+            fFive.tonalConsonance = 0.15
+            stateFive.tick(deltaTime: dt, features: fFive)
+
+            var fSix = FeatureVector(time: Float(t0), deltaTime: dt)
+            fSix.tonalConsonance = 0.15
+            fSix.harmonicFlux = (i == 0) ? 1.0 : 0.0
+            stateSix.tick(deltaTime: dt, features: fSix)
+        }
+        #expect(stateFive.currentSymmetryN == RosetteState.symmetrySequence[0])
+        #expect(stateSix.currentSymmetryN == RosetteState.symmetrySequence[1])
+
         let orderFive = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
                                             width: Self.seqWidth, height: Self.seqHeight, time: t0,
-                                            consonance: 0.15, harmonicFlux: 0)
+                                            consonance: 0.15, externalState: stateFive)
         let orderSix = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
                                            width: Self.seqWidth, height: Self.seqHeight, time: t0,
-                                           consonance: 0.15, harmonicFlux: 1.0)
+                                           consonance: 0.15, externalState: stateSix)
         let stepDiff = meanAbsDiff(orderFive, orderSix)
         #expect(stepDiff > 2.0,
-                "Rosette at t0=\(t0): harmonicFlux=0 (5-fold) vs 1.0 (steps to 6-fold) renders are near-identical (meanAbsDiff=\(stepDiff)) — symmetry_order_step may not be reaching rosetteDist's n")
+                "Rosette at t0=\(t0): settled 5-fold vs settled 6-fold renders are near-identical (meanAbsDiff=\(stepDiff)) — symmetry_order_step may not be reaching rosetteDist's n")
     }
 
     // MARK: - Env-gated visual dump (human tuning)
@@ -297,13 +319,76 @@ struct RosetteMVWarpAccumulationTest {
         print("[rosette-diag] done.")
     }
 
+    // MARK: - WHIT.2a: symmetry-transition motion dump (env-gated, human tuning)
+
+    @Test("Rosette: symmetry-order transition motion dump (env-gated)")
+    func test_rosette_transitionMotionDump() throws {
+        guard ProcessInfo.processInfo.environment["ROSETTE_MVWARP_DIAG"] == "1" else {
+            print("RosetteMVWarpAccumulationTest: ROSETTE_MVWARP_DIAG not set, skipping")
+            return
+        }
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Rosette" }) else {
+            Issue.record("Rosette preset not found in _acceptanceFixture")
+            return
+        }
+        guard let mvWarp = preset.mvWarpPipelines, let geo = mvWarp.sceneGeometryState else {
+            Issue.record("Rosette preset compiled with no scene-geometry overlay pipeline")
+            return
+        }
+        let ctx = try MetalContext()
+        let device = ctx.device
+        guard let state = RosetteState(device: device) else { throw DiagError.textureFailed }
+
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: ctx.pixelFormat, width: Self.hiWidth, height: Self.hiHeight, mipmapped: false)
+        texDesc.usage = [.renderTarget, .shaderRead]
+        texDesc.storageMode = .shared
+        guard var warpTex = device.makeTexture(descriptor: texDesc),
+              var composeTex = device.makeTexture(descriptor: texDesc)
+        else { throw DiagError.textureFailed }
+        try HarnessTemplateCore.clear([warpTex, composeTex], ctx)
+
+        let outDir = try makeOutputDir("rosette_transition_motion")
+        print("[rosette-diag] transition motion output dir: \(outDir.path)")
+
+        // Hold at a=0.30 (plenty of detail to show crossing points move) and n starts at
+        // 5-fold (RosetteState's default). One qualifying harmonicFlux spike on the very
+        // first tick starts the transition immediately (timeSinceLastStep starts at
+        // minHoldSeconds). Dump a still at each full second through and just past the
+        // 4s transition window.
+        let checkpoints: Set<Int> = [0, 15, 30, 60, 90, 120, 150, 180, 210, 240, 300]
+        let dt: Float = 1.0 / 60.0
+        for i in 0...300 {
+            var features = FeatureVector(time: Float(Self.timeForA(0.30)), deltaTime: dt)
+            features.aspectRatio = Float(Self.hiWidth) / Float(Self.hiHeight)
+            features.tonalConsonance = 0.15
+            features.harmonicFlux = (i == 0) ? 1.0 : 0.0
+            state.tick(deltaTime: dt, features: features)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw DiagError.cmdBufferFailed }
+            try encodeWarp(cmd: cmd, mvWarp: mvWarp, warpTex: warpTex, composeTex: composeTex, features: &features)
+            try encodeGeometryOverlay(cmd: cmd, geo: geo, target: composeTex, features: &features, state: state)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            let tmp = warpTex; warpTex = composeTex; composeTex = tmp
+            if checkpoints.contains(i) {
+                let pixels = try readPixels(from: warpTex, width: Self.hiWidth, height: Self.hiHeight)
+                let seconds = Double(i) / 60.0
+                let url = outDir.appendingPathComponent(String(format: "transition_t%05.2f_n%.3f.png", seconds, state.currentSymmetryN))
+                try writePNG(pixels, width: Self.hiWidth, height: Self.hiHeight, to: url)
+                print("[rosette-diag] t=\(String(format: "%.2f", seconds))s n=\(state.currentSymmetryN)")
+            }
+        }
+        print("[rosette-diag] done.")
+    }
+
     // MARK: - Single-frame render (fresh textures each call — for the regression guard)
 
     private func renderOneFrame(
         preset: PresetLoader.LoadedPreset, mvWarp: PresetLoader.MVWarpCompiledPipelines,
         geo: MTLRenderPipelineState, context: MetalContext, width: Int, height: Int, time: Double,
         consonance: Float = 0, bassDev: Float = 0, midAttRel: Float = 0,
-        tonalPhaseFifths: Float = 0, harmonicFlux: Float = 0
+        tonalPhaseFifths: Float = 0, harmonicFlux: Float = 0,
+        externalState: RosetteState? = nil
     ) throws -> [UInt8] {
         let device = context.device
         let texDesc = MTLTextureDescriptor.texture2DDescriptor(
@@ -327,8 +412,17 @@ struct RosetteMVWarpAccumulationTest {
         // GPU memory, the same class of bug chromaticMix hit at WHIT.0. A fresh state per
         // call + a single tick means the smoother is seeded straight from this call's
         // `tonalPhaseFifths` (no cross-frame carryover to worry about in a single-frame test).
-        guard let state = RosetteState(device: device) else { throw DiagError.textureFailed }
-        state.tick(deltaTime: 1.0 / 60.0, features: features)
+        // `externalState` (WHIT.2a) lets a caller pass in a state already ticked forward
+        // in time — needed to observe the settled far side of the symmetry-order's smooth
+        // multi-second transition, which a single fresh tick can never reach.
+        let state: RosetteState
+        if let externalState {
+            state = externalState
+        } else {
+            guard let fresh = RosetteState(device: device) else { throw DiagError.textureFailed }
+            state = fresh
+            state.tick(deltaTime: 1.0 / 60.0, features: features)
+        }
         guard let cmd = context.commandQueue.makeCommandBuffer() else { throw DiagError.cmdBufferFailed }
         try encodeWarp(cmd: cmd, mvWarp: mvWarp, warpTex: warpTex, composeTex: composeTex, features: &features)
         try encodeGeometryOverlay(cmd: cmd, geo: geo, target: composeTex, features: &features, state: state)
