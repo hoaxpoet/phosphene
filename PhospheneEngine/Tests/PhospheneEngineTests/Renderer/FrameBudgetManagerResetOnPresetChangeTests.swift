@@ -24,8 +24,9 @@ struct FrameBudgetManagerResetOnPresetChangeTests {
             enabled: true
         )
         let mgr = FrameBudgetManager(configuration: cfg)
-        // Downshift to .reducedRayMarch (3 overruns × 3 levels = 9 overrun frames).
-        for _ in 0..<9 { mgr.observe(.init(cpuFrameMs: 25.0, gpuFrameMs: nil)) }
+        // Downshift to .reducedRayMarch. RECON.18 removed the `.noSSGI` rung, so the
+        // ladder is full → noBloom → reducedRayMarch: 3 overruns × 2 levels = 6 frames.
+        for _ in 0..<6 { mgr.observe(.init(cpuFrameMs: 25.0, gpuFrameMs: nil)) }
         return mgr
     }
 

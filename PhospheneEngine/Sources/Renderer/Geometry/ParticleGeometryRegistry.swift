@@ -24,8 +24,9 @@ import Foundation
 public enum ParticleGeometryRegistry {
 
     /// All preset names with a registered `ParticleGeometry` conformer.
-    /// "Murmuration" is a literal because `ProceduralGeometry` is part of
-    /// DM.0's frozen surface (D-097) and cannot host a static identifier.
+    /// "Murmuration" is a literal for historical reasons — its original
+    /// `ProceduralGeometry` conformer could not host a static identifier and
+    /// was retired at RECON.17; the live conformer is `Murmuration3DGeometry`.
     public static let knownPresetNames: Set<String> = [
         "Murmuration",
         "Filigree",

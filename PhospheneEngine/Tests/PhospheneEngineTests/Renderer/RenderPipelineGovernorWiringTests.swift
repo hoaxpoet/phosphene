@@ -2,7 +2,7 @@
 //
 // Verifies that RenderPipeline.applyQualityLevel(_:) correctly translates each
 // QualityLevel to the expected pipeline state changes across all five gates:
-// SSGI, bloom, ray march step count, particle fraction, and mesh density.
+// bloom, ray march step count, particle fraction, and mesh density.
 
 import Testing
 import Metal
@@ -45,46 +45,29 @@ struct RenderPipelineGovernorWiringTests {
         let (pipeline, rayMarch, postProcess) = try makeFullPipeline()
         pipeline.applyQualityLevel(.full)
 
-        #expect(rayMarch.reducedMotion == false, "SSGI gate should be off at .full")
         #expect(postProcess.bloomEnabled == true, "Bloom should be on at .full")
         #expect(rayMarch.stepCountMultiplier == 1.0, "Step count should be 1.0 at .full")
     }
 
-    // MARK: - 2. .noSSGI → only SSGI gate active
+    // MARK: - 3. .reducedRayMarch → bloom off, step count 0.75×
 
     @Test
-    func qualityNoSSGI_onlySSGISuppressed() throws {
-        let (pipeline, rayMarch, postProcess) = try makeFullPipeline()
-        pipeline.applyQualityLevel(.noSSGI)
-
-        #expect(rayMarch.reducedMotion == true, "Governor should suppress SSGI at .noSSGI")
-        #expect(postProcess.bloomEnabled == true, "Bloom should still be on at .noSSGI")
-        #expect(rayMarch.stepCountMultiplier == 1.0, "Step count should still be 1.0 at .noSSGI")
-    }
-
-    // MARK: - 3. .reducedRayMarch → SSGI off, bloom off, step count 0.75×
-
-    @Test
-    func qualityReducedRayMarch_ssgiAndBloomOff_stepCount75() throws {
+    func qualityReducedRayMarch_bloomOff_stepCount75() throws {
         let (pipeline, rayMarch, postProcess) = try makeFullPipeline()
         pipeline.applyQualityLevel(.reducedRayMarch)
-
-        #expect(rayMarch.reducedMotion == true)
         #expect(postProcess.bloomEnabled == false)
         #expect(abs(rayMarch.stepCountMultiplier - 0.75) < 0.001)
     }
 
-    // MARK: - 4. .reducedMesh → all five reductions active
+    // MARK: - 4. .reducedMesh → all remaining reductions active
 
     @Test
     func qualityReducedMesh_allReductionsActive() throws {
         let (pipeline, rayMarch, postProcess) = try makeFullPipeline()
         pipeline.applyQualityLevel(.reducedMesh)
-
-        #expect(rayMarch.reducedMotion == true)
         #expect(postProcess.bloomEnabled == false)
         #expect(abs(rayMarch.stepCountMultiplier - 0.75) < 0.001)
-        // Particle and mesh fractions are tested via ProceduralGeometry/MeshGenerator
+        // Particle and mesh fractions are tested via the ParticleGeometry/MeshGenerator
         // instances attached to the pipeline (nil in this minimal setup — no crash expected).
     }
 
@@ -104,20 +87,5 @@ struct RenderPipelineGovernorWiringTests {
         for level in FrameBudgetManager.QualityLevel.allCases {
             pipeline.applyQualityLevel(level)
         }
-    }
-
-    // MARK: - 6. a11y flag is not overridden by governor recovery
-
-    @Test
-    func governorRecovery_doesNotOverrideA11yFlag() throws {
-        let (pipeline, rayMarch, _) = try makeFullPipeline()
-        // Simulate a11y reduced motion active.
-        rayMarch.setA11yReducedMotion(true)
-        // Governor descends to noSSGI, then "recovers" to .full.
-        pipeline.applyQualityLevel(.noSSGI)
-        pipeline.applyQualityLevel(.full)
-        // Governor is now at .full (governorSkipsSSGI = false), but a11y is still true.
-        #expect(rayMarch.reducedMotion == true,
-            "A11y flag must not be cleared by governor recovery")
     }
 }

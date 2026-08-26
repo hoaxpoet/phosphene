@@ -14,13 +14,12 @@ public final class ShaderLibrary: @unchecked Sendable {
     public let library: MTLLibrary
 
     /// Full identity of a cached render pipeline state. The compiled descriptor
-    /// varies by `pixelFormat` (color attachment 0) and `supportICB`, so the name
+    /// varies by `pixelFormat` (color attachment 0), so the name
     /// alone is not a sufficient key — two calls with the same name but a different
     /// format/ICB capability compile *different* pipelines (CLEAN.4.4).
     private struct PipelineKey: Hashable {
         let name: String
         let pixelFormat: MTLPixelFormat.RawValue
-        let supportICB: Bool
     }
 
     /// Cached render pipeline states, keyed by full compiled identity.
@@ -90,20 +89,15 @@ public final class ShaderLibrary: @unchecked Sendable {
     ///   - fragmentFunction: Name of the fragment function in the shader library.
     ///   - pixelFormat: Output pixel format (from MetalContext).
     ///   - device: Metal device for pipeline creation.
-    ///   - supportICB: Set `true` to enable `supportIndirectCommandBuffers` on the
-    ///     descriptor.  Required when the pipeline state will be used as the inherited
-    ///     state in an `executeCommandsInBuffer` call (Increment 3.5 ICB render path).
-    ///     Defaults to `false`.
     /// - Returns: A compiled render pipeline state.
     public func renderPipelineState(
         named name: String,
         vertexFunction: String,
         fragmentFunction: String,
         pixelFormat: MTLPixelFormat,
-        device: MTLDevice,
-        supportICB: Bool = false
+        device: MTLDevice
     ) throws -> MTLRenderPipelineState {
-        let key = PipelineKey(name: name, pixelFormat: pixelFormat.rawValue, supportICB: supportICB)
+        let key = PipelineKey(name: name, pixelFormat: pixelFormat.rawValue)
         lock.lock()
         if let cached = pipelineStates[key] {
             lock.unlock()
@@ -122,7 +116,6 @@ public final class ShaderLibrary: @unchecked Sendable {
         descriptor.vertexFunction = vertexFn
         descriptor.fragmentFunction = fragmentFn
         descriptor.colorAttachments[0].pixelFormat = pixelFormat
-        descriptor.supportIndirectCommandBuffers = supportICB
 
         let state = try device.makeRenderPipelineState(descriptor: descriptor)
 

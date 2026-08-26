@@ -13,7 +13,7 @@ using namespace metal;
 // so the same MTLBuffer is consumed by engine-library shaders (Particles*.metal,
 // MVWarp.metal, feedback shaders) and preset shaders interchangeably. The first
 // 32 floats / 128 bytes match the pre-MV-1 struct exactly; existing engine
-// readers (Murmuration's `particle_update` etc.) are byte-identical.
+// readers (the particle-geometry kernels etc.) are byte-identical.
 struct FeatureVector {
     float bass, mid, treble;
     float bass_att, mid_att, treb_att;
@@ -120,7 +120,7 @@ struct FeedbackParams {
 /// During warmup (~first 10s) all values are zero — apply the D-019 blend
 /// `smoothstep(0.02, 0.06, totalStemEnergy)` before consuming any field.
 /// First 16 floats are byte-identical to the pre-MV-3 struct so existing
-/// engine readers (Murmuration's `particle_update`, MVWarp.metal) are
+/// engine readers (the particle-geometry kernels, MVWarp.metal) are
 /// unchanged. New post-MV-1/MV-3 fields appear after byte 64.
 struct StemFeatures {
     // Floats 1–16: per-stem energy/band/beat.

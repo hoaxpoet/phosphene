@@ -24,7 +24,7 @@
 
 ## 2. Architecture decision — the deferred mesh-G-buffer path
 
-**Goldengrove ships as `passes: ["ray_march"]` + a `MeshGBufferEncode` closure** (not `mesh_shader`). The closure emits branch + foliage geometry into the G-buffer (normal, albedo, roughness, emission); the standard lighting pass applies Cook-Torrance + IBL + scene lights, which is where golden-hour + bark + leaf-SSS materials become possible. Reference consumer: `FerrofluidMesh` (`RenderPipeline+PresetSwitching.swift:168–170`).
+**Goldengrove ships as `passes: ["ray_march"]` + a `MeshGBufferEncode` closure** (not `mesh_shader`). The closure emits branch + foliage geometry into the G-buffer (normal, albedo, roughness, emission); the standard lighting pass applies Cook-Torrance + IBL + scene lights, which is where golden-hour + bark + leaf-SSS materials become possible. Reference consumer: `FerrofluidMesh` (`RenderPipeline+PresetSwitching.swift:168–170`). **⚠ RECON.15 (2026-08-26): the `MeshGBufferEncode` closure, `setMeshGBufferEncoder`, `runMeshGBufferPass` and the G-buffer depth attachment were DELETED** — dead since Ferrofluid Ocean round 57, and this shelved plan was their only remaining claimed consumer. Reviving Goldengrove on this architecture means rebuilding that dispatch (see git history for `FerrofluidMesh`), not re-enabling it.
 
 Consequences (all net-new, all bounded):
 - Extend the mesh vertex format with a **tangent frame** (POM + normal mapping need `ws_to_ts()`; current `MeshVertex` has position/normal/uv only — `FractalTree.metal` vertex format).

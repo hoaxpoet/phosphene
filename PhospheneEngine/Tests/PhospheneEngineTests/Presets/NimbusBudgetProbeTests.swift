@@ -117,7 +117,7 @@ struct NimbusBudgetProbeTests {
         }
 
         // Full-res (the Tier-2 budget reference) and the half-res-march projection
-        // (DESIGN §6's planned headroom lever, before the NB.8 MetalFX upscale cost).
+        // (DESIGN §6's planned headroom lever, before the NB.8 upscale cost).
         if let full = measure(width, height) {
             print(String(format:
                 "[NimbusBudget] FULL 1920x1080  min=%.3f  p50=%.3f  mean=%.3f  p95=%.3f  max=%.3f ms",
@@ -125,14 +125,14 @@ struct NimbusBudgetProbeTests {
             let ratio = full.p50 / 7.0
             print(String(format:
                 "[NimbusBudget] VERDICT(full): p50 %.2f ms = %.2fx the 7.0 ms Tier-2 ceiling — %@",
-                full.p50, ratio, full.p50 <= 7.0 ? "WITHIN" : "OVER (DESIGN §6: full-1080p march not expected to fit — lever is half-res+MetalFX, NB.8)"))
+                full.p50, ratio, full.p50 <= 7.0 ? "WITHIN" : "OVER (DESIGN §6: full-1080p march not expected to fit — lever is half-res, NB.8)"))
         }
         if let half = measure(width / 2, height / 2) {
             print(String(format:
                 "[NimbusBudget] HALF 960x540 (march only, no MetalFX)  min=%.3f  p50=%.3f  mean=%.3f  p95=%.3f  max=%.3f ms",
                 half.min, half.p50, half.mean, half.p95, half.max))
             print(String(format:
-                "[NimbusBudget] VERDICT(half-march): p50 %.2f ms vs 7.0 ms ceiling — %@ (projection only; MetalFX upscale + NB.2–7 detail/lighting/embers add on top)",
+                "[NimbusBudget] VERDICT(half-march): p50 %.2f ms vs 7.0 ms ceiling — %@ (projection only; upscale + NB.2–7 detail/lighting/embers add on top)",
                 half.p50, half.p50 <= 7.0 ? "UNDER" : "OVER"))
         }
         // Reporter only — the 7 ms gate is a human/closeout judgement at NB.1 and

@@ -1,7 +1,7 @@
 # Visual References — Ferrofluid Ocean
 
 **Family:** fluid
-**Render pipeline:** ray_march + post_process (SDF G-buffer path; mesh G-buffer path retired in round 57 — see "Render pipeline history" below)
+**Render pipeline:** ray_march + post_process (SDF G-buffer path; the mesh G-buffer path was retired in round 57 and deleted at RECON.15 — see "Render pipeline history" below)
 **Rubric:** full (gated by V.6 certification)
 **Last curated:** 2026-05-13 by Matt (V.9 redirect; see DECISIONS.md D-124)
 **Last amended:** 2026-05-18 by Claude post-rounds 50–65. Major architectural changes since the 2026-05-14 amendment:
@@ -171,7 +171,7 @@ Specific audio→visual mappings as of round 65 (2026-05-18). Cite D-026 deviati
 **Retired:**
 
 - The §5.8 stage-rig CPU class and slot-9 buffer ABI (D-127, 2026-05-14). Aurora is now driven directly from FeatureVector + StemFeatures sampled inline at sky-sample time.
-- Mesh G-buffer path (round 57, 2026-05-17). `FerrofluidMesh.metal` is retained in tree but `setMeshGBufferEncoder` is no longer wired in `VisualizerEngine+Presets.swift`. Live rendering uses the SDF G-buffer path.
+- Mesh G-buffer path (round 57, 2026-05-17; DELETED at RECON.15, 2026-08-26). `FerrofluidMesh.metal`/`.swift` and the whole `setMeshGBufferEncoder` dispatch are gone from the tree — recoverable from git history. Live rendering uses the SDF G-buffer path.
 - Spatial palette phase `R.y * 0.18` (round 55). Caused green-glow-under-spikes artifact in the live screenshots — substrate-flat reflections at high R.y were tinted toward green primary regardless of palette phase. Removed; aurora hue is now uniform across the sky at any instant.
 - Lotus cluster envelope in the bake (round 55, after rounds 52/52b/53/54 experiments). Floor-based cluster-center lookup produced visible patchwork-quilt creases. Retired entirely.
 
@@ -190,7 +190,7 @@ The preset's `passes` array (`["ray_march", "post_process"]`) is stable, but whi
 - **Sessions 1–3 (2026-05-13 → 2026-05-15):** SDF G-buffer fragment (`raymarch_gbuffer_fragment` in the preamble) calling preset-defined `sceneSDF`. Standard ray-march per-pixel SDF evaluation.
 - **Session 4.5c Phase 1 Step B (round ~35, 2026-05-15):** added MESH G-buffer path. `VisualizerEngine+Presets.swift` constructed a `FerrofluidMesh` (tessellated 512×512 quad mesh) and registered it via `pipeline.setMeshGBufferEncoder`. When set, `RayMarchPipeline.render` took the `runMeshGBufferPass` branch instead of `runGBufferPass`. The mesh path computed normals via vertex displacement and per-pixel heightmap sampling.
 - **Round 57 (2026-05-17):** MESH path retired. Diagnostic discovery: test fixtures took the SDF branch (no mesh encoder set) while live took the MESH branch — a structural test/prod gap that hid the mesh path's normal-computation defects (artifacts read as "scoops" on cone silhouettes). Round 56's SDF Lipschitz fix worked beautifully in fixtures but didn't reach live because live wasn't using the SDF path. Round 57 removed the mesh-encoder wire-up in `VisualizerEngine+Presets.swift` — live now uses the SDF path. The `FerrofluidMesh.metal` shader and `FerrofluidMesh.swift` Swift code remain in tree for a future increment that may address the mesh path's normal computation properly.
-- **Round 57 (same):** fixture helper `renderDeferredRayMarch` gained a `useMeshPath: Bool` parameter (default `false`, matching new live behavior) that constructs a `FerrofluidMesh` and binds the encoder when set to `true`. This closes the structural test/prod branch gap permanently — future fixtures can verify both paths.
+- **Round 57 (same):** fixture helper `renderDeferredRayMarch` gained a `useMeshPath: Bool` parameter (default `false`, matching live behaviour). No caller ever set it to `true`; the parameter and its mesh wiring were removed at RECON.15 when the path was deleted.
 
 ## Provenance
 
