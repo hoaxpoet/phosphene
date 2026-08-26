@@ -10,6 +10,75 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-26-212617] BUG-100 instrumented, and the ML dispatch gate turns out to be inoperative at 4K (BUG-106)
+
+**Instrumentation, not a fix.** BUG-100 — sustained 4K rendering degrading the whole app rather
+than the preset on screen — had one degrading session, two clean ones, thermal `nominal`
+throughout, and its own artifacts have since aged out of retention. Two candidate mechanisms had
+never been recorded at all, and both fit the reported signature (whole-app, survives a preset
+switch, partially recovers after a lower-res interlude). Sessions now log one line per
+`DRAWABLE_LIFECYCLE` heartbeat bucket:
+
+```
+GPU_PRESSURE alloc_mb=… budget_mb=… used_pct=… ml_forced=… ml_last=…
+```
+
+`alloc_mb`/`budget_mb` is this process's Metal allocation against
+`recommendedMaxWorkingSetSize` — at 4K every render target is 4× its 1080p size, and a working
+set nearing the budget makes the driver evict, which is slow globally and recovers only when a
+smaller target frees memory. `ml_forced` is `MLDispatchScheduler.forceDispatchCount`. What is
+needed now is **one ~2-minute fullscreen 4K session** on a preset mix that has degraded before;
+both mechanisms are then decided by three lines of log.
+
+**BUG-106, found on the way and filed separately.** `MLDispatchScheduler` (D-059) is supposed to
+hold the 142 ms MPSGraph stem separation until recent frames are inside budget. The budget it
+compares against is `let budgetMs: Float = deviceTier == .tier1 ? 14.0 : 16.0` — **a constant
+with no resolution term** — and the number it compares is the *worst* frame of a 20–30 frame
+window. At 4K the median frame in BUG-100's own session was 17.6 ms rising to 44.9, so the window
+is never clean: every dispatch defers in 100 ms steps to the 1.5–2.0 s ceiling and force-fires
+regardless, against a **2.0 s** stem period. The gate never prevents anything at 4K and stems run
+about a full period late there, compounding BUG-086.
+
+⚠ **It is not offered as BUG-100's mechanism, and one recorded session refutes that reading:** the
+PERF.15 Volumetric Lithograph run held flat across 172 s at 4K at p50 ≈ 31 ms — permanently over
+the same budget, forced dispatch happening, nothing degraded. A mechanism that predicts the
+direction of an effect is not an explanation of its magnitude (the BUG-090 shape). The fix is a
+product decision — stems on time at 4K, or jank-free — and is Matt's call, written up on BUG-106.
+
+---
+
+### [dev-2026-08-26-204620] BUG-088 fixed — Aurora Veil's undeclared stem routes were dead computation, and a silence gate is not a driver
+
+**RESOLVED.** BUG-088 was filed from a capture, which said Aurora Veil reads three primitives it
+does not declare — `drumsEnergyDev`, `vocalsPitchHz`, `vocalsPitchConfidence` — and prescribed
+adding them to the manifest so `RouteCoverageTests` could see them. Read against the source
+instead, the premise inverts: **`AuroraVeil.metal` reads exactly the five fields its sidecar
+declares** (`arousal`, `bar_phase`, `bass_att_rel`, `pulse_amp`, `valence`). The three
+"undeclared reads" were consumed by `AuroraVeilState`, which computed a drum-kink charge and a
+5-frame smoothed vocal pitch every frame and flushed them to `[[buffer(6)]]` — the buffer AV.7
+stopped reading when it reauthored the preset as a nimitz *Auroras* port. Declaring those routes
+would have gated values with no consumer.
+
+**Deleted, not re-wired.** `AuroraVeilState.swift` (the class, its GPU struct, the slot-6 bind,
+the per-frame tick closure), the `AuroraVeilStateGPU` struct + `[[buffer(6)]]` parameter in
+`AuroraVeil.metal`, the app-side `auroraVeilState` property and `bindAuroraVeilRuntime`, and the
+slot-6 binding in three test harnesses. Also `PresetSessionReplay/AuroraVeilRoutes.swift` — a
+*second* manifest describing the same three deleted routes, which made `--preset aurora_veil`
+report verdicts about a shader that no longer exists; `aurora_veil` no longer resolves there.
+Aurora Veil's golden hashes are unchanged, because none of this reached a pixel.
+
+**The recurrence fix: `AudioRoute.Kind.gate`.** The entry's second finding was that `pulseAmp01`
+is declared `continuous` while the shader uses it as a silence gate — pinned at 1.000 through
+music, p5–p95 range 0.000. That is correct gate behaviour, so the `continuous` floor
+(non-constant + variance) is the wrong assertion; it passes today only because the fixtures open
+in silence. A `gate` kind now carries its own floor — **peak ≥ 0.9 on every fixture**, i.e. the
+only failure a gate has is never opening — and the three routes that were misdeclared are
+reclassified: Aurora Veil `star_beat_twinkle`, Fractal Tree `silence_gate`, Ferrofluid Ocean
+`spike_punch_gate`. **The arm was verified to bite**: floor temporarily raised to 1.5 → all three
+routes red with peak 1.00; restored → 201 routes / 21 presets / 0 red.
+
+---
+
 ### [dev-2026-08-26-141947] BUG-104 fixed — Rosette's curve had visible gaps from a nearest-point search locking onto the wrong branch
 
 **RESOLVED.** Right after BUG-103's wing fix, Matt's next live look: *"Still too basic... Still

@@ -92,8 +92,54 @@ extension VisualizerEngine {
              + "active_cpus=\(info.activeProcessorCount)"
     }
 
+    /// BUG-100 — the two dimensions a degrading 4K session never recorded.
+    ///
+    /// PERF.9 instrumented thermal state and it came back `nominal` on both sessions that
+    /// did NOT degrade, which leaves the one that did unexplained and these two candidate
+    /// mechanisms unmeasured. Both fit the reported signature — whole-app rather than
+    /// per-preset, persists across a preset switch, partially recovers after a lower-res
+    /// interlude — and neither is visible in `features.csv`.
+    ///
+    /// **GPU working set.** At 3840×2160 every render target is 4x its 1080p size. If this
+    /// process's Metal allocation approaches `recommendedMaxWorkingSetSize` the driver
+    /// starts evicting, which slows the GPU globally and recovers only when a smaller
+    /// target frees memory. `alloc_mb` climbing toward `budget_mb` through a degrading
+    /// session is that state; a flat ratio rules it out.
+    ///
+    /// **The app's own ML dispatches.** `MLDispatchScheduler` (D-059) is supposed to hold
+    /// the 142 ms MPSGraph stem separation until recent frames are inside budget — but the
+    /// budget it compares against is a hardcoded 14/16 ms
+    /// (`VisualizerEngine+Stems.swift`) with **no resolution term**. At 4K the render never
+    /// fits it (BUG-100's own session: 17.6 ms rising to 44.9), so every dispatch defers to
+    /// the 1.5–2.0 s ceiling and force-fires regardless — against a 2.0 s stem period. So
+    /// `ml_forced` climbing by ~one per 2 s means the gate is inoperative and every stem
+    /// update is landing on a saturated GPU; `ml_forced` flat means it is working normally
+    /// and this half is ruled out.
+    @MainActor
+    func gpuPressureDescription() -> String {
+        let device = context.device
+        let allocMB = Double(device.currentAllocatedSize) / 1_048_576
+        let budgetMB = Double(device.recommendedMaxWorkingSetSize) / 1_048_576
+        let pct = budgetMB > 0 ? 100.0 * allocMB / budgetMB : 0
+        let forced = mlDispatchScheduler?.forceDispatchCount ?? -1
+        let decision: String
+        switch mlDispatchScheduler?.lastDecision {
+        case .dispatchNow?:    decision = "dispatchNow"
+        case .defer?:          decision = "defer"
+        case .forceDispatch?:  decision = "forceDispatch"
+        case nil:              decision = "none"
+        }
+        let sizes = String(
+            format: "alloc_mb=%.0f budget_mb=%.0f used_pct=%.1f",
+            allocMB,
+            budgetMB,
+            pct
+        )
+        return "\(sizes) ml_forced=\(forced) ml_last=\(decision)"
+    }
+
     func setupDrawableLifecycleWatchdog(pipe: RenderPipeline, recorder: SessionRecorder) {
-        Task.detached(priority: .utility) { [weak pipe, weak recorder] in
+        Task.detached(priority: .utility) { [weak self, weak pipe, weak recorder] in
             var lastHeartbeatBucket: UInt64 = 0
             var lastStallFrame: UInt64?
             var lastRenderTarget = ""
@@ -149,6 +195,15 @@ extension VisualizerEngine {
                     let message = "DRAWABLE_LIFECYCLE heartbeat \(snapshot.logDescription)"
                     recorder.log(message)
                     initLogger.info("\(message, privacy: .public)")
+
+                    // BUG-100: GPU working set + ML force-dispatch count, on the same low-rate
+                    // bucket so the three diagnostic lines share one timeline. See
+                    // `gpuPressureDescription()` for what each number decides.
+                    if let pressure = await MainActor.run(body: { self?.gpuPressureDescription() }) {
+                        let line = "GPU_PRESSURE \(pressure)"
+                        recorder.log(line)
+                        initLogger.info("\(line, privacy: .public)")
+                    }
                 }
 
                 if snapshot.commandBufferFailures > lastFailureCount

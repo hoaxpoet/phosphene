@@ -54,6 +54,12 @@ struct RouteCoverageTests {
     /// or lower it to pass a dead one (QG.1).
     static let accentThreshold: Float = 0.02
 
+    /// `gate`: an enable, not a driver (silence gate, confidence gate). The only
+    /// failure a gate has is never opening, so the floor is `max ≥ 0.9` on every
+    /// fixture — NOT the continuous floor, which asserts variance a correctly-pinned
+    /// gate does not have (BUG-088).
+    static let gateOpenFloor: Float = 0.9
+
     /// `structural`: the primitive (section index) must take ≥ 2 distinct values on
     /// AT LEAST ONE fixture — i.e. the canonical set must contain a section boundary
     /// the route can respond to. If no fixture has one, that is a documented fixture
@@ -174,6 +180,15 @@ struct RouteCoverageTests {
                 if firings < accentMinFiringsPerFixture {
                     return "\(preset)/\(route.route) [\(route.primitive), accent]: "
                         + "\(firings) firings on \(name) (need ≥ \(accentMinFiringsPerFixture))"
+                }
+            }
+        case .gate:
+            for (name, v) in perFixture {
+                let peak = v.max() ?? 0
+                if peak < gateOpenFloor {
+                    return "\(preset)/\(route.route) [\(route.primitive), gate]: "
+                        + "never opens on \(name) (peak \(fmt(peak)) < \(gateOpenFloor)) — "
+                        + "the visual it enables is suppressed for the whole fixture"
                 }
             }
         case .structural:

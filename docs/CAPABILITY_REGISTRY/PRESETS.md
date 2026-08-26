@@ -397,7 +397,7 @@ Each file gets a verdict. All 30 Swift files are `production-active` (with the f
 
 | File | LoC | Verdict | Key API surface |
 |---|---|---|---|
-| `AuroraVeilState.swift` | 244 | `production-active` | `AuroraVeilStateGPU` struct (16 B); `AuroraVeilState` final class with `init?(device:)` (logs `os.Logger.error` on buffer-alloc failure), `tick(deltaTime:features:stems:)`, `reset()`. Constants: `kinkDecayPerFrame60 = 0.93`, `kinkChargeLo = 0.7`, `kinkChargeHi = 1.0` (AV.2.h.1 retuning 2026-05-20), `pitchSmoothWindow = 5` frames, `pitchHzFloor = 80`, `pitchOctaveSpan = 4`, `pitchConfidenceGate = 0.5`, `pitchNeutralBaseline = 0.5`, D-019 warmup window `[0.02, 0.06]`. Per-frame: rare-event drum charge `(drumsDev × smoothstep(0.7, 1.0, drumsDev))` + 5-frame moving average pitch smoother with confidence gate. Slot-6 fragment buffer. |
+| `AuroraVeilState.swift` | 244 | **DELETED 2026-08-26 (BUG-088)** — the shader stopped reading its slot-6 buffer at AV.7; what follows describes the file as it was | `AuroraVeilStateGPU` struct (16 B); `AuroraVeilState` final class with `init?(device:)` (logs `os.Logger.error` on buffer-alloc failure), `tick(deltaTime:features:stems:)`, `reset()`. Constants: `kinkDecayPerFrame60 = 0.93`, `kinkChargeLo = 0.7`, `kinkChargeHi = 1.0` (AV.2.h.1 retuning 2026-05-20), `pitchSmoothWindow = 5` frames, `pitchHzFloor = 80`, `pitchOctaveSpan = 4`, `pitchConfidenceGate = 0.5`, `pitchNeutralBaseline = 0.5`, D-019 warmup window `[0.02, 0.06]`. Per-frame: rare-event drum charge `(drumsDev × smoothstep(0.7, 1.0, drumsDev))` + 5-frame moving average pitch smoother with confidence gate. Slot-6 fragment buffer. |
 
 #### FerrofluidOcean/ (3 files, 1,207 LoC)
 
