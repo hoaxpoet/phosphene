@@ -7,7 +7,8 @@
 //
 // All fields use SIMD4<Float> to guarantee unambiguous 16-byte alignment in both
 // Swift and Metal, avoiding the packed_float3 vs SIMD3<Float> size mismatch
-// documented in RayIntersector+Internal.swift.
+// that motivated this rule was documented in RayIntersector+Internal.swift,
+// deleted with the ray-tracing capability at RECON.17 (see git history).
 
 import simd
 
