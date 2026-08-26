@@ -318,8 +318,9 @@ struct FOGerstnerWave {
     float speed;       // angular speed scalar applied to t
 };
 
-// Wave parameter table — ported from the (now-disabled) mesh-path Gerstner
-// in `FerrofluidMesh.metal` per round 59 (2026-05-18). Matt's
+// Wave parameter table — ported from the mesh-path Gerstner per round 59
+// (2026-05-18); that path was deleted at RECON.15 (see git history for
+// `FerrofluidMesh.metal`). Matt's
 // 2026-05-18T00-53-39Z review: "The effect of deep ocean waves is lost."
 // The previous SDF-path parameters (wavelengths 0.8-4.0 wu, max amplitude
 // sum 0.34 wu) produced surface ripples, not ocean swell. The mesh-path

@@ -201,7 +201,8 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// leans outward from its nearest cluster's focal point below the
     /// substrate. The "ocean" is now interpreted as a magnetically-charged
     /// surface with multiple distributed cluster centers (see
-    /// `kClusterSpacing`/`kClusterFocalDepth` in `FerrofluidMesh.metal`).
+    /// `kClusterSpacing`/`kClusterFocalDepth` in the mesh shader — that file
+    /// was deleted at RECON.15; see git history for the constants).
     ///
     /// **Round 50 (2026-05-16) — constant-field premise**: radius stays
     /// at 0.17 wu but the HEIGHT scale increases 4× alongside (see

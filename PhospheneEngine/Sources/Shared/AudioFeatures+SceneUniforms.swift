@@ -44,7 +44,7 @@ import simd
 /// | Slot  | Meaning                          | Writer(s)                                              | Reader(s) |
 /// |-------|----------------------------------|--------------------------------------------------------|-----------|
 /// | `A.x` | accumulated audio time           | placeholder 0 at load; `RenderPipeline+RayMarch` per frame | preamble + preset shaders |
-/// | `A.y` | aspect ratio (width/height)      | placeholder 16/9 at load; render loop per frame        | preamble, RayMarch, SSGI, FerrofluidMesh |
+/// | `A.y` | aspect ratio (width/height)      | placeholder 16/9 at load; render loop per frame        | preamble, RayMarch, SSGI |
 /// | `A.z` | ray-march near plane             | `makeSceneUniforms()` (static)                         | march loops |
 /// | `A.w` | ray-march far plane              | `makeSceneUniforms()` (static)                         | march loops, fog |
 /// | `B.x` | fog start distance               | `makeSceneUniforms()` (static)                         | `RayMarch.metal` lighting |
