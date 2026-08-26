@@ -232,20 +232,6 @@ struct PresetVisualReviewTests {
             return state
         }()
 
-        // AV.2: Aurora Veil reads a 16-byte AuroraVeilStateGPU at slot 6.
-        // Allocate a state class and reset it; the per-fixture render loop
-        // below ticks it once per fixture to produce the appropriate
-        // kinkAccumulator + smoothedPitchNorm for each frame. Standard
-        // fixtures (silence / mid / beat) have stems.zero so the audio
-        // routes stay at their neutral / fallback values — the visual
-        // review verifies the multi-column structure + substrate-drift
-        // motion across time, not the audio coupling (which has dedicated
-        // tests: AuroraVeilContinuousDominanceTest + AuroraVeilPitchHueTest).
-        let auroraVeilState: AuroraVeilState? = {
-            guard presetName == "Aurora Veil" else { return nil }
-            return AuroraVeilState(device: ctx.device)
-        }()
-
         // NB.4: Nimbus reads a 16-byte NimbusStateGPU at slot 6 (Energy bloom +
         // flow phase). Allocate the state; the per-fixture loop below primes it
         // to each fixture's energy level so the contact sheet shows the bloom
@@ -365,13 +351,6 @@ struct PresetVisualReviewTests {
                 // per seed.
                 engine.setPalette(LumenMosaicPaletteLibrary.all[0])
             }
-            // AV.2: tick AuroraVeilState so the slot-6 buffer reflects the
-            // current fixture's kink + pitch. With stems.zero in the
-            // standard fixtures the accumulator stays at 0 and the pitch
-            // ring stays at the neutral 0.5 baseline (silence-equivalent).
-            if let avState = auroraVeilState {
-                avState.tick(deltaTime: fv.deltaTime, features: fv, stems: .zero)
-            }
             // NB.4: prime the Nimbus follower so bloom converges to THIS
             // fixture's energy level before the GPU read. One big-dt tick snaps
             // the fast-attack/slow-release follower to its target (coeff → 1 at
@@ -384,7 +363,6 @@ struct PresetVisualReviewTests {
             }
             let pixels = try renderFrame(preset: preset, context: ctx,
                                          arachneState: arachneState,
-                                         auroraVeilState: auroraVeilState,
                                          nimbusState: nimbusState,
                                          lumenEngine: lumenEngine,
                                          noiseTextureManager: noiseTextureManager,
@@ -869,7 +847,6 @@ struct PresetVisualReviewTests {
         preset: PresetLoader.LoadedPreset,
         context: MetalContext,
         arachneState: ArachneState?,
-        auroraVeilState: AuroraVeilState? = nil,
         nimbusState: NimbusState? = nil,
         lumenEngine: LumenPatternEngine? = nil,
         noiseTextureManager: TextureManager? = nil,
@@ -950,12 +927,6 @@ struct PresetVisualReviewTests {
         if let arachneState = arachneState {
             encoder.setFragmentBuffer(arachneState.webBuffer, offset: 0, index: 6)
             encoder.setFragmentBuffer(arachneState.spiderBuffer, offset: 0, index: 7)
-        } else if let auroraVeilState = auroraVeilState {
-            // AV.2: bind the 16-byte AuroraVeilStateGPU at slot 6. Ticked
-            // per fixture by the caller before this dispatch — for the
-            // standard silence/mid/beat fixtures (all stems.zero) the
-            // buffer stays at silence-equivalent values.
-            encoder.setFragmentBuffer(auroraVeilState.stateBuffer, offset: 0, index: 6)
         } else if let nimbusState = nimbusState {
             // NB.4: bind the 16-byte NimbusStateGPU at buffer slot 6 (Energy
             // bloom + flow phase). Orthogonal to noiseVolume at *texture* 6 —

@@ -115,11 +115,6 @@ extension ArachneState {
     /// single-kick spikes (one ~5-frame burst contributes ~83 ms — short
     /// of 0.4 s). Sustained sub-bass still fires within ~0.4 s of onset.
     static let sustainedTriggerThreshold: Float = 0.4
-    /// Pre-V.7.7C.2 V.7.5 session-cooldown duration. **Deprecated** —
-    /// superseded by the per-segment `spiderFiredInSegment` guard
-    /// (D-095 / §6.5). Retained as a no-op constant so the
-    /// `ARACHNE_M7_DIAG` build's logging line continues to compile.
-    static let sessionCooldownDuration: Float = 300.0
     /// V.7.7C.3 / D-095 — sustained bass-envelope gate. Replaces the V.7.5
     /// §10.1.9 `subBass + bassAttackRatio < 0.55` pair, which was acoustically
     /// impossible on real music: kick-driven sections produced `subBass` above
@@ -136,10 +131,6 @@ extension ArachneState {
     /// by the 0.75 s sustain accumulator threshold (matching the V.7.5
     /// behaviour) so AR gating is no longer required.
     static let bassAttRelThreshold: Float = 0.30
-    /// Pre-V.7.7C.3 V.7.5 sub-bass threshold. **Deprecated** — superseded
-    /// by `bassAttRelThreshold`. Kept as a no-op constant so external
-    /// references (`ARACHNE_M7_DIAG`, doc cross-refs) continue to compile.
-    static let subBassThreshold: Float = 0.30
     /// Seconds to blend blend 0→1 on materialisation.
     static let spiderFadeInDuration: Float = 2.0
     /// Seconds to blend blend 1→0 on dematerialisation.

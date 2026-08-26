@@ -81,8 +81,9 @@ tools/physarum_sketch/
 
 # Mitosis (reaction–diffusion) throwaway sketch renders (regenerate with RENDER_VISUAL=1)
 tools/mitosis_sketch/
-# Mitosis gen-2 sketch renders (the shader Gen2Cell.metal IS committed; only frames are not)
-tools/mitosis_gen2_sketch/frames/
+# Mitosis gen-2 contact-sheet renders from MitosisGen2GeometryTests (RENDER_VISUAL=1).
+# The throwaway sketch it used to share a directory with was deleted at RECON.20.
+tools/mitosis_gen2_renders/
 tools/data/panns_reference/
 
 # QG.3 coupling report per-frame CSVs (regenerable diagnostic artifacts)
