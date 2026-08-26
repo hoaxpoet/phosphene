@@ -68,9 +68,11 @@ struct SessionReplayHarness {
         var pulsePhase01: Float = 0
         var pulseBeatIndex: Float = 0
         var pulseRegionalBlend01: Float = 0
-        // TONAL block (D-178) — Rosette (WHIT.2b) is the first ray-march preset to route
-        // off these; ReplayHarnessRouteCoverageTests catches an unmapped route the moment
-        // a preset newly declares it (see that suite's own history of silent-zero gaps).
+        // TONAL block (D-178) — Rosette (WHIT.2b) was the first ray-march preset to route
+        // off these (retired at D-224; the mapping stays as generic harness capability for
+        // whichever future ray-march preset routes off it next). ReplayHarnessRouteCoverageTests
+        // catches an unmapped route the moment a preset newly declares it (see that suite's
+        // own history of silent-zero gaps).
         var tonalPhaseFifths: Float = 0
         var tonalConsonance: Float = 0
         var harmonicFlux: Float = 0

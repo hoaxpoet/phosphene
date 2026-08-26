@@ -138,10 +138,14 @@ extension RayMarchPipeline {
         sceneUniforms.cameraOriginAndFov.y = base.cameraPosition.y
         sceneUniforms.cameraOriginAndFov.z = dollyZ
 
-        // WHIT.2b — camera orbit: a slow turntable around the world origin on the Y
-        // axis. A static shot undersells a ray-marched tube's actual depth (roundness
-        // and self-occlusion read mainly through parallax, not a single still), so
-        // Rosette (this feature's first consumer) uses this instead of the dolly.
+        // Camera orbit: a slow turntable around the world origin on the Y axis. A
+        // static shot undersells a ray-marched shape's actual depth (roundness and
+        // self-occlusion read mainly through parallax, not a single still). Rosette
+        // (WHIT.2b) was this feature's first consumer, then removed it (D-223: a
+        // constant-rate orbit read as disconnected from the music, and periodically
+        // flattened its wholly-planar scene edge-on) before being retired itself
+        // (D-224) — no current consumer. Kept as generic camera plumbing for a future
+        // preset with real out-of-plane geometry and/or an audio-modulated rate.
         // Orthogonal to the dolly above: computed purely from `base.cameraPosition`,
         // ignoring `cameraDollyOffset` — no current preset drives both at once.
         if cameraOrbitSpeed != 0 {

@@ -215,17 +215,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// zero-filled state is never read.
     let lumenPlaceholderBuffer: MTLBuffer
 
-    // MARK: - Slot 6 Placeholder Buffer (WHIT.2b)
-
-    /// Zero-filled placeholder buffer for fragment slot 6 — bound for
-    /// ray-march presets other than Rosette. Sized to `RosetteUniformsGPU`
-    /// (16 bytes). `raymarch_gbuffer_fragment` declares the slot via
-    /// `constant RosetteUniforms&` for every ray-march preset (Metal
-    /// validation requires every declared buffer to be bound at draw time);
-    /// non-Rosette `sceneSDF` bodies receive this placeholder via the
-    /// trailing `rosette` parameter and silence it via `(void)rosette;`.
-    let rosettePlaceholderBuffer: MTLBuffer
-
     // MARK: - Mesh G-buffer dispatch (V.9 Session 4.5c Phase 1 Step B)
 
     /// Encode-closure type for the mesh G-buffer path. When set, replaces
@@ -397,17 +386,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
         }
         memset(placeholder.contents(), 0, 568)
         self.lumenPlaceholderBuffer = placeholder
-
-        // Allocate the slot-6 zero placeholder once (WHIT.2b). Sized to match
-        // Swift `RosetteUniformsGPU.stride` (16 bytes: 2 floats + 2 padding).
-        guard let rosettePlaceholder = context.device.makeBuffer(
-            length: 16,
-            options: .storageModeShared
-        ) else {
-            throw RayMarchPipelineError.bufferAllocationFailed
-        }
-        memset(rosettePlaceholder.contents(), 0, 16)
-        self.rosettePlaceholderBuffer = rosettePlaceholder
 
         // Allocate the 1×1 r16Float zero-filled height-texture placeholder for
         // slot 10. Non-Ferrofluid ray-march presets receive this in place of a
@@ -618,11 +596,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
     ///     is bound — required because the preamble declares `texture2d<float> ferrofluidHeight
     ///     [[texture(10)]]` on every ray-march preset. First consumer: Ferrofluid Ocean V.9's
     ///     `FerrofluidParticles` per the V.9 Session 4.5b Phase 1 contract.
-    ///   - presetFragmentBuffer1: Optional per-preset CPU-driven state buffer bound at fragment slot 6
-    ///     of the G-buffer pass ONLY (unlike `presetFragmentBuffer3`, Rosette's `sceneMaterial` needs
-    ///     no cross-frame state, so this is not threaded into the lighting pass). When nil the
-    ///     zero-filled `rosettePlaceholderBuffer` is bound. First consumer: Rosette's
-    ///     `RosetteUniformsGPU` (circular-phase smoother + symmetry-order hold-timer). (WHIT.2b)
     public func render(
         gbufferPipelineState: MTLRenderPipelineState,
         features: inout FeatureVector,
@@ -635,8 +608,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
         iblManager: IBLManager? = nil,
         postProcessChain: PostProcessChain? = nil,
         presetFragmentBuffer3: MTLBuffer? = nil,
-        presetHeightTexture: MTLTexture? = nil,
-        presetFragmentBuffer1: MTLBuffer? = nil
+        presetHeightTexture: MTLTexture? = nil
     ) {
         guard gbuffer0 != nil, gbuffer1 != nil, gbuffer2 != nil, litTexture != nil else {
             logger.error("RayMarchPipeline.render called before textures allocated — skipping")
@@ -689,8 +661,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
                 stemFeatures: stemFeatures,
                 noiseTextures: noiseTextures,
                 presetFragmentBuffer3: presetFragmentBuffer3,
-                presetHeightTexture: presetHeightTexture,
-                presetFragmentBuffer1: presetFragmentBuffer1
+                presetHeightTexture: presetHeightTexture
             )
         }
         lastGBufferPassMs = Float((CACurrentMediaTime() - gbufT0) * 1000)

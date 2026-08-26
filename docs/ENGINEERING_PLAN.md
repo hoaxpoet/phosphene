@@ -7001,6 +7001,10 @@ Suite 1892/1892, lint 0, app builds.
 
 ## Phase WHIT — Whitney program (three visual-music presets after John Whitney Sr.)
 
+**WHIT.A / Rosette retired 2026-08-26 (D-224, WHIT-RETIRE.1) — see the closeout entry at the end
+of this phase's increment history, below.** Frieze (WHIT.B) and Unison (WHIT.C) are unaffected
+and remain unstarted; `docs/presets/WHITNEY_PROGRAM.md` still governs them.
+
 ### Increment WHIT.0 — Rosette look spike: does the morph read? ✅ GO (2026-08-25)
 
 **Done-when:** a rendered, motion-gated answer to whether Phosphene can draw *Arabesque*'s
@@ -7781,3 +7785,51 @@ comfortably above the 0.003 floor, still 0.00 flashes/s). Full engine suite gree
 **Remaining:** the open tightness-calibration question (finding 3 above) — presented to Matt, not
 yet decided. Whether the orbit capability gets a second life on Rosette or elsewhere (an
 audio-modulated rate was offered as an option) is also open.
+
+### Increment WHIT-RETIRE.1 — Rosette retired ✅ (2026-08-26)
+
+**Matt's next live look, on a fresh session, after the orbit removal:** *"Ugh, it's terrible. The
+camera angle is weird, the design is ugly, the motion is basic. It's a loser across the board.
+This feels like it's going nowhere fast. Thinking we should just move to retire."*
+
+**Diagnosis before proposing anything, per the codebase's own methodology.** Two findings, both
+grounded in evidence rather than re-guessing: (1) `SessionReplayHarness` — the tool used to
+generate every diagnostic still this session — never wired `RosetteState`, so every replay was
+rendering with rotation and symmetry-order frozen at their defaults regardless of the real
+session, a real harness bug flagged and retracted rather than presented as solid ground; (2)
+independent of that bug, the camera's fixed framing left the two wing arcs as long, dominant
+vertical bars while the epicycle itself — the whole point of the preset — sat small and secondary
+in the middle, a genuine composition problem visible in every still regardless of the harness
+issue.
+
+**Offered a bounded fix, not another vague promise.** Recompose the camera so the epicycle reads
+as the hero and the wings recede; recalibrate `figure_tightness <- tonalConsonance` against the
+real session data (a separate, already-surfaced finding: this track's consonance sat well under
+the shader's assumed corpus range). Matt: *"Even a harness difference will not be enough to save
+this preset, I'm afraid."*
+
+**Decision: retire.** Six live rounds (WHIT.0 → WHIT.2c) each correctly diagnosed and fixed the
+specific defect raised that round — the concept-viability gate, the aspect-ratio bug, the
+curve-continuity bug, the 3D conversion, the jaggedness fix, the frame-budget regression, the
+camera orbit — and the overall verdict never turned positive. Per D-201/D-204's precedent, a
+string of individually-correct fixes that never move the verdict is the concept hitting a ceiling,
+not an unfixed bug; continuing to iterate mechanically past that point is exactly the cost this
+codebase's own Authoring Discipline section flags.
+
+**Removed:** all Rosette preset code, tests, design doc, and visual references (see D-224 for the
+complete list). The `RosetteUniforms` ray-march buffer-6 ABI parameter is fully removed from the
+shared preamble and the three other ray-march presets — a bespoke, zero-consumer struct, not
+generic capability, so it does not survive per D-097 ("reusable infrastructure" is not a defense
+for a failed concept). `scene_orbit_speed` and the generic ray-march buffer-6 mechanism stay,
+per the same zero-consumer-capability reasoning RMENV already established (D-188).
+
+**Verification.** Full engine suite green after every deletion and revert (build, `swift test`,
+`swiftlint --strict`, `DocIntegrityTests`). `expectedProductionPresetCount` 30 → 29.
+
+**Filed:** D-224 (`docs/DECISIONS.md`) — the complete retirement decision, including what
+survives and why, and the explicit confirmation that Phase WHIT itself (Frieze/WHIT.B,
+Unison/WHIT.C) is unaffected.
+
+**Remaining:** nothing for Rosette — this closes Phase WHIT.A. Frieze and Unison remain open,
+unscoped future work under `docs/presets/WHITNEY_PROGRAM.md`, whenever Matt wants to pick up
+either one.

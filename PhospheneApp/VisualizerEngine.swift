@@ -218,13 +218,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// buffer). Re-seeded on track change for the §5.7 determinism property.
     var skeinState: SkeinState?
 
-    /// Rosette circular-phase smoother (tonalPhaseFifths) + symmetry-order
-    /// hold-timer (harmonicFlux) — allocated when the Rosette preset is active,
-    /// nil otherwise. Tick closure and rosetteBuffer are wired via
-    /// `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`
-    /// (WHIT.1d-2 — same slot-6 marks-on-top overlay pattern as Skein).
-    var rosetteState: RosetteState?
-
     /// Lumen Mosaic 4-light pattern engine — allocated when the Lumen Mosaic
     /// preset is active, nil otherwise. Tick closure flushes the engine state
     /// to a 336-byte UMA buffer bound at fragment slot 8 of the ray-march

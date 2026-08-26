@@ -430,25 +430,6 @@ extension PresetLoader {
             LumenPaletteEntry palette[12];      // LM.4.7 — per-song palette payload (D-LM-palette-library)
         };
 
-        // ── Rosette preset-uniform state (slot 6, WHIT.2b) ────────────────────
-        // Byte-identical to the Swift `RosetteUniformsGPU` value type defined in
-        // `Sources/Presets/Rosette/RosetteState.swift`. Ray-march buffer slots 6/7
-        // carry no meaning in `raymarch_gbuffer_fragment` (unlike the direct/
-        // mv_warp/staged paths, which reserve them for per-preset uniforms too —
-        // the two pipelines never bind simultaneously, so there is no collision),
-        // so this is a genuinely free slot for a ray-march preset's own
-        // cross-frame CPU state, the same role slot 8/`LumenPatternState` plays
-        // for Lumen Mosaic (D-LM-buffer-slot-8) and texture(10)/`ferrofluidHeight`
-        // plays for Ferrofluid Ocean. Bound ONLY in the G-buffer pass — Rosette's
-        // `sceneMaterial` reads FeatureVector directly and needs no cross-frame
-        // state, so unlike `lumen` this is not threaded into the lighting pass.
-        struct RosetteUniforms {
-            float smoothedFifths;   // circularly-smoothed tonal_phase_fifths, radians (D-209)
-            float symmetryN;        // current (possibly mid-transition) symmetry order (WHIT.1d-2/WHIT.2a)
-            float pad0;
-            float pad1;
-        };
-
         // ── Per-preset forward declarations ──────────────────────────────────
         // Ray march presets must define both. `stems` is bound at buffer(3) —
         // apply the D-019 warmup fallback when reading. `outMatID` is the LM.1
@@ -458,13 +439,17 @@ extension PresetLoader {
         // and silenced via `(void)lumen;`). `ferrofluidHeight` is the V.9
         // Session 4.5b slot-10 baked spike-field texture; only Ferrofluid
         // Ocean samples it, every other ray-march preset silences via
-        // `(void)ferrofluidHeight;`. `rosette` is the WHIT.2b trailing slot-6
-        // buffer; non-Rosette presets ignore it and silence via `(void)rosette;`.
+        // `(void)ferrofluidHeight;`. Ray-march buffer slots 6/7 carry no
+        // meaning here — Rosette (WHIT.2b) briefly used slot 6 for its own
+        // cross-frame CPU state (`RosetteUniforms`) via this same forward-
+        // declaration mechanism, removed along with the preset at its
+        // retirement (D-224); a future ray-march preset needing cross-frame
+        // state can reintroduce the same pattern (see git history at WHIT.2b/
+        // D-220 for the recipe) with its own struct shape.
         float sceneSDF(float3 p,
                        constant FeatureVector& f,
                        constant SceneUniforms& s,
                        constant StemFeatures& stems,
-                       constant RosetteUniforms& rosette,
                        texture2d<float> ferrofluidHeight);
 
         void sceneMaterial(float3 p,
@@ -476,8 +461,7 @@ extension PresetLoader {
                            thread float& roughness,
                            thread float& metallic,
                            thread int& outMatID,
-                           constant LumenPatternState& lumen,
-                           constant RosetteUniforms& rosette);
+                           constant LumenPatternState& lumen);
 
         // ── G-buffer fragment (compiled per-preset with sceneSDF + sceneMaterial) ──
         fragment GBufferOutput raymarch_gbuffer_fragment(
@@ -488,7 +472,6 @@ extension PresetLoader {
             constant StemFeatures&  stems    [[buffer(3)]],
             constant SceneUniforms& scene    [[buffer(4)]],
             constant LumenPatternState& lumen [[buffer(8)]],
-            constant RosetteUniforms& rosette [[buffer(6)]],
             texture2d<float> noiseLQ          [[texture(4)]],
             texture2d<float> noiseHQ          [[texture(5)]],
             texture3d<float> noiseVolume      [[texture(6)]],
@@ -525,7 +508,7 @@ extension PresetLoader {
             int maxMarchSteps = int(128.0 * stepMult);
             for (int i = 0; i < maxMarchSteps && t < farPlane; i++) {
                 float3 p = camPos + rayDir * t;
-                float  d = sceneSDF(p, features, scene, stems, rosette, ferrofluidHeight);
+                float  d = sceneSDF(p, features, scene, stems, ferrofluidHeight);
                 if (d < 0.001 * t) {
                     hit = true;
                     break;
@@ -553,10 +536,10 @@ extension PresetLoader {
             const float eps = 0.001;
             const float2 kTetra = float2(1.0, -1.0);
             float3 normal = normalize(
-                kTetra.xyy * sceneSDF(hitPos + kTetra.xyy * eps, features, scene, stems, rosette, ferrofluidHeight)
-              + kTetra.yyx * sceneSDF(hitPos + kTetra.yyx * eps, features, scene, stems, rosette, ferrofluidHeight)
-              + kTetra.yxy * sceneSDF(hitPos + kTetra.yxy * eps, features, scene, stems, rosette, ferrofluidHeight)
-              + kTetra.xxx * sceneSDF(hitPos + kTetra.xxx * eps, features, scene, stems, rosette, ferrofluidHeight)
+                kTetra.xyy * sceneSDF(hitPos + kTetra.xyy * eps, features, scene, stems, ferrofluidHeight)
+              + kTetra.yyx * sceneSDF(hitPos + kTetra.yyx * eps, features, scene, stems, ferrofluidHeight)
+              + kTetra.yxy * sceneSDF(hitPos + kTetra.yxy * eps, features, scene, stems, ferrofluidHeight)
+              + kTetra.xxx * sceneSDF(hitPos + kTetra.xxx * eps, features, scene, stems, ferrofluidHeight)
             );
 
             // ── Ambient occlusion (3-sample cone; RMPERF.1, was 5) ───────────
@@ -570,7 +553,7 @@ extension PresetLoader {
             for (int k = 1; k <= 3; k++) {
                 float aoT   = float(k) * aoStep;
                 float3 aoPos = hitPos + normal * aoT;
-                float aoD   = sceneSDF(aoPos, features, scene, stems, rosette, ferrofluidHeight);
+                float aoD   = sceneSDF(aoPos, features, scene, stems, ferrofluidHeight);
                 ao -= max(0.0, (aoT - aoD) / aoT) * 0.3333;
             }
             ao = clamp(ao, 0.0, 1.0);
@@ -581,7 +564,7 @@ extension PresetLoader {
             float  metallic  = 0.0;
             int    outMatID  = 0;     // default: standard dielectric (matID 0)
             sceneMaterial(hitPos, 0, features, scene, stems,
-                          albedo, roughness, metallic, outMatID, lumen, rosette);
+                          albedo, roughness, metallic, outMatID, lumen);
 
             // Pack roughness + metallic into 8 bits (upper 4b + lower 4b) → [0,1].
             int    rByte = int(clamp(roughness, 0.0, 1.0) * 15.0 + 0.5);

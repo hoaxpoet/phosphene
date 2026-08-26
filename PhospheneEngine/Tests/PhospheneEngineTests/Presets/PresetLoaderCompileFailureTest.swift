@@ -104,7 +104,11 @@ struct PresetLoaderCompileFailureTest {
     /// 29 → 30 at WHIT.1c (Rosette added — John Whitney Sr.'s Arabesque morphing emblem,
     /// a two-term epicycle SDF-in-fragment line figure. `certified:false`, no audio
     /// coupling yet (WHIT.1d). See docs/DECISIONS.md D-218, docs/presets/ROSETTE_DESIGN.md.)
-    static let expectedProductionPresetCount = 30
+    /// 30 → 29 at WHIT-RETIRE.1 (Rosette RETIRED after 6 live rounds — the ray-march 3D
+    /// conversion, jaggedness fix, and camera-orbit removal each landed correctly, but
+    /// Matt's verdict stayed negative through every round ("a loser across the board").
+    /// See docs/DECISIONS.md D-224.)
+    static let expectedProductionPresetCount = 29
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {

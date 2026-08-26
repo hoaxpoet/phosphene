@@ -112,10 +112,6 @@ extension VisualizerEngine {
             }
             pipeline.clearMVWarpCanvasToGround()
         }
-        // WHIT.1d-2: a new track's tonalPhaseFifths reading starts fresh rather than
-        // gliding in from the previous track's smoothed phase, and the symmetry order
-        // restarts at Whitney's stated base (5-fold, RosetteState.reset()'s own contract).
-        rosetteState?.reset()
     }
 
     // swiftlint:disable cyclomatic_complexity function_body_length
@@ -160,7 +156,6 @@ extension VisualizerEngine {
         auroraVeilState = nil
         nimbusState = nil
         skeinState = nil
-        rosetteState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
         ferrofluidMesh = nil
@@ -258,8 +253,10 @@ extension VisualizerEngine {
                     // the distance accumulated during its previous activation.
                     rmPipeline.cameraDollyOffset = 0
 
-                    // WHIT.2b — camera orbit (Rosette's turntable). Same rationale as
-                    // the dolly wiring above: lives in the sidecar so the engine-side
+                    // Camera orbit (`scene_orbit_speed`, WHIT.2b — no current preset
+                    // consumer; Rosette shipped it then removed it, D-223/WHIT.2c,
+                    // before being retired itself, D-224). Same rationale as the dolly
+                    // wiring above: lives in the sidecar so the engine-side
                     // SessionReplayHarness renders the same motion production does.
                     rmPipeline.cameraOrbitSpeed = desc.sceneOrbitSpeed
                     rmPipeline.cameraOrbitAngle = 0
@@ -618,7 +615,6 @@ extension VisualizerEngine {
         case "Arachne":     bindArachneRuntime(desc)
         case "Gossamer":    bindGossamerRuntime(desc)
         case "Skein":       bindSkeinRuntime(desc)
-        case "Rosette":     bindRosetteRuntime(desc)
         case "Aurora Veil": bindAuroraVeilRuntime(desc)
         case "Nimbus":      bindNimbusRuntime(desc)
         case "Lumen Mosaic": bindLumenMosaicRuntime(desc)
@@ -737,21 +733,6 @@ extension VisualizerEngine {
             }
         } else {
             logger.error("SkeinState: failed to allocate painter state for preset '\(desc.name)'")
-        }
-    }
-
-    private func bindRosetteRuntime(_ desc: PresetDescriptor) {
-        // Rosette-specific (WHIT.1d-2): allocate the circular-phase smoother +
-        // symmetry-order hold-timer and wire tick + the gated slot-6 marks-on-top
-        // overlay buffer (same strandsOnTop path as Skein, RenderPipeline+MVWarp.swift:138).
-        if let state = RosetteState(device: context.device) {
-            rosetteState = state
-            pipeline.setDirectPresetFragmentBuffer(state.rosetteBuffer)   // buffer(6)
-            pipeline.setMeshPresetTick { [weak state] features, _ in
-                state?.tick(deltaTime: features.deltaTime, features: features)
-            }
-        } else {
-            logger.error("RosetteState: failed to allocate state for preset '\(desc.name)'")
         }
     }
 

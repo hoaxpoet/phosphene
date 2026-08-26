@@ -219,12 +219,6 @@ extension RenderPipeline {
         // was retired in V.9 Session 4.5c — no longer in the preamble.)
         let presetBuf3 = directPresetFragmentBuffer3Lock.withLock { directPresetFragmentBuffer3 }
         let presetHeightTex = rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture }
-        // Slot 6 (WHIT.2b) — the same `directPresetFragmentBuffer` property the
-        // direct/mv_warp path's `setDirectPresetFragmentBuffer` already writes
-        // (Rosette's `bindRosetteRuntime` calls it unchanged); reused here for
-        // ray-march exactly as slot 8/`presetBuf3` above is already shared
-        // across both pipeline types. Read only by the G-buffer pass.
-        let presetBuf1 = directPresetFragmentBufferLock.withLock { directPresetFragmentBuffer }
 
         let frameDt = features.deltaTime > 0 ? features.deltaTime : 1.0 / 60.0
 
@@ -304,8 +298,7 @@ extension RenderPipeline {
             iblManager: ibl,
             postProcessChain: chainForBloom,
             presetFragmentBuffer3: presetBuf3,
-            presetHeightTexture: presetHeightTex,
-            presetFragmentBuffer1: presetBuf1
+            presetHeightTexture: presetHeightTex
         )
 
         // PERF.2-pass — surface per-sub-pass timings to the recorder so BUG-019

@@ -5,6 +5,17 @@
 to clear it. Nothing below is a commitment to build; §10's ladder starts with a throwaway spike
 whose deliverable is a verdict.
 
+> **⚠ WHIT.A / Rosette RETIRED 2026-08-26 (D-224, WHIT-RETIRE.1).** Rosette was built through
+> the full ladder (WHIT.0 → WHIT.2c: concept, authoring, harmony coupling, a 3D ray-march
+> conversion, a jaggedness fix, and a camera-orbit removal), and retired after six live rounds
+> never turned Matt's verdict positive — the final round: *"It's a loser across the board... Even
+> a harness difference will not be enough to save this preset, I'm afraid."* This retires WHIT.A
+> only. **Frieze (WHIT.B) and Unison (WHIT.C) are unaffected** — both remain unstarted, and
+> nothing about Rosette's specific concept not landing bears on whether their own mechanisms
+> (§8) will. See `docs/DECISIONS.md` D-224 for the full retrospective and what engine
+> infrastructure survives (the ray-march pipeline itself, the generic `scene_orbit_speed` camera
+> feature) versus what was Rosette-specific and was deleted with it (`RosetteUniforms`).
+
 > **⚠ REVISED 2026-08-19 — the film has now been watched.** Matt supplied a recording of
 > *Arabesque* (1975). Watching it contradicted four load-bearing inferences this document had
 > drawn from Whitney's source listings: the film is a **line** film not a dot film; the symmetry
