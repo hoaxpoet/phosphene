@@ -54,6 +54,16 @@ constant float kRosetteStrokeW  = 0.0032;  // core stroke half-width, fraction o
 constant float kRosetteHaloW    = 0.0056;  // ~1.75x core, tuned against 06_specular_stroke_core_halo.jpg
 constant int   kRosetteCoarse   = 40;      // coarse nearest-point search samples
 constant int   kRosetteRefine   = 7;       // bisection refine steps
+// BUG-103: the wing arcs (below) were tuned and every test ever run against a 16:9-family
+// aspect (960x540 / 1920x1080, aspect 1.778); their x-placement was a hardcoded absolute
+// q-space value that assumed that width. At a near-square real window (1080x1018, aspect
+// 1.06 — Matt's live session 2026-08-26T12-58-21Z) the visible q.x range shrinks to
+// +/-0.53, entirely inside the wings' old x~0.62-0.67, so they render fully off-screen —
+// the whole D-217 cartouche silently vanishes. Fix: place wings as a FRACTION of the
+// frame's actual visible half-width (0.5*aspect) rather than an absolute unit, referenced
+// against 16:9 so the already-approved D-217 look is reproduced exactly at that aspect and
+// scales proportionally (never clips) at any other.
+constant float kRosetteReferenceAspect = 16.0 / 9.0;
 
 // The epicycle, normalised to unit-ish radius regardless of `a` (F2: the emblem's
 // overall SIZE stays roughly constant through the morph in rosette_build.png; only the
@@ -97,8 +107,13 @@ static float rosetteDist(float2 p, float a, float n) {
 // F4: mirrored coloured wing arcs at the frame edges, each carrying a small ellipse
 // (`ARABESQUE_FILM_NOTES` F4). A shallow bowed arc + a small loop near its lower end;
 // `side` = -1 (left) / +1 (right, mirrored).
-static float2 rosetteWingArc(float s, float side) {
-    float x = side * (0.62 + 0.05 * sin(s * M_PI_F));
+static float2 rosetteWingArc(float s, float side, float aspect) {
+    // BUG-103: x scales with the frame's actual half-width relative to the 16:9 reference
+    // it was tuned against, so the wing sits the same FRACTION of the way to the true edge
+    // at any aspect — reproduces the approved look exactly at 16:9, never clips off-screen
+    // at a narrower window. y is untouched: visible q.y is always +/-0.5 regardless of aspect.
+    float xScale = aspect / kRosetteReferenceAspect;
+    float x = side * xScale * (0.62 + 0.05 * sin(s * M_PI_F));
     float y = mix(0.85, -0.85, s);
     return float2(x, y);
 }
@@ -110,21 +125,23 @@ static float segDist(float2 p, float2 a, float2 b) {
     float t = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
     return length(pa - ba * t);
 }
-static float rosetteWingDist(float2 p, float side, int steps) {
+static float rosetteWingDist(float2 p, float side, int steps, float aspect) {
     float bestD = 1e9;
-    float2 prev = rosetteWingArc(0.0, side);
+    float2 prev = rosetteWingArc(0.0, side, aspect);
     for (int i = 1; i <= steps; i++) {
         float s = float(i) / float(steps);
-        float2 cur = rosetteWingArc(s, side);
+        float2 cur = rosetteWingArc(s, side, aspect);
         bestD = min(bestD, segDist(p, prev, cur));
         prev = cur;
     }
     return bestD;
 }
-static float rosetteWingEllipseDist(float2 p, float side) {
+static float rosetteWingEllipseDist(float2 p, float side, float aspect) {
     // y=-0.60 was off-screen (visible q.y spans roughly [-0.5, 0.5] — found live,
     // the ellipse never appeared). -0.30 sits near the arc's lower end, on-screen.
-    float2 c = float2(side * 0.67, -0.30);
+    // x scales with aspect the same way rosetteWingArc's does (BUG-103).
+    float xScale = aspect / kRosetteReferenceAspect;
+    float2 c = float2(side * xScale * 0.67, -0.30);
     float2 q = (p - c) / float2(0.055, 0.09);
     return (length(q) - 1.0) * 0.07;   // approximate SDF, scaled back to world units
 }
@@ -260,10 +277,10 @@ fragment float4 rosette_geometry_fragment(
     float hueT = in.time * 0.05;
     float3 leftHue  = 0.5 + 0.5 * cos(6.2831853 * (hueT + float3(0.0, 0.33, 0.67)));
     float3 rightHue = 0.5 + 0.5 * cos(6.2831853 * (hueT + 0.5 + float3(0.0, 0.33, 0.67)));
-    float dLeftArc  = rosetteWingDist(q, -1.0, 48);
-    float dRightArc = rosetteWingDist(q,  1.0, 48);
-    float dLeftEll  = rosetteWingEllipseDist(q, -1.0);
-    float dRightEll = rosetteWingEllipseDist(q,  1.0);
+    float dLeftArc  = rosetteWingDist(q, -1.0, 48, aspect);
+    float dRightArc = rosetteWingDist(q,  1.0, 48, aspect);
+    float dLeftEll  = rosetteWingEllipseDist(q, -1.0, aspect);
+    float dRightEll = rosetteWingEllipseDist(q,  1.0, aspect);
     float wingCoreW = kRosetteStrokeW * 1.4;
     float wingHaloW = kRosetteHaloW * 1.1;
     float lArcI = exp(-(dLeftArc * dLeftArc) / (2.0 * wingCoreW * wingCoreW))

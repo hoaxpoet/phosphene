@@ -132,6 +132,49 @@ struct RosetteMVWarpAccumulationTest {
                 "Rosette bassDev=1.0 mean luma (\(brightMean)) is not brighter than bassDev=0.0 (\(dimMean)) — stroke_presence may not be reaching bassDev")
     }
 
+    // MARK: - BUG-103: wing visibility at non-16:9 aspect regression guard
+
+    @Test("Rosette: wing arcs stay on-screen at a near-square aspect (BUG-103)")
+    func test_rosette_wingsVisibleAtNearSquareAspect() throws {
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Rosette" }) else {
+            Issue.record("Rosette preset not found in _acceptanceFixture — is it registered?")
+            return
+        }
+        guard let mvWarp = preset.mvWarpPipelines, let geo = mvWarp.sceneGeometryState else {
+            Issue.record("Rosette preset compiled with no scene-geometry overlay pipeline")
+            return
+        }
+        let ctx = try MetalContext()
+        // Matt's live session 2026-08-26T12-58-21Z rendered at exactly this size (aspect
+        // 1.061) — the wing arcs vanished off-screen entirely (BUG-103). Independently
+        // derive the expected wing column band from Rosette.metal's own fix formula
+        // (kRosetteReferenceAspect = 16/9, wing x in [0.62, 0.67] pre-scale) so this test
+        // catches a regression rather than re-asserting the implementation.
+        let width = 1080, height = 1018
+        let aspect = Double(width) / Double(height)
+        let xScale = aspect / (16.0 / 9.0)
+        let xLo = xScale * 0.62, xHi = xScale * 0.67
+        func columnBand(side: Double) -> (Int, Int) {
+            let uvLo = 0.5 + side * xLo / aspect, uvHi = 0.5 + side * xHi / aspect
+            let cols = [uvLo, uvHi].map { Int(($0 * Double(width)).rounded()) }.sorted()
+            return (max(0, cols[0] - 20), min(width - 1, cols[1] + 20))
+        }
+        let (rightLo, rightHi) = columnBand(side: 1.0)
+        let (leftLo, leftHi) = columnBand(side: -1.0)
+
+        let pixels = try renderOneFrame(preset: preset, mvWarp: mvWarp, geo: geo, context: ctx,
+                                         width: width, height: height, time: Self.timeForA(0.30))
+        let rightBandMax = maxLumaInColumnRange(pixels, width: width, height: height, colLo: rightLo, colHi: rightHi)
+        let leftBandMax = maxLumaInColumnRange(pixels, width: width, height: height, colLo: leftLo, colHi: leftHi)
+        // Near-black ground reads well under 40/255 after the sRGB encode (WHIT.0/1c
+        // tuning, ROSETTE_DESIGN.md §6.5); a visible wing arc or ellipse is a saturated
+        // hue swatch that reads far brighter.
+        #expect(rightBandMax > 60,
+                "Rosette at \(width)x\(height) (aspect \(aspect)): right wing column band [\(rightLo),\(rightHi)] max luma \(rightBandMax) reads as background-only — the wing may be off-screen again (BUG-103)")
+        #expect(leftBandMax > 60,
+                "Rosette at \(width)x\(height) (aspect \(aspect)): left wing column band [\(leftLo),\(leftHi)] max luma \(leftBandMax) reads as background-only — the wing may be off-screen again (BUG-103)")
+    }
+
     // MARK: - WHIT.1d-2: rotation + symmetry-step regression guard
 
     @Test("Rosette: tonalPhaseFifths rotates the figure; harmonicFlux steps the symmetry order")
@@ -374,6 +417,19 @@ struct RosetteMVWarpAccumulationTest {
             if luma > maxL { maxL = luma }
         }
         return (minL, maxL)
+    }
+
+    private func maxLumaInColumnRange(_ pixels: [UInt8], width: Int, height: Int, colLo: Int, colHi: Int) -> Float {
+        var maxL: Float = 0
+        for row in 0..<height {
+            for col in colLo...colHi {
+                let i = (row * width + col) * 4
+                let b = Float(pixels[i]), g = Float(pixels[i + 1]), r = Float(pixels[i + 2])
+                let luma = 0.114 * b + 0.587 * g + 0.299 * r
+                if luma > maxL { maxL = luma }
+            }
+        }
+        return maxL
     }
 
     private func meanLuma(_ pixels: [UInt8]) -> Double {
