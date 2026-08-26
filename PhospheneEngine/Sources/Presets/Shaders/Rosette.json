@@ -19,7 +19,6 @@
   ],
   "scene_fog": 0.0,
   "scene_far_plane": 10.0,
-  "scene_orbit_speed": 0.12,
   "visual_density": 0.30,
   "motion_intensity": 0.35,
   "color_temperature_range": [0.35, 0.65],
