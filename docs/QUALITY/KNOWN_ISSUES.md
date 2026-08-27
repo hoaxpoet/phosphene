@@ -48,7 +48,7 @@ reads" are not reads — see the entry.)*
 |---|---|---|---|
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
-| BUG-109 | P2 · open, measured 2026-08-27; cause NOT established | dsp.stem / instrumentation | **Stem values change ~634 times over 78 s where the raw clock ticks 1,010 times and the series grid offers ~3,360 frames.** Values changing LESS often than the clock ticks rules out the smoother (monotone, resyncs every tick; replaying this session's clock predicts a new index on ~70 % of frames). So either the smoothed position is not reaching the sample or `stems.csv` is not carrying what the series produced — a wiring question either way. Blocked on instrumentation: the smoothed position is not recorded and the series-installed line goes to `os.Logger`, not the session artifact. |
+| BUG-109 | P2 · **ANSWERED 2026-08-27 — a sampling cadence, not a wiring fault; fix identified, not implemented (Matt's call)** | dsp.stem / calibration | **The series is installed and driving (`stem_series_pos_s` populated on 100 % of rows, 0 backward), but sampled once per ANALYSIS frame at 12.8 Hz while the renderer draws at 59.9 Hz and the series' own grid is 43 Hz.** `features.csv` rows are RENDER frames, so the 79 % held column is the recorder repeating between analysis frames, not a stuck position. Fix: sample per render frame — live separation was bounded by audio arrival, a pre-analysed series is an array lookup and is not. ⚠ Forced a correction to BUG107.3, which read a row rate as an analysis rate. |
 | BUG-108 | P2 · **FIXED 2026-08-27 (Matt chose the lay-order tie-break); PENDING M7** — the rendered-overlap check is not met because the seam to stage one does not exist | preset.skein / render-state | **Skein's overlap colour is `if (cov > bestCover)` — a per-fragment argmax with no tie-break or hysteresis, at eight sites.** On the equal-coverage contour between two differently-coloured marks the winner flips on sub-pixel motion or a sixth-decimal coverage difference, and the flip is a full colour swap because the rule is deliberately discrete (the §colour-mud audit rejected blending). Predates LFSTEM.1; became visible because on-time stem values move the audio-driven radius terms more per frame. Options are a lay-order tie-break (recommended), a narrow blend band (fights the mud rule), or coverage quantisation. |
 | BUG-107 | P2 · ✅ **FIXED + CONFIRMED LIVE 2026-08-27 (BUG107.2)** — `frame_gpu` p50 flat at ~12.6 ms across 78 s of Skein at 4K, against 38 → 250 ms before | preset.skein / performance | **Skein costs 15.60 ms at 4K in the frame-budget harness and ramps to ~170 ms (≈6 fps) over 50 s of live playback, then plateaus.** Constant resolution, constant preset; GPU memory flat at 5.1 %, `ml_forced=0`, thermal nominal — none of BUG-100's excluded mechanisms. **Measured:** the marks overlay costs 0.75 ms at `breakCount=0` — what the harness binds — and 17.06 ms at 1, rising to 55.65 ms at the 16-breakpoint cap, because `skeinLineLookupAt` scans the ring once per tail frame per fragment (40 × 16 at 8.3 M fragments). The harness has been measuring Skein with its most expensive layer gated off. **Fix: hoist the fragment-invariant lookup out of the per-fragment loop.** The canvas-coverage theory was wrong and is recorded as such. |
 | BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
@@ -234,7 +234,43 @@ Contained to `LocalFilePlaybackProvider`'s start path, but the design needs care
 
 ### BUG-109 — Stem values change ~8×/s where the series grid is 43 Hz: the smoothed position may not be reaching the sample (2026-08-27)
 
-**Status: open, measured, cause NOT established. Filed rather than guessed at.**
+**Status: ANSWERED 2026-08-27 by the instrumented session `2026-08-27T16-53-29Z`. The cause is
+neither of the two the entry proposed — it is a SAMPLING CADENCE, and the fix is a one-line move.**
+
+`STEM_SOURCE: series frames=10815 covers=251.1s hop=23.2ms` — the series is installed and driving.
+`stem_series_pos_s` is populated on **100 %** of rows with **0 backward steps**, so the smoother is
+being reached and is working. But over 6,521 rows it takes only **1,398 distinct values**:
+
+| | rate |
+|---|---|
+| rows in `features.csv` | 59.9 Hz |
+| distinct sampling positions | **12.8 Hz** |
+| the series' own grid | 43 Hz |
+
+**Two facts, and neither is a defect in the smoother.**
+
+1. **`features.csv` has one row per RENDER frame, not per analysis frame.** `SessionRecorder
+   .recordFrame` is documented as "record one rendered frame" and is called from the
+   command-buffer completion handler. Between analysis frames the recorder repeats the last
+   value, which is the 79 % "held" reading — an artifact of two rates, not a stuck position.
+2. **The series is sampled once per ANALYSIS frame (~12.8 Hz) while the renderer draws at 60 Hz.**
+   That is the whole of BUG-109. Stem values change ~13 times a second, so a preset drawing at
+   60 fps holds each value for ~4.6 frames.
+
+**★ The fix, and why it is available only now.** Live separation was bounded by audio arrival —
+it could not publish faster than analysis frames because there was nothing new to publish. **A
+pre-analysed series has no such bound: sampling it is an array lookup.** It can be read once per
+RENDER frame, at 43 Hz-limited resolution, which is what the series was built for. Moving
+`applyStemSeriesFrame` to the render frame turns 12.8 Hz into 43 Hz of real motion — the
+advantage LFSTEM.1 created and has not yet spent. **Not implemented: it changes what every
+stem-driven preset sees, which is Matt's call.**
+
+⚠ **A CORRECTION THIS SESSION FORCED, recorded because it is already published elsewhere.**
+BUG107.3's note that "the analysis loop now runs at 59.9 Hz where pre-fix local sessions ran at
+~18 Hz, so part of BUG-087's ceiling was the GPU starving the loop" is **WRONG**. Those were
+RENDER rates: 18 fps pre-fix (consistent with 170–250 ms frames) and 60 fps after. The analysis
+rate was never measured that way, and **BUG-087's ceiling claim is untouched** by it. The row-rate
+was read as an analysis rate — the same class of mistake as reading a metric by its name.
 
 Found while confirming BUG-107 on session `2026-08-27T16-17-34Z` (local file, Skein, 4K, 78 s,
 analysis at 59.9 Hz). The numbers that do not add up:
@@ -377,11 +413,13 @@ session, unrelated mechanism), Skein.4.1 / the §colour-mud audit (why the rule 
 **Flat, mildly decreasing, against 38 → 127 → 170–250 ms in both pre-fix sessions.** The ramp is
 gone and the plateau is ~14× cheaper. `GPU_PRESSURE` 4.6–4.8 %, `ml_forced=0`, thermal nominal.
 
-**A second-order effect worth recording:** the analysis loop now runs at **59.9 Hz** where the
-pre-fix local sessions ran at ~18 Hz. Part of what looked like BUG-087's local-path analysis-rate
-ceiling was the GPU starving the loop at 170–250 ms per frame. That does not close BUG-087 — the
-audio-arrival ceiling is a separate claim — but any rate measured on a GPU-bound session is
-suspect.
+⚠ **~~A second-order effect worth recording: the analysis loop now runs at 59.9 Hz…~~ RETRACTED
+2026-08-27.** That read `features.csv`'s row rate as the analysis rate. Rows are **RENDER** frames
+(`SessionRecorder.recordFrame`, called from the command-buffer completion handler), so the numbers
+were 18 fps of rendering pre-fix — consistent with 170–250 ms frames — and 60 fps after. The
+analysis rate was never measured that way, and **BUG-087's ceiling claim is untouched**. Measured
+properly on `2026-08-27T16-53-29Z` via the new `stem_series_pos_s` column, the analysis rate is
+**12.8 Hz** (BUG-109).
 
 **What is left is not GPU-bound:** `frame_cpu` p50 ~28.5 ms (≈35 fps) against a 12.6 ms GPU, so
 the remaining gap is in the wall-clock path (which includes the blocking `currentDrawable` wait),

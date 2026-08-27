@@ -63,6 +63,10 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG109.2 — the answer: a sampling cadence, and a retraction ✅ diagnosis (2026-08-27)
+
+Session `2026-08-27T16-53-29Z` on the instrumented build. The series is installed and driving (`STEM_SOURCE: series frames=10815`, `stem_series_pos_s` populated on 100 % of rows, 0 backward), so neither of BUG-109's two candidates was right. It is sampled **once per analysis frame — 12.8 Hz — while the renderer draws at 59.9 Hz and the series' grid is 43 Hz**. `features.csv` rows are RENDER frames, so the 79 % held column is the recorder repeating between analysis frames. **Fix identified, not implemented (Matt's call):** sample per render frame — live separation was bounded by audio arrival, a pre-analysed series is an array lookup and is not, which is the advantage LFSTEM.1 created and has not spent. ⚠ **Forced a retraction:** BUG107.3's "the analysis loop now runs at 59.9 Hz" read a row rate as an analysis rate; both figures were render rates and **BUG-087's ceiling claim is untouched**.
+
 ### Increment BUG109.1 — instrument which source drives the stems ✅ (2026-08-27)
 
 **Done-when:** one local-file session can answer BUG-109 by reading, not inference. `features.csv` gains `stem_series_pos_s` (the post-smoother sampling position; EMPTY when no series is installed — `playback_time_s` carries the RAW clock and cannot tell "advancing" from "stuck"), and `session.log` gains `STEM_SOURCE:` at track change naming the source and the series' size (it existed only in `os.Logger`, so no artifact could answer it). **No sampling behaviour changed** — BUG-109's own note says not to touch it until the artifact speaks. The column is the first optional one, the single shape that can align when populated and shift every later field when absent, so `SessionRecorderCSVAlignmentTests` checks both forms; omitting the separator fails it at 77 fields against 78.
