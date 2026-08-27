@@ -111,11 +111,11 @@ public struct DefaultReactiveOrchestrator: Sendable {
 
     // MARK: - Dependencies
 
-    private let scorer: any PresetScoring
+    private let scorer: DefaultPresetScorer
 
     // MARK: - Init
 
-    public init(scorer: any PresetScoring = DefaultPresetScorer()) {
+    public init(scorer: DefaultPresetScorer = DefaultPresetScorer()) {
         self.scorer = scorer
     }
 
