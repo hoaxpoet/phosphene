@@ -63,6 +63,10 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG107.3 — live confirmation ✅ (2026-08-27)
+
+Session `2026-08-27T16-17-34Z`: Skein at 3840×2160, `frame_gpu` p50 **flat at 11.55–13.10 ms across 78 s**, against 38 → 127 → 170–250 ms in both pre-fix sessions. BUG-107 closes. Two things recorded on the way: the analysis loop now runs at **59.9 Hz** where pre-fix local sessions ran at ~18 Hz (part of the apparent BUG-087 ceiling was the GPU starving the loop — does not close BUG-087, but any rate measured on a GPU-bound session is suspect), and the remaining gap is not GPU-bound (`frame_cpu` ~28.5 ms against a 12.6 ms GPU). **Filed: BUG-109** — stem values change 634 times where the raw clock ticks 1,010 times and the series offers ~3,360 frames, which rules the smoother out and points at wiring; blocked on recording the smoothed position and the series-installed marker in the session artifact.
+
 ### Increment BUG107.2 — the tail is resolved once per frame, not once per pixel ✅ (2026-08-27)
 
 **Done-when:** the `breakCount` dependence is gone and the marks overlay is affordable at 4K. `SkeinState.resolveTail` resolves the 41 tail samples (painter position + the breakpoint colour/offset/start in force there) once per frame into a `SkeinTailGPU` table; the fragment reads it instead of recomputing ~246 transcendentals and 41 ring scans per pixel. Measured, marks overlay at 3840×2160: **17.06 → 4.77 ms at one breakpoint, 55.65 → 3.67 ms at the 16 cap**, curve now flat and mildly decreasing. Correctness is gated separately from cost — `hoistedTailDrawsInTheRightPlace` renders the marks and asserts the paint lands on the painter's own path, going red on an 8-byte offset drift — because a garbage table costs the same to read as a correct one. The cost harness also stopped hand-mirroring GPU struct layouts; it uses the real structs and the production resolver. **Owed: a live 4K Skein session** — the overlay is one pass of several, and the ~170 ms live figure carries the rest.
