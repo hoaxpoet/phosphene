@@ -255,39 +255,6 @@ Session `2026-08-27T16-17-34Z`: Skein at 3840×2160, `frame_gpu` p50 **flat at 1
 
 ### Increment LFSTEM.1d — the series was read on a 100 ms clock ✅ (2026-08-27)
 
-**Done-when:** a 23 ms series read through the local path's playback clock advances every frame. `MIRPipeline.elapsedSeconds` moves in 100 ms steps there (39 % of analysis frames do not advance it at all), which turned LFSTEM.1's series into a staircase — values held 2–6 frames then jumped 4+ grid frames onto deviation spikes (|Δ| up to 6.0), the twitchiness Matt reported on Skein. `PlaybackClockSmoother` dead-reckons between ticks and resyncs on each, capped at 0.25 s, reset on track change. `PlaybackClockSmootherTests` is the gate the alignment test could not be — it tests the clock, not the map — and fails without the smoother. **Filed, not fixed: BUG-107** (Skein 15.60 ms at 4K in the harness, ~170 ms after 50 s live; mechanism not established, and the next 4K Skein session is a free A/B on whether the staircase was inflating it).
-### Increment RECON.22 — dead decoder surface + the small verified deads ✅ (2026-08-26)
-
-Closes the preset-audit backlog: Tier-1 items 11 and 12, the last two of the twelve. **−1,151 lines across
-49 files, no pixel change** (PresetRegression's 29-preset dHash gate green throughout, so nothing needs
-re-certification).
-
-**Item 11 — the sidecar/decoder surface.** Four decoder capabilities that every sidecar paid for and no
-shader read. `FerrofluidParams` / `thin_film` was decoded and range-validated while `FerrofluidOcean.metal`
-hardcoded the same constants (the registry's thin-film row now names the MSL constants as the single source
-of truth). The legacy `use_*` boolean synthesis served only hypothetical out-of-tree sidecars — all 29
-in-tree sidecars declare `passes`. `beat_source` was set by 27 sidecars and read by none (`beatValue` is
-hardcoded to `max(beatBass, beatComposite)`), so the key came out of every sidecar with the enum: a sidecar
-should not claim a control that isn't wired. The `feedback_pixel_format` name fallback met its own
-delete-when condition, and `mesh_additive_blend` went to 0/29 when Arachne's strands moved to a staged pass.
-
-**Item 12 — six unrelated pockets with no consumer.** FerrofluidParticles' Phase-2c layer (zero-caller
-`encodePerFrameUpdate` overloads over the rejected D-127(d) force model, reachable only from its own two
-tests — deleted per D-203; the live bake path is untouched); the engine's hand-synced copy of `MVWarp.metal`
-(the live pipeline compiles from `PresetLoader+WarpPreamble`, so the copy was a drift hazard, not a
-reference); seven `SessionFrame` columns parsed as *required* and never read, which made replay hard-fail on
-sessions missing columns nobody consumed; Skein's `colorFromFamily`, whose every branch was gated on a flag
-no production caller set after FL.10 gave Ricercar its own echo geometry; six shader helpers with no call
-site; and the certification/loader crumbs (unreachable second descriptor fallback, unused store singleton +
-injection hook, write-only `p95FrameTimeMs`, the superseded `.exempt` status, a Stalker filter for a deleted
-file, `placeholderDesc`, the 4-line `Presets.swift`).
-
-**A green build is not a green Metal library.** `swift build` compiles no shaders, and per-preset suites
-compile only preset libraries — so deleting `FerrofluidUpdateUniforms` from the *engine* shader library while
-`fo_canonical_position` still took it as a parameter passed both. The failure surfaced only in
-`closeout_evidence.sh`, as 56 unrelated GPU tests failing on `MTLLibraryErrorDomain`. Any `Renderer/Shaders/`
-edit now needs one engine-library GPU test (`--filter IBLManagerTests` is a 9-test, sub-second smoke) before
-it can be called verified.
 **Done-when:** a 23 ms series read through the local path's playback clock advances every frame. `MIRPipeline.elapsedSeconds` moves in 100 ms steps there (39 % of analysis frames do not advance it at all), which turned LFSTEM.1's series into a staircase — values held 2–6 frames then jumped 4+ grid frames onto deviation spikes (|Δ| up to 6.0), the twitchiness Matt reported on Skein. `PlaybackClockSmoother` dead-reckons between ticks and resyncs on each, capped at 0.25 s, reset on track change. `PlaybackClockSmootherTests` is the gate the alignment test could not be — it tests the clock, not the map — and fails without the smoother. **Filed, not fixed: BUG-110** (Skein 15.60 ms at 4K in the harness, ~170 ms after 50 s live; mechanism not established, and the next 4K Skein session is a free A/B on whether the staircase was inflating it).
 
 ### Increment LFSTEM.1 — local-file stems land on the beat ✅ COMPLETE, M7 PASSED 2026-08-27 (2026-08-26)
