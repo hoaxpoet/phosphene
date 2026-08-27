@@ -31,62 +31,149 @@ import Testing
 @Suite("Skein line-layer cost (BUG-107, env-gated)")
 struct SkeinLineCostTests {
 
-    /// Mirrors `SkeinHeaderGPU` in Skein.metal — 16 floats / 64 bytes.
-    private struct HeaderMirror {
-        var painterTau: Float = 12.0
-        var painterTauStep: Float = 1.0 / 60.0
-        var seedPhaseX: Float = 0.31
-        var seedPhaseY: Float = 0.72
-        var lineColR: Float = 0.6
-        var lineColG: Float = 0.2
-        var lineColB: Float = 0.1
-        var lineFlow: Float = 0.5
-        var lineVisc: Float = 0.5
-        var jitter: Float = 0.1
-        var burstCount: UInt32 = 0
-        var seed: UInt32 = 12345
-        var breakCount: UInt32 = 0
-        var locusEnable: Float = 0
-        var pad2: Float = 0
-        var pad3: Float = 0
-    }
-
-    /// Mirrors `SkeinBreakGPU` — 6 floats / 24 bytes.
-    private struct BreakMirror {
-        var tauStart: Float
-        var colR: Float, colG: Float, colB: Float
-        var offX: Float, offY: Float
-    }
+    // No hand-mirrored layout here: the real `SkeinHeaderGPU` / `SkeinBreakGPU` / `SkeinTailGPU`
+    // are used directly, and the tail is filled by the production `SkeinState.resolveTail`. A
+    // test that re-declares a GPU struct's layout can drift from it silently, which is precisely
+    // the class of bug the stride guards elsewhere in this repo exist to catch.
 
     private static let maxBursts = 48
     private static let maxBreaks = 16
-    private static let burstStride = 48      // 12 floats
-    private static let breakStride = 24      // 6 floats
+    private static let groundStride = 16     // float4
+    private static let tailSamples = 41      // BUG-107 — kSkeinTailFrames + 1
 
     /// Build the slot-6 buffer with `breaks` colour breakpoints laid across the painter clock.
     private static func makeUniforms(device: MTLDevice, breaks: Int) -> MTLBuffer? {
-        let total = 64 + maxBursts * burstStride + maxBreaks * breakStride
+        let burstStride = MemoryLayout<SkeinBurstGPU>.stride
+        let breakStride = MemoryLayout<SkeinBreakGPU>.stride
+        let tailStride  = MemoryLayout<SkeinTailGPU>.stride
+        let total = MemoryLayout<SkeinHeaderGPU>.stride
+                  + maxBursts * burstStride + maxBreaks * breakStride
+                  + groundStride + tailSamples * tailStride
         guard let buf = device.makeBuffer(length: total, options: .storageModeShared) else { return nil }
         memset(buf.contents(), 0, total)
 
-        var header = HeaderMirror()
-        header.breakCount = UInt32(breaks)
-        buf.contents().copyMemory(from: &header, byteCount: MemoryLayout<HeaderMirror>.size)
+        var header = SkeinHeaderGPU(
+            painterTau: 12.0, painterTauStep: 1.0 / 60.0,
+            seedPhaseX: 0.31, seedPhaseY: 0.72,
+            lineColR: 0.6, lineColG: 0.2, lineColB: 0.1,
+            lineFlow: 0.5, lineVisc: 0.5, jitter: 0.1,
+            burstCount: 0, seed: 12345, breakCount: UInt32(breaks),
+            locusEnable: 0, pad2: 0, pad3: 0)
+        buf.contents().copyMemory(from: &header, byteCount: MemoryLayout<SkeinHeaderGPU>.size)
 
-        // Breakpoints ascend through the tail the shader walks (tau − 40·dτ … tau), which is the
-        // range `skeinLineLookupAt` scans — the worst case the live path reaches once a track has
-        // accumulated switches.
-        let base = buf.contents().advanced(by: 64 + maxBursts * burstStride)
+        // Breakpoints ascend through the tail the shader walks (tau − 40·dτ … tau) — the worst
+        // case the live path reaches once a track has accumulated dominant-stem switches.
+        var ring: [SkeinBreakGPU] = []
         for i in 0..<min(breaks, maxBreaks) {
             let frac = Float(i) / Float(max(breaks - 1, 1))
-            var bk = BreakMirror(
-                tauStart: 12.0 - (1.0 - frac) * 0.67,          // spread over the 40-frame tail
+            ring.append(SkeinBreakGPU(
+                tauStart: 12.0 - (1.0 - frac) * 0.67,
                 colR: frac, colG: 1.0 - frac, colB: 0.5,
-                offX: 0.01 * frac, offY: -0.01 * frac)
-            base.advanced(by: i * breakStride)
-                .copyMemory(from: &bk, byteCount: MemoryLayout<BreakMirror>.size)
+                offX: 0.01 * frac, offY: -0.01 * frac))
         }
+        let breakBase = buf.contents()
+            .advanced(by: MemoryLayout<SkeinHeaderGPU>.stride + maxBursts * burstStride)
+            .bindMemory(to: SkeinBreakGPU.self, capacity: maxBreaks)
+        for (i, bk) in ring.enumerated() { breakBase[i] = bk }
+
+        // BUG-107: the fragment reads a PRE-RESOLVED tail table instead of recomputing the painter
+        // path and scanning the ring per pixel, so fill it through the production resolver.
+        let tailPtr = buf.contents()
+            .advanced(by: MemoryLayout<SkeinHeaderGPU>.stride
+                          + maxBursts * burstStride + maxBreaks * breakStride + groundStride)
+            .bindMemory(to: SkeinTailGPU.self, capacity: tailSamples)
+        SkeinState.resolveTail(into: tailPtr, header: header, breaks: ring)
         return buf
+    }
+
+    /// Speed means nothing if the paint moved. The hoist replaced a per-fragment computation of
+    /// the painter path with a per-frame table, so the failure mode it introduces is a table that
+    /// is mis-offset, mis-strided or stale — none of which the cost numbers would reveal, because
+    /// a garbage table still costs the same to read.
+    ///
+    /// This renders the marks at a known painter state and asserts the paint lands where
+    /// `SkeinState.painterPosition` says the painter is. If the table's byte layout drifts from
+    /// `SkeinTailGPU` in Skein.metal, the line moves or vanishes and this goes red.
+    @Test("The pre-resolved tail puts the paint where the painter actually is (BUG-107)")
+    func hoistedTailDrawsInTheRightPlace() throws {
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let queue = device.makeCommandQueue() else { return }
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
+        guard let skein = loader.presets.first(where: { $0.descriptor.name == "Skein" }),
+              let marks = skein.mvWarpPipelines?.sceneGeometryState,
+              let uniforms = Self.makeUniforms(device: ctx.device, breaks: 1) else {
+            Issue.record("Skein marks pipeline unavailable"); return
+        }
+
+        let (w, h) = (512, 512)
+        let td = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
+        td.usage = [.renderTarget, .shaderRead]; td.storageMode = .shared
+        guard let tex = ctx.device.makeTexture(descriptor: td) else { Issue.record("no texture"); return }
+
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride),
+              let stem = ctx.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
+              let hist = ctx.makeSharedBuffer(length: 4096 * floatStride) else { return }
+
+        var fv = FeatureVector(time: 12.0, deltaTime: 1.0 / 60.0)
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = tex
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        rpd.colorAttachments[0].storeAction = .store
+        guard let cmd = queue.makeCommandBuffer(),
+              let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        enc.setRenderPipelineState(marks)
+        enc.setFragmentBytes(&fv, length: MemoryLayout<FeatureVector>.size, index: 0)
+        enc.setFragmentBuffer(fft, offset: 0, index: 1)
+        enc.setFragmentBuffer(wav, offset: 0, index: 2)
+        enc.setFragmentBuffer(stem, offset: 0, index: 3)
+        enc.setFragmentBuffer(hist, offset: 0, index: 5)
+        enc.setFragmentBuffer(uniforms, offset: 0, index: 6)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        enc.endEncoding()
+        cmd.commit(); cmd.waitUntilCompleted()
+
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        pixels.withUnsafeMutableBytes { dst in
+            tex.getBytes(dst.baseAddress!, bytesPerRow: w * 4,
+                         from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+        }
+
+        // Centroid of painted coverage (alpha), in uv.
+        var sum = SIMD2<Double>(0, 0)
+        var weight = 0.0
+        for y in 0..<h {
+            for x in 0..<w {
+                let a = Double(pixels[(y * w + x) * 4 + 3]) / 255.0
+                if a > 0.25 {
+                    sum += SIMD2<Double>(Double(x) / Double(w), Double(y) / Double(h)) * a
+                    weight += a
+                }
+            }
+        }
+        #expect(weight > 0, """
+                nothing was painted at breakCount=1. Either the tail table is not reaching the \
+                fragment (offset/stride drift against SkeinTailGPU) or the line layer is gated off.
+                """)
+        guard weight > 0 else { return }
+        let centroid = sum / weight
+
+        // The painter's own path over the drawn tail, from the production resolver.
+        let tip = SkeinState.painterPosition(t: 12.0, phx: 0.31, phy: 0.72)
+        let mid = SkeinState.painterPosition(t: 12.0 - 20.0 / 60.0, phx: 0.31, phy: 0.72)
+        let expected = SIMD2<Double>(Double(tip.x + mid.x) * 0.5, Double(tip.y + mid.y) * 0.5)
+        // uv.y is flipped on screen (the shader draws with y = 0 at the top).
+        let dx = abs(centroid.x - expected.x)
+        let dy = abs((1.0 - centroid.y) - expected.y)
+        #expect(dx < 0.20 && dy < 0.20, """
+                paint centroid (\(centroid.x), \(1.0 - centroid.y)) is far from the painter's \
+                own path midpoint (\(expected.x), \(expected.y)). The pre-resolved tail is \
+                describing a different path than the fragment is drawing.
+                """)
     }
 
     @Test("Measure Skein's fragment cost against the breakpoint count (BUG-107)")
@@ -179,13 +266,16 @@ struct SkeinLineCostTests {
                 no longer blind and BUG-107 needs re-measuring.
                 """)
 
-        // 2. Cost grows with the breakpoint count, which is the live ramp's mechanism: a track
-        //    accumulates dominant-stem switches, and skeinLineLookupAt scans them once per tail
-        //    frame per fragment (40 × up to 16, at 8.3 M fragments).
-        #expect(full > one * 2, """
-                cost stopped growing with the breakpoint count (\(one) → \(full) ms). If a fix \
-                hoisted the per-fragment breakpoint scan, that is the intended outcome — update \
-                this expectation and BUG-107 together.
+        // 2. Cost NO LONGER grows with the breakpoint count. Before the BUG-107 hoist this
+        //    asserted the opposite — the growth WAS the defect, 17.06 → 55.65 ms from 1 to 16
+        //    breakpoints, because skeinLineLookupAt scanned the ring once per tail frame per
+        //    fragment. With the tail resolved once per frame the fragment does no scanning at
+        //    all, so the curve is flat (mildly decreasing: more pours mean more skipped bridge
+        //    segments, hence fewer segment-distance evaluations).
+        #expect(full <= one * 1.25, """
+                cost is growing with the breakpoint count again (\(one) → \(full) ms). The tail \
+                table is resolved once per frame precisely so the fragment never scans the ring; \
+                if this is red, something reintroduced per-fragment lookup.
                 """)
     }
 }

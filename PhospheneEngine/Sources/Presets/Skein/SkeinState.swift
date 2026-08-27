@@ -66,6 +66,25 @@ struct SkeinBurstGPU {
     var hashSeed: Float    // per-burst deterministic seed for droplet placement variety
 }
 
+// MARK: - SkeinTailGPU
+
+/// One PRE-RESOLVED tail sample — 8 floats / 32 bytes. Must match `SkeinTailGPU` in Skein.metal
+/// byte-for-byte.
+///
+/// **BUG-107.** The fragment's tail loop walks `tailFrames` points back along the painter's path.
+/// Everything it needed per point — the painter POSITION at that painter-clock value, and the
+/// breakpoint COLOUR / OFFSET / START in force there — depends only on the painter clock, the seed
+/// phases and the breakpoint ring. **None of it depends on the fragment**, and it was nevertheless
+/// recomputed for every one: 41 × `skeinPainterPos` (6 sin/cos each, ~246 transcendentals per
+/// fragment, ~2 billion per 4K frame) plus 41 × a breakpoint-ring scan. Resolving all 41 here,
+/// once per frame, is the whole fix.
+struct SkeinTailGPU {
+    var posX: Float; var posY: Float          // painter position at tau − k·dτ (natural path)
+    var colR: Float; var colG: Float; var colB: Float
+    var offX: Float; var offY: Float          // that pour's offset
+    var start: Float                          // that breakpoint's tauStart (the same-pour test)
+}
+
 // MARK: - SkeinHeaderGPU
 
 /// Painter + line state written at the head of the buffer — 16 floats = 64 bytes.
@@ -134,6 +153,15 @@ public final class SkeinState: @unchecked Sendable {
     /// Max active bursts in the ring. ~2 onsets/s/stem × 4 stems × the bake window ≈ a handful
     /// live at once; 48 leaves generous headroom for dense passages without blowing the stride.
     public static let maxBursts: Int = 48
+
+    /// Pre-resolved tail samples written per frame (BUG-107). MUST equal
+    /// `kSkeinTailFrames + 1` in Skein.metal — entry 0 is the tip, entry `tailFrames` the far end.
+    static let tailSamples: Int = 41
+
+    /// Floor on dτ, matching the shader's `max(st.painterTauStep, 1.0 / 240.0)`. The tail's
+    /// painter-clock values must be identical on both sides or the pre-resolved positions describe
+    /// a different path than the one the fragment thinks it is drawing.
+    static let tauStepFloor: Float = 1.0 / 240.0
 
     /// Max colour breakpoints in the line-colour ring (Skein.4.1). The 16 most-recent dominant-stem
     /// switches always cover the ~40-frame live tail (even busy music switches the dominant far slower
@@ -390,6 +418,7 @@ public final class SkeinState: @unchecked Sendable {
             + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
             + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride
             + MemoryLayout<SIMD4<Float>>.stride   // Skein.5.3b: the LINEAR ground tail
+            + Self.tailSamples * MemoryLayout<SkeinTailGPU>.stride  // BUG-107: pre-resolved tail
         guard let buf = device.makeBuffer(length: bufferSize, options: .storageModeShared) else {
             logger.error("SkeinState: failed to allocate skeinBuffer (\(bufferSize) bytes)")
             return nil
@@ -618,6 +647,14 @@ public final class SkeinState: @unchecked Sendable {
                                      + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride)
             .bindMemory(to: SIMD4<Float>.self, capacity: 1)
         groundPtr[0] = SIMD4<Float>(snap.groundLinear, 0)
+
+        // BUG-107: the pre-resolved tail follows the ground (third additive tail).
+        let tailPtr = ptr.advanced(by: MemoryLayout<SkeinHeaderGPU>.stride
+                                   + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
+                                   + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride
+                                   + MemoryLayout<SIMD4<Float>>.stride)
+            .bindMemory(to: SkeinTailGPU.self, capacity: Self.tailSamples)
+        Self.resolveTail(into: tailPtr, header: snap.header, breaks: snap.breaks)
     }
 
     /// One frame's GPU-bound snapshot, captured under the lock then written to the buffer outside it

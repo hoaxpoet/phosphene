@@ -190,6 +190,26 @@ struct SkeinBurstGPU {        // 12 floats = 48 bytes (matches Swift SkeinBurstG
     float hashSeed;                    // per-burst droplet-placement seed
 };
 
+// BUG-107 — one PRE-RESOLVED tail sample, 8 floats = 32 bytes (matches Swift SkeinTailGPU).
+//
+// The tail loop below walks `kSkeinTailFrames` points back along the painter's path. Everything it
+// needed per point — the painter POSITION at that painter-clock value, and the breakpoint COLOUR /
+// OFFSET / START in force there — depends only on `tau`, `dtau`, the seed phases and the
+// breakpoint ring. **None of it depends on the fragment.** It was nevertheless recomputed for
+// every fragment: 41 × `skeinPainterPos` (6 sin/cos each ⇒ ~246 transcendentals per fragment, ~2
+// billion per 4K frame) plus 41 × `skeinLineLookupAt`, a ring scan up to `kSkeinMaxBreaks` long.
+//
+// Measured before the hoist (`SkeinLineCostTests`, marks overlay at 3840×2160): 0.75 ms with the
+// layer gated off, 17.06 ms at one breakpoint, 55.65 ms at the 16-breakpoint cap — the growth
+// being the scan, the 17 ms floor being mostly the trig. `SkeinState` now resolves all 41 samples
+// once per frame and the fragment reads them.
+struct SkeinTailGPU {         // 8 floats = 32 bytes
+    float posX; float posY;              // skeinPainterPos(tau − k·dτ) — natural path, no offset
+    float colR; float colG; float colB;  // breakpoint colour in force at that painter clock
+    float offX; float offY;              // that pour's position offset ("a new paint container")
+    float start;                         // that breakpoint's tauStart — the same-pour test
+};
+
 // Skein.4.1 — one line-colour + new-pour breakpoint (matches Swift SkeinBreakGPU byte-for-byte).
 struct SkeinBreakGPU {        // 6 floats = 24 bytes
     float tauStart;                    // painter clock at the dominant-stem switch (pour valid from here)
@@ -217,6 +237,7 @@ struct SkeinUniforms {        // 64-byte header + 48 × 48-byte bursts + 16 × 2
                                        // Offset 2752 = 64 + 48·48 + 16·24, 16-byte aligned — the second
                                        // additive tail. The comp paint-mask compares the auto-decoded
                                        // (linear) canvas sample against it; per-track in library mode.
+    SkeinTailGPU  tail[41];            // BUG-107 — == kSkeinTailFrames + 1, pre-resolved per frame
 };
 
 // Skein.4.1 — the line state in effect at a given painter-clock value: frozen colour + new-pour offset
@@ -412,8 +433,10 @@ fragment float4 skein_geometry_fragment(
     float  lineWiden = mix(1.0, 1.5, lineVisc) + 0.5 * clamp(st.lineFlow, 0.0, 1.0);
     if (int(st.breakCount) > 0) {   // Skein.5.1: no committed pour yet ⇒ no line (never white)
         // Per-frame radius (never per-segment). Speed estimated from the natural (un-offset) path.
-        float2 tip0  = skeinPainterPos(tau, phx, phy);
-        float2 oldP0 = skeinPainterPos(tau - float(kSkeinTailFrames) * dtau, phx, phy);
+        // BUG-107: the tail table is pre-resolved per frame — entry k is the painter state at
+        // `tau − k·dτ`, so entry 0 is the tip and entry kSkeinTailFrames is the tail's far end.
+        float2 tip0  = float2(st.tail[0].posX, st.tail[0].posY);
+        float2 oldP0 = float2(st.tail[kSkeinTailFrames].posX, st.tail[kSkeinTailFrames].posY);
         float  oSpeed = length(float2((tip0.x - oldP0.x) * a, tip0.y - oldP0.y))
                       / max(float(kSkeinTailFrames) * dtau, 1e-4);
         float  r = kSkeinLineRadius * lineWiden * mix(1.05, 0.70, smoothstep(0.05, 0.35, oSpeed));
@@ -422,22 +445,24 @@ fragment float4 skein_geometry_fragment(
         // endpoints belong to the SAME pour (equal breakpoint `start`); a segment straddling a switch is
         // the JUMP and is skipped → the gap. Each drawn point is displaced by its pour's offset, and the
         // segment is coloured by its pour's frozen colour.
-        SkeinLineLookup pr = skeinLineLookupAt(tau, st);
-        float2 prQ = float2((tip0.x + pr.off.x) * a, tip0.y + pr.off.y);   // k = 0 (newest)
+        SkeinTailGPU pr = st.tail[0];
+        float2 prQ = float2((tip0.x + pr.offX) * a, tip0.y + pr.offY);     // k = 0 (newest)
         float  lineSDF = 1e9;
-        float3 lineCol = pr.col;
+        float3 lineCol = float3(pr.colR, pr.colG, pr.colB);
         // BUG-108: the nearest drawn segment's painter clock is the LINE's lay time, tracked
         // beside its frozen colour. `tau` is now, so a segment k steps back was laid k·dtau ago —
         // the tail's newest end is the most recently laid paint on the canvas.
         float  lineTau = tau;
         for (int k = 1; k <= kSkeinTailFrames; ++k) {
-            float  ctau = tau - float(k) * dtau;
-            SkeinLineLookup cu = skeinLineLookupAt(ctau, st);
-            float2 cb  = skeinPainterPos(ctau, phx, phy);
-            float2 cuQ = float2((cb.x + cu.off.x) * a, cb.y + cu.off.y);
+            SkeinTailGPU cu = st.tail[k];
+            float2 cuQ = float2((cu.posX + cu.offX) * a, cu.posY + cu.offY);
             if (cu.start == pr.start) {                              // same pour → draw (no bridge)
                 float d = skeinSegDist(q, cuQ, prQ) - r;
-                if (d < lineSDF) { lineSDF = d; lineCol = cu.col; lineTau = ctau; }
+                if (d < lineSDF) {
+                    lineSDF = d;
+                    lineCol = float3(cu.colR, cu.colG, cu.colB);
+                    lineTau = tau - float(k) * dtau;                 // BUG-108 lay time
+                }
             }
             pr = cu; prQ = cuQ;
         }

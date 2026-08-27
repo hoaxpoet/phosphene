@@ -10,6 +10,44 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-160607] BUG-107 fixed — Skein recomputed the painter's whole tail for every pixel
+
+**The hoist.** `skeinLineLookupAt` and `skeinPainterPos` depend only on the painter clock, the seed
+phases and the breakpoint ring — **never on fragment position** — and both were being recomputed
+for all 41 tail samples of every one of 8.3 M fragments: ~246 transcendentals per fragment from
+the painter path alone, ~2 billion per 4K frame, plus a ring scan up to 16 long per sample.
+`SkeinState.resolveTail` now produces those 41 samples once per frame into a `SkeinTailGPU` table
+and the fragment reads it.
+
+| `breakCount` | before | after |
+|---|---|---|
+| 0 (layer gated off) | 0.75 ms | 0.87 ms |
+| 1 | **17.06 ms** | **4.77 ms** — 3.6× |
+| 4 | 27.36 ms | 4.58 ms |
+| **16** (ring cap) | **55.65 ms** | **3.67 ms** — 15× |
+
+The `breakCount` dependence — the ramp's mechanism — is gone. The curve is now flat and mildly
+*decreasing*: more pours mean more skipped bridge segments and so fewer segment-distance
+evaluations. What remains is the tail's own 40 SDF evaluations, which genuinely depend on the
+fragment.
+
+**Correctness, because speed proves nothing here.** The hoist replaces a per-fragment computation
+with a per-frame table, so its failure mode is a table that is mis-offset, mis-strided or stale —
+none of which the cost numbers would reveal, since a garbage table costs the same to read.
+`hoistedTailDrawsInTheRightPlace` renders the marks at a known painter state and asserts the paint
+lands on the painter's own path; an 8-byte offset drift moves the centroid from 0.65 to 0.99 and
+the test goes red. It runs unconditionally, not behind the cost harness's env gate.
+
+The harness stopped hand-mirroring GPU struct layouts in the process — it now uses the real
+`SkeinHeaderGPU` / `SkeinBreakGPU` / `SkeinTailGPU` and fills the tail through the production
+resolver, so a layout change cannot drift the test away from the code silently.
+
+⚠ **Live confirmation is owed.** The marks overlay is one of several passes; the ~170 ms live
+figure also carries the base pass, warp, comp/sheen and presentation. A 4K Skein session is what
+says how much of the ramp this removed.
+
+---
+
 ### [dev-2026-08-27-154702] BUG-107 diagnosed — the frame-budget harness has been measuring Skein with its most expensive layer switched off
 
 **Diagnosis, not a fix.** BUG-107 held that Skein costs 15.60 ms at 4K in `PresetFrameBudgetTests`
