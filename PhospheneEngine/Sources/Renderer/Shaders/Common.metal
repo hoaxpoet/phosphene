@@ -338,3 +338,18 @@ fragment float4 feedback_blit_fragment(
 ) {
     return tex.sample(s, in.uv);
 }
+
+// MARK: - Cheap integer-hash RNG → [0,1)
+
+/// Chris Wellons' `lowbias32` integer hash, scaled to [0,1). Shared by the
+/// compute presets that reseed from a thread index (Cymatic Sand, Mitosis,
+/// Physarum) — they each carried a byte-identical private copy until RECON.23.
+/// Common.metal sorts first in `ShaderLibrary`'s alphabetical concatenation,
+/// so every later file in the engine translation unit sees this.
+static inline float lowbias32_unit(uint x) {
+    x ^= x >> 16; x *= 0x7feb352du;
+    x ^= x >> 15; x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return float(x) * (1.0 / 4294967296.0);
+}
+

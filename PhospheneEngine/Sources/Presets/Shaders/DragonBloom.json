@@ -14,7 +14,6 @@
   "passes": ["direct", "mv_warp"],
   "fragment_function": "dragon_bloom_fragment",
   "vertex_function": "fullscreen_vertex",
-  "beat_source": "composite",
   "decay": 0.950,
   "marks": {
     "vertex_count": 1536,

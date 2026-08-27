@@ -22,22 +22,6 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.presets", category: "FidelityRubric")
 
-// MARK: - Protocol
-
-/// Evaluates one preset against the V.6 fidelity rubric.
-///
-/// Implementations must be pure (deterministic, side-effect-free) so results
-/// can be cached and compared across runs.
-public protocol FidelityRubricEvaluating: Sendable {
-    func evaluate(
-        presetID: String,
-        metalSource: String,
-        descriptor: PresetDescriptor,
-        runtimeChecks: RuntimeCheckResults,
-        deviceTier: DeviceTier
-    ) -> RubricResult
-}
-
 // MARK: - DefaultFidelityRubric
 
 /// Concrete rubric evaluator implementing SHADER_CRAFT.md §12.
@@ -51,7 +35,7 @@ public protocol FidelityRubricEvaluating: Sendable {
 ///
 /// When in doubt, items default to fail rather than pass. Authors can override
 /// P1/P3 via `rubric_hints` in the JSON sidecar.
-public struct DefaultFidelityRubric: FidelityRubricEvaluating {
+public struct DefaultFidelityRubric: Sendable {
 
     public init() {}
 

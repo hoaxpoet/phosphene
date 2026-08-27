@@ -2,7 +2,6 @@
 //
 // Four kernels populate the five noise textures owned by TextureManager:
 //   gen_perlin_2d  → noiseLQ (256²) and noiseHQ (1024²)  — tileable FBM value noise
-//   gen_perlin_3d  → noiseVolume (64³)                    — tileable 3D FBM value noise
 //   gen_fbm_rgba   → noiseFBM (1024²)                     — R=Perlin, G=shifted, B=Worley, A=curl
 //   gen_blue_noise → blueNoise (256²)                     — interleaved gradient noise
 //
@@ -173,24 +172,6 @@ kernel void gen_perlin_2d(
     out.write(float4(n, 0.0, 0.0, 1.0), gid);
 }
 
-/// Generate tileable 3D FBM value noise into an `.r8Unorm` 3D texture.
-///
-/// - texture(0): write target (3D `.r8Unorm`)
-/// - buffer(0):  `texSize` — cube edge length in pixels (64)
-kernel void gen_perlin_3d(
-    texture3d<float, access::write> out [[texture(0)]],
-    constant uint&                  texSize [[buffer(0)]],
-    uint3                           gid [[thread_position_in_grid]])
-{
-    if (gid.x >= texSize || gid.y >= texSize || gid.z >= texSize) { return; }
-
-    float3 uvw = (float3(gid) + 0.5) / float(texSize);
-
-    const float period = 4.0;
-    float n = ng_fbm3D(uvw * period, period);
-
-    out.write(float4(n, 0.0, 0.0, 1.0), gid);
-}
 
 /// Generate the tileable 3D **Perlin-Worley** base-shape texture into an
 /// `.rgba8Unorm` 3D texture — the HZD / "Nubis" volumetric-cloud noise. Perlin

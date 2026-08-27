@@ -19,7 +19,6 @@
   ],
   "vertex_function": "fullscreen_vertex",
   "fragment_function": "arachne_composite_fragment",
-  "beat_source": "composite",
   "decay": 0.92,
   "base_zoom": 0.004,
   "base_rot": 0.001,

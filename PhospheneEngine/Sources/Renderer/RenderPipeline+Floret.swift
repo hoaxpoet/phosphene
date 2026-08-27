@@ -102,9 +102,7 @@ extension RenderPipeline {
 
     // MARK: Draw branch
 
-    /// Live entry point: render the Floret frame to the drawable, then present. Thin wrapper
-    /// over `renderFloret(target:)` so the live path and the diag harness run the EXACT SAME
-    /// render code (FA #66 — no reimplemented test path).
+    /// Live entry point: render the Floret frame to the drawable, then present.
     @MainActor
     func drawWithFloret(
         commandBuffer: MTLCommandBuffer,
@@ -113,16 +111,15 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         warpState: MVWarpState
     ) {
-        guard let drawable = instrumentedDrawable(
-            from: view, commandBuffer: commandBuffer, site: "floret.drawable"
-        ) else { return }
-        renderFloret(
-            commandBuffer: commandBuffer,
-            features: features,
-            stemFeatures: stemFeatures,
-            warpState: warpState,
-            target: drawable.texture)
-        instrumentedPresent(drawable, on: commandBuffer)
+        let feat = features
+        drawCustomWarp(commandBuffer: commandBuffer, view: view, site: "floret.drawable") { target in
+            renderFloret(
+                commandBuffer: commandBuffer,
+                features: feat,
+                stemFeatures: stemFeatures,
+                warpState: warpState,
+                target: target)
+        }
     }
 
     /// Floret feedback loop rendered into `target`: warp → signature comp (→ target) → swap.
@@ -180,12 +177,7 @@ extension RenderPipeline {
         }
     }
 
-    /// Reduced-motion (U.9 / a11y) Floret frame into `target`: the signature comp of the
-    /// CURRENT (un-advanced) feedback — NO warp pass, NO swap → no feedback accumulation,
-    /// hence no motion. Floret's direct pipeline is compiled for its `.rgba16Float`
-    /// feedback format, so (like Nacre, BUG-061) routing reduced-motion through the comp
-    /// (blit) pipeline — which IS the drawable format — is both crash-safe and the correct
-    /// static frame the U.9 contract wants. Target-agnostic (FA #66).
+    /// Reduced-motion (U.9 / a11y) Floret frame — see `renderCustomWarpReducedMotion`.
     @MainActor
     func renderFloretReducedMotion(
         commandBuffer: MTLCommandBuffer,
@@ -193,16 +185,10 @@ extension RenderPipeline {
         warpState: MVWarpState,
         target: MTLTexture
     ) {
-        var uni = computeFloretUniforms(features: features, stems: .zero)
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture     = target
-        desc.colorAttachments[0].loadAction  = .dontCare
-        desc.colorAttachments[0].storeAction = .store
-        guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        enc.setRenderPipelineState(warpState.blitPipeline)        // floret_comp (drawable format)
-        enc.setFragmentTexture(warpState.warpTexture, index: 0)   // current feedback, NOT advanced
-        enc.setFragmentBytes(&uni, length: MemoryLayout<FloretUniforms>.stride, index: 1)
-        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        enc.endEncoding()
+        renderCustomWarpReducedMotion(
+            commandBuffer: commandBuffer,
+            warpState: warpState,
+            target: target,
+            uniforms: computeFloretUniforms(features: features, stems: .zero))   // static frame
     }
 }

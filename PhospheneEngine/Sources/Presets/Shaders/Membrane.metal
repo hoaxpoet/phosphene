@@ -21,11 +21,6 @@
 // so the color structure you see at rest is the same structure you see
 // while music plays — the music only DEFORMS it via lighting.
 
-// ── Noise primitives ─────────────────────────────────────────────
-
-float mb_hash2(float2 p) {
-    return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
-}
 
 float mb_hash3(float3 p) {
     return fract(sin(dot(p, float3(127.1, 311.7, 74.7))) * 43758.5453);

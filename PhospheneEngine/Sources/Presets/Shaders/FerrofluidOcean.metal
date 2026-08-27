@@ -54,12 +54,6 @@ constant float FO_STEM_WARMUP_HI = 0.06;
 
 // MARK: - Audio routing helpers
 
-// D-019 crossfade: proxy ↔ stem.
-static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
-    float total = stems.vocals_energy + stems.drums_energy
-                + stems.bass_energy   + stems.other_energy;
-    return smoothstep(FO_STEM_WARMUP_LO, FO_STEM_WARMUP_HI, total);
-}
 
 // Spike-field strength: constant baseline + bass-deviation modulation.
 //
@@ -499,19 +493,6 @@ static inline float fo_ferrofluid_field_sampled(float3 p,
     return spike * fieldStrength * 0.63;
 }
 
-// Phase A inline fallback. Retained for diagnostic comparison + the case
-// where no height texture is bound (`heightTex.get_width() == 1` ⇒ the
-// 1×1 placeholder, returns 0 ⇒ no spikes). Not called from sceneSDF
-// today; future increments may A/B between paths via a feature flag.
-static inline float fo_ferrofluid_field_inline(float3 p, float fieldStrength) {
-    if (fieldStrength <= 0.0) return 0.0;
-    constexpr float kVoronoiScale   = 4.0;
-    constexpr float kVoronoiSmoothK = 32.0;
-    constexpr float kSpikeRadius    = 0.6;
-    float smoothD = voronoi_smooth(p.xz, kVoronoiScale, kVoronoiSmoothK);
-    float spike   = max(0.0, 1.0 - smoothD / kSpikeRadius);
-    return spike * fieldStrength * 0.15;
-}
 
 // MARK: - sceneSDF
 //

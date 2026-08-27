@@ -85,14 +85,6 @@ static inline float3 sand_field_grad(float2 p, float ladderPos) {
     return mix(sand_phi_grad(p, kSandLadder[i]), sand_phi_grad(p, kSandLadder[i + 1]), f);
 }
 
-// MARK: - Cheap integer-hash RNG → [0,1)
-
-static inline float sand_hash(uint x) {
-    x ^= x >> 16; x *= 0x7feb352du;
-    x ^= x >> 15; x *= 0x846ca68bu;
-    x ^= x >> 16;
-    return float(x) * (1.0 / 4294967296.0);
-}
 
 constexpr sampler sandSampler(address::clamp_to_edge, filter::linear, coord::normalized);
 
@@ -129,7 +121,7 @@ kernel void sand_grains(device SandGrain*     grains [[buffer(0)]],
     // energy baseline. `minWalk` keeps grains from freezing.
     float drive = 0.15 + 1.6 * cfg.energyEnv + 4.0 * cfg.beatBurst;
     float vib = cfg.vibAmp * amp * drive + cfg.minWalk;
-    float ang = sand_hash(gid * 2654435761u + cfg.frame * 40503u) * 6.2831853;
+    float ang = lowbias32_unit(gid * 2654435761u + cfg.frame * 40503u) * 6.2831853;
     float2 rdir = float2(cos(ang), sin(ang));
 
     // Gradient drift toward the node (luciopaiva) — a fixed small step down |φ| for

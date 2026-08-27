@@ -64,6 +64,83 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 ## Recently Completed
 
 ### Increment SKEIN.OVERLAP.2 — the same argmin, one level down ✅ M7 PASSED (2026-08-27)
+### Increment RECON.23 — Tier-2 systematisation, items 2–6 ✅ (2026-08-27)
+
+The preset audit's optional-polish tier. **−213 net lines, two new gates, no pixel change** —
+the 29-preset dHash gate stayed green throughout, so nothing needs re-certification.
+
+**Item 2 — sidecar schema hygiene, and the gate that closes the loop.** The five feedback
+decode defaults (`decay` 0.955, `base_zoom` 0.12, `beat_zoom` 0.03, `base_rot` 0.03,
+`beat_rot` 0.01) now default to 0. A preset that simply omitted `decay` used to get a strong
+feedback trail it never asked for, and nine presets carried 37 lines of explicit `0.0` purely
+to say "none of that". Safe because every preset declaring `feedback` or `mv_warp` declares
+every key it consumes — verified across all 29 rather than assumed. Two new gates: the key
+gate now reads one level into `audio_routes` entries (Stave's `note` was being silently
+dropped — a route manifest is the QG.1 contract, so a misspelled key there reads as declared
+and gates nothing), and a new gate asserts the inverse — every decoded key has ≥1 in-tree
+adopter or a written-down reason. **That second gate is the one that matters**: it would have
+caught `beat_source` the day its adopter count hit zero rather than after it reached 27
+sidecars declaring a control nothing read. Both were negative-controlled.
+
+**Item 4 — loader dedupes, and a bug that lived in dead code.** The item flagged that
+`onPresetLoadFailed` never fires on the shader-reuse path. True, but no sidecar declares
+`shader_file` and there are no orphan JSONs, so that path has had zero users since the
+Fantasia rebuild gave Ricercar its own `.metal`. Deleted per D-203 rather than deduplicated,
+along with the `shader_file` decode it alone fed. One `compileLibrary` helper replaced five
+byte-identical compile blocks; one `sceneUniformsMSL` replaced two hand-synced MSL mirrors of
+the 240-byte GPU contract — which had already drifted, the mv_warp copy still describing
+`sceneParamsB.w` as "SSGI radius", a field RECON.18 retired.
+
+**Items 3, 5 and 6 — scoped to what survived checking.** Item 3's census did not hold up
+(`arachSmoothstep`, `nbSmoothstep`, `gossamerFract` do not exist; the named duplicates appear
+once each), so the duplicates were found mechanically instead by hashing 837 normalised
+function bodies: ~88 lines, nearly all 3–6 line helpers. The engine-side one was shared
+(three copies of `lowbias32` in one translation unit); the cross-preset remainder was
+deliberately left — ~30 lines across five certified shaders is not worth the dHash
+re-verification, and D-097 argues for presets owning their own math. Item 5 likewise: the
+four custom-warp *loops* genuinely differ (43/43/59/68 lines), so only the verbatim
+scaffolding either side moved to `RenderPipeline+CustomWarp`. Item 6 collapsed `PresetScoring`
+and `FidelityRubricEvaluating` — one conformer each, no test double, nothing ever injected.
+
+**Three items out of five had a wrong premise.** The audit's own consumer census has now been
+wrong in RECON.16, .22 and .23. Treat its counts as leads, never evidence: verify name by
+name, and where the claim is "these N things are duplicates", measure it rather than reading
+the list.
+
+### Increment RECON.22 — dead decoder surface + the small verified deads ✅ (2026-08-26)
+
+Closes the preset-audit backlog: Tier-1 items 11 and 12, the last two of the twelve. **−1,151 lines across
+49 files, no pixel change** (PresetRegression's 29-preset dHash gate green throughout, so nothing needs
+re-certification).
+
+**Item 11 — the sidecar/decoder surface.** Four decoder capabilities that every sidecar paid for and no
+shader read. `FerrofluidParams` / `thin_film` was decoded and range-validated while `FerrofluidOcean.metal`
+hardcoded the same constants (the registry's thin-film row now names the MSL constants as the single source
+of truth). The legacy `use_*` boolean synthesis served only hypothetical out-of-tree sidecars — all 29
+in-tree sidecars declare `passes`. `beat_source` was set by 27 sidecars and read by none (`beatValue` is
+hardcoded to `max(beatBass, beatComposite)`), so the key came out of every sidecar with the enum: a sidecar
+should not claim a control that isn't wired. The `feedback_pixel_format` name fallback met its own
+delete-when condition, and `mesh_additive_blend` went to 0/29 when Arachne's strands moved to a staged pass.
+
+**Item 12 — six unrelated pockets with no consumer.** FerrofluidParticles' Phase-2c layer (zero-caller
+`encodePerFrameUpdate` overloads over the rejected D-127(d) force model, reachable only from its own two
+tests — deleted per D-203; the live bake path is untouched); the engine's hand-synced copy of `MVWarp.metal`
+(the live pipeline compiles from `PresetLoader+WarpPreamble`, so the copy was a drift hazard, not a
+reference); seven `SessionFrame` columns parsed as *required* and never read, which made replay hard-fail on
+sessions missing columns nobody consumed; Skein's `colorFromFamily`, whose every branch was gated on a flag
+no production caller set after FL.10 gave Ricercar its own echo geometry; six shader helpers with no call
+site; and the certification/loader crumbs (unreachable second descriptor fallback, unused store singleton +
+injection hook, write-only `p95FrameTimeMs`, the superseded `.exempt` status, a Stalker filter for a deleted
+file, `placeholderDesc`, the 4-line `Presets.swift`).
+
+**A green build is not a green Metal library.** `swift build` compiles no shaders, and per-preset suites
+compile only preset libraries — so deleting `FerrofluidUpdateUniforms` from the *engine* shader library while
+`fo_canonical_position` still took it as a parameter passed both. The failure surfaced only in
+`closeout_evidence.sh`, as 56 unrelated GPU tests failing on `MTLLibraryErrorDomain`. Any `Renderer/Shaders/`
+edit now needs one engine-library GPU test (`--filter IBLManagerTests` is a 9-test, sub-second smoke) before
+it can be called verified.
+
+### Increment LFSTEM.1 — local-file stems land on the beat 🔨 code-complete, M7 owed (2026-08-26)
 
 **Done-when:** the overlap flicker is gone at every level, not just between marks. Matt on the round-1 build: *"flickering still happens but only after 70-80 s and is not as prominent as before. Frame rate is smooth."* Inside the pour line the colour still came from the NEAREST segment (`d < lineSDF`) — the same argmin one level below the one round 1 fixed — so two near-equidistant segments of different pours flipped it frame to frame. Both halves of the report follow: less prominent because the mark-level case was fixed, only after 70-80 s because such pairs need differently-coloured segments in the same 40-frame tail and colour breakpoints accumulate (the same ring that drove BUG-107's ramp). The line now takes the FIRST covering segment in a newest→oldest walk — the latest-laid one by construction — with coverage still the nearest-segment distance. `SkeinCanvasHoldTest` gates both levels. **Same session confirmed LFSTEM.1e (series sampling at ~56 Hz, was 12.8) and BUG-107 live (`frame_gpu` p50 12.55–13.21 ms flat across 90 s at 4K).**
 

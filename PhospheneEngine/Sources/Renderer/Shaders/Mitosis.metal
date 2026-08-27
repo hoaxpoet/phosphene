@@ -51,12 +51,6 @@ static inline float2 rd_read(texture2d<float, access::read> t, int x, int y, int
     return t.read(uint2(uint(sx), uint(sy))).rg;
 }
 
-static inline float rd_hash(uint x) {
-    x ^= x >> 16; x *= 0x7feb352du;
-    x ^= x >> 15; x *= 0x846ca68bu;
-    x ^= x >> 16;
-    return float(x) * (1.0 / 4294967296.0);
-}
 
 // MARK: - Kernel: one Gray–Scott react+diffuse substep, src → dst
 
@@ -96,10 +90,10 @@ kernel void mitosis_react(constant MitosisConfig& cfg [[buffer(0)]],
     // cells alive while music plays regardless of energy level (dead Gray–Scott can't
     // revive: no B → no A·B² reaction). Silence → no reseed → calm fade (no Drift-Motes).
     if (cfg.feedBurst > 0.0001 && B < 0.20) {
-        uint cx = uint(rd_hash(cfg.frame * 9781u + 17u) * float(cfg.width));
-        uint cy = uint(rd_hash(cfg.frame * 6271u + 31u) * float(cfg.height));
+        uint cx = uint(lowbias32_unit(cfg.frame * 9781u + 17u) * float(cfg.width));
+        uint cy = uint(lowbias32_unit(cfg.frame * 6271u + 31u) * float(cfg.height));
         float dx = float(gid.x) - float(cx), dy = float(gid.y) - float(cy);
-        if (dx * dx + dy * dy < 4.0 && rd_hash(cfg.frame * 40503u) < cfg.feedBurst * 0.20) {
+        if (dx * dx + dy * dy < 4.0 && lowbias32_unit(cfg.frame * 40503u) < cfg.feedBurst * 0.20) {
             nB = 0.5; nA = 0.5;   // stamp a small establishing cluster (population backbone)
         }
     }

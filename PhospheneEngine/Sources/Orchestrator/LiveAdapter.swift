@@ -144,7 +144,7 @@ public final class DefaultLiveAdapter: @unchecked Sendable {
 
     // MARK: - Dependencies
 
-    let scorer: any PresetScoring
+    let scorer: DefaultPresetScorer
     private let transitionPolicy: any TransitionDeciding
 
     // MARK: - Per-track cooldown state (QR.2/D-080)
@@ -156,7 +156,7 @@ public final class DefaultLiveAdapter: @unchecked Sendable {
     // MARK: - Init
 
     public init(
-        scorer: any PresetScoring = DefaultPresetScorer(),
+        scorer: DefaultPresetScorer = DefaultPresetScorer(),
         transitionPolicy: any TransitionDeciding = DefaultTransitionPolicy()
     ) {
         self.scorer = scorer

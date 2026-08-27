@@ -27,23 +27,7 @@ extension PresetLoader {
     // sets the guard, so this block is skipped to avoid redefinition errors.
     #ifndef SCENE_UNIFORMS_DEFINED
     #define SCENE_UNIFORMS_DEFINED
-    struct SceneUniforms {
-        float4 cameraOriginAndFov;        // xyz = camera pos, w = fov (radians)
-        float4 cameraForward;             // xyz = forward dir, w = 0
-        float4 cameraRight;               // xyz = right dir, w = 0
-        float4 cameraUp;                  // xyz = up dir, w = 0
-        float4 lightPositionAndIntensity; // xyz = light pos, w = intensity
-        float4 lightColor;                // xyz = linear RGB, w = 0
-        float4 sceneParamsA;              // x=audioTime, y=aspectRatio, z=near, w=far
-        float4 sceneParamsB;              // x=fogNear, y=fogFar, z=D-057 step mult, w=SSGI radius
-        float4 light1PositionAndIntensity; // RMENV.1 additional lights (appended)
-        float4 light1Color;
-        float4 light2PositionAndIntensity;
-        float4 light2Color;
-        float4 light3PositionAndIntensity;
-        float4 light3Color;
-        float4 lightingParams;            // x = lightCount (1..4); yzw reserved
-    };
+    \(sceneUniformsMSL)
     #endif
 
     // Per-frame warp parameters returned by the preset's mvWarpPerFrame().

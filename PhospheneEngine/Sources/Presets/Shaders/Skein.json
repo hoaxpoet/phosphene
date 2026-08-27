@@ -7,7 +7,6 @@
   "passes": ["direct", "mv_warp"],
   "fragment_function": "skein_fragment",
   "vertex_function": "fullscreen_vertex",
-  "beat_source": "composite",
   "decay": 1.0,
   "marks": {
     "vertex_count": 3,

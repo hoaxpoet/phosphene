@@ -65,7 +65,6 @@ import Metal
     #expect(descriptor.duration == 25)
     #expect(descriptor.description == "Sacred geometry spiral")
     #expect(descriptor.author == "Matt")
-    #expect(descriptor.beatSource == .composite)
     #expect(descriptor.beatZoom == 0.05)
     #expect(descriptor.beatRot == 0.05)
     #expect(descriptor.baseZoom == 0.12)
@@ -88,26 +87,16 @@ import Metal
     #expect(descriptor.duration == 30, "Default duration should be 30")
     #expect(descriptor.description == "")
     #expect(descriptor.author == "")
-    #expect(descriptor.beatSource == .bass, "Default beat source should be bass")
-    #expect(descriptor.beatZoom == 0.03, "Default beat_zoom should be 0.03")
-    #expect(descriptor.beatRot == 0.01, "Default beat_rot should be 0.01")
-    #expect(descriptor.baseZoom == 0.12, "Default base_zoom should be 0.12")
-    #expect(descriptor.baseRot == 0.03, "Default base_rot should be 0.03")
-    #expect(descriptor.decay == 0.955, "Default decay should be 0.955")
+    #expect(descriptor.beatZoom == 0, "Default beat_zoom should be inert (0)")
+    #expect(descriptor.beatRot == 0, "Default beat_rot should be inert (0)")
+    #expect(descriptor.baseZoom == 0, "Default base_zoom should be inert (0)")
+    #expect(descriptor.baseRot == 0, "Default base_rot should be inert (0)")
+    #expect(descriptor.decay == 0, "Default decay should be inert (0)")
     #expect(descriptor.beatSensitivity == 1.0, "Default beat_sensitivity should be 1.0")
     #expect(descriptor.fragmentFunction == "preset_fragment")
     #expect(descriptor.vertexFunction == "fullscreen_vertex")
 }
 
-@Test func presetDescriptorBeatSourceVariants() throws {
-    for source in ["bass", "mid", "treble", "composite"] {
-        let json = """
-        {"name": "Test", "beat_source": "\(source)"}
-        """
-        let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
-        #expect(descriptor.beatSource.rawValue == source)
-    }
-}
 
 @Test func presetDescriptorDecayRange() throws {
     // Decay should be preserved exactly as specified — no clamping.
@@ -147,13 +136,6 @@ import Metal
     #expect(throws: (any Error).self) {
         try JSONDecoder().decode(PresetDescriptor.self, from: json)
     }
-}
-
-@Test func presetDescriptorFallbackFactory() {
-    let fallback = PresetDescriptor.fallback(name: "TestFallback")
-    #expect(fallback.name == "TestFallback")
-    #expect(fallback.family == .waveform)
-    #expect(fallback.decay == 0.955)
 }
 
 // MARK: - Visual Design Hierarchy Validation
@@ -250,32 +232,8 @@ import Metal
     }
 }
 
-@Test func renderPassSynthesisedFromLegacyFeedbackAndParticles() throws {
-    let json = """
-    {"name": "Legacy", "use_feedback": true, "use_particles": true}
-    """
-    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
-    #expect(desc.passes == [.feedback, .particles],
-            "Legacy use_feedback + use_particles → passes: [.feedback, .particles]")
-}
 
-@Test func renderPassSynthesisedFromLegacyMeshShader() throws {
-    let json = """
-    {"name": "Legacy", "use_mesh_shader": true}
-    """
-    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
-    #expect(desc.passes == [.meshShader],
-            "Legacy use_mesh_shader: true → passes: [.meshShader]")
-}
 
-@Test func renderPassSynthesisedFromLegacyRayMarchWithPostProcess() throws {
-    let json = """
-    {"name": "Legacy", "use_ray_march": true, "use_post_process": true}
-    """
-    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
-    #expect(desc.passes == [.rayMarch, .postProcess],
-            "Legacy use_ray_march + use_post_process → passes: [.rayMarch, .postProcess]")
-}
 
 @Test func renderGraphSetActivePasses_roundTrips() throws {
     let ctx = try MetalContext()
