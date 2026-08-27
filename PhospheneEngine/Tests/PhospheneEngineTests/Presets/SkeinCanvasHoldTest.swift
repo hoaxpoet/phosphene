@@ -76,6 +76,31 @@ struct SkeinCanvasHoldTest {
                 "Skein.metal still declares kSkeinFlickDt — Skein.3 retires the debug flick schedule (→ onset-burst ring).")
         #expect(src.contains("constant SkeinUniforms& st [[buffer(6)]]"),
                 "Skein.metal skein_geometry_fragment must read SkeinUniforms at buffer(6) (ENGINE.1.2 slot-6 binding).")
+
+        // ── BUG-108: the overlap colour must not depend on coverage ──────────────────
+        //
+        // The flicker Matt reported at overlaps was structural: colour was chosen by
+        // `if (cov > bestCover)`, a per-fragment argmax whose decision boundary is the
+        // equal-coverage contour between two marks. On that contour the winner flipped on
+        // sub-pixel motion or a sixth-decimal coverage difference, and every flip was a full
+        // colour swap because the rule is deliberately discrete (the §colour-mud audit).
+        //
+        // The fix is not a tuning constant, it is a change of WHICH QUANTITY DECIDES: the
+        // colour now goes to the mark with the greatest lay time (`spawnTau` for a burst, the
+        // nearest drawn segment's painter clock for the line), both frozen at lay time. A
+        // frozen quantity cannot jitter, so the boundary cannot flicker. This asserts the
+        // property, not the arithmetic — if a future edit reintroduces a coverage comparison
+        // as the colour selector, the flicker comes back with it.
+        #expect(!src.contains("bestCover) { bestCover"), """
+                Skein.metal selects an overlap colour by coverage argmax again \
+                (`cov > bestCover` assigning the colour). That is BUG-108: the decision \
+                boundary is the equal-coverage contour, and it flickers. Colour belongs to the \
+                LAST-LAID mark — see skeinClaimMark.
+                """)
+        #expect(src.contains("static inline void skeinClaimMark("),
+                "Skein.metal must route every mark through skeinClaimMark (BUG-108 lay-order rule).")
+        #expect(src.contains("claimTau = layTau"),
+                "skeinClaimMark must decide colour on lay time, not coverage (BUG-108).")
         #expect(src.contains("st.painterTau"),
                 "Skein.metal fragment must drive the painter from SkeinState.painterTau (Skein.3 audio-modulated clock).")
         // Skein.ENGINE.2: Skein owns its warp/hold fragment (decays the ALPHA wetness channel, holds

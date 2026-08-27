@@ -73,16 +73,34 @@ struct PlaybackClockSmootherTests {
                 "a clock stopped for a minute must not report a minute of playback")
     }
 
-    /// A tick is authoritative: it resyncs, including backwards (a seek).
-    @Test("A tick resyncs, even backwards")
-    func tick_resyncs() {
+    /// A tick corrects drift WITHOUT rewinding.
+    ///
+    /// This case asserted the opposite until LFSTEM.1d's second round: it required a tick to snap
+    /// the position back to the raw value, which is precisely the rewind that put stem values a
+    /// few frames into the past several times a minute. Dead reckoning legitimately runs tens of
+    /// milliseconds past a tick before the tick confirming it arrives; that correction belongs in
+    /// the band, not in a jump backwards.
+    @Test("A tick corrects drift without rewinding the position")
+    func tick_correctsWithoutRewinding() {
         var clock = PlaybackClockSmoother()
         _ = clock.position(rawSeconds: 10.0, now: 100.0)
-        _ = clock.position(rawSeconds: 10.0, now: 100.2)      // dead-reckoned past the tick
-        #expect(clock.position(rawSeconds: 10.1, now: 100.21) == 10.1,
-                "the clock is authoritative when it moves")
+        let ahead = clock.position(rawSeconds: 10.0, now: 100.2)   // dead-reckoned to 10.2
+        let afterTick = clock.position(rawSeconds: 10.1, now: 100.21)
+        #expect(afterTick >= ahead,
+                "the position went BACKWARDS across a tick — stems re-read a frame they passed")
+        #expect(afterTick <= 10.1 + PlaybackClockSmoother.maxDeadReckonSeconds,
+                "and it stays inside the band the clock defines")
+    }
+
+    /// A discontinuity is not drift: a seek resyncs exactly, in either direction.
+    @Test("A seek resyncs exactly rather than being absorbed as drift")
+    func seek_resyncsExactly() {
+        var clock = PlaybackClockSmoother()
+        _ = clock.position(rawSeconds: 10.0, now: 100.0)
         #expect(clock.position(rawSeconds: 3.0, now: 100.3) == 3.0,
-                "a seek backwards resyncs rather than being held by the monotonic guard")
+                "a backward seek lands on the seek target, not on the band edge")
+        #expect(clock.position(rawSeconds: 200.0, now: 100.4) == 200.0,
+                "and a forward jump does too")
     }
 
     /// Track change: the new track's first frame must resync, not dead-reckon from the old one.
