@@ -1,4 +1,5 @@
 {
+  "arbitration": null,
   "backends": {
     "librosa": {
       "f_measure": 0.225,

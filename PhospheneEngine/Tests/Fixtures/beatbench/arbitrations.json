@@ -1,0 +1,10 @@
+{
+  "_README": "Decisions Matt made by ear where taps and the reference backends disagree and no re-tap can settle it. reconcile.py reads this and stamps the outcome into the groundtruth JSON, so an arbitration is recorded with its reasoning instead of being hand-edited into the truth (which would destroy provenance). Adding a row here is a product decision, not a formality.",
+  "money": {
+    "decision": "taps",
+    "decided_by": "Matt",
+    "decided_at": "2026-08-27",
+    "increment": "BUG102.2",
+    "rationale": "Tempo and meter are AGREED after the re-tap — 121.06 BPM, meter 7, ratio x1.01 against both backends, which closes the octave error BUG-102 was filed about. What remains is phase: the taps sit a systematic -42.3 ms (librosa) / -44.7 ms (madmom) early, and the two backends agree with each other to within 2.4 ms. It is not the rig — bleed was tapped in the same session on the same calibration and lands at -13.6 / -0.4 ms, and every other track is inside +/-32 ms. On a track whose pulse is carried by a syncopated bass riff, Matt consistently feels the beat ~45 ms ahead of where onset detectors place it. Phosphene is a visualizer: a preset should fire where a listener feels the pulse, not where an onset detector fires. So the taps are the truth and the backends' phase is declined."
+  }
+}

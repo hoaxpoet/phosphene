@@ -35,6 +35,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BB = os.path.join(REPO, "PhospheneEngine", "Tests", "Fixtures", "beatbench")
 TAPS, REF, OUT = (os.path.join(BB, d) for d in ("taps", "reference", "groundtruth"))
+ARBITRATIONS = os.path.join(BB, "arbitrations.json")
 
 TOLERANCE_S = 0.070          # the ±70 ms window the whole program scores against
 CONFIRM_F = 0.80             # F at/above this = taps corroborated
@@ -59,6 +60,14 @@ PHOSPHENE_GRID = {
     "giorgio_by_moroder": 113.2, "dance_yrself_clean": 98.0, "girl_from_ipanema": 128.4,
     # so_what / there_there were not in the 2026-07-27 session — no grid value yet.
 }
+
+
+def load_arbitrations():
+    """Matt's by-ear decisions, keyed by track id. Absent file = no arbitrations."""
+    if not os.path.exists(ARBITRATIONS):
+        return {}
+    with open(ARBITRATIONS) as fh:
+        return {k: v for k, v in json.load(fh).items() if not k.startswith("_")}
 
 
 def median_ioi(times):
@@ -218,6 +227,13 @@ def reconcile_track(track_id, suite):
     else:
         status = "needs_arbitration"
 
+    # A recorded arbitration settles a disagreement no re-tap can (see arbitrations.json).
+    # It never invents timings — `decision: taps` keeps exactly what Matt tapped; it only
+    # records that the disagreement was resolved deliberately, and why.
+    arbitration = load_arbitrations().get(track_id)
+    if arbitration and status != "confirmed":
+        status = f"arbitrated_{arbitration['decision']}"
+
     # Full-length extension: only from a backend that agreed on the tapped span.
     extended_by, beats_out, downbeats_out = None, taps, tap_downs
     if confirming:
@@ -244,6 +260,7 @@ def reconcile_track(track_id, suite):
         "extended_by": extended_by,
         "beats_s": beats_out, "downbeats_s": downbeats_out,
         "source": "taps" if not extended_by else f"taps validated, extended by {extended_by}",
+        "arbitration": arbitration,
     }
 
 
