@@ -63,6 +63,37 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment FT.4 — full-track decode + BarLineEstimator, A/B'd and NOT adopted ⏸ (2026-08-27)
+
+Matt approved wiring FT.3's `BarLineEstimator` with decline (2026-08-27), on the strength of its
+"answers 2 of 9, gets both right, declines 7". Wired behind `PHOSPHENE_FULLTRACK_BARS`
+(default OFF, nothing ships) and A/B'd through the real analyzer. **It does not reproduce that
+result. Do not adopt as built.** Report:
+[`FT4_FULLTRACK_BARS_AB_2026-08-27.md`](diagnostics/FT4_FULLTRACK_BARS_AB_2026-08-27.md).
+
+Only 4 of 9 tracks can be compared fairly — `BeatBench` trims the reference to the grid's span
+but not the estimate to the reference's, which is right for a 30 s preview grid and wrong for a
+full-track one, so the five short-GT tracks are dominated by false positives. FT.3's report
+flagged the same asymmetry.
+
+**Two independent disqualifying failures.** On **billie_jean** — suite 1, the reference working
+case, where suite-1 no-regression is a hard gate — the estimator answered *confidently and
+wrongly*: correct meter 4/4, wrong bar phase, **downbeat F 0.90 → 0.37**. That is precisely what
+the decline threshold exists to prevent, and it did not catch it; FT.3's own task-5 finding
+predicted the mechanism, that margins labelled by bar rather than meter overlap. Separately,
+FT.1's tiler **degrades the beat layer**: on bleed (full-length GT, the cleanest comparison) the
+grid moves 115.00 → 123.62 against a truth of 114.67, F 0.99 → 0.76, CMLt 1.00 → 0.56.
+
+**One real win, recorded rather than talked up:** take_five goes meter 5/2 → **5/5** and downbeat
+F 0.26 → **0.68**. The accent method does recover an odd meter the downbeat head collapses. It is
+mis-thresholded and bundled with a decode that costs more than it returns — not worthless.
+
+**Attempt 1 on this premise; no attempt 2 without a changed one** (two-strikes rule). What a
+changed premise must address: the threshold cannot separate right phase from wrong phase; the
+tiler and the estimator are independent and should be separable (`BarLineEstimator` takes any
+`beats` array); and the benchmark's asymmetric trimming needs fixing before any full-track arm is
+scored again, or five of nine tracks stay unmeasurable.
+
 ### Increment SKEIN.OVERLAP.2 — the same argmin, one level down ✅ M7 PASSED (2026-08-27)
 
 **Done-when:** the overlap flicker is gone at every level, not just between marks. Matt on the round-1 build: *"flickering still happens but only after 70-80 s and is not as prominent as before. Frame rate is smooth."* Inside the pour line the colour still came from the NEAREST segment (`d < lineSDF`) — the same argmin one level below the one round 1 fixed — so two near-equidistant segments of different pours flipped it frame to frame. Both halves of the report follow: less prominent because the mark-level case was fixed, only after 70-80 s because such pairs need differently-coloured segments in the same 40-frame tail and colour breakpoints accumulate (the same ring that drove BUG-110's ramp). The line now takes the FIRST covering segment in a newest→oldest walk — the latest-laid one by construction — with coverage still the nearest-segment distance. `SkeinCanvasHoldTest` gates both levels. **Same session confirmed LFSTEM.1e (series sampling at ~56 Hz, was 12.8) and BUG-110 live (`frame_gpu` p50 12.55–13.21 ms flat across 90 s at 4K).**
