@@ -55,7 +55,7 @@ reads" are not reads — see the entry.)*
 | BUG-087 | P2 · **partial fix 2026-08-13 (10 → 16.4 Hz); ≥40 Hz NOT met — audio arrival rate is the ceiling, not slicing** | audio.capture / calibration | **Local-file playback runs the whole MIR chain at 10 Hz where streaming runs it at 51 Hz — a 5.1× rate loss on the primary development session type.** `LocalFilePlaybackProvider` asks for `installTap(bufferSize: 1024)` (≈47 Hz) and AVAudioEngine ignores it, delivering **0.1-second** buffers instead — 4414 frames measured at 44.1 kHz, 4808/4810 at 48 kHz. `processAnalysisFrame` runs once per audio callback with no time gate, so the callback rate *is* the analysis rate: every `FeatureVector` field — bands, deviation primitives, `beatPhase01`, centroid, flux, mood inputs — updates at 10 Hz on local files. Proven a fixed *duration* rather than a frame count by the rate-independence discriminator (both sample rates land on 0.1 s). This is the same 10 Hz the FTR program hit from the preset side. Diagnosis only — no fix code. Detail below |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
-| BUG-107 | **P2** · open · **PREMISE CORRECTED 2026-08-27 (BUG107.1) — it is not a tempo error** | dsp.beat | **Money accelerates ~120 → ~140 → ~130 BPM across the track and the analyzer emits ONE constant tempo for the whole file, so a single grid cannot be right for all of it.** Filed as a "4 % tempo error"; the window sweep refuted that. Surfaced by re-annotating money at BUG102.2: AMLt fell 0.88 → 0.43 and CMLt rose 0.00 → 0.43 with NO engine change, because the old 60.97 reference made 116.19 look like a clean ×1.91 octave (which AMLt forgives by design) while against the true level it is a plain tempo error (which it does not). Owned by the beat-sync program (D-202). No fix proposed — the `dsp.beat` artifact obligations are unmet, see the entry. |
+| BUG-107 | **P2** · open · **ROOT-CAUSED 2026-08-27 (BUG107.2)** — not a tempo error; the offline grid only ever analyses the first ~30 s of any input | dsp.beat | **Money accelerates ~120 → ~140 → ~130 BPM across the track and the analyzer emits ONE constant tempo for the whole file, so a single grid cannot be right for all of it.** Filed as a "4 % tempo error"; the window sweep refuted that. Surfaced by re-annotating money at BUG102.2: AMLt fell 0.88 → 0.43 and CMLt rose 0.00 → 0.43 with NO engine change, because the old 60.97 reference made 116.19 look like a clean ×1.91 octave (which AMLt forgives by design) while against the true level it is a plain tempo error (which it does not). Owned by the beat-sync program (D-202). No fix proposed — the `dsp.beat` artifact obligations are unmet, see the entry. |
 | BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files | **2026-08-27 (BUG102.1): the ~115 reading is now backed by a `confirmed` ground truth** — bleed was re-tapped at the quarter note, both backends AGREE, and the grid scores F 0.99 / CMLt 1.00 against it. The BUG-102 contradiction (this row saying 115 is correct while `bleed.groundtruth.json` asserted 226.72) is resolved in this row's favour. The window-position instability itself is unaffected and still open.
 | BUG-065 | P3 | dsp.beat | **Live BeatGrid phase drifts off the audible beat over a track** — the cached grid has the right BPM but `LiveBeatDriftTracker` *bounds* the live drift without *tightening* it: drift grows ~11 ms (track start) → **50–70 ms (mid/late-track)**, and **28 % of frames exceed the ~60 ms perceptual window** (evidence: session `2026-06-29T12-43-51Z`, Cherub Rock 171.3 BPM 4/4 — drift-by-10s-window 11/37/49/54/69/66/55/48 ms; lock_state=2 only 67 %-within-60 ms). **Caps how frame-locked beat-driven presets can feel** — the live example is Glaze's GLAZE.7 downbeat push (reads connected but not *tight*; tightest early, loosens as the track plays). NOT a functional break (phase is approximately right). **NEW EVIDENCE — session `2026-07-30T15-39-21Z` (Lumen Mosaic, 80.45 BPM 4/4). Matt: "feels a little laggy, otherwise working as intended." This is the strongest case yet and it is WORSE than the 2026-06-29 baseline:** **50 % of frames exceed the ~60 ms perceptual window** (baseline 28 %), `lock_state == 2` only 63 % of frames, and drift **grows monotonically across the session** — by 10 s window: **0 / 6 / 8 / 52 / 70 / 59 / 68 / 104 / 119 ms**. `grid_bpm` is rock-constant at 80.45, so the BPM is right and it is purely the PHASE slipping. Frame rate is NOT the cause and was ruled out first: p50 59.9 fps, only 0.08 % of frames below 30 fps, and `frame_cpu_ms` p50 actually IMPROVED to 11.06 (from 17.30 on `2026-07-27T16-31-01Z`). The "lag" a listener feels is the visual falling up to ~119 ms behind the audible beat late in the track, not stutter. Confirms the mechanism in the original report — the tracker BOUNDS drift without TIGHTENING it — and strengthens the case for the suggested live re-lock / cached-BPM-error correction. In scope for the beat-sync program (D-202).
 
@@ -235,6 +235,63 @@ Contained to `LocalFilePlaybackProvider`'s start path, but the design needs care
 **Status: open. Premise CORRECTED 2026-08-27 (BUG107.1) by the BUG-076 window sweep — the
 original "4 % tempo error" framing is refuted and retained below only for the reasoning trail.**
 Still no code changed.
+
+**✅ ROOT CAUSE (BUG107.2, 2026-08-27) — the offline beat grid is structurally scoped to the
+first ~30 s of any input, however long.** Diagnosis increment: no fix code, no behavioural change.
+
+**The chain, each link verified:**
+
+1. `BeatThisModel.tMax = 1500` frames — its own comment reads *"Fixed sequence length — covers
+   ~30 s at 50 fps (hop=441, sr=22050)"*. Documented architecture (`ARCHITECTURE.md` §Beat This!
+   transformer), not a hidden bug.
+2. `DefaultBeatGridAnalyzer.analyzeBeatGrid` calls `model.predict` **once**, with no tiling. Any
+   input longer than ~30 s is therefore silently truncated — no warning, no log line.
+3. `PreviewAudio.fromLocalFile` reads `file.length`, i.e. **the whole track**. So on the
+   local-file path the analyzer is handed a full song and uses its opening 30 s.
+4. On the streaming path this is a no-op: the Spotify preview is 30 s by construction.
+5. **FT.1 (2026-07-31) already built sliding-window tiling**, with a parity test showing
+   sub-window input is byte-identical to a single `predict`. The capability to do better exists
+   and is simply not wired into this analyzer.
+
+**Direct measurement** — the full file and a 30 s clip produce identical output:
+
+| input | analysed | reported bpm | beats returned | grid actually covers |
+|---|---|---|---|---|
+| money.wav, whole file | 380.3 s | 116.19 | **51** | ~26 s (51 × 0.5164 s) |
+| money.wav, 0–30 s clip | 30.0 s | **116.19** | **51** | ~26 s |
+| bleed.wav, whole file | 442.5 s | 115.00 | **58** | ~30 s (58 × 0.5217 s) |
+
+51 beats is what ~26 s of a 116 BPM track contains; a 380 s track at that tempo contains ~735.
+
+**Why money looked like a 4 % error.** Its tempo rises ~17 % across the track, so the opening
+30 s is the *least* representative window in the song. The grid reports 116.19 — a correct
+reading **of the opening** — and has no beats at all past ~26 s. In `offline-grid`, `gridSpan` is
+then ~0–26 s, `refInSpan` clips the 90 s ground truth down to that, and the reported F / CMLt
+describe roughly 26 seconds of a 380-second track. Nothing was 4 % slow; the number was
+answering a different question than the column header implied.
+
+**⚠ This also scopes BUG102.1's headline.** bleed's F 0.99 / CMLt 1.00 is a real result **over
+its first ~30 s**, not over the full track — its ground truth was extended full-length by madmom
+but the grid was never longer than 30 s. The conclusion there ("Phosphene's grid was right, suite
+4 was never a tracking problem") stands for the opening of the track and should be quoted with
+that scope.
+
+**Product consequence, which is the part that matters.** For a **local file** the beat grid is
+derived from the first 30 s of the whole song, and nothing in the code or the logs says so. That
+is newly relevant: LFSTEM.1 has just moved local-file *stems* to a full-file series sampled by
+playback position, so stems now span the track while the beat grid still does not. Any preset
+consuming bar position on a local file whose tempo moves is running on an opening-30 s estimate.
+
+**Explicitly NOT determined here** (and not to be assumed): whether wiring FT.1's tiler into
+`DefaultBeatGridAnalyzer` improves anything musically. FT.1's own result was that 13–25× more
+context *recovered no odd meter and regressed bohemian*, so more context is not automatically
+better. Any fix increment starts from that finding, carries a five-suite before/after BeatBench
+table per the benchmark obligation, and ships behind an env flag with a one-increment A/B path
+(program house rule, plan §4).
+
+---
+
+**Superseded framing (BUG107.1) — retained for the trail:**
 
 **⚠ What the sweep actually found: money has real tempo drift, and the analyzer emits one
 constant tempo per file.** 30 s windows stepped across the track, against both reference
