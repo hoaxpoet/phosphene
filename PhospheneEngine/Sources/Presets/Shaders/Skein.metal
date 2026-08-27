@@ -448,7 +448,22 @@ fragment float4 skein_geometry_fragment(
         SkeinTailGPU pr = st.tail[0];
         float2 prQ = float2((tip0.x + pr.offX) * a, tip0.y + pr.offY);     // k = 0 (newest)
         float  lineSDF = 1e9;
+        // BUG-108 round 2 (Matt, 2026-08-27: "flickering still happens but only after 70–80 s").
+        // Round 1 fixed which MARK wins an overlap; INSIDE the line, the colour was still taken
+        // from the NEAREST segment — `d < lineSDF` — which is the same argmin one level down.
+        // Where two segments of DIFFERENT pours are near-equidistant from a fragment the winner
+        // flips on sub-pixel motion, and the flip is a full colour swap. The number of such pairs
+        // grows as colour breakpoints accumulate, which is why it took ~70–80 s to appear and why
+        // it read as less prominent than the mark-level case.
+        //
+        // Same rule as `skeinClaimMark`: coverage from the nearest segment (unchanged), COLOUR
+        // from the latest-laid segment that actually covers this fragment. The tail is walked
+        // newest→oldest, so the FIRST covering segment IS the latest-laid one — no comparison
+        // needed, and lay order cannot jitter.
         float3 lineCol = float3(pr.colR, pr.colG, pr.colB);
+        bool   haveLineCol = false;
+        float  nearestDist = 1e9;      // fringe fallback: nothing covers, so nothing occludes
+        float3 nearestCol  = lineCol;
         // BUG-108: the nearest drawn segment's painter clock is the LINE's lay time, tracked
         // beside its frozen colour. `tau` is now, so a segment k steps back was laid k·dtau ago —
         // the tail's newest end is the most recently laid paint on the canvas.
@@ -457,15 +472,24 @@ fragment float4 skein_geometry_fragment(
             SkeinTailGPU cu = st.tail[k];
             float2 cuQ = float2((cu.posX + cu.offX) * a, cu.posY + cu.offY);
             if (cu.start == pr.start) {                              // same pour → draw (no bridge)
-                float d = skeinSegDist(q, cuQ, prQ) - r;
-                if (d < lineSDF) {
-                    lineSDF = d;
-                    lineCol = float3(cu.colR, cu.colG, cu.colB);
-                    lineTau = tau - float(k) * dtau;                 // BUG-108 lay time
+                float  d   = skeinSegDist(q, cuQ, prQ) - r;
+                float3 col = float3(cu.colR, cu.colG, cu.colB);
+                lineSDF = min(lineSDF, d);                           // coverage: nearest segment
+                if (d <= 0.0) {
+                    if (!haveLineCol) {                              // newest→oldest ⇒ first = latest
+                        haveLineCol = true;
+                        lineCol = col;
+                        lineTau = tau - float(k) * dtau;             // BUG-108 lay time
+                    }
+                } else if (d < nearestDist) {
+                    nearestDist = d; nearestCol = col;               // fringe only
                 }
             }
             pr = cu; prQ = cuQ;
         }
+        // Fragments no segment covers are the anti-aliased fringe: nothing is laid OVER anything
+        // there, so the nearest segment's colour is still the right answer.
+        if (!haveLineCol) { lineCol = nearestCol; }
         float cov = 1.0 - smoothstep(-px, px, lineSDF);   // ONE smooth tube; uniformly solid interior
         skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, lineCol, lineTau);
     }
