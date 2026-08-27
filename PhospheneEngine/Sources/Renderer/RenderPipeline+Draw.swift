@@ -88,6 +88,13 @@ extension RenderPipeline {
         view: MTKView,
         features: inout FeatureVector
     ) {
+        // LFSTEM.1e — publish this frame's stems from the pre-analysed series BEFORE the
+        // snapshot below. `stemFeatures` is read once and used by the particles update, the
+        // preset tick and the draw, so publishing after it would land a frame late — the exact
+        // off-by-one-frame class this whole arc has been about. No-op when no series is
+        // installed (live separation publishes on its own cadence).
+        perFrameStemPublishLock.withLock { perFrameStemPublish }?()
+
         // Snapshot the active passes for this frame.
         let passes = passesLock.withLock { activePasses }
 

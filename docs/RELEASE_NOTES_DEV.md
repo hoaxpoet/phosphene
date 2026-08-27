@@ -10,6 +10,72 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-170716] LFSTEM.1e — the series is sampled per render frame, not per analysis frame
+
+**Matt's call on BUG-109's fix.** Stem motion was capped at the analysis rate — **12.8 Hz measured**
+— while the renderer drew at 59.9 Hz and the series' own grid is 43 Hz. Live separation had to
+publish on the analysis frame because it had nothing new between them; a pre-analysed series is an
+array lookup and has no such bound. `publishStemSeriesFrame` now runs once per RENDER frame from a
+dedicated `RenderPipeline.perFrameStemPublish` hook.
+
+Three details decide whether this works rather than merely runs:
+
+- **It publishes BEFORE the frame snapshots its stems.** `renderFrame` reads `latestStemFeatures`
+  once and that snapshot serves the particles update, the preset tick and the draw — publishing
+  after it would land a frame late, the off-by-one-frame class this whole arc has been about.
+  `StemSeriesWiringTests` asserts the ordering in the source, not just the presence of the call.
+- **It is a separate hook from `meshPresetTick`.** That slot is owned by whichever preset needs
+  per-frame state — Skein sets it for its painter clock — and one closure cannot serve both.
+- **The analysis frame no longer samples.** It publishes only the playback clock the render frame
+  samples with, so the smoother is touched from one thread instead of two, behind `stemSeriesLock`.
+  `applyStemSeriesFrame` is deleted rather than left sitting beside its replacement.
+
+**What is now true end to end for a local file:** stems are analysed ahead of time, arrive at the
+playback second they describe rather than 2.5 s late, and move at the series' own 43 Hz instead of
+the analysis loop's 13.
+
+⚠ **Still owed: Matt's eye.** Every change in this chain moved what stem-driven presets see, and
+none of it is settled by a test. Skein is the instrument.
+
+---
+
+### [dev-2026-08-27-165948] BUG-109 answered — the series is read 13 times a second while the renderer draws 60
+
+**The instruments worked; the answer was neither candidate.** Session `2026-08-27T16-53-29Z`:
+`STEM_SOURCE: series frames=10815 covers=251.1s hop=23.2ms`, and `stem_series_pos_s` populated on
+**100 %** of rows with **0 backward steps** — so the series is installed, driving, and the
+smoother is being reached and working. But it takes only **1,398 distinct values over 6,521 rows**:
+
+| | rate |
+|---|---|
+| `features.csv` rows | 59.9 Hz |
+| distinct sampling positions | **12.8 Hz** |
+| the series' own grid | 43 Hz |
+
+**Two facts.** `features.csv` has one row per RENDER frame — `SessionRecorder.recordFrame` is
+"record one rendered frame", called from the command-buffer completion handler — so the 79 % of
+rows where the position repeats is the recorder holding between analysis frames, not a stuck
+position. And the series is sampled **once per analysis frame**, at 12.8 Hz, while the renderer
+draws at 60. Stem values change ~13 times a second; a preset at 60 fps holds each one for ~4.6
+frames.
+
+**The fix is available only because of LFSTEM.1, and has not been spent.** Live separation could
+not publish faster than analysis frames — there was nothing new to publish. A pre-analysed series
+has no such bound: sampling it is an array lookup. Moving `applyStemSeriesFrame` to the render
+frame turns 12.8 Hz into the series' full 43 Hz. Not implemented — it changes what every
+stem-driven preset sees.
+
+⚠ **A correction this session forced, to something already published.** BUG107.3 recorded that
+"the analysis loop now runs at 59.9 Hz where pre-fix local sessions ran at ~18 Hz, so part of
+BUG-087's ceiling was the GPU starving the loop". **That is wrong** — both were RENDER rates
+(18 fps pre-fix, consistent with 170–250 ms frames; 60 fps after). The analysis rate was never
+measured that way and **BUG-087's ceiling claim is untouched**. Reading a row rate as an analysis
+rate is the same class of mistake as reading a metric by its name, which this project has now
+made often enough to have a rule about it. Retracted in the BUG-107 entry rather than quietly
+edited away.
+
+---
+
 ### [dev-2026-08-27-163000] BUG-109 instrumented — the session artifact can now answer which source drives the stems
 
 **Instrumentation only. No sampling behaviour changed** — deliberately, because BUG-109's own note
