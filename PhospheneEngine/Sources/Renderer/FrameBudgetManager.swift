@@ -344,4 +344,19 @@ extension FrameBudgetManager: FrameTimingProviding {
     public var recentFramesObserved: Int {
         rollingWindowCount
     }
+
+    /// Median frame time (ms) in the rolling window. Returns 0 when no frames observed yet.
+    ///
+    /// BUG-106: the ML dispatch gate derives its budget from this, so that "is the renderer
+    /// struggling" is asked against what this session actually delivers rather than against a
+    /// constant that only described 1080p. Median rather than mean — one 200 ms hitch must not
+    /// raise the bar the next dispatch is judged against.
+    public var recentMedianFrameMs: Float {
+        guard rollingWindowCount > 0 else { return 0 }
+        let samples = rollingWindowCount < Self.rollingWindowCapacity
+            ? Array(rollingWindow.prefix(rollingWindowCount))
+            : rollingWindow
+        let sorted = samples.sorted()
+        return sorted[sorted.count / 2]
+    }
 }

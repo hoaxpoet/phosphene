@@ -152,6 +152,27 @@ extension VisualizerEngine {
     /// the dispatch is deferred and retried after 100 ms. Once the frame window
     /// is clean (or the 2s deferral ceiling is hit), the actual MPSGraph call
     /// is dispatched back to stemQueue via `performStemSeparation()`.
+    /// Frame budget the ML dispatch gate judges the recent window against.
+    ///
+    /// **BUG-106.** This was the tier constant alone — 14 ms on tier 1, 16 on tier 2, with no
+    /// resolution term — compared against the WORST frame of a 20–30 frame window. At 4K the
+    /// *median* frame measured 17.6 ms rising to 44.9 in BUG-100's session, so the window was
+    /// never clean: every dispatch deferred in 100 ms steps to the 1.5–2.0 s ceiling and
+    /// force-fired anyway, against a 2.0 s stem period. The gate prevented nothing at 4K and
+    /// cost every stem update roughly a full period.
+    ///
+    /// Matt chose "stems on time" (2026-08-26), so the budget follows the session's own median
+    /// with the tier constant as a floor — 1080p is unchanged, 4K's steady state stops reading
+    /// as jank, and a spike inside either still defers. See `MLDispatchScheduler.budgetMs`.
+    @MainActor
+    func mlDispatchBudgetMs() -> Float {
+        let floorMs: Float = deviceTier == .tier1 ? 14.0 : 16.0
+        return MLDispatchScheduler.budgetMs(
+            floorMs: floorMs,
+            recentMedianFrameMs: pipeline.frameBudgetManager?.recentMedianFrameMs ?? 0
+        )
+    }
+
     func runStemSeparation() {
         let now = CACurrentMediaTime()
 
@@ -189,11 +210,11 @@ extension VisualizerEngine {
                 return
             }
 
-            let budgetMs: Float = self.deviceTier == .tier1 ? 14.0 : 16.0
+            let timing = self.pipeline.frameBudgetManager
             let context = MLDispatchScheduler.DispatchContext(
-                recentMaxFrameMs: self.pipeline.frameBudgetManager?.recentMaxFrameMs ?? 0,
-                recentFramesObserved: self.pipeline.frameBudgetManager?.recentFramesObserved ?? 0,
-                currentTierBudgetMs: budgetMs,
+                recentMaxFrameMs: timing?.recentMaxFrameMs ?? 0,
+                recentFramesObserved: timing?.recentFramesObserved ?? 0,
+                currentTierBudgetMs: self.mlDispatchBudgetMs(),
                 pendingForMs: pendingForMs
             )
 
@@ -577,6 +598,11 @@ extension VisualizerEngine {
         currentFamilySeries = []
         pipeline.setInstrumentFamilyActivity(smoothed: .zero, dev: .zero)
 
+        // LFSTEM.1 — clear unconditionally here, install on the cache-hit branch below. Same
+        // shape as the family series above and for the same reason: a track-scoped surface that
+        // only one path clears leaks the previous track's data into every path that does not.
+        currentStemSeries = .empty
+
         // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).
         if let identity { logWiringStemCacheLookup(identity: identity) }
 
@@ -610,6 +636,17 @@ extension VisualizerEngine {
             // activity series (Layer 5a). Sampled by playback position each
             // analysis frame (see processAnalysisFrame).
             currentFamilySeries = cached.instrumentFamilySeries
+            // LFSTEM.1 — a pre-analysed local file: stems now come from the series at the
+            // playback second, not from live separation ~2.5 s behind it. `.empty` for
+            // streaming and for entries written before schema v10, which keeps the live path.
+            currentStemSeries = cached.stemFeatureSeries
+            if !cached.stemFeatureSeries.isEmpty {
+                let frames = cached.stemFeatureSeries.frames.count
+                let covers = String(format: "%.1f", cached.stemFeatureSeries.durationSeconds)
+                let detail = "\(frames) frames covering \(covers) s; live separation no "
+                    + "longer drives StemFeatures for this track"
+                logger.info("LFSTEM: series installed — \(detail, privacy: .public)")
+            }
             // DYN.1c: this track's own loudness distribution as the surge source. Non-nil
             // only for a local file (the only path that decodes the whole thing); nil
             // everywhere else keeps the fixed band. Deliberately survives the

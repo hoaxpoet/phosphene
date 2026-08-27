@@ -36,14 +36,6 @@ import UniformTypeIdentifiers
 @testable import Presets
 @testable import Shared
 
-// 16-byte AuroraVeilStateGPU mirror — silence baseline (kink=0, pitch=0
-// → confidence-gated fallback to 0.5 inside the shader).
-private struct AuroraVeilStateGPUMirror {
-    var kinkAccumulator: Float = 0
-    var smoothedPitchNorm: Float = 0
-    var padA: Float = 0
-    var padB: Float = 0
-}
 
 @Suite("AuroraVeil mv_warp accumulation diagnostic")
 struct AuroraVeilMVWarpAccumulationTest {
@@ -91,8 +83,11 @@ struct AuroraVeilMVWarpAccumulationTest {
             String(directDraw[helperRange.lowerBound...]).contains("offset: 0, index: 6"),
             """
             encodePresetVisualization no longer binds fragment slot 6. AV.2.2a \
-            regression: Aurora Veil's [[buffer(6)]] AuroraVeilStateGPU read will \
-            crash on the first frame after preset apply. Restore the slot-6 bind.
+            regression: a direct preset whose fragment declares [[buffer(6)]] — \
+            Gossamer, Nimbus, Arachne, Skein — reads an unbound buffer and crashes \
+            on the first frame after preset apply. Restore the slot-6 bind. \
+            (Aurora Veil itself stopped declaring slot 6 at BUG-088; the guard \
+            stays because its siblings still need it.)
             """
         )
         let draw = try String(
@@ -200,14 +195,9 @@ struct AuroraVeilMVWarpAccumulationTest {
         try HarnessTemplateCore.clear([sceneTex, warpTex, composeTex], context)
 
         // Silence audio buffers (fft/wav/stem/history) from the shared spine, reused
-        // across all frames. avState is Aurora Veil-specific and stays local.
+        // across all frames.
         let sb = try HarnessTemplateCore.makeSilenceBuffers(context)
         let fft = sb.fft, wav = sb.waveform, stem = sb.stem, hist = sb.history
-        guard let avState = context.makeSharedBuffer(length: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
-        else { throw DiagError.bufferFailed }
-        var avMirror = AuroraVeilStateGPUMirror()
-        avState.contents().copyMemory(from: &avMirror,
-                                      byteCount: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
 
         for frameIdx in 0..<Self.frameCount {
             let t = Float(frameIdx) * Self.deltaTime + 3.0   // start at AV.1 silence-test t=3.0
@@ -218,7 +208,7 @@ struct AuroraVeilMVWarpAccumulationTest {
             try renderScene(
                 cmd: cmd, preset: preset, target: sceneTex,
                 features: &features,
-                fft: fft, wav: wav, stem: stem, hist: hist, avState: avState
+                fft: fft, wav: wav, stem: stem, hist: hist
             )
 
             if mvWarpEnabled {
@@ -266,7 +256,7 @@ struct AuroraVeilMVWarpAccumulationTest {
     private func renderScene(
         cmd: MTLCommandBuffer, preset: PresetLoader.LoadedPreset, target: MTLTexture,
         features: inout FeatureVector,
-        fft: MTLBuffer, wav: MTLBuffer, stem: MTLBuffer, hist: MTLBuffer, avState: MTLBuffer
+        fft: MTLBuffer, wav: MTLBuffer, stem: MTLBuffer, hist: MTLBuffer
     ) throws {
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture = target
@@ -280,7 +270,6 @@ struct AuroraVeilMVWarpAccumulationTest {
         enc.setFragmentBuffer(wav, offset: 0, index: 2)
         enc.setFragmentBuffer(stem, offset: 0, index: 3)
         enc.setFragmentBuffer(hist, offset: 0, index: 5)
-        enc.setFragmentBuffer(avState, offset: 0, index: 6)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.endEncoding()
     }

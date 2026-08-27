@@ -47,6 +47,10 @@ public enum SidecarRouteSpecs {
         /// `continuous` / `structural`: the assertion is that the primitive moves
         /// at all, so any non-trivial magnitude counts.
         static let continuousFloor: Float = 1e-5
+        /// `gate` (BUG-088): an enable, not a driver. A silence gate sitting pinned open
+        /// through a whole track is CORRECT, so the question is only whether it ever OPENS.
+        /// Matches `RouteCoverageTests.gateOpenFloor`.
+        static let gateOpen: Float = 0.9
     }
 
     /// One resolved route input: the spec to report under, and the column to read.
@@ -77,6 +81,7 @@ public enum SidecarRouteSpecs {
             switch route.kind {
             case .accent:                   gate = KindGate.accent
             case .continuous, .structural:  gate = KindGate.continuousFloor
+            case .gate:                     gate = KindGate.gateOpen
             }
             let spec = RouteSpec(
                 name: "\(route.route) ← \(route.primitive)",

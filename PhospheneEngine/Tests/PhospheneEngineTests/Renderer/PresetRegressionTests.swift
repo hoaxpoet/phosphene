@@ -442,14 +442,6 @@ struct PresetRegressionTests {
         encoder.setFragmentBuffer(buffers.stem, offset: 0, index: 3)
         if let sceneBuf = buffers.scene { encoder.setFragmentBuffer(sceneBuf, offset: 0, index: 4) }
         encoder.setFragmentBuffer(buffers.hist, offset: 0, index: 5)
-        // AV.2: Aurora Veil reads a 16-byte AuroraVeilStateGPU at slot 6
-        // (kinkAccumulator + smoothedPitchNorm). The fixtures have zero
-        // stems → confidence gate is 0 → smoothedPitchNorm is ignored; the
-        // kink is 0; so a zero buffer is the silence-equivalent state and
-        // the harness binds it explicitly to avoid an unbound-buffer read.
-        if let avState = buffers.auroraVeilState {
-            encoder.setFragmentBuffer(avState, offset: 0, index: 6)
-        }
         // NB.9 (D-140): Nimbus reads a 32-byte NimbusStateGPU at slot 6 (the
         // CPU-side bloom / flow / stem-lobe / mood followers). The shader reads
         // ALL of its music response from this buffer plus noiseVolume at
@@ -537,7 +529,6 @@ struct PresetRegressionTests {
         let hist: MTLBuffer
         let scene: MTLBuffer?
         let lumen: MTLBuffer?
-        let auroraVeilState: MTLBuffer?
         let nimbusState: MTLBuffer?
     }
 
@@ -595,20 +586,6 @@ struct PresetRegressionTests {
             }
         }
 
-        // AV.2: Aurora Veil reads a 16-byte AuroraVeilStateGPU at slot 6
-        // (kinkAccumulator + smoothedPitchNorm). The regression fixtures
-        // have zero stems → shader's confidence gate is 0 → smoothedPitchNorm
-        // ignored; the kink is 0 anyway. Bind a zero buffer so the slot is
-        // populated rather than left undefined.
-        var auroraVeilState: MTLBuffer?
-        if preset.descriptor.name == "Aurora Veil" {
-            let avStride = 16   // matches AuroraVeilStateGPU stride (4 × float)
-            if let buf = context.makeSharedBuffer(length: avStride) {
-                _ = buf.contents().initializeMemory(as: UInt8.self, repeating: 0, count: avStride)
-                auroraVeilState = buf
-            }
-        }
-
         // NB.9 (D-140): Nimbus reads a 32-byte NimbusStateGPU at slot 6. A zeroed
         // buffer is the silence-floor state (all followers 0, flowPhase 0) — the
         // deterministic body the golden registers against.
@@ -623,7 +600,6 @@ struct PresetRegressionTests {
 
         return RenderBuffers(fft: fft, wav: wav, stem: stem, hist: hist,
                              scene: scene, lumen: lumen,
-                             auroraVeilState: auroraVeilState,
                              nimbusState: nimbusState)
     }
 

@@ -5,7 +5,7 @@
 // Invocation:
 //   swift run preset-session-replay \
 //       --session /path/to/2026-05-20T01-23-03Z \
-//       --preset aurora_veil \
+//       --preset murmuration \
 //       [--output /tmp/replay] \
 //       [--motion-grid-count 600] \
 //       [--max-events-per-route 6]
@@ -15,7 +15,7 @@
 //   <output>/events/<route>/event_NN.png
 //   <output>/motion_grid/grid_NNN.png  (if motion-grid > 0)
 //
-// Registered presets: aurora_veil (SR.1), murmuration (MM.3). Future presets
+// Registered presets: murmuration (MM.3), skein. Future presets
 // register their route specs in <Preset>Routes.swift and add a case to
 // resolvePreset below. (The rubric-calibration section currently uses the
 // Aurora Veil question set; route firing + motion-band analysis are
@@ -44,7 +44,7 @@ struct PresetSessionReplay: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Session directory (contains features.csv, stems.csv, video.mp4).")
     var session: String
 
-    @Option(name: .shortAndLong, help: "Preset name (aurora_veil).")
+    @Option(name: .shortAndLong, help: "Preset name (murmuration).")
     var preset: String
 
     @Option(name: .shortAndLong, help: "Output directory for report + extracted frames.")
@@ -57,7 +57,7 @@ struct PresetSessionReplay: AsyncParsableCommand {
     var maxEventsPerRoute: Int = 6
 
     // swiftlint:disable:next line_length
-    @Option(name: .long, help: "Directory of curated references for visual rubric calibration (e.g., docs/VISUAL_REFERENCES/aurora_veil/).")
+    @Option(name: .long, help: "Directory of curated references for visual rubric calibration (e.g., docs/VISUAL_REFERENCES/murmuration/).")
     var referencesDir: String?
 
     @Option(name: .long, help: "Number of evenly-spaced rendered video frames to grade against the rubric.")
