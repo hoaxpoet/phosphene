@@ -113,40 +113,38 @@ struct PresetFrameBudgetTests {
     /// These are HARNESS numbers including readback — see the header. Update deliberately,
     /// with the measurement in the commit message, never to silence a red gate.
     static let baselineMs: [String: Double] = [
-        "Volumetric Lithograph": 30.79,
-        "Stave": 13.55,
-        "Cytokinesis": 8.42,
-        "Filigree": 8.39,
-        "Cymatic Resonance": 8.33,
-        "Lumen Mosaic": 7.73,
-        "Skein": 6.72,
-        "Nacre": 6.17,
-        "Witchlight": 5.06,
-        "Fata Morgana": 5.83,
-        "Floret": 5.44,
-        "Meniscus": 5.28,
-        "Glaze": 5.2,
-        "Mitosis": 4.23,
-        // ── PERF.10, the four `direct` presets. Measured in a 20-preset run, where every figure
-        // above (recorded in a 16-preset run) reads roughly 2x higher — Volumetric Lithograph
-        // 30.8 → 64.3 with no code change. That is the contention the header describes, and it is
-        // why these are orientation only and the RATIO gates. Do not "fix" the older rows to
-        // match; they were honest measurements of a different run.
+        // ── PERF.17 REBASELINE. Every row below was re-measured in one isolated run after the
+        // drive stopped sitting at the AGC mean (see `drive`). These are not comparable to the
+        // pre-PERF.17 figures, which timed the roster with every D-026 deviation primitive at
+        // zero — the "was" column the run prints will show large moves in BOTH directions and
+        // that is the correction, not a regression.
         //
-        // ⚠ COVERAGE ITSELF MOVES THE GATE. Adding four cheap presets lowers the median, which
-        // raises every expensive preset's ratio: Volumetric Lithograph went 4.6x → 5.2x of the
-        // 8x ceiling without changing. Widening the ceiling to compensate would defeat it — the
-        // right reading is that the gate got stricter because the roster it compares against got
-        // more representative.
-        "Nebula": 9.94,
-        "Waveform": 9.50,
-        "Plasma": 9.47,
-        "Spectral Cartograph": 6.37,
-        // PERF.7 — first mesh-shader row. Measured 3.88 / 4.07 ms across two runs at 1920x1080
-        // with the canopy ALIVE (upper-canopy ink 1223 against the silent figure's 302); the
-        // minimum is recorded, per this suite's own min-of-passes reasoning.
-        "Fractal Tree": 3.88,
-        "Dragon Bloom": 3.54
+        // The headline: **Skein 5.31 -> 13.19 ms**, from the cheapest third to the 4th most
+        // expensive preset, because its breakpoint ring now fills (1 -> 16) and Layer A is no
+        // longer skipped. Presets that read absolute bands rather than deviations moved DOWN
+        // (Nebula/Plasma/Waveform 9.5 -> 6.3) — a band sweeping 0.2-0.95 is simply not the same
+        // work as a band pinned at 0.5, and the old figure was no more "correct" for being higher.
+        "Volumetric Lithograph": 18.07,
+        "Cytokinesis": 14.63,
+        "Stave": 14.49,
+        "Skein": 13.19,
+        "Lumen Mosaic": 9.19,
+        "Cymatic Resonance": 8.68,
+        "Filigree": 8.25,
+        "Witchlight": 7.02,
+        "Nacre": 6.52,
+        "Ricercar": 6.33,
+        "Nebula": 6.30,
+        "Waveform": 6.30,
+        "Plasma": 6.30,
+        "Meniscus": 5.76,
+        "Fata Morgana": 5.65,
+        "Floret": 5.53,
+        "Glaze": 5.10,
+        "Mitosis": 4.49,
+        "Spectral Cartograph": 4.31,
+        "Fractal Tree": 3.84,
+        "Dragon Bloom": 3.56
     ]
 
     /// Presets `MultiPassRenderHarness` cannot drive. Named, printed, and NOT counted as passing.
@@ -321,23 +319,133 @@ struct PresetFrameBudgetTests {
             """)
     }
 
+    /// ★★ Skein's budget is measured mid-painting, not on an empty canvas — PERF.17's gate.
+    ///
+    /// The Fractal Tree case above catches a gate living in the drive VECTOR. This catches one
+    /// living in Swift-side preset state, which is the shape BUG-110 actually found:
+    /// `skein_geometry_fragment` skips Layer A entirely at `breakCount == 0`, and the ring fills
+    /// only through the pour-commit state machine — first pour, then one commit per sustained
+    /// dominant-stem switch, each `minPourTau` (2.65 τ of painter clock) apart. The 24 timed frames
+    /// are 0.4 s, so the ring held ONE breakpoint and Skein read 5.31 ms: cheapest third of the
+    /// roster, while the same overlay measured 17.06 ms at one breakpoint and 55.65 ms at sixteen
+    /// (4K, `SkeinLineCostTests`).
+    ///
+    /// The COLD control is the half that makes this a gate rather than a restatement: it asserts a
+    /// freshly-constructed state is still nearly empty after the timed frames alone, so if someone
+    /// removes `warmSkein` the test goes red instead of both halves passing vacuously.
+    ///
+    /// If this fails, Skein's frame-budget row is timing an empty canvas.
+    /// **Fix `warmSkein`, never this floor.**
+    @MainActor
+    @Test("Skein's budget is measured mid-painting, not on an empty canvas")
+    func skeinIsMeasuredMidPainting() throws {
+        let ctx = try MetalContext()
+        guard let warm = SkeinState(device: ctx.device, seed: 42),
+              let cold = SkeinState(device: ctx.device, seed: 42) else {
+            Issue.record("SkeinState allocation failed")
+            return
+        }
+        MultiPassRenderHarness.warmSkein(warm)
+        for i in 0..<Self.timedFrames {
+            cold.tick(deltaTime: 1.0 / 60.0, features: Self.driveFeature(frame: i),
+                      stems: Self.driveStems(frame: i))
+        }
+        let warmBreaks = warm.colorBreakpoints.count
+        let coldBreaks = cold.colorBreakpoints.count
+        print("[frame-budget] Skein breakpoint ring: warmed \(warmBreaks)/\(SkeinState.maxColorBreaks), "
+              + "cold after \(Self.timedFrames) timed frames \(coldBreaks)")
+
+        #expect(warmBreaks == SkeinState.maxColorBreaks, """
+            the warmed state carries \(warmBreaks) of \(SkeinState.maxColorBreaks) breakpoints, so
+            the timed frame draws a shorter line than the preset's real worst case. `warmSkein` hit
+            its cap without filling the ring — the pour-commit timing changed under it.
+            """)
+        #expect(warm.burstCount > 0, """
+            no splatter bursts are alive in the timed frame. Bursts spawn from stem deviations, so
+            a zero here means the drive stopped producing them and a second gated layer is being
+            measured switched off.
+            """)
+        #expect(coldBreaks < SkeinState.maxColorBreaks, """
+            a COLD state reached a full ring inside \(Self.timedFrames) frames, so this test can no
+            longer tell a warmed painting from an empty canvas and would pass with `warmSkein`
+            deleted. Re-establish the control before trusting Skein's row.
+            """)
+    }
+
     // MARK: - Drive
 
+    /// ★★ THE DRIVE MUST NOT SIT AT THE AGC MEAN. Until PERF.17 this built every band at exactly
+    /// `0.5` and left every `Rel`/`Dev` field at its zero-initialised default — so the whole roster
+    /// was timed at the one point where **D-026's deviation primitives, the default primary driver
+    /// for every preset, are identically zero**. `bassRel = (bass - 0.5) * 2` is 0 at 0.5 by
+    /// construction, and `StemFeatures` derives nothing in its initialiser, so the stem deviations
+    /// were zero twice over.
+    ///
+    /// That is the general form of the state-gated-layer defect BUG-110 found in Skein: a preset
+    /// whose expensive layer is gated on something the drive never produces gets a real number for
+    /// a state no listener ever sees. Skein read **5.31 ms** here — cheapest third of the roster —
+    /// while its marks overlay alone measured 17–55 ms at 4K with the breakpoint ring filled.
+    ///
+    /// The bands now swing, and Rel/Dev are derived from them with the SAME formula the analyzer
+    /// uses, so the vector is internally consistent — a hand-set `bassDev` beside a `bass` that
+    /// disagrees is its own trap. Amplitude is chosen against real material, not against 1.0:
+    /// deviations spike to ~3x on real music with p99 ≈ 0.85 (FA #73), so a band sweeping
+    /// 0.20–0.95 puts `Dev` in 0–0.9 — the honest working range, not a flattering one.
+    ///
+    /// Stem dominance ROTATES on a ~1 s cycle with a decisive leader, because a pour-commit state
+    /// machine (Skein) or any argmax-driven route reads a fixed dominance as "nothing ever
+    /// changed" and never leaves its first branch.
     private static func drive(frames: Int) -> ([FeatureVector], [StemFeatures]) {
         var features: [FeatureVector] = []
         var stems: [StemFeatures] = []
         for i in 0..<frames {
-            var f = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
-                                  time: Float(i) / 60.0, deltaTime: 1.0 / 60.0)
-            f.trackElapsedS = Float(i) / 60.0
-            f.barPhase01 = Float(i % 60) / 60.0
-            f.beatsPerBar = 4
-            f.aspectRatio = Float(width) / Float(height)
-            features.append(f)
-            var s = StemFeatures()
-            s.drumsEnergy = 0.3; s.bassEnergy = 0.3; s.otherEnergy = 0.2; s.vocalsEnergy = 0.1
-            stems.append(s)
+            features.append(driveFeature(frame: i))
+            stems.append(driveStems(frame: i))
         }
         return (features, stems)
+    }
+
+    /// One drive frame. Shared with `MultiPassRenderHarness.warmSkein`, which needs thousands of
+    /// them to reach a warm painting and must use the same signal the timed frames use.
+    static func driveFeature(frame i: Int) -> FeatureVector {
+        let t = Float(i) / 60.0
+        // Two incommensurate rates so the bands do not all peak together (real music does not).
+        let band = { (rate: Float, phase: Float) -> Float in
+            0.575 + 0.375 * sin(2 * .pi * rate * t + phase)
+        }
+        var f = FeatureVector(bass: band(1.9, 0), mid: band(1.3, 2.1), treble: band(2.7, 4.2),
+                              time: t, deltaTime: 1.0 / 60.0)
+        // D-026's formula, verbatim: xRel = (x - 0.5) * 2, xDev = max(0, xRel).
+        f.bassRel = (f.bass - 0.5) * 2;   f.bassDev = max(0, f.bassRel)
+        f.midRel  = (f.mid - 0.5) * 2;    f.midDev  = max(0, f.midRel)
+        f.trebRel = (f.treble - 0.5) * 2; f.trebDev = max(0, f.trebRel)
+        // The attack-smoothed pair, one octave slower — several presets drive continuous motion
+        // from these and read a flat zero as "silence" exactly as the raw pair did.
+        f.bassAttRel = (band(0.95, 0) - 0.5) * 2
+        f.midAttRel  = (band(0.65, 2.1) - 0.5) * 2
+        f.trebAttRel = (band(1.35, 4.2) - 0.5) * 2
+        f.trackElapsedS = t
+        f.beatPhase01 = Float(i % 30) / 30.0
+        f.barPhase01 = Float(i % 120) / 120.0
+        f.beatsPerBar = 4
+        f.aspectRatio = Float(width) / Float(height)
+        return f
+    }
+
+    /// One drive frame of stems. Dominance rotates every ~1 s with a decisive leader (0.9 against
+    /// 0.15), which clears the pour-switch hysteresis margin that a near-tie is designed to reject.
+    static func driveStems(frame i: Int) -> StemFeatures {
+        var s = StemFeatures()
+        let lead = (i / 60) % 4
+        let energy: [Float] = (0..<4).map { $0 == lead ? 0.9 : 0.15 }
+        // Raw energies keep the warmup gate open; the Dev fields are what the routes actually read.
+        s.drumsEnergy = energy[0]; s.bassEnergy = energy[1]
+        s.vocalsEnergy = energy[2]; s.otherEnergy = energy[3]
+        s.drumsEnergyRel = energy[0]; s.drumsEnergyDev = energy[0]
+        s.bassEnergyRel = energy[1];  s.bassEnergyDev = energy[1]
+        s.vocalsEnergyRel = energy[2]; s.vocalsEnergyDev = energy[2]
+        s.otherEnergyRel = energy[3];  s.otherEnergyDev = energy[3]
+        s.drumsEnergyDevSmoothed = energy[0]
+        return s
     }
 }
