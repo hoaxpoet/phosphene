@@ -81,19 +81,28 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
             // declining, and D-205 makes meter/downbeat a hard gate because Nacre's and
             // Glaze's downbeat pushes are their connection layer.
             let fullTrack = ProcessInfo.processInfo.environment["PHOSPHENE_FULLTRACK_BARS"] == "1"
-            let (beats, downbeats) = fullTrack
-                ? try BeatThisTiledInference.predictFullTrack(
-                    model: model, spectrogram: spec, frameCount: frameCount)
-                : try model.predict(spectrogram: spec, frameCount: frameCount)
+            let activations: (beats: [Float], downbeats: [Float])
+            if fullTrack {
+                activations = try BeatThisTiledInference.predictFullTrack(
+                    model: model,
+                    spectrogram: spec,
+                    frameCount: frameCount
+                )
+            } else {
+                activations = try model.predict(spectrogram: spec, frameCount: frameCount)
+            }
 
             let grid = BeatGridResolver.resolve(
-                beatProbs: beats,
-                downbeatProbs: downbeats,
+                beatProbs: activations.beats,
+                downbeatProbs: activations.downbeats,
                 frameRate: Self.frameRate
             )
             guard fullTrack else { return grid }
             return Self.applyBarLineEstimate(
-                to: grid, samples: samples, sampleRate: sampleRate)
+                to: grid,
+                samples: samples,
+                sampleRate: sampleRate
+            )
         } catch {
             logger.error("BeatGrid: model.predict failed: \(error.localizedDescription)")
             return .empty
@@ -117,22 +126,31 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
         let estimate = BarLineEstimator.estimate(
             beats: grid.beats, audio: samples, sampleRate: sampleRate)
         guard let beatsPerBar = estimate.beatsPerBar, let phase = estimate.barLinePhase else {
-            logger.info(
-                "BeatGrid FT.4: bar line DECLINED (\(estimate.decline.rawValue), margin \(estimate.margin)) — carrying no bars")
+            let why = estimate.decline.rawValue
+            logger.info("BeatGrid FT.4: bar line DECLINED (\(why), margin \(estimate.margin)) — no bars")
             return BeatGrid(
-                beats: grid.beats, downbeats: [], bpm: grid.bpm,
-                beatsPerBar: 1, barConfidence: 0,
-                frameRate: grid.frameRate, frameCount: grid.frameCount)
+                beats: grid.beats,
+                downbeats: [],
+                bpm: grid.bpm,
+                beatsPerBar: 1,
+                barConfidence: 0,
+                frameRate: grid.frameRate,
+                frameCount: grid.frameCount
+            )
         }
         // Lay downbeats on the estimated phase: every `beatsPerBar`-th beat from `phase`.
         let downbeats = grid.beats.enumerated()
             .filter { $0.offset % beatsPerBar == phase }
             .map(\.element)
-        logger.info(
-            "BeatGrid FT.4: bar line \(beatsPerBar)/4 phase \(phase), margin \(estimate.margin), \(downbeats.count) downbeats")
+        logger.info("BeatGrid FT.4: bar \(beatsPerBar) phase \(phase), \(downbeats.count) downbeats")
         return BeatGrid(
-            beats: grid.beats, downbeats: downbeats, bpm: grid.bpm,
-            beatsPerBar: beatsPerBar, barConfidence: Float(min(1.0, estimate.margin / 4.0)),
-            frameRate: grid.frameRate, frameCount: grid.frameCount)
+            beats: grid.beats,
+            downbeats: downbeats,
+            bpm: grid.bpm,
+            beatsPerBar: beatsPerBar,
+            barConfidence: Float(min(1.0, estimate.margin / 4.0)),
+            frameRate: grid.frameRate,
+            frameCount: grid.frameCount
+        )
     }
 }
