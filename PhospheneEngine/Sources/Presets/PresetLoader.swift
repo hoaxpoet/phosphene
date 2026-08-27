@@ -401,8 +401,12 @@ public final class PresetLoader: @unchecked Sendable {
         let json = """
         {"name": "\(name)"}
         """
-        return (try? JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8)))
-            ?? PresetDescriptor.fallback(name: name)
+        guard let descriptor = try? JSONDecoder()
+            .decode(PresetDescriptor.self, from: Data(json.utf8)) else {
+            // Unreachable: the template is a compile-time constant and `name` is a filename.
+            fatalError("PresetDescriptor default decode failed for \(name)")
+        }
+        return descriptor
     }
 
     // MARK: - Shader Compilation
@@ -664,19 +668,9 @@ public final class PresetLoader: @unchecked Sendable {
         // Uses a fragment function named after the preset file if present; otherwise
         // falls back to a no-op by reusing the G-buffer state as standard.
         // For ray march presets, the G-buffer state is what matters — standard is
-        // a placeholder so LoadedPreset.pipelineState is always non-nil.
-        let placeholderDesc = MTLRenderPipelineDescriptor()
-        placeholderDesc.vertexFunction = vertexFn
-        placeholderDesc.fragmentFunction = gbufferFn
-        // Single attachment in drawable format to satisfy the non-nil requirement.
-        placeholderDesc.colorAttachments[0].pixelFormat = pixelFormat
-
-        // We need a valid single-attachment pipeline — recompile with 1 attachment.
-        // If that fails (e.g., format mismatch), fall back to the G-buffer state cast.
-        // In practice the G-buffer fragment only writes GBufferOutput (3 attachments),
-        // so this won't compile cleanly. Use a minimal passthrough instead: if a
-        // preset-defined fragment (named e.g. "sphere_preview_fragment") exists, use it;
-        // otherwise just use the G-buffer pipeline state as the placeholder standard.
+        // a placeholder so LoadedPreset.pipelineState is always non-nil. If a
+        // preset-defined fragment (e.g. "sphere_preview_fragment") exists, use it;
+        // otherwise reuse the G-buffer pipeline state.
         let standardState: MTLRenderPipelineState
         if let previewFn = library.makeFunction(name: descriptor.fragmentFunction),
            descriptor.fragmentFunction != "preset_fragment" {
@@ -770,14 +764,10 @@ public final class PresetLoader: @unchecked Sendable {
             case .rgba16Float: return .rgba16Float
             }
         }
-        // DEPRECATED fallback (delete once no shipped sidecar relies on it):
-        // the pre-PUB.4 display-name matches, kept so an out-of-tree preset
-        // copy without the new field renders as before.
-        switch descriptor.name {
-        case "Fata Morgana":             return .bgra8Unorm
-        case "Nacre", "Floret", "Glaze": return .rgba16Float
-        default:                         return pixelFormat
-        }
+        // The pre-PUB.4 display-name fallback was deleted at RECON.22: its own
+        // delete-when condition ("once no shipped sidecar relies on it") was met —
+        // Fata Morgana, Nacre, Floret and Glaze all declare feedback_pixel_format.
+        return pixelFormat
     }
 
     private func makeWarpPipelines(
@@ -1049,21 +1039,5 @@ public final class PresetLoader: @unchecked Sendable {
     private func stopWatching() {
         watchSource?.cancel()
         watchSource = nil
-    }
-}
-
-// MARK: - PresetDescriptor Fallback
-
-extension PresetDescriptor {
-    static func fallback(name: String) -> PresetDescriptor {
-        let json = """
-        {"name": "\(name)", "family": "waveform"}
-        """
-        do {
-            return try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
-        } catch {
-            // This should never fail — the JSON template is compile-time constant.
-            fatalError("PresetDescriptor fallback JSON decode failed: \(error)")
-        }
     }
 }

@@ -28,15 +28,9 @@ import Foundation
 public struct SessionFrame: Sendable {
     public let frame: Int
     public let wallclockSeconds: Double
-    public let audioTimeSeconds: Float
-    public let deltaTime: Float
 
     // FeatureVector subset
     public let bassDev: Float
-    public let bassAttRel: Float
-    public let beatPhase01: Float
-    public let valence: Float
-    public let arousal: Float
 
     // StemFeatures subset
     public let drumsEnergy: Float
@@ -47,7 +41,6 @@ public struct SessionFrame: Sendable {
     public let vocalsEnergyDev: Float
     public let otherEnergy: Float
     public let otherEnergyDev: Float
-    public let vocalsPitchHz: Float
     public let vocalsPitchConfidence: Float
 
     /// Total stem energy — used by D-019 stem-warmup blend in shaders.
@@ -133,13 +126,7 @@ public enum SessionDataLoader {
             let frame = SessionFrame(
                 frame: try intColumn(f, "frame", file: "features.csv"),
                 wallclockSeconds: try doubleColumn(f, "wallclock_s", file: "features.csv"),
-                audioTimeSeconds: try floatColumn(f, "time", file: "features.csv"),
-                deltaTime: try floatColumn(f, "deltaTime", file: "features.csv"),
                 bassDev: try floatColumn(f, "bassDev", file: "features.csv"),
-                bassAttRel: try floatColumn(f, "bassAttRel", file: "features.csv"),
-                beatPhase01: try floatColumn(f, "beatPhase01", file: "features.csv"),
-                valence: try floatColumn(f, "valence", file: "features.csv"),
-                arousal: try floatColumn(f, "arousal", file: "features.csv"),
                 drumsEnergy: try floatColumn(s, "drumsEnergy", file: "stems.csv"),
                 drumsEnergyDev: try floatColumn(s, "drumsEnergyDev", file: "stems.csv"),
                 bassEnergy: try floatColumn(s, "bassEnergy", file: "stems.csv"),
@@ -148,7 +135,6 @@ public enum SessionDataLoader {
                 vocalsEnergyDev: try floatColumn(s, "vocalsEnergyDev", file: "stems.csv"),
                 otherEnergy: try floatColumn(s, "otherEnergy", file: "stems.csv"),
                 otherEnergyDev: try floatColumn(s, "otherEnergyDev", file: "stems.csv"),
-                vocalsPitchHz: try floatColumn(s, "vocalsPitchHz", file: "stems.csv"),
                 vocalsPitchConfidence: try floatColumn(s, "vocalsPitchConfidence", file: "stems.csv")
             )
             frames.append(frame)

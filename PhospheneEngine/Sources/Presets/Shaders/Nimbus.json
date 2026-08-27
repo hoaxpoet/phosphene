@@ -7,7 +7,6 @@
   "passes": [],
   "fragment_function": "nimbus_fragment",
   "vertex_function": "fullscreen_vertex",
-  "beat_source": "composite",
   "visual_density": 0.45,
   "motion_intensity": 0.30,
   "color_temperature_range": [0.05, 0.65],

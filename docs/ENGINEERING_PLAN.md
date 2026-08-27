@@ -63,6 +63,39 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.22 — dead decoder surface + the small verified deads ✅ (2026-08-26)
+
+Closes the preset-audit backlog: Tier-1 items 11 and 12, the last two of the twelve. **−1,151 lines across
+49 files, no pixel change** (PresetRegression's 29-preset dHash gate green throughout, so nothing needs
+re-certification).
+
+**Item 11 — the sidecar/decoder surface.** Four decoder capabilities that every sidecar paid for and no
+shader read. `FerrofluidParams` / `thin_film` was decoded and range-validated while `FerrofluidOcean.metal`
+hardcoded the same constants (the registry's thin-film row now names the MSL constants as the single source
+of truth). The legacy `use_*` boolean synthesis served only hypothetical out-of-tree sidecars — all 29
+in-tree sidecars declare `passes`. `beat_source` was set by 27 sidecars and read by none (`beatValue` is
+hardcoded to `max(beatBass, beatComposite)`), so the key came out of every sidecar with the enum: a sidecar
+should not claim a control that isn't wired. The `feedback_pixel_format` name fallback met its own
+delete-when condition, and `mesh_additive_blend` went to 0/29 when Arachne's strands moved to a staged pass.
+
+**Item 12 — six unrelated pockets with no consumer.** FerrofluidParticles' Phase-2c layer (zero-caller
+`encodePerFrameUpdate` overloads over the rejected D-127(d) force model, reachable only from its own two
+tests — deleted per D-203; the live bake path is untouched); the engine's hand-synced copy of `MVWarp.metal`
+(the live pipeline compiles from `PresetLoader+WarpPreamble`, so the copy was a drift hazard, not a
+reference); seven `SessionFrame` columns parsed as *required* and never read, which made replay hard-fail on
+sessions missing columns nobody consumed; Skein's `colorFromFamily`, whose every branch was gated on a flag
+no production caller set after FL.10 gave Ricercar its own echo geometry; six shader helpers with no call
+site; and the certification/loader crumbs (unreachable second descriptor fallback, unused store singleton +
+injection hook, write-only `p95FrameTimeMs`, the superseded `.exempt` status, a Stalker filter for a deleted
+file, `placeholderDesc`, the 4-line `Presets.swift`).
+
+**A green build is not a green Metal library.** `swift build` compiles no shaders, and per-preset suites
+compile only preset libraries — so deleting `FerrofluidUpdateUniforms` from the *engine* shader library while
+`fo_canonical_position` still took it as a parameter passed both. The failure surfaced only in
+`closeout_evidence.sh`, as 56 unrelated GPU tests failing on `MTLLibraryErrorDomain`. Any `Renderer/Shaders/`
+edit now needs one engine-library GPU test (`--filter IBLManagerTests` is a 9-test, sub-second smoke) before
+it can be called verified.
+
 ### Increment LFSTEM.1 — local-file stems land on the beat 🔨 code-complete, M7 owed (2026-08-26)
 
 **Done-when:** a local file plays with stems sampled by playback position rather than separated from audio that has already gone past. **1a** `StemFeatureSeries` + `SessionPreparer.analyzeStemSeries`: the sweep keeps spans of 2 s and places each at the END of its ~10 s separation window (leaving one analysis frame of headroom — flush placement dropped 10 of 1292 frames over 30 s, which `stemSeries_spanBoundariesDoNotDrift` caught on first run), with one analyzer instance carrying its AGC across spans as it does across live separations. **1b** persistence at schema v10: a raw `[StemFeatures]` dump in `stem_series.bin` guarded by `stemSeriesFeatureStride`, every read failure degrading to `.empty` rather than throwing away an otherwise-good cache entry. **1c** the local prep path builds it, playback samples it at `mir.elapsedSeconds`, and the live path stands down when a series is installed. Streaming is untouched and structurally cannot have this. Engine + app suites green; alignment, persistence and wiring each gated. **Owed: the Skein M7** — ~10 certified presets have stem routes tuned against values arriving 2.5 s late, and this makes them arrive on time. **Next: LFSTEM.2** (retire live separation on the local path) once that M7 is in.

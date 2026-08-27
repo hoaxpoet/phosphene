@@ -8,7 +8,6 @@
     "ray_march",
     "post_process"
   ],
-  "beat_source": "bass",
   "beat_sensitivity": 1.0,
   "scene_camera": {
     "position": [

@@ -43,11 +43,11 @@ private func makeDescriptor(
 }
 
 private func passChecks() -> RuntimeCheckResults {
-    RuntimeCheckResults(silenceNonBlack: true, p95FrameTimeMs: 1.0)
+    RuntimeCheckResults(silenceNonBlack: true)
 }
 
 private func failChecks() -> RuntimeCheckResults {
-    RuntimeCheckResults(silenceNonBlack: false, p95FrameTimeMs: 99.0)
+    RuntimeCheckResults(silenceNonBlack: false)
 }
 
 // MARK: - Suite 1: Per-Preset Rubric Report
