@@ -44,6 +44,40 @@ struct SessionRecorderCSVAlignmentTests {
             """)
     }
 
+    /// BUG-109's column is OPTIONAL — empty when no stem series is installed — and an optional
+    /// column is the one shape that can align when populated and misalign when absent. Both forms
+    /// are checked, and the empty one is checked for being genuinely empty rather than absent:
+    /// dropping the separator instead of the value is exactly how a column silently shifts every
+    /// field after it.
+    @Test("the optional stem-series column aligns whether it is populated or empty")
+    func stemSeriesColumnAlignsBothWays() {
+        let header = SessionRecorder.featuresCSVHeader
+            .replacingOccurrences(of: "\n", with: "")
+            .split(separator: ",", omittingEmptySubsequences: false)
+        let fv = FeatureVector()
+
+        for position: Double? in [nil, 12.5] {
+            let row = SessionRecorder.csvRow(
+                features: fv, stems: .zero, beatSync: .zero, frame: 1, wallclock: 0,
+                stemSeriesPositionSeconds: position)
+            let fields = row.trimmingCharacters(in: .newlines)
+                .split(separator: ",", omittingEmptySubsequences: false)
+            #expect(fields.count == header.count, """
+                stem_series_pos_s = \(String(describing: position)): row has \(fields.count) \
+                fields against \(header.count) header names. An optional column must emit its \
+                separator even when it has no value.
+                """)
+            #expect(row.hasSuffix("\n") && !row.dropLast().contains("\n"),
+                    "the row must end with exactly one trailing newline")
+            let last = fields.last.map(String.init) ?? "MISSING"
+            if position == nil {
+                #expect(last.isEmpty, "no series installed must read as EMPTY, not as a number")
+            } else {
+                #expect(Double(last) != nil, "a sampled position must read back as a number")
+            }
+        }
+    }
+
     @Test("a stems row has exactly as many fields as its header has names")
     func stemsRowFieldCountMatchesHeader() {
         let header = SessionRecorder.stemsCSVHeader

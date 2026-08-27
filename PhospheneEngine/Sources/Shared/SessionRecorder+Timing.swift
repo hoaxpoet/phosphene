@@ -95,6 +95,20 @@ extension SessionRecorder {
         }
     }
 
+    /// BUG-109 — the position the stem series was sampled at this frame, after
+    /// `PlaybackClockSmoother`, or `nil` when no series is installed (live separation driving).
+    ///
+    /// Recorded because the difference between "the series is driving and its position advances"
+    /// and "the series is driving and its position is stuck" is invisible in `playback_time_s`,
+    /// which carries the RAW clock. BUG-109 had to be inferred from counting distinct stem values;
+    /// this column answers it directly.
+    public func recordStemSeriesPosition(_ seconds: Double?) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.latestStemSeriesPosition = seconds
+        }
+    }
+
     public func recordRayMarchPassTimings(
         gbufferMs: Float,
         lightingMs: Float,
