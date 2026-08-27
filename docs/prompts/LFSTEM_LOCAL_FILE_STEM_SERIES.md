@@ -145,6 +145,34 @@ folding them together would mean a single M7 that cannot tell "the series is mis
 ## 9. LFSTEM.2 — retire live separation on the local-file path
 
 **Decided 2026-08-26 (Matt). Runs after LFSTEM.1 has landed and been M7'd, not alongside it.**
+**✅ IMPLEMENTED 2026-08-27 — the live 4K before/after is owed.**
+
+**The three consumers, checked before removing anything, as this section required:**
+
+1. `latestSeparatedStems` → `runPerFrameStemAnalysis` → `setStemFeatures` — **replaced.**
+   `runPerFrameStemAnalysis` already stood down for a series at LFSTEM.1c, so the separator's
+   output was being computed and discarded.
+2. **The stem WAV dump** (`stems/` in a session directory) — **lost on tracks with a series, and
+   said so out loud.** It is written from live separation output; there is no substitute that
+   means the same thing (`CachedTrackData.stemWaveforms` holds only the track's first ~10 s, so
+   dumping it would label the intro as though it were the passage being played). The session log
+   now carries `STEM_SOURCE: live separation SUPPRESSED for this track (LFSTEM.2) — no stems/ WAV
+   dump`. To listen to separation quality on a local file, play one whose series is absent, or use
+   the streaming path. This is the "state plainly that it is streaming-only now" option this
+   section pre-authorised.
+3. `chain_health.json` / the ASH monitors — **clear, with evidence.** `ChainAnalyzer` contains
+   **zero** stem references; `SignalHealthMonitor` has six, all sample-rate comments, and it
+   ingests raw tap samples rather than stems. Neither can read "no separations happening" as a
+   fault, so the BUG-070 shape is not reachable here.
+
+**The gate is on the SERIES, never on the source** — `separationSupersededBySeries()`. A cache
+miss, a schema mismatch or a failed analysis all leave the series empty and keep the live path
+exactly as it was; gating on "is this a local file" would strand those tracks with no stems at
+all. `StemSeriesWiringTests` asserts the gate, its condition, and that the suppression count
+reaches the artifact.
+
+**Owed:** the before/after this section demands — a 4K local-file session showing the
+`frame_gpu_ms` delta, with zero `STEM_SEPARATION` lines and a rising `stem_suppressed`.
 
 Once a local file plays from a pre-analysed series, the 2 s live separation timer on that path is
 computing something nothing reads. Stopping it is worth an increment of its own for what it gives

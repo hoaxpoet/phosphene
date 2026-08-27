@@ -140,7 +140,10 @@ extension VisualizerEngine {
             budgetMB,
             pct
         )
-        return "\(sizes) ml_forced=\(forced) ml_last=\(decision)"
+        // LFSTEM.2 — `stem_suppressed` rising while `STEM_SEPARATION` lines stop is the saving
+        // being real rather than assumed: the 142 ms MPSGraph job is off this GPU.
+        return "\(sizes) ml_forced=\(forced) ml_last=\(decision) "
+            + "stem_suppressed=\(suppressedSeparations)"
     }
 
     func setupDrawableLifecycleWatchdog(pipe: RenderPipeline, recorder: SessionRecorder) {
