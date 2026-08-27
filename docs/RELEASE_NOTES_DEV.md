@@ -10,6 +10,48 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-154702] BUG-107 diagnosed — the frame-budget harness has been measuring Skein with its most expensive layer switched off
+
+**Diagnosis, not a fix.** BUG-107 held that Skein costs 15.60 ms at 4K in `PresetFrameBudgetTests`
+and ~170 ms live. `SkeinLineCostTests` (`PHOSPHENE_SKEIN_COST=1`) binds a **synthetic
+`SkeinUniforms`** — no audio, no `SkeinState`, just bytes — and times the real marks overlay at
+3840×2160. That is the seam Skein has never had, and it settles both halves:
+
+| `breakCount` | marks overlay @ 4K |
+|---|---|
+| **0** | **0.75 ms** ← what the harness binds |
+| 1 | **17.06 ms** |
+| 4 | 27.36 ms |
+| **16** (ring cap) | **55.65 ms** |
+
+**The harness measures the layer switched off.** Skein's whole pour-line layer sits behind
+`if (int(st.breakCount) > 0)`, and `PresetFrameBudgetTests` binds a zeroed slot-6 buffer: no
+committed pour, no line, no paint. 0.75 ms against 17.06 ms the moment one breakpoint exists. The
+"15.60 ms, 0.8× the median preset" that made Skein look like one of the cheapest in the roster was
+the base pass and overhead. **This is the harness's blind spot, not Skein's fact** — any preset
+whose expensive work is gated on runtime state the harness leaves zeroed reads the same way, and
+that is worth a note in the harness itself.
+
+**The ramp is the breakpoint ring filling.** `skeinLineLookupAt` runs once per tail frame
+(`kSkeinTailFrames = 40`) per fragment and scans the ring (up to 16). As a track accumulates
+dominant-stem switches the scan lengthens: 17.06 → 55.65 ms, then a plateau at the cap. That is
+ramp-to-plateau at constant resolution and constant preset — the live shape, reproduced offline.
+Worst case is 40 × 16 = **640 scan iterations per fragment**, at 8.3 M fragments.
+
+**The fix is a hoist.** `skeinLineLookupAt(ctau, st)` depends only on the tail's painter-clock
+values and the uniform ring — **not on fragment position**. All 40 lookups are fragment-invariant
+and are being recomputed 8.3 M times per frame. Resolving them once per frame removes the
+per-fragment scan and the `breakCount` dependence outright. Not implemented here.
+
+⚠ **Two corrections worth keeping.** The canvas-coverage theory in the original entry was
+**wrong** — the comp pass's wetness blur, gradient and specular are unconditional per-pixel work,
+constant regardless of paint. And the first version of this harness timed `skein.pipelineState`
+(the base direct pass) rather than the marks overlay, reporting **0.34 ms flat at 4K for every
+breakpoint count**; a number that uniform, that fast, at that resolution, says only "this is not
+the shader that draws the paint".
+
+---
+
 ### [dev-2026-08-27-151310] BUG-108 fixed — at a Skein overlap, the last-laid mark wins
 
 **Matt's call: (a), the lay-order tie-break.**
