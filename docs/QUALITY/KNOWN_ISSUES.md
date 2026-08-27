@@ -262,10 +262,18 @@ once already:** the "series installed" line goes to `os.Logger`, not the session
 SMOOTHED position is not recorded at all. `features.csv` carries the raw clock only. A per-track
 surface that changes what every stem-driven preset reads should be visible in the artifact.
 
-**Next step — instrument before theorising.** Record the smoothed position and a
-series-installed/absent marker in the session artifact, then one local-file session answers this
-directly instead of by inference. That is a small increment and it is the whole of the next move;
-do not change sampling behaviour before the artifact says what is happening.
+**Next step — instrument before theorising. ✅ DONE 2026-08-27 (BUG109.1), awaiting one session.**
+`features.csv` gained `stem_series_pos_s` — the position the series was sampled at, after the
+smoother, EMPTY when no series is installed — and `session.log` gained a `STEM_SOURCE:` line at
+track change naming the source and the series' size. No sampling behaviour was changed.
+
+**What the next local-file session decides, with no further inference:**
+
+| observation | conclusion |
+|---|---|
+| column empty throughout | no series installed; live separation drove everything, and LFSTEM.1's claim is untested live |
+| position advances per frame, stem values hold | sampling is fine; the values reaching `stems.csv` are not the series' |
+| position holds with the raw clock | the smoother is not being reached at the sample site |
 
 **Related:** LFSTEM.1c (the sampling), LFSTEM.1d (the smoother, whose own replay is clean on this
 session's clock), BUG-107 (found during its live confirmation, unrelated mechanism).

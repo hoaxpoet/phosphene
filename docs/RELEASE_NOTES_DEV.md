@@ -10,6 +10,36 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-163000] BUG-109 instrumented — the session artifact can now answer which source drives the stems
+
+**Instrumentation only. No sampling behaviour changed** — deliberately, because BUG-109's own note
+says not to touch it until the artifact says what is happening.
+
+Two additions, together enough for one local-file session to settle it:
+
+- **`stem_series_pos_s`**, the tail column of `features.csv`: the position the stem series was
+  sampled at, *after* `PlaybackClockSmoother`. `playback_time_s` carries the RAW clock, so it
+  could not distinguish "the series is driving and its position advances" from "the series is
+  driving and its position is stuck" — which is why BUG-109 had to be inferred by counting
+  distinct stem values rather than read off.
+- **`STEM_SOURCE:`** in `session.log` at track change — `series frames=N covers=Xs hop=Yms`, or
+  `live separation (no series for this track)`. This existed only in `os.Logger`, so no session
+  artifact could answer it. A per-track fact that changes what every stem-driven preset reads
+  belongs in the artifact.
+
+The new column is the first OPTIONAL one, which is the single shape that can align when populated
+and shift every later field when absent. `SessionRecorderCSVAlignmentTests` checks both forms and
+asserts the empty case reads as genuinely empty rather than as a number; dropping the separator
+instead of the value fails it (77 fields against 78, and the last field reading `0.00000`).
+
+**What the next session answers.** If `stem_series_pos_s` advances every frame while stem values
+hold, the sampling is fine and the values are not coming from where they should. If the position
+itself holds, the smoother is not being reached. If the column is empty throughout, no series was
+installed and live separation was driving all along — in which case LFSTEM.1's headline claim has
+not been exercised live yet at all.
+
+---
+
 ### [dev-2026-08-27-162253] BUG-107 confirmed live — Skein at 4K is flat at ~12.6 ms, and a new question is filed
 
 **Confirmed.** Session `2026-08-27T16-17-34Z`, Skein at 3840×2160 for 78 s:

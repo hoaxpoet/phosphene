@@ -63,6 +63,10 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG109.1 — instrument which source drives the stems ✅ (2026-08-27)
+
+**Done-when:** one local-file session can answer BUG-109 by reading, not inference. `features.csv` gains `stem_series_pos_s` (the post-smoother sampling position; EMPTY when no series is installed — `playback_time_s` carries the RAW clock and cannot tell "advancing" from "stuck"), and `session.log` gains `STEM_SOURCE:` at track change naming the source and the series' size (it existed only in `os.Logger`, so no artifact could answer it). **No sampling behaviour changed** — BUG-109's own note says not to touch it until the artifact speaks. The column is the first optional one, the single shape that can align when populated and shift every later field when absent, so `SessionRecorderCSVAlignmentTests` checks both forms; omitting the separator fails it at 77 fields against 78.
+
 ### Increment BUG107.3 — live confirmation ✅ (2026-08-27)
 
 Session `2026-08-27T16-17-34Z`: Skein at 3840×2160, `frame_gpu` p50 **flat at 11.55–13.10 ms across 78 s**, against 38 → 127 → 170–250 ms in both pre-fix sessions. BUG-107 closes. Two things recorded on the way: the analysis loop now runs at **59.9 Hz** where pre-fix local sessions ran at ~18 Hz (part of the apparent BUG-087 ceiling was the GPU starving the loop — does not close BUG-087, but any rate measured on a GPU-bound session is suspect), and the remaining gap is not GPU-bound (`frame_cpu` ~28.5 ms against a 12.6 ms GPU). **Filed: BUG-109** — stem values change 634 times where the raw clock ticks 1,010 times and the series offers ~3,360 frames, which rules the smoother out and points at wiring; blocked on recording the smoothed position and the series-installed marker in the session artifact.
