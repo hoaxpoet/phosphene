@@ -7,7 +7,6 @@
   "passes": [
     "mesh_shader"
   ],
-  "beat_source": "bass",
   "fragment_function": "fractal_tree_fragment",
   "vertex_function": "fractal_tree_fallback_vertex",
   "beat_sensitivity": 1.2,

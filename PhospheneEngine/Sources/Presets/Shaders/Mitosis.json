@@ -5,7 +5,6 @@
   "description": "Psychedelic cell division. A Gray–Scott reaction–diffusion colony: a few cells divide into many until the field is crowded (~25–35 s), then the colony dissolves back to a few cells and regrows — a continuous birth→crowd→dissolve cycle paced by the music's energy. Rendered as fluorescence microscopy — magenta nuclei and electric cyan/green membranes glowing on black — with the hue shifting in response to the music (energy paces the colour motion, the spectral centroid biases the palette). Two-texture (A,B) ping-pong compute, no new render primitive.",
   "author": "Matt",
   "passes": ["feedback", "particles"],
-  "beat_source": "bass",
   "beat_zoom": 0.0,
   "beat_rot": 0.0,
   "base_zoom": 0.0,

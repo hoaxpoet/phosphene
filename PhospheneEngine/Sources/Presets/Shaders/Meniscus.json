@@ -9,7 +9,6 @@
     "particles"
   ],
   "fragment_function": "meniscus_ground_fragment",
-  "beat_source": "bass",
   "beat_zoom": 0.0,
   "beat_rot": 0.0,
   "base_zoom": 0.0,

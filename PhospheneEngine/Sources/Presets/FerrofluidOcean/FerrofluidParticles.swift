@@ -297,7 +297,6 @@ public final class FerrofluidParticles: @unchecked Sendable {
     private let bakePipeline: MTLComputePipelineState
     private let resetCellsPipeline: MTLComputePipelineState
     private let binParticlesPipeline: MTLComputePipelineState
-    private let updateParticlesPipeline: MTLComputePipelineState
     private let device: MTLDevice
 
     /// Bake parameters mirrored on the GPU side via a 32-byte struct.
@@ -315,48 +314,7 @@ public final class FerrofluidParticles: @unchecked Sendable {
         var pad1: UInt32                    // 16-byte align
     }
 
-    /// Per-frame update uniforms for `ferrofluid_particle_update`. Phase 2c
-    /// extends with the four audio inputs (bass / drums-smoothed / other /
-    /// arousal), `accumulated_audio_time` for rotational drift, and grid
-    /// metadata (cell side / capacity / world XZ patch + the canonical-
-    /// grid rows/columns) for spatial-hash neighbour lookup and on-the-fly
-    /// canonical-position recomputation. 64 bytes, 16-byte aligned.
-    private struct UpdateUniforms {
-        var dt: Float
-        var particleCount: UInt32
-        var accumulatedAudioTime: Float
-        var arousal: Float
-
-        var bassEnergyDev: Float
-        var drumsEnergyDevSmoothed: Float
-        var otherEnergyDev: Float
-        var pressureBaseRadius: Float
-
-        var worldOriginXZ: SIMD2<Float>
-        var worldSpan: Float
-        var cellGridSide: UInt32
-
-        var cellSlotCapacity: UInt32
-        var gridColumns: UInt32
-        var gridRows: UInt32
-        var pad0: UInt32
-    }
-
-    // MARK: - CPU-side smoothing state (Phase 2c)
-
-    /// Per-frame lock. Reserved for future per-frame state mutations
-    /// (Phase 2c's `smoothedDrumsEnergyDev` envelope was retired in round 54
-    /// under the constant-field premise — see
-    /// `encodePerFrameUpdate(features:stems:)` docstring).
-    private let lock = NSLock()
-
     // MARK: - Init
-
-    // Sequential GPU resource allocation with consistent error-handling
-    // produces a body slightly over the 60-line cap — fragmenting into
-    // helpers would split the resource-acquire / pipeline-create flow
-    // without making either part more readable.
-    // swiftlint:disable function_body_length
 
     /// Construct the particles + height texture for Ferrofluid Ocean.
     ///
@@ -432,15 +390,10 @@ public final class FerrofluidParticles: @unchecked Sendable {
             particleLogger.error("FerrofluidParticles: ferrofluid_bin_particles function not found")
             return nil
         }
-        guard let updateFn = library.makeFunction(name: "ferrofluid_particle_update") else {
-            particleLogger.error("FerrofluidParticles: ferrofluid_particle_update function not found")
-            return nil
-        }
         do {
             self.bakePipeline = try device.makeComputePipelineState(function: bakeFn)
             self.resetCellsPipeline = try device.makeComputePipelineState(function: resetFn)
             self.binParticlesPipeline = try device.makeComputePipelineState(function: binFn)
-            self.updateParticlesPipeline = try device.makeComputePipelineState(function: updateFn)
         } catch {
             particleLogger.error("FerrofluidParticles: pipeline creation failed: \(error)")
             return nil
@@ -449,8 +402,6 @@ public final class FerrofluidParticles: @unchecked Sendable {
         // Populate initial particle positions at voronoi-equivalent XZ.
         writeInitialParticlePositions()
     }
-
-    // swiftlint:enable function_body_length
 
     // MARK: - Public API
 
@@ -558,128 +509,6 @@ public final class FerrofluidParticles: @unchecked Sendable {
         encoder.endEncoding()
     }
 
-    /// Encode a single particle-update compute dispatch into the caller's
-    /// command buffer. Phase 2c: integrates audio forces (pressure / drums
-    /// impulse / rotational drift) + equilibrium spring + damping into
-    /// each particle's velocity, then advances `position += velocity × dt`
-    /// via semi-implicit Euler. `audio` carries the per-frame uniforms;
-    /// when zero (silence), only equilibrium + damping run → particles
-    /// settle to canonical positions (gentle baseline drift only).
-    ///
-    /// Reads the spatial-hash buffers populated by the most recent bake
-    /// pass to find neighbour particles for pressure forces. **Callers
-    /// must encode a bake before each update** so the spatial-hash
-    /// reflects the current positions (`encodePerFrameUpdate` handles the
-    /// ordering: bake → update → bake).
-    public func encodeUpdate(into commandBuffer: MTLCommandBuffer,
-                             dt: Float,
-                             audio: UpdateAudio = .silent) {
-        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
-            particleLogger.error("FerrofluidParticles.encodeUpdate: makeComputeCommandEncoder returned nil")
-            return
-        }
-        let layout = Self.canonicalGridLayout()
-        var uniforms = UpdateUniforms(
-            dt: dt,
-            particleCount: UInt32(Self.particleCount),
-            accumulatedAudioTime: audio.accumulatedAudioTime,
-            arousal: audio.arousal,
-            bassEnergyDev: audio.bassEnergyDev,
-            drumsEnergyDevSmoothed: audio.drumsEnergyDevSmoothed,
-            otherEnergyDev: audio.otherEnergyDev,
-            pressureBaseRadius: Self.spikeBaseRadius * 2.0,
-            worldOriginXZ: SIMD2(Self.worldOriginX, Self.worldOriginZ),
-            worldSpan: Self.worldSpan,
-            cellGridSide: UInt32(Self.cellGridSide),
-            cellSlotCapacity: UInt32(Self.cellSlotCapacity),
-            gridColumns: UInt32(layout.columns),
-            gridRows: UInt32(layout.rows),
-            pad0: 0)
-        encoder.setComputePipelineState(updateParticlesPipeline)
-        encoder.setBuffer(particleBuffer, offset: 0, index: 0)
-        encoder.setBytes(&uniforms,
-                         length: MemoryLayout<UpdateUniforms>.stride,
-                         index: 1)
-        encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
-        encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
-        let tpg = MTLSize(width: 64, height: 1, depth: 1)
-        let groups = MTLSize(width: (Self.particleCount + 63) / 64, height: 1, depth: 1)
-        encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: tpg)
-        encoder.endEncoding()
-    }
-
-    /// Per-frame closure entry point. Encodes bake → update → bake into the
-    /// caller's command buffer. The first bake populates the spatial-hash
-    /// from the previous frame's positions so the update kernel can compute
-    /// pressure forces from neighbour lookups; update advances positions by
-    /// the integrated force model; the second bake refreshes the height
-    /// texture for the G-buffer pass that follows.
-    ///
-    /// **Round 54 (2026-05-17, constant-field premise enforcement)**: the
-    /// engine entry point now passes `UpdateAudio.silent` regardless of
-    /// the live `features` / `stems` inputs. The constant-field premise
-    /// (round 50) committed Ferrofluid Ocean to "spike geometry is constant;
-    /// audio modulates ONLY the swell underneath and the aurora overhead,
-    /// never the spike geometry." The Phase 2c particle-motion forces
-    /// violated that premise — at moderate audio (bass_dev 0.5, drums
-    /// 0.5, arousal 0.5) the spring/damping system reached steady-state
-    /// displacement ~0.37 wu, over 2× the spike base radius (0.17 wu)
-    /// and exceeding particle-to-particle spacing (0.333 wu) → particles
-    /// routinely drifted past neighbors → smooth-Voronoi blend produced
-    /// the malformed-cone artifact Matt flagged in the 2026-05-16 live
-    /// screenshot. Silencing the engine path keeps particles at canonical
-    /// positions; the audio response continues to live entirely in
-    /// `fo_swell_scale` (Gerstner amplitude) and `rm_ferrofluidSky`
-    /// (procedural aurora) as specified.
-    ///
-    /// The Phase 2c force model code remains intact in
-    /// `ferrofluid_particle_update`; a future increment may re-enable it
-    /// under a different premise (e.g. Phase 3 polish with drastically
-    /// scaled-down forces). The direct `encodeUpdate` path is also
-    /// preserved (used by `FerrofluidParticlesTests` to exercise the
-    /// kernel's force model directly).
-    ///
-    /// The `features` / `stems` parameters are kept on the signature so
-    /// no caller-site changes are required.
-    public func encodePerFrameUpdate(into commandBuffer: MTLCommandBuffer,
-                                     dt: Float,
-                                     features: FeatureVector,
-                                     stems: StemFeatures) {
-        _ = features; _ = stems   // round 54: ignored under constant-field premise
-        // bake (re-populates spatial hash from current positions) → update
-        // (consumes hash for pressure neighbour lookup) → bake (refreshes
-        // height texture from updated positions for the G-buffer pass).
-        encodeBake(into: commandBuffer)
-        encodeUpdate(into: commandBuffer, dt: dt, audio: .silent)
-        encodeBake(into: commandBuffer)
-    }
-
-    /// Per-frame closure entry point (Phase 2b compatibility — no audio).
-    /// Retained so older Phase 2b call sites still link; production wiring
-    /// in `VisualizerEngine+Presets.swift` uses the audio-aware overload.
-    public func encodePerFrameUpdate(into commandBuffer: MTLCommandBuffer, dt: Float) {
-        encodeBake(into: commandBuffer)
-        encodeUpdate(into: commandBuffer, dt: dt, audio: .silent)
-        encodeBake(into: commandBuffer)
-    }
-
-    /// CPU-side bundle for audio uniforms; lets `encodeUpdate` stay
-    /// non-`Sendable`-throwing while the closure-driven path packages
-    /// audio inputs upstream.
-    public struct UpdateAudio: Sendable {
-        public let accumulatedAudioTime: Float
-        public let arousal: Float
-        public let bassEnergyDev: Float
-        public let drumsEnergyDevSmoothed: Float
-        public let otherEnergyDev: Float
-        public static let silent = UpdateAudio(
-            accumulatedAudioTime: 0,
-            arousal: 0,
-            bassEnergyDev: 0,
-            drumsEnergyDevSmoothed: 0,
-            otherEnergyDev: 0)
-    }
-
     // MARK: - Test seam
 
     /// Snapshot the particle positions. Public for unit tests; not part of
@@ -688,27 +517,6 @@ public final class FerrofluidParticles: @unchecked Sendable {
         let ptr = particleBuffer.contents().bindMemory(
             to: Particle.self, capacity: Self.particleCount)
         return Array(UnsafeBufferPointer(start: ptr, count: Self.particleCount)).map { $0.position }
-    }
-
-    /// Snapshot full particle state (position + velocity). Public for tests.
-    public func snapshotParticles() -> [Particle] {
-        let ptr = particleBuffer.contents().bindMemory(
-            to: Particle.self, capacity: Self.particleCount)
-        return Array(UnsafeBufferPointer(start: ptr, count: Self.particleCount))
-    }
-
-    /// Test-only: stamp a constant velocity onto every particle. Used by
-    /// Phase 2b verification (inject a known drift velocity, run N updates,
-    /// confirm positions advanced by `velocity × N × dt`). Phase 2c
-    /// replaces this with audio-force-driven velocity from the compute
-    /// kernel; production code paths never call this directly.
-    public func seedVelocityForTesting(_ velocity: SIMD2<Float>) {
-        let ptr = particleBuffer.contents().bindMemory(
-            to: Particle.self, capacity: Self.particleCount)
-        for i in 0 ..< Self.particleCount {
-            ptr[i].velocityX = velocity.x
-            ptr[i].velocityZ = velocity.y
-        }
     }
 
     // Note: `canonicalInitialPosition(forIndex:)`, the canonical grid
