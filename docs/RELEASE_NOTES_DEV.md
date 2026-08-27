@@ -10,6 +10,35 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-180020] BUG-108 round 2 — the same argmin, one level down, inside the line
+
+**Matt on the round-1 build:** *"Flickering still happens but only after significant time has
+passed (70-80 s) and is not as prominent as before. Frame rate is smooth."*
+
+Round 1 fixed which **mark** wins an overlap. Inside the pour line, the colour was still taken
+from the **nearest segment** — `if (d < lineSDF) { … lineCol = … }` — the same argmin one level
+down. Two segments of DIFFERENT pours that are near-equidistant from a fragment flip the winner on
+sub-pixel motion, and the flip is a full colour swap.
+
+**Both halves of the report fall out of that.** *Less prominent*, because the mark-level case was
+genuinely fixed and only the line-internal one remained. *Only after 70–80 s*, because such pairs
+need differently-coloured segments inside the same 40-frame tail, and colour breakpoints
+accumulate over a track — the same ring whose filling drove BUG-107's cost ramp. A report that
+locates a residual is worth more than one that just says "still broken", and this one located it.
+
+The line now takes the colour of the **first covering segment in a newest→oldest walk** — the
+latest-laid one by construction, no comparison, nothing to jitter. Coverage still comes from the
+nearest segment (`lineSDF = min(lineSDF, d)`); fragments no segment covers keep the nearest
+colour, because nothing is laid over anything in the anti-aliased fringe. `SkeinCanvasHoldTest`
+now gates both levels: no colour selection by coverage at the mark level, and none by distance
+inside the line.
+
+**Also confirmed by the same session, both LFSTEM.1e and BUG-107 live:** the series samples at
+**~56 Hz** (was 12.8 — LFSTEM.1e), `STEM_SOURCE` reports the series driving, and `frame_gpu` p50
+holds **12.55–13.21 ms flat across 90 s** at 4K. Matt: *"Frame rate is smooth."*
+
+---
+
 ### [dev-2026-08-27-170716] LFSTEM.1e — the series is sampled per render frame, not per analysis frame
 
 **Matt's call on BUG-109's fix.** Stem motion was capped at the analysis rate — **12.8 Hz measured**

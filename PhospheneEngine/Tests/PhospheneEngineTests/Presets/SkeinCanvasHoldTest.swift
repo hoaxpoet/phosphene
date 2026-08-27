@@ -101,6 +101,22 @@ struct SkeinCanvasHoldTest {
                 "Skein.metal must route every mark through skeinClaimMark (BUG-108 lay-order rule).")
         #expect(src.contains("claimTau = layTau"),
                 "skeinClaimMark must decide colour on lay time, not coverage (BUG-108).")
+
+        // BUG-108 round 2. The same argmin existed one level down, INSIDE the line: its colour
+        // came from the NEAREST segment (`d < lineSDF`), so two near-equidistant segments of
+        // different pours flipped the colour frame to frame. Matt saw the remainder at 70–80 s,
+        // once enough colour breakpoints had accumulated to make such pairs common. The line now
+        // takes the colour of the FIRST covering segment in a newest→oldest walk — which is the
+        // latest-laid one, by construction, with no comparison to jitter.
+        #expect(src.contains("if (!haveLineCol) {"), """
+                Skein.metal's line layer no longer selects its colour by lay order. If the colour \
+                is taken from the nearest segment again, two near-equidistant segments of \
+                different pours flip it every frame — BUG-108's flicker, one level down.
+                """)
+        #expect(src.contains("lineSDF = min(lineSDF, d);"), """
+                the line's COVERAGE must stay the nearest-segment distance while its COLOUR comes \
+                from lay order — fusing them back together reintroduces the argmin.
+                """)
         #expect(src.contains("st.painterTau"),
                 "Skein.metal fragment must drive the painter from SkeinState.painterTau (Skein.3 audio-modulated clock).")
         // Skein.ENGINE.2: Skein owns its warp/hold fragment (decays the ALPHA wetness channel, holds
