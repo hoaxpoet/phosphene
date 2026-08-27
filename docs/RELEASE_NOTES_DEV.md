@@ -10,6 +10,71 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-163000] BUG-109 instrumented — the session artifact can now answer which source drives the stems
+
+**Instrumentation only. No sampling behaviour changed** — deliberately, because BUG-109's own note
+says not to touch it until the artifact says what is happening.
+
+Two additions, together enough for one local-file session to settle it:
+
+- **`stem_series_pos_s`**, the tail column of `features.csv`: the position the stem series was
+  sampled at, *after* `PlaybackClockSmoother`. `playback_time_s` carries the RAW clock, so it
+  could not distinguish "the series is driving and its position advances" from "the series is
+  driving and its position is stuck" — which is why BUG-109 had to be inferred by counting
+  distinct stem values rather than read off.
+- **`STEM_SOURCE:`** in `session.log` at track change — `series frames=N covers=Xs hop=Yms`, or
+  `live separation (no series for this track)`. This existed only in `os.Logger`, so no session
+  artifact could answer it. A per-track fact that changes what every stem-driven preset reads
+  belongs in the artifact.
+
+The new column is the first OPTIONAL one, which is the single shape that can align when populated
+and shift every later field when absent. `SessionRecorderCSVAlignmentTests` checks both forms and
+asserts the empty case reads as genuinely empty rather than as a number; dropping the separator
+instead of the value fails it (77 fields against 78, and the last field reading `0.00000`).
+
+**What the next session answers.** If `stem_series_pos_s` advances every frame while stem values
+hold, the sampling is fine and the values are not coming from where they should. If the position
+itself holds, the smoother is not being reached. If the column is empty throughout, no series was
+installed and live separation was driving all along — in which case LFSTEM.1's headline claim has
+not been exercised live yet at all.
+
+---
+
+### [dev-2026-08-27-162253] BUG-107 confirmed live — Skein at 4K is flat at ~12.6 ms, and a new question is filed
+
+**Confirmed.** Session `2026-08-27T16-17-34Z`, Skein at 3840×2160 for 78 s:
+
+| t (s) | 0 | 15 | 30 | 45 | 60 | 75 |
+|---|---|---|---|---|---|---|
+| `frame_gpu` p50 | 12.59 | 12.62 | 12.48 | 13.10 | 12.23 | 11.55 |
+
+Flat, mildly decreasing, against **38 → 127 → 170–250 ms** in both pre-fix sessions. The ramp is
+gone and the plateau is ~14× cheaper. `GPU_PRESSURE` 4.6–4.8 %, `ml_forced=0`, thermal nominal.
+
+**Second-order effect worth recording:** the analysis loop now runs at **59.9 Hz** where the
+pre-fix local sessions ran at ~18 Hz. Part of what looked like BUG-087's local-path analysis-rate
+ceiling was the GPU starving the loop at 170–250 ms per frame. It does not close BUG-087 — the
+audio-arrival ceiling is a separate claim — but any rate measured on a GPU-bound session is
+suspect. What remains is not GPU-bound either: `frame_cpu` p50 ~28.5 ms (≈35 fps) against a
+12.6 ms GPU, so the rest is in the wall-clock path, not the shader this fixed.
+
+**Filed, not guessed at: BUG-109.** The same session says something about the stem series that
+does not add up. Over 4,620 analysis frames: the raw 100 ms clock takes **1,010** distinct values,
+the 23.2 ms series offers **~3,360** frames, and `drumsEnergyDev` takes **634**. Stem values change
+*less often than the clock ticks* — which rules the smoother out rather than in, since it is
+monotone and resyncs on every tick, and replaying this session's own clock through it predicts a
+new series index on ~70 % of frames with 0 backward and 0 rewound. So either the smoothed position
+is not reaching `StemFeatureSeries.sample`, or `stems.csv` is not carrying what the series
+produced. Both are wiring questions; neither is established.
+
+⚠ **The reason it took a session to notice is an instrumentation gap I introduced and had already
+flagged once:** the "series installed" line goes to `os.Logger` rather than the session log, and
+the smoothed position is not recorded at all. The next move is to put both in the artifact and
+run one local-file session — **not** to change sampling behaviour before the artifact says what is
+happening.
+
+---
+
 ### [dev-2026-08-27-160607] BUG-107 fixed — Skein recomputed the painter's whole tail for every pixel
 
 **The hoist.** `skeinLineLookupAt` and `skeinPainterPos` depend only on the painter clock, the seed

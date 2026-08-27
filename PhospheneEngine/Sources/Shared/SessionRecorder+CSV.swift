@@ -111,7 +111,7 @@ extension SessionRecorder {
         tonal_phase_fifths,tonal_phase_thirds,tonal_consonance,tonal_tension,harmonic_flux,\
         bass_att,mid_att,treble_att,mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next,\
         spectral_density,spectral_density_slow,spectral_surge,spectral_section_ratio,\
-        spectral_level_rise,waveform_occupancy
+        spectral_level_rise,waveform_occupancy,stem_series_pos_s
 
         """
 
@@ -156,7 +156,8 @@ extension SessionRecorder {
         subsystem: SubsystemTimingSnapshot = .empty,
         renderTiming: RenderTimingSnapshot = .empty,
         rayMarchPass: RayMarchPassTimingSnapshot = .empty,
-        structure: StructuralPrediction = .none
+        structure: StructuralPrediction = .none,
+        stemSeriesPositionSeconds: Double? = nil
     ) -> String {
         let base = String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
                                + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
@@ -241,7 +242,9 @@ extension SessionRecorder {
         // FTR.24 appends `spectral_level_rise`; CHR.3c appends `waveform_occupancy` after it.
         // Both at the END, same positional-parser invariant — main's column stays first so
         // sessions already recorded against it still line up.
-        let densityCols = String(format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",
+        // BUG-109 appended `stem_series_pos_s` after this group, so the row's terminating newline
+        // moved there — this format string deliberately no longer carries one.
+        let densityCols = String(format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f",
                                  fv.spectralDensity, fv.spectralDensitySlow, fv.spectralSurge,
                                  fv.spectralSectionRatio, fv.spectralLevelRise, fv.waveformOccupancy)
         // QG.1 — the remaining FeatureVector primitives presets consume that the
@@ -254,8 +257,16 @@ extension SessionRecorder {
             fv.bassAtt, fv.midAtt, fv.trebleAtt,
             fv.midRel, fv.midDev, fv.trebRel, fv.trebDev,
             fv.midAttRel, fv.trebAttRel, fv.beatsUntilNext)
+        // BUG-109 — the position the stem series was actually sampled at, after
+        // `PlaybackClockSmoother`. EMPTY when no series is installed, so the column distinguishes
+        // "live separation is driving" from "the series is driving but the position is stuck" —
+        // a distinction the raw `playback_time_s` column cannot make, and whose absence is why
+        // BUG-109 had to be inferred from value-change counts rather than read off. New column at
+        // the END, same positional-parser invariant as every column above.
+        let seriesCol = stemSeriesPositionSeconds.map { String(format: ",%.5f\n", $0) } ?? ",\n"
         return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols
             + pulseCols + structCols + pulseCols2 + tonalCols + primitiveCols + densityCols
+            + seriesCol
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {

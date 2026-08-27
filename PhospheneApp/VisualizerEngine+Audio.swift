@@ -384,13 +384,20 @@ extension VisualizerEngine {
     /// file analysed before schema v10) leaves the live path in charge, which is the condition
     /// `runPerFrameStemAnalysis` checks on the other side.
     func applyStemSeriesFrame(atPlaybackSeconds seconds: Double) {
-        guard !currentStemSeries.isEmpty else { return }
+        guard !currentStemSeries.isEmpty else {
+            // BUG-109: record the ABSENCE explicitly. An empty column means "live separation is
+            // driving"; a populated one means the series is. Leaving it stale would make the two
+            // indistinguishable in the artifact, which is the gap that made BUG-109 guesswork.
+            sessionRecorder?.recordStemSeriesPosition(nil)
+            return
+        }
         // LFSTEM.1d — the clock this arrives on moves in 100 ms steps, and the series is on a
         // 23 ms grid. Sampled raw, stem values held for several analysis frames and then jumped
         // four or more grid frames at once, landing on whatever deviation spike was there: the
         // twitchiness Matt saw on Skein. Smoothed, the position advances continuously between
         // ticks and resyncs on each one.
         let smoothed = stemSeriesClock.position(rawSeconds: seconds, now: CACurrentMediaTime())
+        sessionRecorder?.recordStemSeriesPosition(smoothed)
         guard let sampled = currentStemSeries.sample(atPlaybackSeconds: smoothed) else { return }
         pipeline.setStemFeatures(sampled)
         latestBassAttackRatio = sampled.bassAttackRatio

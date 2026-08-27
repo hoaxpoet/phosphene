@@ -48,8 +48,9 @@ reads" are not reads — see the entry.)*
 |---|---|---|---|
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
+| BUG-109 | P2 · open, measured 2026-08-27; cause NOT established | dsp.stem / instrumentation | **Stem values change ~634 times over 78 s where the raw clock ticks 1,010 times and the series grid offers ~3,360 frames.** Values changing LESS often than the clock ticks rules out the smoother (monotone, resyncs every tick; replaying this session's clock predicts a new index on ~70 % of frames). So either the smoothed position is not reaching the sample or `stems.csv` is not carrying what the series produced — a wiring question either way. Blocked on instrumentation: the smoothed position is not recorded and the series-installed line goes to `os.Logger`, not the session artifact. |
 | BUG-108 | P2 · **FIXED 2026-08-27 (Matt chose the lay-order tie-break); PENDING M7** — the rendered-overlap check is not met because the seam to stage one does not exist | preset.skein / render-state | **Skein's overlap colour is `if (cov > bestCover)` — a per-fragment argmax with no tie-break or hysteresis, at eight sites.** On the equal-coverage contour between two differently-coloured marks the winner flips on sub-pixel motion or a sixth-decimal coverage difference, and the flip is a full colour swap because the rule is deliberately discrete (the §colour-mud audit rejected blending). Predates LFSTEM.1; became visible because on-time stem values move the audio-driven radius terms more per frame. Options are a lay-order tie-break (recommended), a narrow blend band (fights the mud rule), or coverage quantisation. |
-| BUG-107 | P2 · **FIXED 2026-08-27 (BUG107.2) — 17.06 → 4.77 ms at one breakpoint, 55.65 → 3.67 ms at the cap, `breakCount` dependence gone; live 4K confirmation owed** | preset.skein / performance | **Skein costs 15.60 ms at 4K in the frame-budget harness and ramps to ~170 ms (≈6 fps) over 50 s of live playback, then plateaus.** Constant resolution, constant preset; GPU memory flat at 5.1 %, `ml_forced=0`, thermal nominal — none of BUG-100's excluded mechanisms. **Measured:** the marks overlay costs 0.75 ms at `breakCount=0` — what the harness binds — and 17.06 ms at 1, rising to 55.65 ms at the 16-breakpoint cap, because `skeinLineLookupAt` scans the ring once per tail frame per fragment (40 × 16 at 8.3 M fragments). The harness has been measuring Skein with its most expensive layer gated off. **Fix: hoist the fragment-invariant lookup out of the per-fragment loop.** The canvas-coverage theory was wrong and is recorded as such. |
+| BUG-107 | P2 · ✅ **FIXED + CONFIRMED LIVE 2026-08-27 (BUG107.2)** — `frame_gpu` p50 flat at ~12.6 ms across 78 s of Skein at 4K, against 38 → 250 ms before | preset.skein / performance | **Skein costs 15.60 ms at 4K in the frame-budget harness and ramps to ~170 ms (≈6 fps) over 50 s of live playback, then plateaus.** Constant resolution, constant preset; GPU memory flat at 5.1 %, `ml_forced=0`, thermal nominal — none of BUG-100's excluded mechanisms. **Measured:** the marks overlay costs 0.75 ms at `breakCount=0` — what the harness binds — and 17.06 ms at 1, rising to 55.65 ms at the 16-breakpoint cap, because `skeinLineLookupAt` scans the ring once per tail frame per fragment (40 × 16 at 8.3 M fragments). The harness has been measuring Skein with its most expensive layer gated off. **Fix: hoist the fragment-invariant lookup out of the per-fragment loop.** The canvas-coverage theory was wrong and is recorded as such. |
 | BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
@@ -231,6 +232,54 @@ Contained to `LocalFilePlaybackProvider`'s start path, but the design needs care
 
 ---
 
+### BUG-109 — Stem values change ~8×/s where the series grid is 43 Hz: the smoothed position may not be reaching the sample (2026-08-27)
+
+**Status: open, measured, cause NOT established. Filed rather than guessed at.**
+
+Found while confirming BUG-107 on session `2026-08-27T16-17-34Z` (local file, Skein, 4K, 78 s,
+analysis at 59.9 Hz). The numbers that do not add up:
+
+| | count |
+|---|---|
+| analysis frames | 4,620 |
+| distinct `playback_time_s` (the RAW 100 ms clock) | **1,010** |
+| distinct `drumsEnergyDev` values | **634** |
+| series frames available over 78 s (23.2 ms grid) | ~3,360 |
+
+**Stem values change fewer times than the raw clock ticks.** That is the part that rules things
+out: `PlaybackClockSmoother` is monotone and resyncs on every tick, so a series sampled through it
+must produce *at least* one new position per tick, and dead reckoning should add more between
+ticks. Replaying this session's own clock through the shipped smoother predicts a new series index
+on ~70 % of frames (0 backward, 0 rewound). The recorded values instead change about once per
+121 ms — which is the raw clock's tick, not the smoothed position.
+
+So either the smoothed position is not reaching `StemFeatureSeries.sample`, or the values written
+to `stems.csv` are not the ones the series produced. **Both are wiring questions, not tuning
+questions, and neither is established.**
+
+⚠ **The reason this took a session to notice is an instrumentation gap I introduced and flagged
+once already:** the "series installed" line goes to `os.Logger`, not the session log, and the
+SMOOTHED position is not recorded at all. `features.csv` carries the raw clock only. A per-track
+surface that changes what every stem-driven preset reads should be visible in the artifact.
+
+**Next step — instrument before theorising. ✅ DONE 2026-08-27 (BUG109.1), awaiting one session.**
+`features.csv` gained `stem_series_pos_s` — the position the series was sampled at, after the
+smoother, EMPTY when no series is installed — and `session.log` gained a `STEM_SOURCE:` line at
+track change naming the source and the series' size. No sampling behaviour was changed.
+
+**What the next local-file session decides, with no further inference:**
+
+| observation | conclusion |
+|---|---|
+| column empty throughout | no series installed; live separation drove everything, and LFSTEM.1's claim is untested live |
+| position advances per frame, stem values hold | sampling is fine; the values reaching `stems.csv` are not the series' |
+| position holds with the raw clock | the smoother is not being reached at the sample site |
+
+**Related:** LFSTEM.1c (the sampling), LFSTEM.1d (the smoother, whose own replay is clean on this
+session's clock), BUG-107 (found during its live confirmation, unrelated mechanism).
+
+---
+
 ### BUG-108 — FIXED (pending M7): Skein's overlap colour was a per-fragment argmax with no tie-break, so it flickered where two coloured marks cross (2026-08-27)
 
 **Status: fixed 2026-08-27 — Matt chose (a), the lay-order tie-break — and PENDING HIS M7.**
@@ -318,7 +367,27 @@ session, unrelated mechanism), Skein.4.1 / the §colour-mud audit (why the rule 
 
 ### BUG-107 — FIXED (BUG107.2, pending live confirmation): the fragment recomputed the painter's whole tail for every pixel (2026-08-27)
 
-**Status: fixed 2026-08-27 — the hoist landed; live 4K confirmation owed.** `skeinLineLookupAt`
+**Status: ✅ FIXED AND CONFIRMED LIVE 2026-08-27.** Session `2026-08-27T16-17-34Z`, Skein at
+3840×2160 for 78 s:
+
+| t (s) | 0 | 15 | 30 | 45 | 60 | 75 |
+|---|---|---|---|---|---|---|
+| `frame_gpu` p50 | 12.59 | 12.62 | 12.48 | 13.10 | 12.23 | 11.55 |
+
+**Flat, mildly decreasing, against 38 → 127 → 170–250 ms in both pre-fix sessions.** The ramp is
+gone and the plateau is ~14× cheaper. `GPU_PRESSURE` 4.6–4.8 %, `ml_forced=0`, thermal nominal.
+
+**A second-order effect worth recording:** the analysis loop now runs at **59.9 Hz** where the
+pre-fix local sessions ran at ~18 Hz. Part of what looked like BUG-087's local-path analysis-rate
+ceiling was the GPU starving the loop at 170–250 ms per frame. That does not close BUG-087 — the
+audio-arrival ceiling is a separate claim — but any rate measured on a GPU-bound session is
+suspect.
+
+**What is left is not GPU-bound:** `frame_cpu` p50 ~28.5 ms (≈35 fps) against a 12.6 ms GPU, so
+the remaining gap is in the wall-clock path (which includes the blocking `currentDrawable` wait),
+not in the shader this fixed.
+
+**Original status: fixed 2026-08-27 — the hoist landed; live 4K confirmation owed.** `skeinLineLookupAt`
 and `skeinPainterPos` both depend only on the painter clock, the seed phases and the breakpoint
 ring — **never on fragment position** — and both were being recomputed for all 41 tail samples of
 every one of 8.3 M fragments. `SkeinState.resolveTail` now produces those 41 samples once per
@@ -429,7 +498,7 @@ still ramps (this is Skein's own, independent of stems) or does not (it was the 
 - [x] The ramp reproduced on the LFSTEM.1d build, same preset and resolution — 38 ms at t=14 s → 127 ms at t=40 s → ~170–250 ms, essentially identical to the pre-fix session. **The stem staircase was not inflating it.**
 - [x] Cost measured as a function of the state that drives it, offline and repeatably: `SkeinLineCostTests`, the table above.
 - [x] **The hoist implemented** (BUG107.2), with the same harness showing the `breakCount` dependence gone and the 16-breakpoint case at 3.67 ms — *below* the 1-breakpoint floor of 4.77 ms.
-- [ ] Re-measured at 4K **live**, not only in the harness — the live total (~170 ms) is the marks overlay plus the base pass, warp, comp/sheen and presentation, and only the overlay is measured here.
+- [x] Re-measured at 4K **live** — session `2026-08-27T16-17-34Z`, `frame_gpu` p50 flat at 11.55–13.10 ms across 78 s of Skein, against 38 → 250 ms before.
 - [ ] **`PresetFrameBudgetTests` gains a note, or a mechanism, for state-gated layers.** It reports 15.60 ms for a preset that delivers ~6 fps in production; that gap is the harness's, not Skein's, and any preset with runtime-state-gated work has it.
 
 **Related:** LFSTEM.1d (the twitchiness in the same session, understood and fixed), BUG-100 (closed
