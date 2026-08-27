@@ -8,7 +8,6 @@
   "fragment_function": "aurora_fragment",
   "vertex_function": "fullscreen_vertex",
   "decay": 0.945,
-  "stem_affinity": {},
   "audio_routes": [
     { "route": "star_beat_twinkle", "primitive": "barPhase01", "kind": "accent" },
     { "route": "star_beat_twinkle", "primitive": "pulseAmp01", "kind": "gate" },

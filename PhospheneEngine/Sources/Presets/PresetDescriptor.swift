@@ -194,6 +194,11 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     // MARK: - Feedback Parameters
 
     /// Beat accent zoom (keep smaller than baseZoom).
+    ///
+    /// Defaults to 0, as do `baseZoom`, `decay`, `baseRot` and `beatRot`: an omitted
+    /// key means NO motion, not a surprise trail. Every preset that consumes these
+    /// (the feedback and mv_warp passes) declares them explicitly — verified at
+    /// RECON.23 and pinned by the default assertions in `PresetTests`.
     public let beatZoom: Float
     /// Beat accent rotation.
     public let beatRot: Float
@@ -600,11 +605,11 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         naturalCycleSeconds = try container.decodeIfPresent(Float.self, forKey: .naturalCycleSeconds)
         description      = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         author           = try container.decodeIfPresent(String.self, forKey: .author) ?? ""
-        beatZoom         = try container.decodeIfPresent(Float.self, forKey: .beatZoom) ?? 0.03
-        beatRot          = try container.decodeIfPresent(Float.self, forKey: .beatRot) ?? 0.01
-        baseZoom         = try container.decodeIfPresent(Float.self, forKey: .baseZoom) ?? 0.12
-        baseRot          = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0.03
-        decay            = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
+        beatZoom         = try container.decodeIfPresent(Float.self, forKey: .beatZoom) ?? 0
+        beatRot          = try container.decodeIfPresent(Float.self, forKey: .beatRot) ?? 0
+        baseZoom         = try container.decodeIfPresent(Float.self, forKey: .baseZoom) ?? 0
+        baseRot          = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0
+        decay            = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0
         beatSensitivity  = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
         meshThreadCount  = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
