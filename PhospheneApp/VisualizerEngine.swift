@@ -210,6 +210,21 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// See `PlaybackClockSmoother`.
     var stemSeriesClock = PlaybackClockSmoother()
 
+    /// LFSTEM.1e — guards the three fields the render frame samples with: the series, the
+    /// smoother, and the clock the analysis frame writes.
+    ///
+    /// Sampling moved to the render frame (BUG-109: the analysis frame capped stem motion at
+    /// 12.8 Hz while the renderer drew at 59.9), so these are now touched from two threads —
+    /// the analysis frame writes `latestRawPlaybackSeconds` and nothing else; the render frame
+    /// reads it and owns the smoother.
+    let stemSeriesLock = NSLock()
+
+    /// Most recent playback clock from the analysis frame, for the render frame to sample with.
+    var latestRawPlaybackSeconds: Double = 0
+
+    /// Last position the series was sampled at (diagnostics — the `stem_series_pos_s` column).
+    var latestStemSeriesPosition: Double?
+
     /// Gossamer wave-pool state — allocated when the Gossamer preset is active,
     /// nil otherwise. Tick closure and waveBuffer are wired into the render pipeline
     /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.

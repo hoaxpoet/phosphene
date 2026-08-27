@@ -66,6 +66,11 @@ extension VisualizerEngine {
                 postProcessMs: postMs
             )
         }
+        // LFSTEM.1e — sample the pre-analysed stem series once per RENDER frame. Wired here,
+        // once, rather than per preset: it is engine state, not preset state, and it is a no-op
+        // on every track without a series (streaming, cache miss, pre-schema-v10 entries).
+        pipe.setPerFrameStemPublish { [weak self] in self?.publishStemSeriesFrame() }
+
         setupDrawableLifecycleWatchdog(pipe: pipe, recorder: recorder)
     }
 

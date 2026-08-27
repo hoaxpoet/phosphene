@@ -625,10 +625,15 @@ extension VisualizerEngine {
         // LFSTEM.1 — clear unconditionally here, install on the cache-hit branch below. Same
         // shape as the family series above and for the same reason: a track-scoped surface that
         // only one path clears leaks the previous track's data into every path that does not.
-        currentStemSeries = .empty
-        // LFSTEM.1d — forget the previous track's clock history, or the first frame of the new
-        // track dead-reckons from where the old one stopped.
-        stemSeriesClock.reset()
+        stemSeriesLock.withLock {
+            currentStemSeries = .empty
+            // LFSTEM.1d — forget the previous track's clock history, or the first frame of the
+            // new track dead-reckons from where the old one stopped.
+            stemSeriesClock.reset()
+            latestRawPlaybackSeconds = 0
+            latestStemSeriesPosition = nil
+        }
+        sessionRecorder?.recordStemSeriesPosition(nil)
 
         // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).
         if let identity { logWiringStemCacheLookup(identity: identity) }
@@ -666,7 +671,7 @@ extension VisualizerEngine {
             // LFSTEM.1 — a pre-analysed local file: stems now come from the series at the
             // playback second, not from live separation ~2.5 s behind it. `.empty` for
             // streaming and for entries written before schema v10, which keeps the live path.
-            currentStemSeries = cached.stemFeatureSeries
+            stemSeriesLock.withLock { currentStemSeries = cached.stemFeatureSeries }
             logStemSource(cached.stemFeatureSeries)
             // DYN.1c: this track's own loudness distribution as the surge source. Non-nil
             // only for a local file (the only path that decodes the whole thing); nil

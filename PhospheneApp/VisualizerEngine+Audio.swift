@@ -277,7 +277,10 @@ extension VisualizerEngine {
         // series (Layer 5a) by live playback position and write it into the
         // live StemFeatures (floats 48–55). Empty series → `.zero` (cleared on
         // track change), so this is inert for every non-orchestral track.
-        applyStemSeriesFrame(atPlaybackSeconds: mir.elapsedSeconds)
+        // LFSTEM.1e — the analysis frame no longer samples the series; it only publishes the
+        // playback clock the render frame will sample WITH. Sampling here capped stem motion at
+        // the analysis rate (12.8 Hz measured, BUG-109) even though the series carries 43 Hz.
+        stemSeriesLock.withLock { latestRawPlaybackSeconds = mir.elapsedSeconds }
         let family = InstrumentFamilyActivity.sample(
             currentFamilySeries,
             atPlaybackSeconds: mir.elapsedSeconds,
@@ -375,32 +378,29 @@ extension VisualizerEngine {
     /// lag, and every stem-driven preset was running ≈5.4 s behind unnoticed.
     /// Latency is a cost to be minimised against inference duty, not a free
     /// parameter justified by section persistence.
-    /// LFSTEM.1c — publish this playback second's pre-analysed stem frame, when the track has
-    /// a series.
+    /// LFSTEM.1e — publish this RENDER frame's stems from the pre-analysed series.
     ///
-    /// A local file that was analysed ahead of time reads its stems from the second it is ON,
-    /// rather than from audio that has already gone past — live separation is late by
-    /// construction (a 2 s window plus inference). An empty series (streaming, a cache miss, a
-    /// file analysed before schema v10) leaves the live path in charge, which is the condition
-    /// `runPerFrameStemAnalysis` checks on the other side.
-    func applyStemSeriesFrame(atPlaybackSeconds seconds: Double) {
-        guard !currentStemSeries.isEmpty else {
-            // BUG-109: record the ABSENCE explicitly. An empty column means "live separation is
-            // driving"; a populated one means the series is. Leaving it stale would make the two
-            // indistinguishable in the artifact, which is the gap that made BUG-109 guesswork.
-            sessionRecorder?.recordStemSeriesPosition(nil)
-            return
+    /// Called once per rendered frame from `RenderPipeline`, before the frame snapshots its
+    /// stems. Sampling used to happen on the analysis frame, which capped stem motion at the
+    /// analysis rate — measured at **12.8 Hz** on session `2026-08-27T16-53-29Z` while the
+    /// renderer drew at 59.9 Hz and the series' own grid is 43 Hz (BUG-109). Live separation had
+    /// to publish there because it had nothing new between analysis frames; a pre-analysed
+    /// series is an array lookup and has no such bound.
+    ///
+    /// Runs on the render thread. Everything it touches — the raw clock, the smoother, the
+    /// series — is behind `stemSeriesLock`, and the analysis frame only ever writes the clock.
+    func publishStemSeriesFrame() {
+        let sampled: StemFeatures? = stemSeriesLock.withLock {
+            guard !currentStemSeries.isEmpty else { return nil }
+            let smoothed = stemSeriesClock.position(
+                rawSeconds: latestRawPlaybackSeconds, now: CACurrentMediaTime())
+            latestStemSeriesPosition = smoothed
+            return currentStemSeries.sample(atPlaybackSeconds: smoothed)
         }
-        // LFSTEM.1d — the clock this arrives on moves in 100 ms steps, and the series is on a
-        // 23 ms grid. Sampled raw, stem values held for several analysis frames and then jumped
-        // four or more grid frames at once, landing on whatever deviation spike was there: the
-        // twitchiness Matt saw on Skein. Smoothed, the position advances continuously between
-        // ticks and resyncs on each one.
-        let smoothed = stemSeriesClock.position(rawSeconds: seconds, now: CACurrentMediaTime())
-        sessionRecorder?.recordStemSeriesPosition(smoothed)
-        guard let sampled = currentStemSeries.sample(atPlaybackSeconds: smoothed) else { return }
+        guard let sampled else { return }
         pipeline.setStemFeatures(sampled)
         latestBassAttackRatio = sampled.bassAttackRatio
+        sessionRecorder?.recordStemSeriesPosition(latestStemSeriesPosition)
     }
 
     func runPerFrameStemAnalysis(fps: Float) {
@@ -410,7 +410,7 @@ extension VisualizerEngine {
         //
         // The separator keeps running for now; retiring it on this path is LFSTEM.2, kept
         // separate on purpose (this increment's risk is alignment, that one's is removal).
-        if !currentStemSeries.isEmpty { return }
+        if stemSeriesLock.withLock({ !currentStemSeries.isEmpty }) { return }
 
         var stems: [[Float]] = []
         var sepTime: CFAbsoluteTime = 0

@@ -1,8 +1,8 @@
-// StemSeriesWiringTests — LFSTEM.1c wiring gate.
+// StemSeriesWiringTests — LFSTEM.1c/1e wiring gate.
 //
 // The series' arithmetic is tested in the engine suite (`StemFeatureSeriesTests`, alignment) and
 // its persistence in `PersistentStemCacheTests`. What cannot be tested there is the WIRING: the
-// engine needs Metal, a session and a decoded file to reach `applyStemSeriesFrame`, so the
+// engine needs Metal, a session and a decoded file to reach `publishStemSeriesFrame`, so the
 // invariants below are asserted against the source shape — the same discriminator
 // `TrackChangePresetResetRegressionTests` uses for the BUG-044 complementary-path rule.
 //
@@ -21,7 +21,7 @@ import Testing
 
 @testable import PhospheneApp
 
-@Suite("Stem series wiring (LFSTEM.1c)")
+@Suite("Stem series wiring (LFSTEM.1c/1e)")
 struct StemSeriesWiringTests {
 
     private func source(_ relativePath: String) -> String? {
@@ -36,21 +36,43 @@ struct StemSeriesWiringTests {
         return src
     }
 
-    /// Invariant 1 — the live path stands down when a series is installed.
-    @Test("Live per-frame stem analysis returns early when a series is installed")
+    /// Invariant 1 — the live path stands down when a series is installed, and the series is
+    /// sampled on the RENDER frame rather than the analysis frame.
+    ///
+    /// The render-frame call site is the BUG-109 fix: sampling on the analysis frame capped stem
+    /// motion at 12.8 Hz (measured) while the renderer drew at 59.9 and the series carries 43 Hz.
+    /// Live separation had to publish on the analysis frame because it had nothing new between
+    /// them; a pre-analysed series is an array lookup and has no such bound.
+    @Test("The live path stands down, and the series is sampled per RENDER frame")
     func test_livePathStandsDownForASeries() {
-        guard let audio = source("PhospheneApp/VisualizerEngine+Audio.swift") else { return }
-        #expect(audio.contains("if !currentStemSeries.isEmpty { return }"), """
-                runPerFrameStemAnalysis must early-return when currentStemSeries is non-empty. \
-                Without it both it and applyStemSeriesFrame publish StemFeatures every frame and \
-                the last writer wins.
+        guard let audio = source("PhospheneApp/VisualizerEngine+Audio.swift"),
+              let draw = source("PhospheneEngine/Sources/Renderer/RenderPipeline+Draw.swift"),
+              let initHelpers = source("PhospheneApp/VisualizerEngine+InitHelpers.swift")
+        else { return }
+
+        #expect(audio.contains("if stemSeriesLock.withLock({ !currentStemSeries.isEmpty }) { return }"), """
+                runPerFrameStemAnalysis must early-return when a series is installed. Without it \
+                both it and publishStemSeriesFrame publish StemFeatures and the last writer wins.
                 """)
-        #expect(audio.contains("func applyStemSeriesFrame(atPlaybackSeconds"),
-                "The series read path must exist as its own helper on the analysis frame.")
-        #expect(audio.contains("applyStemSeriesFrame(atPlaybackSeconds: mir.elapsedSeconds)"), """
-                The series must be sampled by PLAYBACK position (mir.elapsedSeconds) — the whole \
-                point is reading the second playback is on, not the one analysis reached.
+        #expect(audio.contains("func publishStemSeriesFrame()"),
+                "The series read path must exist as its own helper.")
+        #expect(initHelpers.contains("setPerFrameStemPublish"), """
+                publishStemSeriesFrame must be wired to the RENDER frame. Sampling on the \
+                analysis frame is BUG-109: it caps stem motion at the analysis rate.
                 """)
+        #expect(audio.contains("latestRawPlaybackSeconds = mir.elapsedSeconds"), """
+                The analysis frame must publish the PLAYBACK clock for the render frame to \
+                sample with — the point is reading the second playback is on.
+                """)
+
+        // Ordering: the publish must precede the frame's stem snapshot, or it lands a frame late.
+        if let publish = draw.range(of: "perFrameStemPublish }?()"),
+           let snapshot = draw.range(of: "let stemFeatures   = stemFeaturesLock.withLock") {
+            #expect(publish.lowerBound < snapshot.lowerBound, """
+                    the per-frame stem publish runs AFTER the frame snapshots stemFeatures, so \
+                    this frame draws the previous frame's stems — an off-by-one-frame lag.
+                    """)
+        }
     }
 
     /// Invariant 2 — cleared on every track change, installed on the one path that has data.
