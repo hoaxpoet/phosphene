@@ -10,6 +10,52 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-180955] BUG-102 resolved — both disputed references re-annotated, and they hid opposite truths
+
+BeatBench's references for `money` and `bleed` both carried `status: metrical_review` — the
+pipeline's own unresolved-disagreement flag — with both independent backends saying the taps were
+an octave off, and Matt saying he would not trust his tapping on them. Everything scored against
+those two tracks was uncitable, including the whole of suite 4.
+
+Both have been re-tapped at the quarter note over 90 s spans, which is what every other track in
+the set uses (87–99 s). **The two results point in opposite directions, which is the finding.**
+
+- **bleed → `confirmed`.** 114.67 BPM, meter 4 at ratio 3.96, both backends AGREE (librosa 0.919,
+  madmom 0.942), extended to the full track by madmom. Re-scored, the grid goes from
+  F 0.61 / CMLt **0.03** / AMLt 0.84 to **F 0.99 / CMLt 1.00 / AMLt 1.00**. Phosphene was right all
+  along; suite 4 was never a tracking problem. It also resolves a contradiction the repo had been
+  carrying, where BUG-076's body called bleed's ~115 correct against three sources while the
+  ground truth asserted 226.72.
+- **money → `arbitrated_taps`.** 121.06 BPM, meter 7 at ratio 6.95, ratio ×1.01 against both
+  backends — so the octave error is gone. What remained was a systematic −45 ms *phase* offset
+  against both backends (which agree with each other to 2.4 ms). Not the rig: bleed was tapped in
+  the same session on the same calibration at −13.6 / −0.4 ms. Matt's call is that the taps are
+  the truth — a visualizer should fire where a listener feels the pulse, not where an onset
+  detector does. Re-scored, money goes the OTHER way: AMLt **0.88 → 0.43**. The old half-rate
+  reference made the grid's 116.19 look like a clean ×1.91 octave, which AMLt forgives by design;
+  against the true 121.06 it is a plain 4 % tempo error. **Filed as BUG-107**, unfixed — the
+  `dsp.beat` artifact obligations are deliberately not yet met.
+
+**Tooling.** `reconcile.py` gained the arbitration path BUG-102's own fix note called for and the
+repo lacked: decisions live in `Tests/Fixtures/beatbench/arbitrations.json` with their reasoning
+and are stamped into the ground truth as `status: arbitrated_<decision>`. It never invents
+timings — `decision: taps` keeps exactly what was tapped — so a disagreement no re-tap can settle
+is recorded with provenance instead of hand-edited into the truth. Its `PHOSPHENE_GRID` context
+dict was also a stale 2026-07-27 preview-clip snapshot listing bleed at 174.6 and money at 123.2
+against live readings of 115.00 and 116.19 — a third apparent metrical level embedded in the very
+artifacts under dispute; re-measured for the nine ground-truthed tracks.
+
+**Suite 2's ratified baseline must now be quoted as AMLt 1.00 / 1.00 / 0.43 / 0.75 / 0.21.** New
+baseline: `docs/diagnostics/BEATBENCH_BASELINE_2026-08-27.md`. Suite 1 holds at F 0.97.
+
+**One thing the fixed references made visible: downbeats.** Only billie_jean has usable downbeat
+F (0.90), against bleed 0.08, solsbury_hill 0.13, money 0.21, bohemian_rhapsody 0.25,
+take_five 0.26. Consistent with FT.3's `BarLineEstimator` being built and not wired, and it
+matters because D-205 makes meter/downbeat a hard gate — Nacre's and Glaze's downbeat pushes are
+their connection layer.
+
+---
+
 ### [dev-2026-08-26-225906] LFSTEM.1 — local-file stems arrive on time instead of 2.5 s late
 
 **Code-complete; the Skein M7 is owed before this can be called done.**
