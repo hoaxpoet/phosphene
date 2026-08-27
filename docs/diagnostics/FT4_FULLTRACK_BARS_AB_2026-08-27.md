@@ -71,3 +71,60 @@ Not proposals, just what the evidence says any next attempt must handle:
 The wiring stays behind `PHOSPHENE_FULLTRACK_BARS` (default OFF, no shipped behaviour change).
 It is the sanctioned one-increment A/B path (plan §4), and it makes re-running this measurement
 after any of the above a single command rather than a re-implementation.
+
+---
+
+# FT.4.1 — the estimator alone, on the existing 30 s beats
+
+Matt's call after the FT.4 result: isolate the two halves. The flag is split —
+`PHOSPHENE_FULLTRACK_DECODE` (tiler) and `PHOSPHENE_BARLINE` (estimator) are now independent;
+`PHOSPHENE_FULLTRACK_BARS` still sets both so the FT.4 arm stays reproducible.
+
+**Verdict: ADOPT the estimator. Do not adopt the tiler.** Every failure in FT.4 belonged to the
+tiler; every win belonged to the estimator, and unbundling recovers the wins at zero cost to the
+beat layer.
+
+## Arm C — `PHOSPHENE_BARLINE=1`, beats unchanged
+
+| track | beat F OFF→C | CMLt OFF→C | meter t/g OFF→C | downbeat F OFF→C |
+|---|---|---|---|---|
+| billie_jean | 0.97 → **0.97** | 0.97 → 0.97 | 4/4 → 4/4 | **0.90 → 0.90** |
+| take_five | 0.99 → **0.99** | 1.00 → 1.00 | 5/**2** → 5/**5** | **0.26 → 0.97** |
+| solsbury_hill | 0.97 → **0.97** | 1.00 → 1.00 | 7/1 → 7/1 | 0.13 → declined |
+| bleed | 0.99 → **0.99** | 1.00 → 1.00 | 4/4 → 4/1 | 0.08 → declined |
+| money | 0.44 → **0.44** | 0.43 → 0.43 | 7/1 → 7/1 | 0.21 → declined |
+| pyramid_song | 0.52 → **0.52** | 0.75 → 0.75 | —/1 → —/1 | — |
+| yyz | 0.58 → **0.58** | 0.21 → 0.21 | —/2 → —/1 | 0.15 → declined |
+| bohemian_rhapsody | 0.47 → **0.47** | 0.48 → 0.48 | 4/2 → 4/1 | 0.25 → declined |
+| clair_de_lune | 0.14 → **0.14** | 0.00 → 0.00 | —/3 → —/1 | 0.00 → declined |
+
+**Every beat-layer figure is identical to OFF, on all nine tracks** — F, Cemgil, CMLt, AMLt. The
+estimator never touches `grid.beats`, and without the tiler nothing else does either. Suite-1
+no-regression holds exactly, not approximately.
+
+## It reproduces FT.3's figure that the bundled arm destroyed
+
+**Answers 2 of 9, gets both right, declines 7.**
+
+- **take_five** — meter 5/**2** → 5/**5**, downbeat F 0.26 → **0.97**. The odd meter the downbeat
+  head collapses is recovered, near-perfectly. Better than the tiled arm's 0.68.
+- **billie_jean** — answers 4/4 on the right phase, **downbeat F 0.90 preserved**. In the bundled
+  arm this same estimator answered wrongly here and dropped it to 0.37. **That failure was the
+  tiler moving the beats underneath it, not a mis-calibrated threshold.** FT.4's first
+  disqualifying finding is therefore withdrawn: the threshold was not the problem.
+
+## What the 7 declines actually cost
+
+They replace a *wrong* bar with *no* bar. The declined tracks had downbeat F of 0.08–0.26 — at or
+below what a random bar-1 guess scores — so nothing of value is lost. One honest caveat: on bleed
+and bohemian_rhapsody the OFF arm had the **meter** right (4) while the phase was wrong, and a
+decline gives up the meter too. For a consumer needing only `beatsPerBar` and not phase, that is a
+small regression. D-205 makes bar *position* the hard gate because Nacre's and Glaze's downbeat
+pushes consume phase, so the trade is the right way round — but it is a trade, not a free win.
+
+## Consequence for the tiler and for BUG-107
+
+The tiler stays unwired and unadopted: on bleed it moved the grid 115.00 → 123.62 against a truth
+of 114.67. That is a separate finding from BUG-107's ~30 s cap — **more context is available and
+measurably makes beat tracking worse**, so BUG-107 should not be "fixed" by switching the decode
+on. Any future attempt owns that number first.

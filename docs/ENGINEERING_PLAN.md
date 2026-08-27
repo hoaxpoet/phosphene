@@ -63,6 +63,39 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment FT.4.1 — the estimator alone wins; the tiler was the whole regression ✅ (2026-08-27)
+
+Matt's call after FT.4: isolate the two halves. The flag splits into
+`PHOSPHENE_FULLTRACK_DECODE` (tiler) and `PHOSPHENE_BARLINE` (estimator);
+`PHOSPHENE_FULLTRACK_BARS` still sets both so FT.4's arm stays reproducible. Report appended to
+[`FT4_FULLTRACK_BARS_AB_2026-08-27.md`](diagnostics/FT4_FULLTRACK_BARS_AB_2026-08-27.md).
+
+**Every beat-layer figure is identical to OFF on all nine tracks** — F, Cemgil, CMLt, AMLt. The
+estimator never touches `grid.beats`, and without the tiler nothing else does. Suite-1
+no-regression holds exactly.
+
+**It reproduces FT.3's figure that the bundled arm destroyed: answers 2 of 9, both right,
+declines 7.** take_five goes meter 5/**2** → 5/**5** with downbeat F **0.26 → 0.97** — better
+than the tiled arm's 0.68. billie_jean answers 4/4 on the right phase with **downbeat F 0.90
+preserved**, where the bundled arm had dropped it to 0.37.
+
+**FT.4's first disqualifying finding is therefore WITHDRAWN.** The threshold was not
+mis-calibrated; the tiler was moving the beats underneath the estimator. FT.4's second finding
+stands and hardens: the tiler moved bleed's grid 115.00 → 123.62 against a truth of 114.67.
+
+**Honest cost of the 7 declines:** they trade a *wrong* bar for *no* bar, and the declined tracks
+scored 0.08–0.26 — at or below a random bar-1 guess — so little is lost. But on bleed and
+bohemian_rhapsody the OFF arm had the *meter* right while the phase was wrong, and a decline
+gives up the meter too. D-205 makes bar *position* the hard gate because Nacre's and Glaze's
+pushes consume phase, so the trade is the right way round — a trade, not a free win.
+
+**Consequence for BUG-107:** more context is available and measurably makes beat tracking worse,
+so BUG-107 must not be "fixed" by switching the full-track decode on. Any future attempt owns
+the 115.00 → 123.62 number first.
+
+**Still not shipped.** `PHOSPHENE_BARLINE` defaults OFF. Production adoption is the next
+increment and needs Matt: it changes what certified presets receive for bar position.
+
 ### Increment FT.4 — full-track decode + BarLineEstimator, A/B'd and NOT adopted ⏸ (2026-08-27)
 
 Matt approved wiring FT.3's `BarLineEstimator` with decline (2026-08-27), on the strength of its
