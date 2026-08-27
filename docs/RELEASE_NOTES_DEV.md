@@ -12,7 +12,8 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ### [dev-2026-08-27-185933] LFSTEM.2 — live separation retired on tracks that have a series
 
-**Implemented; the live before/after is owed.** A track with a pre-analysed series had no use for
+**Complete — and the payoff is not the one this was justified by; see the measurement below.** A track
+with a pre-analysed series had no use for
 live separation — `runPerFrameStemAnalysis` already stood down for it at LFSTEM.1c — so a 142 ms
 MPSGraph job was running every 2 s on the same GPU the renderer draws with, and its output was
 computed and discarded. `separationSupersededBySeries()` now skips the dispatch.
@@ -41,7 +42,20 @@ start from a list rather than a grep:
 Suppressions are counted into `GPU_PRESSURE` as `stem_suppressed`, so a session shows zero
 `STEM_SEPARATION` lines against a rising count — the saving measured rather than asserted.
 
-⚠ **Owed: a 4K local-file session** for the `frame_gpu_ms` before/after this increment claims.
+**The before/after** (`2026-08-27T19-51-09Z` against `2026-08-27T18-17-50Z` — same file, same preset,
+same 3840×2160). The suppression itself is exactly as designed: zero `STEM_SEPARATION` lines,
+`stem_suppressed` climbing 1 → 56 over 110 s, `ml_last=none`, no `stems/` directory.
+
+⚠ **The frame-time saving did not appear.** `frame_gpu_ms` p50 **12.95 → 13.96 ms**, `frame_cpu_ms` p50
+**26.93 → 28.11 ms** — the wrong direction, and within session-to-session variance (p90 15.04 → 15.10 ms).
+Removing a 142 ms job every 2 s did not move the median frame, because MPSGraph dispatches on its own
+queue and BUG-110 had already left ~3.7 ms of headroom for it to interleave into. That prediction is
+recorded as wrong rather than quietly dropped.
+
+**What did move: the GPU working set is flat at 474 MB (3.9 %) where it climbed 549 → 586 MB before** —
+the eviction dimension BUG-100 named. Hitches over 33 ms fell 0.17/s → 0.08/s, but that is 15 frames
+against 8 and is not enough to claim. The increment stands on the working set, the dead compute, and
+removing BUG-086's latency class by mechanism.
 
 ---
 

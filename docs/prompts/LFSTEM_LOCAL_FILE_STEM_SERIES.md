@@ -145,7 +145,7 @@ folding them together would mean a single M7 that cannot tell "the series is mis
 ## 9. LFSTEM.2 — retire live separation on the local-file path
 
 **Decided 2026-08-26 (Matt). Runs after LFSTEM.1 has landed and been M7'd, not alongside it.**
-**✅ IMPLEMENTED 2026-08-27 — the live 4K before/after is owed.**
+**✅ COMPLETE 2026-08-27 — before/after measured; the predicted frame-time payoff did NOT appear.**
 
 **The three consumers, checked before removing anything, as this section required:**
 
@@ -171,14 +171,20 @@ exactly as it was; gating on "is this a local file" would strand those tracks wi
 all. `StemSeriesWiringTests` asserts the gate, its condition, and that the suppression count
 reaches the artifact.
 
-**Owed:** the before/after this section demands — a 4K local-file session showing the
-`frame_gpu_ms` delta, with zero `STEM_SEPARATION` lines and a rising `stem_suppressed`.
+**Measured** (`2026-08-27T19-51-09Z` vs `2026-08-27T18-17-50Z`; same file, preset and 3840×2160):
+suppression works — zero `STEM_SEPARATION` lines, `stem_suppressed` 1 → 56 over 110 s, `ml_last=none`,
+no `stems/` dump. But `frame_gpu_ms` p50 went **12.95 → 13.96 ms** and `frame_cpu_ms` p50 26.93 → 28.11 —
+the wrong direction and inside session variance (p90 15.04 → 15.10). **The bullet below claiming this lands
+on the 4K frame budget is wrong for the median frame** and is left standing, marked, rather than deleted:
+MPSGraph runs on its own queue and the GPU had ~3.7 ms of headroom after BUG-110, so the job interleaved
+instead of displacing render work. The real, repeatable saving is the **GPU working set: flat 474 MB against
+a climbing 549 → 586 MB** — which is the eviction dimension BUG-100 named, not the frame budget.
 
 Once a local file plays from a pre-analysed series, the 2 s live separation timer on that path is
 computing something nothing reads. Stopping it is worth an increment of its own for what it gives
 back, not just for the tidiness:
 
-- **A 142 ms MPSGraph job every 2 s comes off the GPU** for the whole of local playback. That is
+- ⚠ **FALSIFIED for the median frame (see above).** **A 142 ms MPSGraph job every 2 s comes off the GPU** for the whole of local playback. That is
   the same GPU the renderer is on, and it lands directly on the 4K frame budget that BUG-100 and
   BUG-106 have both been circling. **The payoff must be measured, not asserted** — a 4K local-file
   session before and after, `frame_gpu_ms` p50 either side, on the same file and preset.
