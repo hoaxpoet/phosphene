@@ -1,5 +1,5 @@
 // SkeinState+TailResolve — the per-frame tail resolution the fragment used to do per pixel
-// (BUG-107).
+// (BUG-110).
 //
 // Split from `SkeinState.swift` at its 300-line type-body cap. Pure, static and side-effect free:
 // given a header and the breakpoint ring, produce the `tailSamples` painter states the marks
@@ -11,7 +11,7 @@ import simd
 
 extension SkeinState {
 
-    // MARK: - Tail resolution (BUG-107)
+    // MARK: - Tail resolution (BUG-110)
 
     /// Resolve the `tailSamples` painter states the fragment used to recompute per pixel.
     ///
