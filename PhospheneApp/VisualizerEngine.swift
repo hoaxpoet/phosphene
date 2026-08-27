@@ -203,6 +203,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// session's album art across every track of the next.
     var currentStemSeries: StemFeatureSeries = .empty
 
+    /// LFSTEM.1d — continuous playback position for reading `currentStemSeries`.
+    ///
+    /// `mir.elapsedSeconds` moves in 100 ms steps on the local-file path (measured: 39 % of
+    /// analysis frames do not advance it at all), which turned a 23 ms series into a staircase.
+    /// See `PlaybackClockSmoother`.
+    var stemSeriesClock = PlaybackClockSmoother()
+
     /// Gossamer wave-pool state — allocated when the Gossamer preset is active,
     /// nil otherwise. Tick closure and waveBuffer are wired into the render pipeline
     /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.
