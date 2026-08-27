@@ -15,7 +15,6 @@
   "vertex_function": "fullscreen_vertex",
   "decay": 0.940,
   "feedback_pixel_format": "rgba16Float",
-  "stem_affinity": {},
   "visual_density": 0.60,
   "motion_intensity": 0.55,
   "color_temperature_range": [0.30, 0.90],

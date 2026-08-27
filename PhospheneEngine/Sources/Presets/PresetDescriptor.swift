@@ -194,6 +194,11 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     // MARK: - Feedback Parameters
 
     /// Beat accent zoom (keep smaller than baseZoom).
+    ///
+    /// Defaults to 0, as do `baseZoom`, `decay`, `baseRot` and `beatRot`: an omitted
+    /// key means NO motion, not a surprise trail. Every preset that consumes these
+    /// (the feedback and mv_warp passes) declares them explicitly — verified at
+    /// RECON.23 and pinned by the default assertions in `PresetTests`.
     public let beatZoom: Float
     /// Beat accent rotation.
     public let beatRot: Float
@@ -326,6 +331,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     // MARK: - Internal
 
     /// Source .metal file name (populated by PresetLoader, not from JSON).
+    /// Set by `PresetLoader` from the `.metal` filename it compiled — not decoded.
     public var shaderFileName: String = ""
 
     // MARK: - Orchestrator Scoring Metadata (Increment 4.0)
@@ -568,7 +574,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sceneOrbitSpeed = "scene_orbit_speed"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
-        case shaderFileName = "shader_file"
         case visualDensity = "visual_density"
         case motionIntensity = "motion_intensity"
         case colorTemperatureRange = "color_temperature_range"
@@ -600,11 +605,11 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         naturalCycleSeconds = try container.decodeIfPresent(Float.self, forKey: .naturalCycleSeconds)
         description      = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         author           = try container.decodeIfPresent(String.self, forKey: .author) ?? ""
-        beatZoom         = try container.decodeIfPresent(Float.self, forKey: .beatZoom) ?? 0.03
-        beatRot          = try container.decodeIfPresent(Float.self, forKey: .beatRot) ?? 0.01
-        baseZoom         = try container.decodeIfPresent(Float.self, forKey: .baseZoom) ?? 0.12
-        baseRot          = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0.03
-        decay            = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
+        beatZoom         = try container.decodeIfPresent(Float.self, forKey: .beatZoom) ?? 0
+        beatRot          = try container.decodeIfPresent(Float.self, forKey: .beatRot) ?? 0
+        baseZoom         = try container.decodeIfPresent(Float.self, forKey: .baseZoom) ?? 0
+        baseRot          = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0
+        decay            = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0
         beatSensitivity  = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
         meshThreadCount  = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
@@ -617,7 +622,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         sceneOrbitSpeed  = try container.decodeIfPresent(Float.self, forKey: .sceneOrbitSpeed) ?? 0
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction   = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
-        shaderFileName   = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""
 
         // Render graph. An explicit empty array normalises to [.direct] — identical to
         // omitting the key: a preset with no declared passes renders via the default

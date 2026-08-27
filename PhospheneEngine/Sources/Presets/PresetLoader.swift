@@ -311,53 +311,9 @@ public final class PresetLoader: @unchecked Sendable {
             }
         }
 
-        loadShaderReusePresets(contents: contents, metalFiles: metalFiles, directory: directory, fm: fm)
-
         // Sort by name for stable ordering.
         lock.withLock {
             presets.sort { $0.descriptor.name < $1.descriptor.name }
-        }
-    }
-
-    /// RICERCAR-RW: a JSON with NO sibling `.metal` but an explicit `shader_file` REUSES another
-    /// preset's shader (Ricercar reuses Skein's painter shader — it differs only in its family-mode
-    /// SkeinState + palette, not the marks shader). Compile the referenced `.metal` with the orphan
-    /// descriptor. Keeps one shader backing multiple presets (no verbatim duplication) inside the
-    /// per-file compile architecture; a hot-reload of the shared `.metal` re-runs this pass too.
-    private func loadShaderReusePresets(
-        contents: [URL], metalFiles: [URL], directory: URL, fm: FileManager
-    ) {
-        let metalBaseNames = Set(metalFiles.map { $0.deletingPathExtension().lastPathComponent })
-        let orphanJSONs = contents
-            .filter { $0.pathExtension == "json" }
-            .filter { !metalBaseNames.contains($0.deletingPathExtension().lastPathComponent) }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        for jsonURL in orphanJSONs {
-            let baseName = jsonURL.deletingPathExtension().lastPathComponent
-            let descriptor = loadDescriptor(from: jsonURL, fallbackName: baseName)
-            guard !descriptor.shaderFileName.isEmpty else { continue }   // no `shader_file` → not a redirect
-            let targetMetal = directory.appendingPathComponent(descriptor.shaderFileName)
-            guard fm.fileExists(atPath: targetMetal.path) else {
-                logger.warning("Preset '\(descriptor.name)': shader_file '\(descriptor.shaderFileName)' not found")
-                continue
-            }
-            guard let pipelines = compileShader(at: targetMetal, descriptor: descriptor) else { continue }
-            let loaded = LoadedPreset(
-                descriptor: descriptor,
-                pipelineState: pipelines.standard,
-                feedbackPipelineState: pipelines.feedback,
-                rayMarchPipelineState: pipelines.rayMarch,
-                mvWarpPipelines: pipelines.mvWarp,
-                stages: pipelines.stages
-            )
-            lock.withLock {
-                if let existingIndex = presets.firstIndex(where: { $0.descriptor.name == descriptor.name }) {
-                    presets[existingIndex] = loaded
-                } else {
-                    presets.append(loaded)
-                    logger.info("Loaded preset: \(descriptor.name) (shader_file → \(descriptor.shaderFileName))")
-                }
-            }
         }
     }
 
@@ -410,6 +366,21 @@ public final class PresetLoader: @unchecked Sendable {
     }
 
     // MARK: - Shader Compilation
+
+    /// Compile one preset translation unit. Every preset path builds its own
+    /// `fullSource` (different preambles) but compiles it identically; `label`
+    /// only distinguishes the log line so a failure still names the path.
+    func compileLibrary(source: String, url: URL, label: String) -> MTLLibrary? {
+        let options = MTLCompileOptions()
+        options.fastMathEnabled = true
+        options.languageVersion = .version3_1
+        do {
+            return try device.makeLibrary(source: source, options: options)
+        } catch {
+            logger.error("\(label) compilation failed for \(url.lastPathComponent): \(error)")
+            return nil
+        }
+    }
 
     /// Result of compiling a preset shader: the primary state plus optional specialised states.
     struct CompiledShader {
@@ -471,17 +442,8 @@ public final class PresetLoader: @unchecked Sendable {
         }
 
         let fullSource = Self.shaderPreamble + "\n\n" + fragmentSource
-        let options = MTLCompileOptions()
-        options.fastMathEnabled = true
-        options.languageVersion = .version3_1
-
-        let library: MTLLibrary
-        do {
-            library = try device.makeLibrary(source: fullSource, options: options)
-        } catch {
-            logger.error("Staged shader compilation failed for \(url.lastPathComponent): \(error)")
-            return nil
-        }
+        guard let library = compileLibrary(
+            source: fullSource, url: url, label: "Staged shader compilation") else { return nil }
 
         guard let vertexFn = library.makeFunction(name: descriptor.vertexFunction) else {
             logger.error("Vertex function '\(descriptor.vertexFunction)' not found in \(url.lastPathComponent)")
@@ -539,17 +501,8 @@ public final class PresetLoader: @unchecked Sendable {
         // Prepend the common preamble (shared structs, vertex shader, utilities).
         let fullSource = Self.shaderPreamble + "\n\n" + fragmentSource
 
-        let options = MTLCompileOptions()
-        options.fastMathEnabled = true
-        options.languageVersion = .version3_1
-
-        let library: MTLLibrary
-        do {
-            library = try device.makeLibrary(source: fullSource, options: options)
-        } catch {
-            logger.error("Shader compilation failed for \(url.lastPathComponent): \(error)")
-            return nil
-        }
+        guard let library = compileLibrary(
+            source: fullSource, url: url, label: "Shader compilation") else { return nil }
 
         let vertexName = descriptor.vertexFunction
         let fragmentName = descriptor.fragmentFunction
@@ -623,17 +576,8 @@ public final class PresetLoader: @unchecked Sendable {
         let fullSource = Self.shaderPreamble + "\n\n" + Self.rayMarchGBufferPreamble
             + "\n\n" + fragmentSource
 
-        let options = MTLCompileOptions()
-        options.fastMathEnabled = true
-        options.languageVersion = .version3_1
-
-        let library: MTLLibrary
-        do {
-            library = try device.makeLibrary(source: fullSource, options: options)
-        } catch {
-            logger.error("Ray march shader compilation failed for \(url.lastPathComponent): \(error)")
-            return nil
-        }
+        guard let library = compileLibrary(
+            source: fullSource, url: url, label: "Ray march shader compilation") else { return nil }
 
         guard let vertexFn = library.makeFunction(name: descriptor.vertexFunction) else {
             logger.error("Vertex function '\(descriptor.vertexFunction)' not found in \(url.lastPathComponent)")
@@ -705,16 +649,8 @@ public final class PresetLoader: @unchecked Sendable {
         }
         let isRayMarch = descriptor.passes.contains(.rayMarch)
         let fullSource = buildMVWarpSource(fragmentSource: fragmentSource, isRayMarch: isRayMarch)
-        let options = MTLCompileOptions()
-        options.fastMathEnabled = true
-        options.languageVersion = .version3_1
-        let library: MTLLibrary
-        do {
-            library = try device.makeLibrary(source: fullSource, options: options)
-        } catch {
-            logger.error("mv_warp shader compilation failed for \(url.lastPathComponent): \(error)")
-            return nil
-        }
+        guard let library = compileLibrary(
+            source: fullSource, url: url, label: "mv_warp shader compilation") else { return nil }
         guard let warpPipelines = makeWarpPipelines(library: library, url: url, descriptor: descriptor)
         else { return nil }
         if isRayMarch {

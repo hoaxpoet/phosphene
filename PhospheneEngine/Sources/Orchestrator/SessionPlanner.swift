@@ -50,7 +50,7 @@ public struct DefaultSessionPlanner: Sendable {
 
     // MARK: - Dependencies
 
-    let scorer: any PresetScoring
+    let scorer: DefaultPresetScorer
     let transitionPolicy: any TransitionDeciding
     private let precompile: (@Sendable (PresetDescriptor) async throws -> Void)?
 
@@ -60,7 +60,7 @@ public struct DefaultSessionPlanner: Sendable {
     // MARK: - Init
 
     public init(
-        scorer: any PresetScoring = DefaultPresetScorer(),
+        scorer: DefaultPresetScorer = DefaultPresetScorer(),
         transitionPolicy: any TransitionDeciding = DefaultTransitionPolicy(),
         precompile: (@Sendable (PresetDescriptor) async throws -> Void)? = nil
     ) {
