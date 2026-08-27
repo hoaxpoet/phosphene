@@ -48,7 +48,6 @@ reads" are not reads — see the entry.)*
 |---|---|---|---|
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
-| BUG-102 | **P1** · **RESOLVED 2026-08-27 (BUG102.1 bleed, BUG102.2 money)** — both re-annotated; see the new finding it exposed | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
@@ -400,152 +399,6 @@ Love Rehab 125 BPM minimum. Those are required before any fix increment opens.
 quoted as AMLt 1.00 / 1.00 / **0.43** / 0.75 / 0.21, not 0.88 — see BUG-102 and
 `docs/diagnostics/BEATBENCH_BASELINE_2026-08-27.md`.
 
-### BUG-102 — BeatBench's reference for money and bleed is at an untrusted metrical level (2026-08-19)
-
-**Status: RESOLVED 2026-08-27 — bleed by re-annotation (BUG102.1), money by re-annotation plus a recorded arbitration (BUG102.2).** Not a code defect
-— a ground-truth defect that caps what the beat-sync program can measure. Cannot be fixed by
-editing the JSON.
-
----
-
-**✅ bleed — resolved 2026-08-27 by re-annotation (BUG102.1)**
-
-Matt re-tapped both passes at the quarter note over a 90 s span. `reconcile.py` now returns
-**`confirmed`**, both backends AGREE (librosa F=0.919, madmom F=0.942), meter 4 at ratio 3.96,
-and the ground truth is extended to the full track by madmom (884 beats / 73 downbeats).
-
-**Phosphene's grid was right the whole time — the reference was wrong.** Re-scored against the
-corrected truth, bleed goes from the values D-205 ratified suite 4 against to a near-perfect
-result:
-
-| | F | Cemgil | CMLt | AMLt |
-|---|---|---|---|---|
-| against the old 226.72 reference | 0.61 | — | **0.03** | 0.84 |
-| against the confirmed 114.67 reference | **0.99** | 0.96 | **1.00** | **1.00** |
-
-CMLt 0.03 → 1.00 is the whole finding: the grid was tracking at the reference's own level and
-scoring near-zero because the reference was an octave off. **Suite 4 was never a tracking
-problem.** Its D-205 gate (AMLt ≥ 0.80) is met at 1.00, and now on a trustworthy reference.
-
-**Two things this settles.** BUG-076's body — which asserted bleed's ~115 reading was "correct —
-matches madmom 115.0, librosa 115.0, drums-stem 115.1" — is vindicated; the repo no longer
-contradicts itself. And the suite-4 half of the contamination list below is closed.
-
-**One thing it opens.** With a reference that can be trusted, bleed's **downbeat F is 0.08** —
-the meter is read correctly as 4/4 but bar phase is essentially uncorrelated. That was invisible
-while the reference was wrong. It is consistent with FT.3's `BarLineEstimator` being built and
-**not wired**, and it is not unique to bleed: on this baseline only billie_jean has usable
-downbeats (0.90) against money 0.14, solsbury_hill 0.13, take_five 0.26, bohemian_rhapsody 0.25.
-D-205 makes meter/downbeat a hard gate because Nacre's and Glaze's downbeat pushes are their
-connection layer, so this is a real program-level gap — now measurable, where before it was
-masked.
-
-**Two caveats recorded, not swept.** Matt's first re-tap attempt ran the full 441 s and slipped
-back to the fast subdivision for 54 s (157–211 s), fitting 120.63 BPM overall; it was rejected
-before reconcile rather than after. The accepted pass is 90 s, matching every other track in the
-set (87–99 s). The rejected passes are preserved at
-`Tests/Fixtures/beatbench/taps/pre-BUG102/` — that the level slipped mid-track on a 7-minute
-take is itself evidence about how hard this track is to annotate.
-
-**✅ money — resolved 2026-08-27 by re-annotation + arbitration (BUG102.2)**
-
-Re-tapped at the quarter note over 90 s: **121.06 BPM, meter 7 at ratio 6.95**, tempo ratio
-**×1.01** against both backends. The octave error this entry was filed about is gone.
-
-What remained was a *phase* disagreement, not a level one: the taps sit a systematic
-**−42.3 ms (librosa) / −44.7 ms (madmom)** early, with the two backends agreeing to within
-2.4 ms of each other. It is not the capture rig — bleed was tapped in the same session on the
-same calibration and lands at −13.6 / −0.4 ms, and every other track is inside ±32 ms. On a
-track whose pulse is carried by a syncopated bass riff, Matt hears the beat ~45 ms ahead of
-where the onset detectors place it.
-
-**Matt's call (2026-08-27): the taps are the truth.** Phosphene is a visualizer — a preset
-should fire where a listener feels the pulse, not where an onset detector fires. Recorded in
-`Tests/Fixtures/beatbench/arbitrations.json` with its reasoning, and stamped into the ground
-truth as `status: arbitrated_taps` by `reconcile.py`, so the decision keeps its provenance
-instead of being hand-edited into the truth. This is the arbitration path this entry's original
-fix note called for and the tooling did not have.
-
-**⚠ It exposed a real tracking error that the old reference was hiding.** Re-scored against the
-corrected truth, money goes the *opposite* way to bleed:
-
-| | F | Cemgil | CMLt | AMLt |
-|---|---|---|---|---|
-| against the old 60.97 reference | 0.58 | 0.43 | 0.00 | **0.88** |
-| against the corrected 121.06 reference | 0.44 | 0.31 | 0.43 | **0.43** |
-
-Nothing in the engine changed — the metric stopped being fooled. Phosphene's grid reads
-**116.19 where the truth is 121.06**, a **4% tempo error**. Against the old half-rate reference
-that looked like a clean ×1.91 octave, which AMLt forgives by design; against the true level it
-is not an octave and is not forgiven. **Suite 2's picture is worse and more honest**: money's
-AMLt was never 0.88 in any meaningful sense.
-
-This is a live tracking defect, previously masked, and it belongs to the beat-sync program
-(D-202) rather than to this ground-truth entry. It wants its own BUG number — not filed here so
-the defect-handling protocol's evidence gate gets applied deliberately rather than in passing.
-
-**Still open elsewhere in the set:** `pyramid_song`, `yyz` and `bohemian_rhapsody` are also
-`metrical_review`, and `clair_de_lune` is `needs_arbitration` (for which "no stable grid" may
-legitimately be the annotation). None of them contaminate a ratified gate the way money and
-bleed did. solsbury_hill's separate `meter_from_taps: 7` inconsistency is also still open.
-
----
-
-
-Found while running FT.3.1, which existed to detect a wrong *grid* metrical level on exactly
-these two tracks. The label set did not survive contact with its own ground truth.
-
-**What the ground truth says about itself.** Both tracks carry `status: metrical_review` — the
-GT.2 pipeline's flag for an unresolved metrical disagreement — against `confirmed` for
-billie_jean, solsbury_hill and take_five. On both, *both* independent reference annotators
-agree the taps are the octave-off side:
-
-| track | status | tap BPM | librosa | madmom | Phosphene grid |
-|---|---|---|---|---|---|
-| money | `metrical_review` | 60.97 | METRICAL — "reference is double the tapped pulse (×2.01)" | METRICAL ×2.01 | 116.19 (×1.91) |
-| bleed | `metrical_review` | 226.72 | METRICAL — "reference is half the tapped pulse (×0.51)" | METRICAL ×0.51 | 115.00 (×0.51) |
-
-`money.groundtruth.json`'s own `meter_note` reads *"ratio 3.54 — beats tapped at HALF the bar
-pulse, so the bar is 7"*. On bleed, Phosphene's 115.00 sits between the backends' 114.80 and
-115.38.
-
-**Matt, 2026-08-19:** *"I would not trust my tapping on these tracks, especially Bleed."*
-
-**The repo already contradicts itself, and nobody had noticed.** BUG-076's body — filed against
-bleed, still open — states that bleed's ~115 BPM reading is **"correct — matches madmom 115.0,
-librosa 115.0, drums-stem 115.1"**. That is a *third* independent source at 115. Meanwhile
-`bleed.groundtruth.json` asserts 226.72 and `BEATBENCH_BASELINE_2026-07-30.md` scores bleed at
-F 0.61 / CMLt 0.03 / AMLt 0.84 against it. Both statements are live in the repo and they cannot
-both be right.
-
-**What this contaminates.** Anything scored against these two references at the metrical level:
-
-- **BeatBench suite 2.** money is one of five suite-2 tracks. *(**Suite 4 is CLOSED** —
-  bleed was its only track and its reference is now `confirmed`; re-scored AMLt 1.00 / CMLt 1.00
-  against it, so the D-205 gate is met on trustworthy ground truth.)*
-- **`AMLt − CMLt` as a "wrong grid level" signal.** It measures grid-vs-tap *disagreement* and is
-  silent about which side is wrong. D-210's evidence table reads the gap as the grid being wrong;
-  that reading is not established. D-210's *decision* (decline the bar, keep the beat) does not
-  depend on it and stands.
-- **FT.3's phase result** (money 0 %, bleed 16 %) was scored against these downbeat taps, so
-  FT.3's "phase 3/6" headline needs a recheck once the level is settled — as do the FT.3 tasks 4–6
-  bar-correctness labels and the 1.24 decline threshold derived from them.
-- **D-208 / MDL.1's bleed judgment** ("BPM doubles 115.00 → 259.43, meter 4 ✓ → 2 ✗") used the
-  tap-derived truth. 259.43 is not a clean octave of either candidate (2.25× of 115, 1.14× of 227),
-  so the *conclusion* likely survives — but it has not been re-derived and should not be quoted as
-  settled until it is.
-
-**What it does NOT contaminate.** billie_jean, solsbury_hill and take_five are `confirmed` with
-gap 0.00, so suite-1 F 0.97 and the tracks FT.3 got right are unaffected.
-
-**Fix path — re-annotation, not an edit.** The `beatbench` skill is explicit that ground truth
-changes only through the tap + reconcile pipeline; hand-editing the JSON destroys provenance.
-Either re-tap both tracks (`TapCapture --calibrate`, both passes) with the metrical level chosen
-deliberately, or arbitrate them to the backends' level through `reconcile.py` and record the
-arbitration. Until then, **suite-4 numbers and any money/bleed metrical claim should be quoted
-with this caveat**. solsbury_hill's separate ground-truth inconsistency (`meter_from_taps: 7`
-with downbeat taps ~12 tapped beats apart, flagged at FT.3 tasks 1–3) is still open and would
-be worth settling in the same pass.
 ### BUG-091 — A single local file selected: preparation succeeds, playback never starts, every audio field is exactly zero (2026-08-17)
 
 **Status: instrumentation increment landed. Root cause NOT asserted — one reproduction with the
@@ -1527,9 +1380,40 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
-*(PUB.3 pruning pass, 2026-07-11: 24 resolved entries moved here from §Open; BUG-013/001/005 reclassified to §Known Limitations. rotate_docs.sh files these to KNOWN_ISSUES_HISTORY.md after 14 days.)*
+### BUG-102 — RESOLVED (BUG102.1 / BUG102.2): BeatBench's money and bleed references were at an untrusted metrical level (2026-08-19 → 2026-08-27)
 
----
+Both carried `status: metrical_review`, both reference backends said the taps were an octave off,
+and Matt would not vouch for his tapping on them. Everything scored against those two tracks was
+uncitable, including the whole of suite 4.
+
+**Resolved by re-annotation, not by editing JSON.** Both re-tapped at the quarter note over 90 s
+spans (the set's norm is 87–99 s). **They hid opposite truths, which is the lesson worth keeping:
+a benchmark scored against untrusted ground truth does not fail loudly — it reports confident
+numbers in both directions.**
+
+| | before | after |
+|---|---|---|
+| **bleed** → `confirmed` @ 114.67, meter 4 | F 0.61 · CMLt **0.03** · AMLt 0.84 | F 0.99 · CMLt **1.00** · AMLt 1.00 |
+| **money** → `arbitrated_taps` @ 121.06, meter 7 | F 0.58 · CMLt 0.00 · AMLt **0.88** | F 0.44 · CMLt 0.43 · AMLt **0.43** |
+
+- **bleed** hid a grid that was **right** — suite 4 was never a tracking problem, and BUG-076's
+  "115 matches madmom/librosa/drums-stem" note is vindicated (the repo had been asserting both
+  115 and 226.72 at once).
+- **money** hid one that is **wrong** → **BUG-107**. Its taps also sat −45 ms early against both
+  backends (which agree to 2.4 ms); Matt arbitrated in the taps' favour — a visualizer fires
+  where a listener feels the pulse. Recorded in `Tests/Fixtures/beatbench/arbitrations.json` via
+  `reconcile.py`'s new arbitration path, never hand-edited.
+
+**⚠ Scope, per BUG107.2:** the offline grid only ever analyses the first ~30 s of any input, so
+**bleed's F 0.99 is a result over its opening ~30 s, not the full track.** Quote it that way.
+
+**Consequences.** Suite 2's ratified baseline is now AMLt 1.00 / 1.00 / **0.43** / 0.75 / 0.21;
+money moved to **suite 3** (its ~17 % tempo rise is a suite-3 property). `reconcile.py`'s
+`PHOSPHENE_GRID` context dict was also a stale 2026-07-27 snapshot showing a third apparent
+metrical level; re-measured. Rejected tap passes preserved under `taps/pre-BUG102/`.
+
+Detail: `docs/ENGINEERING_PLAN.md` §BUG102.1 / §BUG102.2, `BEATBENCH_BASELINE_2026-08-27.md`,
+PR #165.
 
 ### BUG-094 — Meniscus clamps `arousal` to 0…1 when its contract is −1…+1, and a beat-locked region goes dead on calm material (2026-08-17)
 
