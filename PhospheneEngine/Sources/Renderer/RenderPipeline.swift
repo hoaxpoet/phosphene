@@ -323,6 +323,20 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var meshPresetTick: (@Sendable (FeatureVector, StemFeatures) -> Void)?
     let meshPresetTickLock = NSLock()
 
+    /// LFSTEM.1e — per-frame stem publish, for tracks whose stems come from a pre-analysed
+    /// series rather than from live separation.
+    ///
+    /// Called once per frame in `renderFrame`, immediately BEFORE `meshPresetTick`, so a
+    /// preset's own tick sees this frame's stems rather than the previous analysis frame's.
+    ///
+    /// Separate from `meshPresetTick` on purpose: that closure is owned by whichever preset
+    /// needs per-frame state (Skein sets it for its painter clock), and one slot cannot serve
+    /// both. Live separation cannot use this — it has nothing new to publish between analysis
+    /// frames — but sampling a series is an array lookup, which is why BUG-109's 12.8 Hz
+    /// ceiling was an artefact of the call site rather than a limit.
+    var perFrameStemPublish: (@Sendable () -> Void)?
+    let perFrameStemPublishLock = NSLock()
+
     // MARK: - Post-Process Chain
 
     /// Optional HDR post-process chain — bloom + ACES tone mapping.

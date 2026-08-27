@@ -60,6 +60,12 @@ extension RenderPipeline {
         meshPresetTickLock.withLock { meshPresetTick = tick }
     }
 
+    /// Attach a per-frame stem publish closure (LFSTEM.1e). Called once per frame before
+    /// `meshPresetTick`. Pass `nil` to detach. Thread-safe — can be called from any queue.
+    public func setPerFrameStemPublish(_ publish: (@Sendable () -> Void)?) {
+        perFrameStemPublishLock.withLock { perFrameStemPublish = publish }
+    }
+
     /// Attach a particle system to the render loop.
     /// Accepts any `ParticleGeometry` conformer (D-097). Thread-safe — can be
     /// called from any queue.

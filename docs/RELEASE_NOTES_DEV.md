@@ -10,6 +10,398 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-182236] M7 PASSED — LFSTEM.1 complete, BUG-110/108/109 closed
+
+**Matt, session `2026-08-27T18-17-50Z`: *"Looks good."*** 106 s of Skein at 3840×2160 — well past
+the 70–80 s mark where the round-1 overlap residual appeared — with the series driving
+(`STEM_SOURCE: series frames=10815`), sampling at **58.3 Hz**, and `frame_gpu` p50 flat at
+**12.08–13.76 ms**.
+
+That sign-off closes three defects and completes the increment they hung off:
+
+- **BUG-108** — the overlap flicker, fixed in two rounds. Round 1: which MARK wins an overlap was
+  a coverage argmax. Round 2: the same argmin one level down, inside the line, where the colour
+  came from the nearest segment. Matt's round-1 report — *"only after 70–80 s and not as
+  prominent"* — located the residual rather than refuting the fix, which is why round 2 took one
+  pass.
+- **BUG-109** — stem values updated 12.8 times a second because the series was sampled on the
+  analysis frame. Now sampled per render frame: 56–58 Hz measured live.
+- **BUG-110** — Skein's 4K cost ramp, from a fragment recomputing the painter's whole 41-sample
+  tail per pixel. 38 → 250 ms before, flat ~13 ms now.
+
+**LFSTEM.1 is complete.** For a local file, stems are analysed ahead of time, arrive at the
+playback second they describe rather than 2.5 s late, and move at the series' own rate rather than
+the analysis loop's. It took four corrections after the first "done" — on time (1c), continuous
+(1d r1), non-rewinding (1d r2), full-rate (1e) — and every one was found by a session artifact
+rather than a test.
+
+**LFSTEM.2 is unblocked** (retire live separation on the local path), which was gated on this M7.
+
+§Open is back to 20 entries; BUG-100/103/104 rotate to history to keep §Resolved inside its 50 KB
+budget. ⚠ BUG-103 was moved to history by mistake during that rotation and restored — it is an
+OPEN entry (a parallel session's `AVAudioPlayerNode` NSException), not a resolved one, and the
+§Open Index gate is what caught it.
+
+---
+
+### [dev-2026-08-27-180020] BUG-108 round 2 — the same argmin, one level down, inside the line
+
+**Matt on the round-1 build:** *"Flickering still happens but only after significant time has
+passed (70-80 s) and is not as prominent as before. Frame rate is smooth."*
+
+Round 1 fixed which **mark** wins an overlap. Inside the pour line, the colour was still taken
+from the **nearest segment** — `if (d < lineSDF) { … lineCol = … }` — the same argmin one level
+down. Two segments of DIFFERENT pours that are near-equidistant from a fragment flip the winner on
+sub-pixel motion, and the flip is a full colour swap.
+
+**Both halves of the report fall out of that.** *Less prominent*, because the mark-level case was
+genuinely fixed and only the line-internal one remained. *Only after 70–80 s*, because such pairs
+need differently-coloured segments inside the same 40-frame tail, and colour breakpoints
+accumulate over a track — the same ring whose filling drove BUG-110's cost ramp. A report that
+locates a residual is worth more than one that just says "still broken", and this one located it.
+
+The line now takes the colour of the **first covering segment in a newest→oldest walk** — the
+latest-laid one by construction, no comparison, nothing to jitter. Coverage still comes from the
+nearest segment (`lineSDF = min(lineSDF, d)`); fragments no segment covers keep the nearest
+colour, because nothing is laid over anything in the anti-aliased fringe. `SkeinCanvasHoldTest`
+now gates both levels: no colour selection by coverage at the mark level, and none by distance
+inside the line.
+
+**Also confirmed by the same session, both LFSTEM.1e and BUG-110 live:** the series samples at
+**~56 Hz** (was 12.8 — LFSTEM.1e), `STEM_SOURCE` reports the series driving, and `frame_gpu` p50
+holds **12.55–13.21 ms flat across 90 s** at 4K. Matt: *"Frame rate is smooth."*
+
+---
+
+### [dev-2026-08-27-170716] LFSTEM.1e — the series is sampled per render frame, not per analysis frame
+
+**Matt's call on BUG-109's fix.** Stem motion was capped at the analysis rate — **12.8 Hz measured**
+— while the renderer drew at 59.9 Hz and the series' own grid is 43 Hz. Live separation had to
+publish on the analysis frame because it had nothing new between them; a pre-analysed series is an
+array lookup and has no such bound. `publishStemSeriesFrame` now runs once per RENDER frame from a
+dedicated `RenderPipeline.perFrameStemPublish` hook.
+
+Three details decide whether this works rather than merely runs:
+
+- **It publishes BEFORE the frame snapshots its stems.** `renderFrame` reads `latestStemFeatures`
+  once and that snapshot serves the particles update, the preset tick and the draw — publishing
+  after it would land a frame late, the off-by-one-frame class this whole arc has been about.
+  `StemSeriesWiringTests` asserts the ordering in the source, not just the presence of the call.
+- **It is a separate hook from `meshPresetTick`.** That slot is owned by whichever preset needs
+  per-frame state — Skein sets it for its painter clock — and one closure cannot serve both.
+- **The analysis frame no longer samples.** It publishes only the playback clock the render frame
+  samples with, so the smoother is touched from one thread instead of two, behind `stemSeriesLock`.
+  `applyStemSeriesFrame` is deleted rather than left sitting beside its replacement.
+
+**What is now true end to end for a local file:** stems are analysed ahead of time, arrive at the
+playback second they describe rather than 2.5 s late, and move at the series' own 43 Hz instead of
+the analysis loop's 13.
+
+⚠ **Still owed: Matt's eye.** Every change in this chain moved what stem-driven presets see, and
+none of it is settled by a test. Skein is the instrument.
+
+---
+
+### [dev-2026-08-27-165948] BUG-109 answered — the series is read 13 times a second while the renderer draws 60
+
+**The instruments worked; the answer was neither candidate.** Session `2026-08-27T16-53-29Z`:
+`STEM_SOURCE: series frames=10815 covers=251.1s hop=23.2ms`, and `stem_series_pos_s` populated on
+**100 %** of rows with **0 backward steps** — so the series is installed, driving, and the
+smoother is being reached and working. But it takes only **1,398 distinct values over 6,521 rows**:
+
+| | rate |
+|---|---|
+| `features.csv` rows | 59.9 Hz |
+| distinct sampling positions | **12.8 Hz** |
+| the series' own grid | 43 Hz |
+
+**Two facts.** `features.csv` has one row per RENDER frame — `SessionRecorder.recordFrame` is
+"record one rendered frame", called from the command-buffer completion handler — so the 79 % of
+rows where the position repeats is the recorder holding between analysis frames, not a stuck
+position. And the series is sampled **once per analysis frame**, at 12.8 Hz, while the renderer
+draws at 60. Stem values change ~13 times a second; a preset at 60 fps holds each one for ~4.6
+frames.
+
+**The fix is available only because of LFSTEM.1, and has not been spent.** Live separation could
+not publish faster than analysis frames — there was nothing new to publish. A pre-analysed series
+has no such bound: sampling it is an array lookup. Moving `applyStemSeriesFrame` to the render
+frame turns 12.8 Hz into the series' full 43 Hz. Not implemented — it changes what every
+stem-driven preset sees.
+
+⚠ **A correction this session forced, to something already published.** BUG110.3 recorded that
+"the analysis loop now runs at 59.9 Hz where pre-fix local sessions ran at ~18 Hz, so part of
+BUG-087's ceiling was the GPU starving the loop". **That is wrong** — both were RENDER rates
+(18 fps pre-fix, consistent with 170–250 ms frames; 60 fps after). The analysis rate was never
+measured that way and **BUG-087's ceiling claim is untouched**. Reading a row rate as an analysis
+rate is the same class of mistake as reading a metric by its name, which this project has now
+made often enough to have a rule about it. Retracted in the BUG-110 entry rather than quietly
+edited away.
+
+---
+
+### [dev-2026-08-27-163000] BUG-109 instrumented — the session artifact can now answer which source drives the stems
+
+**Instrumentation only. No sampling behaviour changed** — deliberately, because BUG-109's own note
+says not to touch it until the artifact says what is happening.
+
+Two additions, together enough for one local-file session to settle it:
+
+- **`stem_series_pos_s`**, the tail column of `features.csv`: the position the stem series was
+  sampled at, *after* `PlaybackClockSmoother`. `playback_time_s` carries the RAW clock, so it
+  could not distinguish "the series is driving and its position advances" from "the series is
+  driving and its position is stuck" — which is why BUG-109 had to be inferred by counting
+  distinct stem values rather than read off.
+- **`STEM_SOURCE:`** in `session.log` at track change — `series frames=N covers=Xs hop=Yms`, or
+  `live separation (no series for this track)`. This existed only in `os.Logger`, so no session
+  artifact could answer it. A per-track fact that changes what every stem-driven preset reads
+  belongs in the artifact.
+
+The new column is the first OPTIONAL one, which is the single shape that can align when populated
+and shift every later field when absent. `SessionRecorderCSVAlignmentTests` checks both forms and
+asserts the empty case reads as genuinely empty rather than as a number; dropping the separator
+instead of the value fails it (77 fields against 78, and the last field reading `0.00000`).
+
+**What the next session answers.** If `stem_series_pos_s` advances every frame while stem values
+hold, the sampling is fine and the values are not coming from where they should. If the position
+itself holds, the smoother is not being reached. If the column is empty throughout, no series was
+installed and live separation was driving all along — in which case LFSTEM.1's headline claim has
+not been exercised live yet at all.
+
+---
+
+### [dev-2026-08-27-162253] BUG-110 confirmed live — Skein at 4K is flat at ~12.6 ms, and a new question is filed
+
+**Confirmed.** Session `2026-08-27T16-17-34Z`, Skein at 3840×2160 for 78 s:
+
+| t (s) | 0 | 15 | 30 | 45 | 60 | 75 |
+|---|---|---|---|---|---|---|
+| `frame_gpu` p50 | 12.59 | 12.62 | 12.48 | 13.10 | 12.23 | 11.55 |
+
+Flat, mildly decreasing, against **38 → 127 → 170–250 ms** in both pre-fix sessions. The ramp is
+gone and the plateau is ~14× cheaper. `GPU_PRESSURE` 4.6–4.8 %, `ml_forced=0`, thermal nominal.
+
+**Second-order effect worth recording:** the analysis loop now runs at **59.9 Hz** where the
+pre-fix local sessions ran at ~18 Hz. Part of what looked like BUG-087's local-path analysis-rate
+ceiling was the GPU starving the loop at 170–250 ms per frame. It does not close BUG-087 — the
+audio-arrival ceiling is a separate claim — but any rate measured on a GPU-bound session is
+suspect. What remains is not GPU-bound either: `frame_cpu` p50 ~28.5 ms (≈35 fps) against a
+12.6 ms GPU, so the rest is in the wall-clock path, not the shader this fixed.
+
+**Filed, not guessed at: BUG-109.** The same session says something about the stem series that
+does not add up. Over 4,620 analysis frames: the raw 100 ms clock takes **1,010** distinct values,
+the 23.2 ms series offers **~3,360** frames, and `drumsEnergyDev` takes **634**. Stem values change
+*less often than the clock ticks* — which rules the smoother out rather than in, since it is
+monotone and resyncs on every tick, and replaying this session's own clock through it predicts a
+new series index on ~70 % of frames with 0 backward and 0 rewound. So either the smoothed position
+is not reaching `StemFeatureSeries.sample`, or `stems.csv` is not carrying what the series
+produced. Both are wiring questions; neither is established.
+
+⚠ **The reason it took a session to notice is an instrumentation gap I introduced and had already
+flagged once:** the "series installed" line goes to `os.Logger` rather than the session log, and
+the smoothed position is not recorded at all. The next move is to put both in the artifact and
+run one local-file session — **not** to change sampling behaviour before the artifact says what is
+happening.
+
+---
+
+### [dev-2026-08-27-160607] BUG-110 fixed — Skein recomputed the painter's whole tail for every pixel
+
+**The hoist.** `skeinLineLookupAt` and `skeinPainterPos` depend only on the painter clock, the seed
+phases and the breakpoint ring — **never on fragment position** — and both were being recomputed
+for all 41 tail samples of every one of 8.3 M fragments: ~246 transcendentals per fragment from
+the painter path alone, ~2 billion per 4K frame, plus a ring scan up to 16 long per sample.
+`SkeinState.resolveTail` now produces those 41 samples once per frame into a `SkeinTailGPU` table
+and the fragment reads it.
+
+| `breakCount` | before | after |
+|---|---|---|
+| 0 (layer gated off) | 0.75 ms | 0.87 ms |
+| 1 | **17.06 ms** | **4.77 ms** — 3.6× |
+| 4 | 27.36 ms | 4.58 ms |
+| **16** (ring cap) | **55.65 ms** | **3.67 ms** — 15× |
+
+The `breakCount` dependence — the ramp's mechanism — is gone. The curve is now flat and mildly
+*decreasing*: more pours mean more skipped bridge segments and so fewer segment-distance
+evaluations. What remains is the tail's own 40 SDF evaluations, which genuinely depend on the
+fragment.
+
+**Correctness, because speed proves nothing here.** The hoist replaces a per-fragment computation
+with a per-frame table, so its failure mode is a table that is mis-offset, mis-strided or stale —
+none of which the cost numbers would reveal, since a garbage table costs the same to read.
+`hoistedTailDrawsInTheRightPlace` renders the marks at a known painter state and asserts the paint
+lands on the painter's own path; an 8-byte offset drift moves the centroid from 0.65 to 0.99 and
+the test goes red. It runs unconditionally, not behind the cost harness's env gate.
+
+The harness stopped hand-mirroring GPU struct layouts in the process — it now uses the real
+`SkeinHeaderGPU` / `SkeinBreakGPU` / `SkeinTailGPU` and fills the tail through the production
+resolver, so a layout change cannot drift the test away from the code silently.
+
+⚠ **Live confirmation is owed.** The marks overlay is one of several passes; the ~170 ms live
+figure also carries the base pass, warp, comp/sheen and presentation. A 4K Skein session is what
+says how much of the ramp this removed.
+
+---
+
+### [dev-2026-08-27-154702] BUG-110 diagnosed — the frame-budget harness has been measuring Skein with its most expensive layer switched off
+
+**Diagnosis, not a fix.** BUG-110 held that Skein costs 15.60 ms at 4K in `PresetFrameBudgetTests`
+and ~170 ms live. `SkeinLineCostTests` (`PHOSPHENE_SKEIN_COST=1`) binds a **synthetic
+`SkeinUniforms`** — no audio, no `SkeinState`, just bytes — and times the real marks overlay at
+3840×2160. That is the seam Skein has never had, and it settles both halves:
+
+| `breakCount` | marks overlay @ 4K |
+|---|---|
+| **0** | **0.75 ms** ← what the harness binds |
+| 1 | **17.06 ms** |
+| 4 | 27.36 ms |
+| **16** (ring cap) | **55.65 ms** |
+
+**The harness measures the layer switched off.** Skein's whole pour-line layer sits behind
+`if (int(st.breakCount) > 0)`, and `PresetFrameBudgetTests` binds a zeroed slot-6 buffer: no
+committed pour, no line, no paint. 0.75 ms against 17.06 ms the moment one breakpoint exists. The
+"15.60 ms, 0.8× the median preset" that made Skein look like one of the cheapest in the roster was
+the base pass and overhead. **This is the harness's blind spot, not Skein's fact** — any preset
+whose expensive work is gated on runtime state the harness leaves zeroed reads the same way, and
+that is worth a note in the harness itself.
+
+**The ramp is the breakpoint ring filling.** `skeinLineLookupAt` runs once per tail frame
+(`kSkeinTailFrames = 40`) per fragment and scans the ring (up to 16). As a track accumulates
+dominant-stem switches the scan lengthens: 17.06 → 55.65 ms, then a plateau at the cap. That is
+ramp-to-plateau at constant resolution and constant preset — the live shape, reproduced offline.
+Worst case is 40 × 16 = **640 scan iterations per fragment**, at 8.3 M fragments.
+
+**The fix is a hoist.** `skeinLineLookupAt(ctau, st)` depends only on the tail's painter-clock
+values and the uniform ring — **not on fragment position**. All 40 lookups are fragment-invariant
+and are being recomputed 8.3 M times per frame. Resolving them once per frame removes the
+per-fragment scan and the `breakCount` dependence outright. Not implemented here.
+
+⚠ **Two corrections worth keeping.** The canvas-coverage theory in the original entry was
+**wrong** — the comp pass's wetness blur, gradient and specular are unconditional per-pixel work,
+constant regardless of paint. And the first version of this harness timed `skein.pipelineState`
+(the base direct pass) rather than the marks overlay, reporting **0.34 ms flat at 4K for every
+breakpoint count**; a number that uniform, that fast, at that resolution, says only "this is not
+the shader that draws the paint".
+
+---
+
+### [dev-2026-08-27-151310] BUG-108 fixed — at a Skein overlap, the last-laid mark wins
+
+**Matt's call: (a), the lay-order tie-break.**
+
+Skein composites marks opaquely on purpose — the §colour-mud audit rejected averaging two stem
+colours — but the rule for WHICH colour was `if (cov > bestCover)`: whichever mark covers this
+fragment most. That is a hard argmax with no tie-break, and its decision boundary is the contour
+where two marks' coverage is equal. On that contour the winner was decided by whatever was
+smallest in the frame — sub-pixel painter motion, the audio-driven per-frame radius, a difference
+in the sixth decimal — and because the rule is discrete, every flip was a full colour swap.
+Flicker at overlaps was what the rule did by construction.
+
+`skeinClaimMark` replaces it with what paint does: **the mark laid last wins**. Lay time is
+`spawnTau` for a burst and the nearest drawn segment's painter clock for the pour line — both
+frozen at lay time, in the same clock, neither jittering frame to frame. Coverage still supplies
+the alpha (unchanged, a max over marks), and the old argmax survives only as the fringe fallback
+where nothing covers a fragment by more than half: two anti-aliased edges have no laid-over
+relationship, and those fragments read as canvas anyway. **No blending is introduced**, so the
+mud rule is untouched.
+
+⚠ **The perception check is owed, and is not being quietly dropped.** BUG-108's own criterion was
+a rendered A/B at a known overlap showing the boundary stable across frames. That cannot be
+produced with the seams that exist: `SkeinState` spawns bursts from audio, so two overlapping
+bursts of known colour at a known position cannot be staged, and no offline harness renders
+Skein's marks. ⚠ **The `PresetRegressionTests` Skein goldens are unchanged, and that is NOT
+evidence of anything** — the golden is `0x8080808080808080`, a uniform hash of one frame rendered
+with no `SkeinState` bound, so the harness paints no marks for this change to affect. Building
+that seam is its own increment; until then the verification is Matt's M7.
+
+What is gated automatically is the property rather than the arithmetic: `SkeinCanvasHoldTest` now
+fails if any site selects an overlap colour by a coverage comparison again, if a mark bypasses
+`skeinClaimMark`, or if the claim stops deciding on lay time. A frozen quantity cannot jitter, so
+a boundary decided by lay time cannot flicker — and if the argmax comes back, the flicker comes
+back with it and the gate goes red.
+
+---
+
+### [dev-2026-08-27-144324] LFSTEM.1d round 2 — the smoother itself rewound the position
+
+**Matt: *"Improved, but I'm still seeing some flickering in the areas of overlap between two
+different-colors lines."* Three findings from session `2026-08-27T14-33-03Z`, one fixed here and
+two filed.**
+
+**Fixed: the smoother rewound.** Round 1 treated every tick of the coarse clock as an outright
+resync. Dead reckoning legitimately runs tens of milliseconds past a tick before the tick that
+confirms it arrives, so snapping back to the raw value moved the playback position **backwards**.
+Replayed against the clock recorded in Matt's session: **27 of 1,871 frames went backwards, by up
+to 74 ms — 3.2 series frames** — so stem values re-read frames they had already passed, several
+times a minute.
+
+The position is now kept inside a band that follows the clock: never behind it, never more than
+`maxDeadReckonSeconds` ahead, monotone inside. A tick pulls the band forward and the position
+continues within it, so drift is still corrected without a jump backwards. A genuine
+discontinuity — seek, track change — is further away than the band is wide and resyncs exactly.
+Replayed against the same session, the shipped algorithm produces **0 backward positions and 0
+rewound series frames**.
+
+One test had to change its mind: `tick_resyncs` asserted that a tick snaps back to the raw value,
+which is exactly the rewind. It is now `tick_correctsWithoutRewinding`, with the reason recorded
+in the test, plus a separate case for seeks.
+
+**Filed, not fixed: BUG-108 — Skein's overlap flicker.** `Skein.metal` composites marks opaquely
+on purpose (the §colour-mud audit rejected blending two stem colours), via
+`if (cov > bestCover) { bestCover = cov; bestCol = col; }` at eight sites. That is a hard
+per-fragment argmax with **no tie-break and no hysteresis**, whose decision boundary is the
+equal-coverage contour between two marks. On that contour the winner flips on sub-pixel motion or
+a sixth-decimal coverage difference, and the flip is a full colour swap. **Flicker at overlaps is
+what the rule does by construction.** It predates LFSTEM.1 — nothing in the argmax has changed
+since Skein certified — and became visible because on-time stem values move the audio-driven
+radius terms more per frame than 2.5 s-late smoothed ones did. Fix options (lay-order tie-break,
+narrow blend band, coverage quantisation) are a look decision for Matt, not an engineering one.
+
+**Answered by the same session: BUG-110 is Skein's own.** The cost ramp reproduced with the clock
+fixed — 38 ms at t=14 s rising to 127 ms at t=40 s and ~170–250 ms after — essentially identical
+to the pre-fix session. The stem staircase was not inflating it, which is what the free A/B was
+for.
+
+---
+
+### [dev-2026-08-27-134158] LFSTEM.1d — the stem series was being read on a 100 ms clock
+
+**Matt, on the first Skein session with a pre-analysed series: *"Skein's performance is a little
+twitchy at fullscreen."* Two separate findings came out of that session; this note is the one
+that is understood and fixed.**
+
+**The staircase.** `MIRPipeline.elapsedSeconds` — the playback clock every position-sampled
+consumer reads — advances in **100 ms steps** on the local-file path. Measured on
+`2026-08-27T13-24-37Z`: 1,714 steps of exactly 0.100 s, 1,345 of exactly 0.000, i.e. **39 % of
+analysis frames do not advance it at all**, while totalling 197.4 s of clock over 197 s of
+playback. Right on average, coarse instant to instant.
+
+That was harmless until LFSTEM.1 gave it a fine-grained consumer. `instrumentFamilySeries` reads
+it on a 1 s hop, where 100 ms is invisible. The stem series is on a **23 ms** grid, so it came out
+as a staircase: stem values held for 2–6 analysis frames, then jumped four or more grid frames at
+once onto whatever deviation spike was there — observed frame-to-frame jumps up to **6.0** on
+`bassEnergyDev`, with a median frame-to-frame change of exactly **0.0**. The live path it replaced
+computed features from a sliding audio window and was continuous by construction.
+
+`PlaybackClockSmoother` dead-reckons by real elapsed time between ticks and resyncs on each one,
+capped at 0.25 s so a paused or ended clock settles instead of running away, with `reset()` on
+track change. Pure and clock-injected.
+
+**The gate that was missing, and why.** `StemFeatureSeriesTests` proved a change at a known second
+lands at that second — and it still does; the series was never misaligned. What no test covered
+was the CLOCK the series is read against, so a correct map was read by an unsteady hand and
+nothing went red. `PlaybackClockSmootherTests` closes that: its headline case reproduces the
+measured 100 ms quantisation at the measured 18 Hz frame rate, and **fails without the smoother**
+(16 of 35 frames do not advance), with a control asserting an already-continuous clock passes
+through untouched.
+
+**The second finding is filed, not fixed: BUG-110.** Skein measures **15.60 ms at 4K** in the
+frame-budget harness and ramps to **~170 ms (≈6 fps)** over 50 s of live playback, then plateaus —
+constant resolution, constant preset, GPU memory flat at 5.1 %, `ml_forced=0`, thermal nominal.
+A cost that scales with canvas coverage fits the shape and is **not demonstrated**; the harness
+renders 30 frames with no audio and can never see it. Whether LFSTEM.1's staircase was inflating
+the flick rate and hence the ramp is a hypothesis with a mechanism and no measurement, which is
+exactly the shape that cost BUG-100 four reproduction attempts. The A/B is free: the next Skein 4K
+session on this build either still ramps or does not.
 ### [dev-2026-08-27-180955] BUG-102 resolved — both disputed references re-annotated, and they hid opposite truths
 
 BeatBench's references for `money` and `bleed` both carried `status: metrical_review` — the
@@ -33,7 +425,7 @@ the set uses (87–99 s). **The two results point in opposite directions, which 
   the truth — a visualizer should fire where a listener feels the pulse, not where an onset
   detector does. Re-scored, money goes the OTHER way: AMLt **0.88 → 0.43**. The old half-rate
   reference made the grid's 116.19 look like a clean ×1.91 octave, which AMLt forgives by design;
-  against the true 121.06 it is a plain 4 % tempo error. **Filed as BUG-107**, unfixed — the
+  against the true 121.06 it is a plain 4 % tempo error. **Filed as BUG-110**, unfixed — the
   `dsp.beat` artifact obligations are deliberately not yet met.
 
 **Tooling.** `reconcile.py` gained the arbitration path BUG-102's own fix note called for and the

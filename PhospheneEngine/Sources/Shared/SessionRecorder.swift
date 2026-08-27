@@ -214,6 +214,13 @@ public final class SessionRecorder: @unchecked Sendable {
     // Accessed only from the serial `queue`.
     var latestStructuralPrediction = StructuralPrediction.none
 
+    // MARK: Stem-series sampling position (BUG-109 — which source is driving the stems).
+    // Updated by `recordStemSeriesPosition(_:)` from the per-frame sample site, and emitted as
+    // the `stem_series_pos_s` tail column. `nil` means no series is installed for this track and
+    // live separation is driving, which the column records as empty — the distinction the raw
+    // `playback_time_s` column cannot make. Accessed only from the serial `queue`.
+    var latestStemSeriesPosition: Double?
+
     // MARK: Raw-tap streaming WAV state (diagnostic — first 30s).
     var rawTapHandle: FileHandle?
     var rawTapSampleRate: UInt32 = 0
@@ -403,7 +410,8 @@ public final class SessionRecorder: @unchecked Sendable {
                                               frameCPUms: cpuMs, frameGPUms: gpuMs,
                                               subsystem: subsystem, renderTiming: renderTiming,
                                               rayMarchPass: passTiming,
-                                              structure: self.latestStructuralPrediction)
+                                              structure: self.latestStructuralPrediction,
+                                              stemSeriesPositionSeconds: self.latestStemSeriesPosition)
             // swiftlint:enable multiline_arguments
             guard self.materializeIfNeeded(),
                   let featuresHandle = self.featuresHandle,

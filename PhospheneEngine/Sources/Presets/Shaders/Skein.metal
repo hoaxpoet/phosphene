@@ -190,6 +190,26 @@ struct SkeinBurstGPU {        // 12 floats = 48 bytes (matches Swift SkeinBurstG
     float hashSeed;                    // per-burst droplet-placement seed
 };
 
+// BUG-110 — one PRE-RESOLVED tail sample, 8 floats = 32 bytes (matches Swift SkeinTailGPU).
+//
+// The tail loop below walks `kSkeinTailFrames` points back along the painter's path. Everything it
+// needed per point — the painter POSITION at that painter-clock value, and the breakpoint COLOUR /
+// OFFSET / START in force there — depends only on `tau`, `dtau`, the seed phases and the
+// breakpoint ring. **None of it depends on the fragment.** It was nevertheless recomputed for
+// every fragment: 41 × `skeinPainterPos` (6 sin/cos each ⇒ ~246 transcendentals per fragment, ~2
+// billion per 4K frame) plus 41 × `skeinLineLookupAt`, a ring scan up to `kSkeinMaxBreaks` long.
+//
+// Measured before the hoist (`SkeinLineCostTests`, marks overlay at 3840×2160): 0.75 ms with the
+// layer gated off, 17.06 ms at one breakpoint, 55.65 ms at the 16-breakpoint cap — the growth
+// being the scan, the 17 ms floor being mostly the trig. `SkeinState` now resolves all 41 samples
+// once per frame and the fragment reads them.
+struct SkeinTailGPU {         // 8 floats = 32 bytes
+    float posX; float posY;              // skeinPainterPos(tau − k·dτ) — natural path, no offset
+    float colR; float colG; float colB;  // breakpoint colour in force at that painter clock
+    float offX; float offY;              // that pour's position offset ("a new paint container")
+    float start;                         // that breakpoint's tauStart — the same-pour test
+};
+
 // Skein.4.1 — one line-colour + new-pour breakpoint (matches Swift SkeinBreakGPU byte-for-byte).
 struct SkeinBreakGPU {        // 6 floats = 24 bytes
     float tauStart;                    // painter clock at the dominant-stem switch (pour valid from here)
@@ -217,6 +237,7 @@ struct SkeinUniforms {        // 64-byte header + 48 × 48-byte bursts + 16 × 2
                                        // Offset 2752 = 64 + 48·48 + 16·24, 16-byte aligned — the second
                                        // additive tail. The comp paint-mask compares the auto-decoded
                                        // (linear) canvas sample against it; per-track in library mode.
+    SkeinTailGPU  tail[41];            // BUG-110 — == kSkeinTailFrames + 1, pre-resolved per frame
 };
 
 // Skein.4.1 — the line state in effect at a given painter-clock value: frozen colour + new-pour offset
@@ -249,6 +270,44 @@ static inline SkeinLineLookup skeinLineLookupAt(float t, constant SkeinUniforms&
     r.off = float2(sel.offX, sel.offY);
     r.start = sel.tauStart;
     return r;
+}
+
+
+// ── BUG-108: which mark's colour wins where two marks overlap ────────────────────────
+//
+// Skein composites marks OPAQUELY on purpose — the §colour-mud audit rejected averaging two stem
+// colours, because a blend of two paints reads as the dead-mat anti-reference. The rule for WHICH
+// colour was `if (cov > bestCover)`: whichever mark covers this fragment most.
+//
+// That is a hard argmax with no tie-break, and its decision boundary is the contour where two
+// marks' coverage is equal. On that contour the winner is decided by whatever is smallest in the
+// frame — sub-pixel painter motion, the per-frame radius (audio-driven through lineVisc/lineFlow),
+// a difference in the sixth decimal — and because the rule is discrete, every flip is a full
+// colour swap. Matt, 2026-08-27: "flickering in the areas of overlap between two different-colors
+// lines." Flicker there was what the rule did by construction.
+//
+// The replacement is what paint does: **the mark laid LAST wins**. Lay time is `spawnTau` for a
+// burst and the nearest drawn segment's painter clock for the pour line — both in painter-clock
+// units, both frozen at lay time, neither jittering frame to frame. So the boundary between two
+// overlapping marks stops moving, and no blending is introduced.
+//
+// The coverage argmax survives as the FRINGE fallback: where no mark covers this fragment
+// substantially (only anti-aliased edges overlap), there is no "laid over" relationship to
+// respect, and the most-covering mark is still the right answer. Those fragments are mostly canvas
+// anyway.
+constant float kSkeinColourClaim = 0.5;    // coverage at which a mark can claim the fragment
+constant float kSkeinNoClaim     = -1.0e9; // sentinel: no mark has claimed yet
+
+static inline void skeinClaimMark(thread float& cover, thread float& claimTau, thread float3& claimCol,
+                                  thread float& fringeCov, thread float3& fringeCol,
+                                  float cov, float3 col, float layTau)
+{
+    cover = max(cover, cov);                                    // alpha: unchanged, max over marks
+    if (cov >= kSkeinColourClaim) {
+        if (layTau >= claimTau) { claimTau = layTau; claimCol = col; }
+    } else if (cov > fringeCov) {
+        fringeCov = cov; fringeCol = col;                       // fringe-only overlap: old rule
+    }
 }
 
 // ── Background / canvas fragment ──────────────────────────────────────────────────
@@ -339,11 +398,15 @@ fragment float4 skein_geometry_fragment(
     float dtau = max(st.painterTauStep, 1.0 / 240.0);  // guard a zero step (would collapse the tail)
     float phx  = st.seedPhaseX, phy = st.seedPhaseY;
 
-    // OPAQUE compositing (the §colour-mud audit): track the TOPMOST mark's colour by coverage, never
-    // a blend of two stem colours. Each contribution updates (bestCover, bestCol) together, so an
-    // overlap takes whichever mark covers this fragment most — occlude, never average to mud.
-    float  bestCover = 0.0;
-    float3 bestCol   = float3(1.0);   // unpainted: white (the held cream shows through at cover 0)
+    // OPAQUE compositing (the §colour-mud audit): ONE mark's colour, never a blend of two stem
+    // colours. BUG-108 changed WHICH mark wins — see `skeinClaimMark` above. Coverage is still the
+    // alpha (max over every contribution); the colour goes to the mark laid LAST, with the old
+    // coverage argmax kept as the fringe fallback.
+    float  bestCover  = 0.0;
+    float  claimTau   = kSkeinNoClaim;
+    float3 claimCol   = float3(1.0);
+    float  fringeCov  = 0.0;
+    float3 fringeCol  = float3(1.0);   // unpainted: white (the held cream shows through at cover 0)
 
     // ── Layer A: the pour LINE — per-segment FROZEN colour + per-switch NEW pour (Skein.4.1) ──
     // The colour is the DISCRETE dominant-stem colour, but FROZEN PER SEGMENT at lay-time via the
@@ -370,8 +433,10 @@ fragment float4 skein_geometry_fragment(
     float  lineWiden = mix(1.0, 1.5, lineVisc) + 0.5 * clamp(st.lineFlow, 0.0, 1.0);
     if (int(st.breakCount) > 0) {   // Skein.5.1: no committed pour yet ⇒ no line (never white)
         // Per-frame radius (never per-segment). Speed estimated from the natural (un-offset) path.
-        float2 tip0  = skeinPainterPos(tau, phx, phy);
-        float2 oldP0 = skeinPainterPos(tau - float(kSkeinTailFrames) * dtau, phx, phy);
+        // BUG-110: the tail table is pre-resolved per frame — entry k is the painter state at
+        // `tau − k·dτ`, so entry 0 is the tip and entry kSkeinTailFrames is the tail's far end.
+        float2 tip0  = float2(st.tail[0].posX, st.tail[0].posY);
+        float2 oldP0 = float2(st.tail[kSkeinTailFrames].posX, st.tail[kSkeinTailFrames].posY);
         float  oSpeed = length(float2((tip0.x - oldP0.x) * a, tip0.y - oldP0.y))
                       / max(float(kSkeinTailFrames) * dtau, 1e-4);
         float  r = kSkeinLineRadius * lineWiden * mix(1.05, 0.70, smoothstep(0.05, 0.35, oSpeed));
@@ -380,23 +445,53 @@ fragment float4 skein_geometry_fragment(
         // endpoints belong to the SAME pour (equal breakpoint `start`); a segment straddling a switch is
         // the JUMP and is skipped → the gap. Each drawn point is displaced by its pour's offset, and the
         // segment is coloured by its pour's frozen colour.
-        SkeinLineLookup pr = skeinLineLookupAt(tau, st);
-        float2 prQ = float2((tip0.x + pr.off.x) * a, tip0.y + pr.off.y);   // k = 0 (newest)
+        SkeinTailGPU pr = st.tail[0];
+        float2 prQ = float2((tip0.x + pr.offX) * a, tip0.y + pr.offY);     // k = 0 (newest)
         float  lineSDF = 1e9;
-        float3 lineCol = pr.col;
+        // BUG-108 round 2 (Matt, 2026-08-27: "flickering still happens but only after 70–80 s").
+        // Round 1 fixed which MARK wins an overlap; INSIDE the line, the colour was still taken
+        // from the NEAREST segment — `d < lineSDF` — which is the same argmin one level down.
+        // Where two segments of DIFFERENT pours are near-equidistant from a fragment the winner
+        // flips on sub-pixel motion, and the flip is a full colour swap. The number of such pairs
+        // grows as colour breakpoints accumulate, which is why it took ~70–80 s to appear and why
+        // it read as less prominent than the mark-level case.
+        //
+        // Same rule as `skeinClaimMark`: coverage from the nearest segment (unchanged), COLOUR
+        // from the latest-laid segment that actually covers this fragment. The tail is walked
+        // newest→oldest, so the FIRST covering segment IS the latest-laid one — no comparison
+        // needed, and lay order cannot jitter.
+        float3 lineCol = float3(pr.colR, pr.colG, pr.colB);
+        bool   haveLineCol = false;
+        float  nearestDist = 1e9;      // fringe fallback: nothing covers, so nothing occludes
+        float3 nearestCol  = lineCol;
+        // BUG-108: the nearest drawn segment's painter clock is the LINE's lay time, tracked
+        // beside its frozen colour. `tau` is now, so a segment k steps back was laid k·dtau ago —
+        // the tail's newest end is the most recently laid paint on the canvas.
+        float  lineTau = tau;
         for (int k = 1; k <= kSkeinTailFrames; ++k) {
-            float  ctau = tau - float(k) * dtau;
-            SkeinLineLookup cu = skeinLineLookupAt(ctau, st);
-            float2 cb  = skeinPainterPos(ctau, phx, phy);
-            float2 cuQ = float2((cb.x + cu.off.x) * a, cb.y + cu.off.y);
+            SkeinTailGPU cu = st.tail[k];
+            float2 cuQ = float2((cu.posX + cu.offX) * a, cu.posY + cu.offY);
             if (cu.start == pr.start) {                              // same pour → draw (no bridge)
-                float d = skeinSegDist(q, cuQ, prQ) - r;
-                if (d < lineSDF) { lineSDF = d; lineCol = cu.col; }   // nearest drawn segment's frozen colour
+                float  d   = skeinSegDist(q, cuQ, prQ) - r;
+                float3 col = float3(cu.colR, cu.colG, cu.colB);
+                lineSDF = min(lineSDF, d);                           // coverage: nearest segment
+                if (d <= 0.0) {
+                    if (!haveLineCol) {                              // newest→oldest ⇒ first = latest
+                        haveLineCol = true;
+                        lineCol = col;
+                        lineTau = tau - float(k) * dtau;             // BUG-108 lay time
+                    }
+                } else if (d < nearestDist) {
+                    nearestDist = d; nearestCol = col;               // fringe only
+                }
             }
             pr = cu; prQ = cuQ;
         }
+        // Fragments no segment covers are the anti-aliased fringe: nothing is laid OVER anything
+        // there, so the nearest segment's colour is still the right answer.
+        if (!haveLineCol) { lineCol = nearestCol; }
         float cov = 1.0 - smoothstep(-px, px, lineSDF);   // ONE smooth tube; uniformly solid interior
-        if (cov > bestCover) { bestCover = cov; bestCol = lineCol; }
+        skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, lineCol, lineTau);
     }
 
     // ── Layers B + C: onset-burst RING — Pollock splatter (Skein.5.4 morphology rebuild) ──
@@ -441,14 +536,14 @@ fragment float4 skein_geometry_fragment(
                 float ragged = 1.0 + 0.30 * skein_fbm2(q * 65.0 + float2(burst.hashSeed * 4.9, 2.7));
                 float drr = max(dripR * ragged, px * 1.3);
                 float cov = (1.0 - smoothstep(drr - px * 1.6, drr + px * 1.6, length(q - fpA))) * op;
-                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
                 // One faint micro-satellite (the secondary droplet a heavy drop kicks up).
                 float4 hd = hash_f01_4x(float4(burst.hashSeed, 77.0, 1.0, 0.0));
                 if (hd.x > 0.45) {
                     float2 sp = fpA + float2(cos(hd.y * 6.2832), sin(hd.y * 6.2832)) * dripR * mix(1.8, 2.6, hd.z);
                     float sr = max(dripR * mix(0.18, 0.32, hd.w), px * 1.1);
                     float scov = (1.0 - smoothstep(sr - px * 1.4, sr + px * 1.4, length(q - sp))) * op;
-                    if (scov > bestCover) { bestCover = scov; bestCol = col; }
+                    skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, scov, col, burst.spawnTau);
                 }
             }
             continue;
@@ -489,7 +584,7 @@ fragment float4 skein_geometry_fragment(
             float ragged = edgeAmp * 1.2 * primR
                          * skein_fbm2(q * 55.0 + float2(burst.hashSeed * 3.7, 9.1));
             float cov = (1.0 - smoothstep(-px, px * aaScale, blotSDF + ragged)) * op;
-            if (cov > bestCover) { bestCover = cov; bestCol = col; }
+            skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
         }
 
         // ── B2: FLUNG STREAKS — long thin slightly-curved threads along the throw, tapering,
@@ -515,7 +610,7 @@ fragment float4 skein_geometry_fragment(
                          * (1.0 + 0.45 * skein_fbm2(q * 120.0 + float2(burst.hashSeed * 5.1, float(sIdx) * 7.7)));
                 float swr = max(sw, px * 0.9);
                 float cov = (1.0 - smoothstep(swr - px * 1.5, swr + px * 1.5, sd)) * op * 0.95;
-                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
             }
             // Terminal droplet — the pearl at the thread's end (string-of-pearls read).
             float tdR = max(mix(0.0022, 0.0052, mag01) * mix(0.7, 1.3, hsk.w), px * 1.2);
@@ -523,7 +618,7 @@ fragment float4 skein_geometry_fragment(
             if (tdc < tdR * 2.0 + px * 3.0) {
                 float ragged = 1.0 + edgeAmp * skein_fbm2(q * 80.0 + float2(burst.hashSeed * 6.3, float(sIdx) * 4.4));
                 float cov = (1.0 - smoothstep(tdR * ragged - px * 1.5, tdR * ragged + px * 1.5, tdc)) * op;
-                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
             }
         }
 
@@ -555,13 +650,16 @@ fragment float4 skein_geometry_fragment(
                 float drr = max(dr * max(ragged, 0.20), px * 1.2);
                 float aa  = px * aaScale;
                 float cov = (1.0 - smoothstep(drr - aa, drr + aa, dc)) * op;
-                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
             }
         }
     }
 
-    // OPAQUE alpha-over: the overlay blend (SRC_ALPHA / ONE_MINUS_SRC_ALPHA) composites the TOPMOST
-    // mark's colour over the held canvas at bestCover — layers occlude, never average to mud.
+    // OPAQUE alpha-over: the overlay blend (SRC_ALPHA / ONE_MINUS_SRC_ALPHA) composites ONE mark's
+    // colour over the held canvas at bestCover — layers occlude, never average to mud. BUG-108:
+    // that colour is the LAST-LAID mark that substantially covers this fragment, falling back to
+    // the most-covering mark where only fringes meet.
+    float3 bestCol = (claimTau > kSkeinNoClaim) ? claimCol : fringeCol;
     return float4(bestCol, bestCover);
 }
 

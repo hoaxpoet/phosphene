@@ -152,6 +152,30 @@ extension VisualizerEngine {
     /// the dispatch is deferred and retried after 100 ms. Once the frame window
     /// is clean (or the 2s deferral ceiling is hit), the actual MPSGraph call
     /// is dispatched back to stemQueue via `performStemSeparation()`.
+    /// BUG-109 — record which source is driving the stems, in the SESSION LOG.
+    ///
+    /// Which source drives the stems is a per-track fact that changes what every stem-driven
+    /// preset reads, and it was visible only in `os.Logger` — so a session artifact could not
+    /// answer it, and BUG-109 had to be inferred from counting distinct stem values instead of
+    /// grepping one line. Paired with the `stem_series_pos_s` column, this makes the whole
+    /// question readable off a session.
+    func logStemSource(_ series: StemFeatureSeries) {
+        if series.isEmpty {
+            sessionRecorder?.log("STEM_SOURCE: live separation (no series for this track)")
+            return
+        }
+        sessionRecorder?.log(String(
+            format: "STEM_SOURCE: series frames=%d covers=%.1fs hop=%.1fms",
+            series.frames.count,
+            series.durationSeconds,
+            series.hopSeconds * 1000
+        ))
+        let detail = "\(series.frames.count) frames covering "
+            + String(format: "%.1f", series.durationSeconds)
+            + " s; live separation no longer drives StemFeatures for this track"
+        logger.info("LFSTEM: series installed — \(detail, privacy: .public)")
+    }
+
     /// Frame budget the ML dispatch gate judges the recent window against.
     ///
     /// **BUG-106.** This was the tier constant alone — 14 ms on tier 1, 16 on tier 2, with no
@@ -601,7 +625,15 @@ extension VisualizerEngine {
         // LFSTEM.1 — clear unconditionally here, install on the cache-hit branch below. Same
         // shape as the family series above and for the same reason: a track-scoped surface that
         // only one path clears leaks the previous track's data into every path that does not.
-        currentStemSeries = .empty
+        stemSeriesLock.withLock {
+            currentStemSeries = .empty
+            // LFSTEM.1d — forget the previous track's clock history, or the first frame of the
+            // new track dead-reckons from where the old one stopped.
+            stemSeriesClock.reset()
+            latestRawPlaybackSeconds = 0
+            latestStemSeriesPosition = nil
+        }
+        sessionRecorder?.recordStemSeriesPosition(nil)
 
         // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).
         if let identity { logWiringStemCacheLookup(identity: identity) }
@@ -639,14 +671,8 @@ extension VisualizerEngine {
             // LFSTEM.1 — a pre-analysed local file: stems now come from the series at the
             // playback second, not from live separation ~2.5 s behind it. `.empty` for
             // streaming and for entries written before schema v10, which keeps the live path.
-            currentStemSeries = cached.stemFeatureSeries
-            if !cached.stemFeatureSeries.isEmpty {
-                let frames = cached.stemFeatureSeries.frames.count
-                let covers = String(format: "%.1f", cached.stemFeatureSeries.durationSeconds)
-                let detail = "\(frames) frames covering \(covers) s; live separation no "
-                    + "longer drives StemFeatures for this track"
-                logger.info("LFSTEM: series installed — \(detail, privacy: .public)")
-            }
+            stemSeriesLock.withLock { currentStemSeries = cached.stemFeatureSeries }
+            logStemSource(cached.stemFeatureSeries)
             // DYN.1c: this track's own loudness distribution as the surge source. Non-nil
             // only for a local file (the only path that decodes the whole thing); nil
             // everywhere else keeps the fixed band. Deliberately survives the

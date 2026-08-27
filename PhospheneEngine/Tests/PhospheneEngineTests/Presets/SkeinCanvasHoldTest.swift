@@ -76,6 +76,47 @@ struct SkeinCanvasHoldTest {
                 "Skein.metal still declares kSkeinFlickDt — Skein.3 retires the debug flick schedule (→ onset-burst ring).")
         #expect(src.contains("constant SkeinUniforms& st [[buffer(6)]]"),
                 "Skein.metal skein_geometry_fragment must read SkeinUniforms at buffer(6) (ENGINE.1.2 slot-6 binding).")
+
+        // ── BUG-108: the overlap colour must not depend on coverage ──────────────────
+        //
+        // The flicker Matt reported at overlaps was structural: colour was chosen by
+        // `if (cov > bestCover)`, a per-fragment argmax whose decision boundary is the
+        // equal-coverage contour between two marks. On that contour the winner flipped on
+        // sub-pixel motion or a sixth-decimal coverage difference, and every flip was a full
+        // colour swap because the rule is deliberately discrete (the §colour-mud audit).
+        //
+        // The fix is not a tuning constant, it is a change of WHICH QUANTITY DECIDES: the
+        // colour now goes to the mark with the greatest lay time (`spawnTau` for a burst, the
+        // nearest drawn segment's painter clock for the line), both frozen at lay time. A
+        // frozen quantity cannot jitter, so the boundary cannot flicker. This asserts the
+        // property, not the arithmetic — if a future edit reintroduces a coverage comparison
+        // as the colour selector, the flicker comes back with it.
+        #expect(!src.contains("bestCover) { bestCover"), """
+                Skein.metal selects an overlap colour by coverage argmax again \
+                (`cov > bestCover` assigning the colour). That is BUG-108: the decision \
+                boundary is the equal-coverage contour, and it flickers. Colour belongs to the \
+                LAST-LAID mark — see skeinClaimMark.
+                """)
+        #expect(src.contains("static inline void skeinClaimMark("),
+                "Skein.metal must route every mark through skeinClaimMark (BUG-108 lay-order rule).")
+        #expect(src.contains("claimTau = layTau"),
+                "skeinClaimMark must decide colour on lay time, not coverage (BUG-108).")
+
+        // BUG-108 round 2. The same argmin existed one level down, INSIDE the line: its colour
+        // came from the NEAREST segment (`d < lineSDF`), so two near-equidistant segments of
+        // different pours flipped the colour frame to frame. Matt saw the remainder at 70–80 s,
+        // once enough colour breakpoints had accumulated to make such pairs common. The line now
+        // takes the colour of the FIRST covering segment in a newest→oldest walk — which is the
+        // latest-laid one, by construction, with no comparison to jitter.
+        #expect(src.contains("if (!haveLineCol) {"), """
+                Skein.metal's line layer no longer selects its colour by lay order. If the colour \
+                is taken from the nearest segment again, two near-equidistant segments of \
+                different pours flip it every frame — BUG-108's flicker, one level down.
+                """)
+        #expect(src.contains("lineSDF = min(lineSDF, d);"), """
+                the line's COVERAGE must stay the nearest-segment distance while its COLOUR comes \
+                from lay order — fusing them back together reintroduces the argmin.
+                """)
         #expect(src.contains("st.painterTau"),
                 "Skein.metal fragment must drive the painter from SkeinState.painterTau (Skein.3 audio-modulated clock).")
         // Skein.ENGINE.2: Skein owns its warp/hold fragment (decays the ALPHA wetness channel, holds

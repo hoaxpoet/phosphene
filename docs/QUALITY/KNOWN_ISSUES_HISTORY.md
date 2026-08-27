@@ -179,6 +179,302 @@ This is the same species as FTR.24's model/shader mismatch (glide order) three d
 
 ---
 
+### BUG-100 — CLOSED (explained, not reproduced): the "sustained 4K degradation" was a preset switch inside the measurement window (2026-08-19, closed 2026-08-26)
+
+**Status: ✅ CLOSED 2026-08-26 on Matt's call.** Not a defect. Four 4K sessions found no
+degradation, both candidate mechanisms were measured and excluded, and both pieces of the
+original evidence have a measured explanation that needs no mechanism — a Stave→Witchlight
+switch moves `frame_gpu_ms` 4.94 → 11.44 ms, which is the reported 3.6 → 12.9 "ramp", and
+Witchlight simply costs more at 4K than Stave does, which is the reported "persists into the
+next preset". The instruments added while chasing it (`GPU_PRESSURE`, `THERMAL_STATE`) stay.
+
+⚠ **The honest residual:** the original CPU endpoint (44.9 ms) is higher than anything measured
+in any reproduction attempt, and that session's artifacts have aged out of retention, so it
+cannot be re-segmented. The GPU half is explained cleanly; the CPU half only partly. Reopen only
+on a NEW capture that shows `frame_gpu_ms` rising inside a single preset at a single resolution —
+that is the claim, and it is now three times contradicted.
+
+**What remains true and user-visible:** Stave and Witchlight are over budget at 4K (~50 fps and
+~39 fps measured). That is BUG-098/099/101's territory — steady-state cost, not degradation.
+
+**Status: evidence-only. Not a preset defect — three preset-side hypotheses were falsified
+before filing.**
+
+Matt's Stave M7 (`2026-08-19T17-01-15Z`): *"performance slowed over time, which led to some
+choppiness."* Measured over a contiguous 70 s window at 3840×2160:
+
+| t | frame_cpu | frame_gpu | encode_cpu | renderframe_cpu |
+|---|---|---|---|---|
+| 32 s | 17.6 ms | 3.6 ms | 13.9 ms | 9.8 ms |
+| 62 s | 19.7 ms | 3.9 ms | 15.5 ms | 12.0 ms |
+| 77 s | 37.4 ms | 6.8 ms | 16.2 ms | 12.6 ms |
+| 92 s | 44.9 ms | 12.9 ms | 15.2 ms | 11.0 ms |
+
+**The app's own CPU work is flat.** `encode_cpu_ms` and `renderframe_cpu_ms` barely move while
+total frame time rises 2.5× and GPU time 3.6×. The app is doing the same work and getting less
+back.
+
+**Falsified before filing:**
+
+1. **Stave accumulates something.** An offline soak — 1920 frames at 3840×2160 through the real
+   multi-pass path — is flat at 22.3 ms with no drift across eight blocks.
+2. **The dispersion fan opens over the track**, raising overdraw. `waveformOccupancy` is flat at
+   0.081–0.095 across the entire segment and **r(GPU, occupancy) = −0.11**.
+3. **It is preset-specific.** It is not: the degradation persists into the next preset
+   (Witchlight reads `frame_cpu` 24.4 ms at 4K, against Stave's own 17.4 ms early in the same
+   session) and partially recovers after a 2.16 MP interlude.
+
+⚠ **A "second finding" was filed here and is RETRACTED — the metric did not mean what its name
+says.** The entry originally claimed `encode_cpu_ms` was CPU work scaling with pixel count
+(9.1 ms at 2.07 MP → 16.4 ms at 8.29 MP) and called it "the more tractable half".
+
+**It is not CPU work.** `encode_cpu_ms` is wall-clock from `draw()` entry to `commit()`
+(`RenderPipeline.swift:752…822`), and `view.currentDrawable`
+(`DrawableLifecycleProbe.swift:256`) is called *inside* that window. `currentDrawable` **blocks**
+until CoreAnimation frees a drawable, so when the GPU is slower — which at 4K it is — the block
+is longer and the "CPU" number rises with it. The inflight semaphore is correctly excluded
+(waited at line 743, before `cpuDrawStart`), which is probably why the drawable wait was assumed
+excluded too. It is not.
+
+So there is **no separate CPU-encode defect**, and no fix to make there. At 4K the app is simply
+saturated: GPU 12.9 ms plus presentation waits, with `frame_cpu` (44.9 ms) measuring
+draw-start → completion and therefore carrying queue latency for a pipeline that cannot keep up.
+
+⚠ **Third time in one day** that a metric was read as its name rather than its definition —
+after `deltaTime` (vsync, not headroom) and the harness milliseconds (readback included). The
+rule that keeps holding: **read what the number is computed from before concluding anything from
+its trend.**
+
+⚠ **FIRST INSTRUMENTED SESSION (2026-08-19T22-45-50Z): thermal stayed `nominal`, and the
+degradation did not reproduce.** `THERMAL_STATE state=nominal low_power=false active_cpus=10`
+logged once and never changed, and Witchlight held **6.77 → 6.22 ms across 60 s at 4K — flat**,
+in a window comparable to the one where Stave degraded 2.9 → 11.7 ms. So this session supports
+neither the thermal hypothesis nor a general sustained-4K decay. ⚠ It does not refute them
+either: the degrading session ran a different preset mix, and one non-reproduction is not a
+falsification. **What it does establish is that the instrument works and reports cleanly**, so
+the next session that DOES degrade will carry the answer. Keep BUG-100 open pending that.
+
+**⚠ SECOND INDEPENDENT NON-REPRODUCTION, 2026-08-20 (PERF.15).** Session
+`2026-08-20T16-38-27Z`: **Volumetric Lithograph — the most expensive preset in the roster — flat
+across 172 s at 3840×2160 fullscreen**, `frame_gpu_ms` p50 30.92…31.28 over seven consecutive
+buckets, thermal `nominal` with no state change, 6,815 frames. Same reading as the Witchlight
+non-reproduction above: it does not falsify this entry, but two clean runs on two different presets
+at 4K make the general "sustained 4K decays" form less likely.
+
+⚠ **One contrary signal in the same window, and it is worth re-reading rather than filing:** the
+`2026-08-20T15-53-59Z` session shows VL rising ~175 → ~295 ms across its final two buckets — a real
+within-session degradation. **That is also the session whose 175 ms baseline PERF.15 disputes by
+5.6×**, so its trend should be re-derived once that conflict is settled; a ramp measured on a
+baseline that may be misattributed is not yet evidence for this entry.
+
+**★★★ THE STAVE REPRODUCTION RAN — AND IT EXPLAINS THE ORIGINAL EVIDENCE INSTEAD OF
+REPRODUCING IT. Session `2026-08-26T22-33-09Z` (2026-08-26).** 3840×2160, **Stave for 101 s,
+then Witchlight for 51 s** — the exact sequence this entry was filed from. Preset boundaries
+taken from the data (a 101-frame rolling median of `frame_gpu_ms` crossing 8 ms), not from log
+timestamps, so no bucket straddles the switch:
+
+| | t=0 | t=15 | t=30 | t=45 | t=60 | t=75 | t=90 |
+|---|---|---|---|---|---|---|---|
+| **Stave** `frame_gpu` p50 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 | 4.94 |
+| **Stave** `frame_cpu` p50 | 19.77 | 16.32 | 17.46 | 17.97 | 18.70 | 19.44 | 20.22 |
+
+**`frame_gpu_ms` is dead flat to two decimals across 101 s of Stave, and 11.44–11.48 across
+Witchlight.** `GPU_PRESSURE` holds `alloc_mb=489 used_pct=4.0 ml_forced=0` for all 15 lines.
+Thermal `nominal`. No degradation of any kind.
+
+**★ What the original evidence actually was.** Two independent pieces, both explained:
+
+1. **"The degradation persists into the next preset — Witchlight reads 24.4 ms against Stave's
+   own 17.4 ms early in the same session."** Measured here: **Witchlight at 4K costs 25.7 ms and
+   Stave costs 16–20 ms**, in a session where nothing degraded. That is not persistence — it is
+   two presets with different costs being compared to each other. Witchlight also measured
+   25.1–25.8 ms in the *previous* clean session, i.e. its normal price.
+2. **The ramp itself.** The original window reported `frame_gpu` **3.6 → 12.9 ms**. Measured
+   here, a Stave→Witchlight switch moves `frame_gpu` **4.94 → 11.44 ms**. A measurement window
+   spanning that switch produces the reported shape with no mechanism at all — which is the trap
+   the PERF program already documented ("short windows straddling a preset switch produce
+   garbage medians"; a 16.44 ms figure was published and retracted for exactly this). The CPU
+   endpoint (44.9 ms) is still higher than anything measured here, so this explains the GPU half
+   cleanly and the CPU half only partly. **Stated as the limit of the explanation, not papered
+   over** — the original artifacts have aged out of retention and cannot be re-segmented.
+
+**★ The one real trend, and why it is not this entry.** Inside Stave, `frame_cpu` p50 rises
+16.32 → 20.22 ms over 75 s (+24 %) while GPU is flat. That is *waiting*, not *working*:
+`renderframe_cpu_ms` wraps `renderFrame`, and Stave's feedback path calls `instrumentedDrawable`
+→ `view.currentDrawable` **inside** it (`RenderPipeline+FeedbackDraw.swift:90`), so the blocking
+present wait is inside the timer — the same definition trap that produced this entry's retracted
+`encode_cpu_ms` finding. The values drift from just under the 16.7 ms vsync interval to just
+over it, which is what pacing across a vsync boundary looks like, not what a resource leak looks
+like.
+
+**RECOMMENDATION: close BUG-100 as explained-not-reproduced, keeping the instruments.** Four 4K
+sessions (Witchlight ×2, Volumetric Lithograph ×1, Stave→Witchlight ×1) show no degradation;
+both candidate mechanisms are measured and dead; and both pieces of the original evidence have a
+measured explanation that needs no mechanism. What remains true and user-visible is that **Stave
+and Witchlight are simply over budget at 4K** — ~50 fps and ~39 fps respectively — which is
+BUG-098/099/101's territory, not an app-wide degradation. Matt's call.
+
+**⚠ THIRD NON-REPRODUCTION, AND THE FIRST WITH THE INSTRUMENTS IN — session
+`2026-08-26T22-04-58Z` (2026-08-26).** 3840×2160, Witchlight, 82 s inside one preset at one
+resolution (4,929 frames, well past the few-hundred-frame floor the PERF program set after a
+16.44 ms figure was published off 89 frames spanning a transition):
+
+| t (s) | frames | `frame_cpu` p50 | `frame_cpu` p90 | `frame_gpu` p50 | `frame_gpu` p90 |
+|---|---|---|---|---|---|
+| 20 | 120 | 25.12 | 28.33 | 11.44 | 11.50 |
+| 40 | 597 | 25.25 | 28.66 | 11.43 | 11.54 |
+| 60 | 600 | 25.55 | 28.67 | 11.46 | 11.53 |
+| 80 | 600 | 25.45 | 28.66 | 11.45 | 11.52 |
+| 100 | 600 | 25.80 | 28.65 | 11.43 | 11.50 |
+
+**Flat.** `frame_cpu` p50 moves +2.7 % across 80 s and `frame_gpu` p50 does not move at all,
+against the 2.5×/3.6× this entry was filed for over a comparable 70 s window. Thermal `nominal`,
+no state change.
+
+**★ The GPU-working-set hypothesis is FALSIFIED, not merely unobserved.** All ten `GPU_PRESSURE`
+lines read `alloc_mb=489 budget_mb=12124 used_pct=4.0` — dead flat, and **4 % of budget**. At 4K
+this app is nowhere near the eviction threshold, so pressure cannot be the mechanism on this
+machine at this resolution. That was the leading un-measured candidate; it is now dead.
+
+**The ML half is moot as well**: `ml_forced=0 ml_last=dispatchNow` throughout, because BUG-106
+was fixed in the same session's build. (It was already refuted as a mechanism by PERF.15's VL
+run.)
+
+**Where that leaves this entry.** One observed degradation (Stave M7, `2026-08-19T17-01-15Z`,
+artifacts since aged out of retention) against **three** clean 4K sessions — Witchlight twice,
+Volumetric Lithograph once — with both named mechanisms now measured and excluded. The one
+uncontrolled difference left is the **preset mix**: every clean session ran Witchlight or VL, and
+the only degrading one had **Stave** in it. That is not "Stave is slow" — the original session
+showed the degradation *persisting into* Witchlight after leaving Stave, which is what made it
+look whole-app. It means a session that CONTAINS Stave is the reproduction that has never been
+retried. **Next attempt: 4K fullscreen, Stave for ~90 s, then switch to Witchlight and hold.**
+If that is also flat, this entry should close as unreproducible with a note that its instruments
+stay in place.
+
+**Instrumented 2026-08-26 (BUG100.1) — the two dimensions nothing was recording.** Thermal came
+back `nominal` on both non-reproducing sessions, which rules that out for *those* and leaves the
+degrading one unexplained. Sessions now also log, on the same low-rate heartbeat bucket as
+`DRAWABLE_LIFECYCLE`:
+
+```
+GPU_PRESSURE alloc_mb=… budget_mb=… used_pct=… ml_forced=… ml_last=…
+```
+
+- **`alloc_mb` / `budget_mb`** — this process's Metal allocation against
+  `recommendedMaxWorkingSetSize`. At 4K every render target is 4× its 1080p size; if the working
+  set approaches the budget the driver evicts, which is slow **globally**, survives a preset
+  switch (the targets stay big) and recovers when a smaller target frees memory. That is
+  precisely this entry's signature — whole-app, cross-preset, partial recovery after the 2.16 MP
+  interlude — and it has never been measured. A ratio climbing through a degrading session
+  confirms it; a flat ratio rules it out.
+- **`ml_forced`** — `MLDispatchScheduler.forceDispatchCount`. Filed separately as **BUG-106**:
+  the gate's budget is a hardcoded 14/16 ms, so at 4K it can only defer-then-force. ⚠ **This is
+  not offered as this entry's mechanism** — the PERF.15 VL session was flat across 172 s at 4K
+  while permanently over that same budget, so forced dispatch is not sufficient to degrade. The
+  counter is here so the next degrading session can implicate or clear it with one grep instead
+  of an argument.
+
+**What is needed now is one reproduction on the instrumented build:** a fullscreen 4K session of
+about two minutes on a preset mix that has degraded before (Stave → Witchlight was the original).
+Both candidate mechanisms are then decided by three lines of log.
+
+**Instrumented 2026-08-19 (PERF.9).** Sessions now log
+`THERMAL_STATE state=… low_power=… active_cpus=…` whenever it changes, plus once at the start so
+an unchanging session still records its state.
+
+⚠ **NOT `powermetrics`, which is what was asked for.** It refuses to run unprivileged —
+*"powermetrics must be invoked as the superuser"*, verified — so the app cannot sample it, and
+shipping a privileged helper to read one counter is not proportionate.
+`ProcessInfo.thermalState` is the supported unprivileged primitive for exactly this question:
+the OS's own view of whether it is shedding performance for heat. It is coarse (nominal / fair /
+serious / critical), and coarse is enough here — **`nominal` throughout a degrading session
+falsifies the thermal hypothesis just as usefully as `serious` confirms it**, and either outcome
+closes the open half of this entry.
+
+---
+
+
+### BUG-104 — RESOLVED (WHIT.1d-4): Rosette's curve had visible gaps — the nearest-point search locked onto the wrong branch (2026-08-26)
+
+**Severity:** P1
+**Domain tag:** preset.fidelity / sdf-geometry
+**Status:** Resolved
+**Introduced:** WHIT.0 (`rosetteDist`'s coarse-then-bisect search, 2026-08-25)
+**Resolved:** WHIT.1d-4 (2026-08-26)
+
+**Expected behavior.** The two-term epicycle renders as a single continuous closed stroke at
+every point in the morph (`a` from 0.05 to 1.80), matching the validated state family
+(circle/cusped-star/petals/petals-with-loops/tangle, `ROSETTE_DESIGN.md` §4.1).
+
+**Actual behavior.** After BUG-105's wing fix, Matt's next live look reported: *"Still too
+basic... Still broken."* Asked directly what "still broken" meant: *"Lines do not connect. The
+motion is all wrong."* Rendered diagnostic stills (`test_rosette_visualDump`,
+`ROSETTE_MVWARP_DIAG=1`) confirmed it directly: the tangle state (a=1.80) showed clear gaps
+cutting into the stroke at multiple points around the loops; the cusped-star state (a=0.30)
+showed small disconnected artifact dots near the cusps.
+
+**Reproduction steps.** Render Rosette's geometry-overlay fragment at `a=1.80` (time =
+`kRosettePeriod/2`) at any resolution and inspect the stroke for gaps.
+
+**Minimum reproducer:** `test_rosette_curveIsContinuousAtHighA`
+(`RosetteMVWarpAccumulationTest.swift`), or `ROSETTE_MVWARP_DIAG=1`'s `tangle_a180` still.
+
+**Session artifacts.** Diagnostic PNGs generated via the existing env-gated visual-dump test
+(not a live session — reproduced directly and deterministically from the shader, no audio
+involved). Quantified with a bright-pixel-coverage script against the pre-fix and post-fix
+`tangle_a180` stills: **5.92% of the 1920×1080 frame lit before the fix, 6.96% after** — a
+17.5% increase in stroke coverage from filling in the gaps, measured, not estimated.
+
+**Suspected failure class:** sdf-geometry.
+
+**Evidence for this class:** `rosetteDist`'s coarse-then-bisect nearest-point search tracked
+only the SINGLE globally-closest raw coarse sample, then bisect-refined locally around it. A
+self-intersecting curve (which the two-term epicycle becomes at higher `a`, per its own design
+doc) can have several distinct branches passing near the same query point; refining from only
+one seed locks the search onto whichever branch happened to own the marginally-closest coarse
+sample and never considers a different, ultimately-closer branch. Where the wrong branch was
+selected, the reported distance was too large, so pixels that should render as stroke rendered
+as background — a literal gap. Verified the mechanism directly: temporarily reducing the fix's
+`kRosetteMaxBranchCandidates` from 3 to 1 (collapsing it back to old single-branch behavior)
+reproduced the exact pre-fix measurement (0.0592) bit-for-bit.
+
+**Verification criteria:**
+- [x] New regression guard `test_rosette_curveIsContinuousAtHighA` passes (bright-pixel
+      coverage at the tangle state > 0.063, comfortably between the measured broken value
+      0.0592 and fixed value 0.0696).
+- [x] Confirmed the guard actually bites: temporarily set `kRosetteMaxBranchCandidates = 1`,
+      confirmed the test fails reproducing the exact pre-fix number, then restored the fix.
+- [x] Visually confirmed via regenerated diagnostic stills: tangle state fully continuous
+      (5 clean overlapping loops, no gaps); cusped-star state's remaining small loops at the
+      cusps confirmed as REAL curve geometry, not an artifact — the two-term epicycle's second
+      term amplitude (`4a` at n=5) exceeds 1 for any `a > 0.25`, so a=0.30 is mathematically
+      past the exact-cusp threshold and small self-tangent loops are an expected feature of
+      that state, matching `ROSETTE_DESIGN.md`'s own "cusped-star" naming.
+- [x] Full existing Rosette suite, `swiftlint --strict`, and the full engine suite (1898
+      tests) re-run clean.
+
+**Manual validation required:** Yes — Matt's next live look confirms the curve now reads as
+one continuous, correctly-formed stroke through the full morph. Not yet performed as of this
+fix landing.
+
+**Fix scope.** Contained to `rosetteDist`: find ALL local minima among the coarse samples
+(not just the single global-best raw value, done via a small fixed-size top-3 candidate list),
+bisect-refine each candidate branch separately, take the overall closest result. No change to
+`rosetteCurve`, the wing arcs, audio routing, or any other function. Cost: coarse phase
+unchanged (still 40 samples); refinement now runs on up to 3 candidate branches instead of 1
+(worst case ~1.8× the curve evaluations of the old search, most pixels far fewer since most
+query points have only one nearby branch) — comfortably within the pass's existing 5.8ms
+budget headroom (16.67ms @ 60fps target). Trivial single-increment collapse (root cause
+confirmed by direct rendering + a bit-exact revert/restore test, contained to one function, no
+architectural risk) — same-session, Matt actively testing live.
+
+**Related:** Increment WHIT.1d-4. Adjacent finding, not itself a defect: `ROSETTE_DESIGN.md`
+§6.6 already flagged the coarse-then-bisect search as an unprofiled *performance* risk; this is
+the same search's *correctness* failure mode, found live rather than by review.
+
+---
+
+
 ### BUG-101 — Volumetric Lithograph is expensive by construction, not by waste (2026-08-19)
 
 **Status: ✅ CLOSED 2026-08-20.** Fixed by rendering fewer pixels, not by cutting detail;
