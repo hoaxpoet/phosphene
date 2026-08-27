@@ -251,6 +251,44 @@ static inline SkeinLineLookup skeinLineLookupAt(float t, constant SkeinUniforms&
     return r;
 }
 
+
+// ── BUG-108: which mark's colour wins where two marks overlap ────────────────────────
+//
+// Skein composites marks OPAQUELY on purpose — the §colour-mud audit rejected averaging two stem
+// colours, because a blend of two paints reads as the dead-mat anti-reference. The rule for WHICH
+// colour was `if (cov > bestCover)`: whichever mark covers this fragment most.
+//
+// That is a hard argmax with no tie-break, and its decision boundary is the contour where two
+// marks' coverage is equal. On that contour the winner is decided by whatever is smallest in the
+// frame — sub-pixel painter motion, the per-frame radius (audio-driven through lineVisc/lineFlow),
+// a difference in the sixth decimal — and because the rule is discrete, every flip is a full
+// colour swap. Matt, 2026-08-27: "flickering in the areas of overlap between two different-colors
+// lines." Flicker there was what the rule did by construction.
+//
+// The replacement is what paint does: **the mark laid LAST wins**. Lay time is `spawnTau` for a
+// burst and the nearest drawn segment's painter clock for the pour line — both in painter-clock
+// units, both frozen at lay time, neither jittering frame to frame. So the boundary between two
+// overlapping marks stops moving, and no blending is introduced.
+//
+// The coverage argmax survives as the FRINGE fallback: where no mark covers this fragment
+// substantially (only anti-aliased edges overlap), there is no "laid over" relationship to
+// respect, and the most-covering mark is still the right answer. Those fragments are mostly canvas
+// anyway.
+constant float kSkeinColourClaim = 0.5;    // coverage at which a mark can claim the fragment
+constant float kSkeinNoClaim     = -1.0e9; // sentinel: no mark has claimed yet
+
+static inline void skeinClaimMark(thread float& cover, thread float& claimTau, thread float3& claimCol,
+                                  thread float& fringeCov, thread float3& fringeCol,
+                                  float cov, float3 col, float layTau)
+{
+    cover = max(cover, cov);                                    // alpha: unchanged, max over marks
+    if (cov >= kSkeinColourClaim) {
+        if (layTau >= claimTau) { claimTau = layTau; claimCol = col; }
+    } else if (cov > fringeCov) {
+        fringeCov = cov; fringeCol = col;                       // fringe-only overlap: old rule
+    }
+}
+
 // ── Background / canvas fragment ──────────────────────────────────────────────────
 //
 // Renders the flat cream/toned GROUND only. Skein.ENGINE.1.1 (D-143) moved the test
@@ -339,11 +377,15 @@ fragment float4 skein_geometry_fragment(
     float dtau = max(st.painterTauStep, 1.0 / 240.0);  // guard a zero step (would collapse the tail)
     float phx  = st.seedPhaseX, phy = st.seedPhaseY;
 
-    // OPAQUE compositing (the §colour-mud audit): track the TOPMOST mark's colour by coverage, never
-    // a blend of two stem colours. Each contribution updates (bestCover, bestCol) together, so an
-    // overlap takes whichever mark covers this fragment most — occlude, never average to mud.
-    float  bestCover = 0.0;
-    float3 bestCol   = float3(1.0);   // unpainted: white (the held cream shows through at cover 0)
+    // OPAQUE compositing (the §colour-mud audit): ONE mark's colour, never a blend of two stem
+    // colours. BUG-108 changed WHICH mark wins — see `skeinClaimMark` above. Coverage is still the
+    // alpha (max over every contribution); the colour goes to the mark laid LAST, with the old
+    // coverage argmax kept as the fringe fallback.
+    float  bestCover  = 0.0;
+    float  claimTau   = kSkeinNoClaim;
+    float3 claimCol   = float3(1.0);
+    float  fringeCov  = 0.0;
+    float3 fringeCol  = float3(1.0);   // unpainted: white (the held cream shows through at cover 0)
 
     // ── Layer A: the pour LINE — per-segment FROZEN colour + per-switch NEW pour (Skein.4.1) ──
     // The colour is the DISCRETE dominant-stem colour, but FROZEN PER SEGMENT at lay-time via the
@@ -384,6 +426,10 @@ fragment float4 skein_geometry_fragment(
         float2 prQ = float2((tip0.x + pr.off.x) * a, tip0.y + pr.off.y);   // k = 0 (newest)
         float  lineSDF = 1e9;
         float3 lineCol = pr.col;
+        // BUG-108: the nearest drawn segment's painter clock is the LINE's lay time, tracked
+        // beside its frozen colour. `tau` is now, so a segment k steps back was laid k·dtau ago —
+        // the tail's newest end is the most recently laid paint on the canvas.
+        float  lineTau = tau;
         for (int k = 1; k <= kSkeinTailFrames; ++k) {
             float  ctau = tau - float(k) * dtau;
             SkeinLineLookup cu = skeinLineLookupAt(ctau, st);
@@ -391,12 +437,12 @@ fragment float4 skein_geometry_fragment(
             float2 cuQ = float2((cb.x + cu.off.x) * a, cb.y + cu.off.y);
             if (cu.start == pr.start) {                              // same pour → draw (no bridge)
                 float d = skeinSegDist(q, cuQ, prQ) - r;
-                if (d < lineSDF) { lineSDF = d; lineCol = cu.col; }   // nearest drawn segment's frozen colour
+                if (d < lineSDF) { lineSDF = d; lineCol = cu.col; lineTau = ctau; }
             }
             pr = cu; prQ = cuQ;
         }
         float cov = 1.0 - smoothstep(-px, px, lineSDF);   // ONE smooth tube; uniformly solid interior
-        if (cov > bestCover) { bestCover = cov; bestCol = lineCol; }
+        skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, lineCol, lineTau);
     }
 
     // ── Layers B + C: onset-burst RING — Pollock splatter (Skein.5.4 morphology rebuild) ──
@@ -441,14 +487,14 @@ fragment float4 skein_geometry_fragment(
                 float ragged = 1.0 + 0.30 * skein_fbm2(q * 65.0 + float2(burst.hashSeed * 4.9, 2.7));
                 float drr = max(dripR * ragged, px * 1.3);
                 float cov = (1.0 - smoothstep(drr - px * 1.6, drr + px * 1.6, length(q - fpA))) * op;
-                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
                 // One faint micro-satellite (the secondary droplet a heavy drop kicks up).
                 float4 hd = hash_f01_4x(float4(burst.hashSeed, 77.0, 1.0, 0.0));
                 if (hd.x > 0.45) {
                     float2 sp = fpA + float2(cos(hd.y * 6.2832), sin(hd.y * 6.2832)) * dripR * mix(1.8, 2.6, hd.z);
                     float sr = max(dripR * mix(0.18, 0.32, hd.w), px * 1.1);
                     float scov = (1.0 - smoothstep(sr - px * 1.4, sr + px * 1.4, length(q - sp))) * op;
-                    if (scov > bestCover) { bestCover = scov; bestCol = col; }
+                    skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, scov, col, burst.spawnTau);
                 }
             }
             continue;
@@ -489,7 +535,7 @@ fragment float4 skein_geometry_fragment(
             float ragged = edgeAmp * 1.2 * primR
                          * skein_fbm2(q * 55.0 + float2(burst.hashSeed * 3.7, 9.1));
             float cov = (1.0 - smoothstep(-px, px * aaScale, blotSDF + ragged)) * op;
-            if (cov > bestCover) { bestCover = cov; bestCol = col; }
+            skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
         }
 
         // ── B2: FLUNG STREAKS — long thin slightly-curved threads along the throw, tapering,
@@ -515,7 +561,7 @@ fragment float4 skein_geometry_fragment(
                          * (1.0 + 0.45 * skein_fbm2(q * 120.0 + float2(burst.hashSeed * 5.1, float(sIdx) * 7.7)));
                 float swr = max(sw, px * 0.9);
                 float cov = (1.0 - smoothstep(swr - px * 1.5, swr + px * 1.5, sd)) * op * 0.95;
-                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
             }
             // Terminal droplet — the pearl at the thread's end (string-of-pearls read).
             float tdR = max(mix(0.0022, 0.0052, mag01) * mix(0.7, 1.3, hsk.w), px * 1.2);
@@ -523,7 +569,7 @@ fragment float4 skein_geometry_fragment(
             if (tdc < tdR * 2.0 + px * 3.0) {
                 float ragged = 1.0 + edgeAmp * skein_fbm2(q * 80.0 + float2(burst.hashSeed * 6.3, float(sIdx) * 4.4));
                 float cov = (1.0 - smoothstep(tdR * ragged - px * 1.5, tdR * ragged + px * 1.5, tdc)) * op;
-                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
             }
         }
 
@@ -555,13 +601,16 @@ fragment float4 skein_geometry_fragment(
                 float drr = max(dr * max(ragged, 0.20), px * 1.2);
                 float aa  = px * aaScale;
                 float cov = (1.0 - smoothstep(drr - aa, drr + aa, dc)) * op;
-                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                skeinClaimMark(bestCover, claimTau, claimCol, fringeCov, fringeCol, cov, col, burst.spawnTau);
             }
         }
     }
 
-    // OPAQUE alpha-over: the overlay blend (SRC_ALPHA / ONE_MINUS_SRC_ALPHA) composites the TOPMOST
-    // mark's colour over the held canvas at bestCover — layers occlude, never average to mud.
+    // OPAQUE alpha-over: the overlay blend (SRC_ALPHA / ONE_MINUS_SRC_ALPHA) composites ONE mark's
+    // colour over the held canvas at bestCover — layers occlude, never average to mud. BUG-108:
+    // that colour is the LAST-LAID mark that substantially covers this fragment, falling back to
+    // the most-covering mark where only fringes meet.
+    float3 bestCol = (claimTau > kSkeinNoClaim) ? claimCol : fringeCol;
     return float4(bestCol, bestCover);
 }
 

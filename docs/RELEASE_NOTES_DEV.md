@@ -10,6 +10,43 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-151310] BUG-108 fixed — at a Skein overlap, the last-laid mark wins
+
+**Matt's call: (a), the lay-order tie-break.**
+
+Skein composites marks opaquely on purpose — the §colour-mud audit rejected averaging two stem
+colours — but the rule for WHICH colour was `if (cov > bestCover)`: whichever mark covers this
+fragment most. That is a hard argmax with no tie-break, and its decision boundary is the contour
+where two marks' coverage is equal. On that contour the winner was decided by whatever was
+smallest in the frame — sub-pixel painter motion, the audio-driven per-frame radius, a difference
+in the sixth decimal — and because the rule is discrete, every flip was a full colour swap.
+Flicker at overlaps was what the rule did by construction.
+
+`skeinClaimMark` replaces it with what paint does: **the mark laid last wins**. Lay time is
+`spawnTau` for a burst and the nearest drawn segment's painter clock for the pour line — both
+frozen at lay time, in the same clock, neither jittering frame to frame. Coverage still supplies
+the alpha (unchanged, a max over marks), and the old argmax survives only as the fringe fallback
+where nothing covers a fragment by more than half: two anti-aliased edges have no laid-over
+relationship, and those fragments read as canvas anyway. **No blending is introduced**, so the
+mud rule is untouched.
+
+⚠ **The perception check is owed, and is not being quietly dropped.** BUG-108's own criterion was
+a rendered A/B at a known overlap showing the boundary stable across frames. That cannot be
+produced with the seams that exist: `SkeinState` spawns bursts from audio, so two overlapping
+bursts of known colour at a known position cannot be staged, and no offline harness renders
+Skein's marks. ⚠ **The `PresetRegressionTests` Skein goldens are unchanged, and that is NOT
+evidence of anything** — the golden is `0x8080808080808080`, a uniform hash of one frame rendered
+with no `SkeinState` bound, so the harness paints no marks for this change to affect. Building
+that seam is its own increment; until then the verification is Matt's M7.
+
+What is gated automatically is the property rather than the arithmetic: `SkeinCanvasHoldTest` now
+fails if any site selects an overlap colour by a coverage comparison again, if a mark bypasses
+`skeinClaimMark`, or if the claim stops deciding on lay time. A frozen quantity cannot jitter, so
+a boundary decided by lay time cannot flicker — and if the argmax comes back, the flicker comes
+back with it and the gate goes red.
+
+---
+
 ### [dev-2026-08-27-144324] LFSTEM.1d round 2 — the smoother itself rewound the position
 
 **Matt: *"Improved, but I'm still seeing some flickering in the areas of overlap between two
