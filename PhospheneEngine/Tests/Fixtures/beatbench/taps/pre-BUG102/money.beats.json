@@ -1,35 +1,10 @@
 {
-  "backends": {
-    "librosa": {
-      "f_measure": 0.655,
-      "matched": 94,
-      "precision": 0.492,
-      "recall": 0.979,
-      "ref_beats_full_track": 816,
-      "ref_bpm_in_span": 122.28,
-      "ref_downbeats_full_track": 0,
-      "verdict": "METRICAL",
-      "why": "reference is double the tapped pulse (\u00d72.01)"
-    },
-    "madmom": {
-      "f_measure": 0.627,
-      "matched": 90,
-      "precision": 0.471,
-      "recall": 0.938,
-      "ref_beats_full_track": 819,
-      "ref_bpm_in_span": 122.45,
-      "ref_downbeats_full_track": 68,
-      "verdict": "METRICAL",
-      "why": "reference is double the tapped pulse (\u00d72.01)"
-    }
-  },
-  "beats_quality": {
-    "cov": 0.026,
-    "doubles": 0,
-    "gaps": 0,
-    "verdict": "usable"
-  },
-  "beats_s": [
+  "audio_file" : "money.wav",
+  "captured_at" : "2026-07-30T15:48:52Z",
+  "latency_offset_ms" : -13.896145824408457,
+  "pass" : "beats",
+  "tap_count" : 96,
+  "taps_s" : [
     6.499586312492473,
     7.383781645824645,
     8.495918979158166,
@@ -127,47 +102,5 @@
     99.09796339582608,
     100.00849297915848
   ],
-  "downbeats_quality": {
-    "cov": 0.02,
-    "doubles": 0,
-    "gaps": 1,
-    "verdict": "usable with dropouts"
-  },
-  "downbeats_rejected": null,
-  "downbeats_s": [
-    14.051981270825497,
-    21.167581937491565,
-    24.708346604157857,
-    28.18305818749214,
-    31.74684531249223,
-    35.2664084374912,
-    38.79828381249282,
-    42.298429854158904,
-    45.78562460415852,
-    49.28012564582533,
-    52.684486854158614,
-    56.1155879374921,
-    59.52698260415783,
-    62.985660187491895,
-    66.35435872915805,
-    70.24729414582471,
-    73.61520477082486,
-    76.53499889582527,
-    79.88376431249272
-  ],
-  "extended_by": null,
-  "meter_from_taps": 7,
-  "meter_note": "ratio 3.54 \u2014 beats tapped at HALF the bar pulse, so the bar is 7",
-  "phosphene_grid_bpm": 116.19,
-  "source": "taps",
-  "status": "metrical_review",
-  "suite": 2,
-  "tap_bpm": 60.97,
-  "tap_count": 96,
-  "tap_downbeat_count": 19,
-  "tapped_span_s": [
-    6.5,
-    100.01
-  ],
-  "track_id": "money"
+  "track_id" : "money"
 }

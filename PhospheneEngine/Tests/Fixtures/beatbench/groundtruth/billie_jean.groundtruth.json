@@ -634,7 +634,7 @@
   "extended_by": "librosa",
   "meter_from_taps": 4,
   "meter_note": "ratio 4.02",
-  "phosphene_grid_bpm": 117.0,
+  "phosphene_grid_bpm": 116.88,
   "source": "taps validated, extended by librosa",
   "status": "confirmed",
   "suite": 1,
