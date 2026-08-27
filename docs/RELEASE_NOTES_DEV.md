@@ -10,6 +10,48 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-134158] LFSTEM.1d — the stem series was being read on a 100 ms clock
+
+**Matt, on the first Skein session with a pre-analysed series: *"Skein's performance is a little
+twitchy at fullscreen."* Two separate findings came out of that session; this note is the one
+that is understood and fixed.**
+
+**The staircase.** `MIRPipeline.elapsedSeconds` — the playback clock every position-sampled
+consumer reads — advances in **100 ms steps** on the local-file path. Measured on
+`2026-08-27T13-24-37Z`: 1,714 steps of exactly 0.100 s, 1,345 of exactly 0.000, i.e. **39 % of
+analysis frames do not advance it at all**, while totalling 197.4 s of clock over 197 s of
+playback. Right on average, coarse instant to instant.
+
+That was harmless until LFSTEM.1 gave it a fine-grained consumer. `instrumentFamilySeries` reads
+it on a 1 s hop, where 100 ms is invisible. The stem series is on a **23 ms** grid, so it came out
+as a staircase: stem values held for 2–6 analysis frames, then jumped four or more grid frames at
+once onto whatever deviation spike was there — observed frame-to-frame jumps up to **6.0** on
+`bassEnergyDev`, with a median frame-to-frame change of exactly **0.0**. The live path it replaced
+computed features from a sliding audio window and was continuous by construction.
+
+`PlaybackClockSmoother` dead-reckons by real elapsed time between ticks and resyncs on each one,
+capped at 0.25 s so a paused or ended clock settles instead of running away, with `reset()` on
+track change. Pure and clock-injected.
+
+**The gate that was missing, and why.** `StemFeatureSeriesTests` proved a change at a known second
+lands at that second — and it still does; the series was never misaligned. What no test covered
+was the CLOCK the series is read against, so a correct map was read by an unsteady hand and
+nothing went red. `PlaybackClockSmootherTests` closes that: its headline case reproduces the
+measured 100 ms quantisation at the measured 18 Hz frame rate, and **fails without the smoother**
+(16 of 35 frames do not advance), with a control asserting an already-continuous clock passes
+through untouched.
+
+**The second finding is filed, not fixed: BUG-107.** Skein measures **15.60 ms at 4K** in the
+frame-budget harness and ramps to **~170 ms (≈6 fps)** over 50 s of live playback, then plateaus —
+constant resolution, constant preset, GPU memory flat at 5.1 %, `ml_forced=0`, thermal nominal.
+A cost that scales with canvas coverage fits the shape and is **not demonstrated**; the harness
+renders 30 frames with no audio and can never see it. Whether LFSTEM.1's staircase was inflating
+the flick rate and hence the ramp is a hypothesis with a mechanism and no measurement, which is
+exactly the shape that cost BUG-100 four reproduction attempts. The A/B is free: the next Skein 4K
+session on this build either still ramps or does not.
+
+---
+
 ### [dev-2026-08-26-225906] LFSTEM.1 — local-file stems arrive on time instead of 2.5 s late
 
 **Code-complete; the Skein M7 is owed before this can be called done.**

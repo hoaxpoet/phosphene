@@ -602,6 +602,9 @@ extension VisualizerEngine {
         // shape as the family series above and for the same reason: a track-scoped surface that
         // only one path clears leaks the previous track's data into every path that does not.
         currentStemSeries = .empty
+        // LFSTEM.1d — forget the previous track's clock history, or the first frame of the new
+        // track dead-reckons from where the old one stopped.
+        stemSeriesClock.reset()
 
         // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).
         if let identity { logWiringStemCacheLookup(identity: identity) }

@@ -5,6 +5,7 @@
 import Audio
 import DSP
 import Foundation
+import QuartzCore
 import ML
 import os.log
 import Session
@@ -383,7 +384,14 @@ extension VisualizerEngine {
     /// file analysed before schema v10) leaves the live path in charge, which is the condition
     /// `runPerFrameStemAnalysis` checks on the other side.
     func applyStemSeriesFrame(atPlaybackSeconds seconds: Double) {
-        guard let sampled = currentStemSeries.sample(atPlaybackSeconds: seconds) else { return }
+        guard !currentStemSeries.isEmpty else { return }
+        // LFSTEM.1d — the clock this arrives on moves in 100 ms steps, and the series is on a
+        // 23 ms grid. Sampled raw, stem values held for several analysis frames and then jumped
+        // four or more grid frames at once, landing on whatever deviation spike was there: the
+        // twitchiness Matt saw on Skein. Smoothed, the position advances continuously between
+        // ticks and resyncs on each one.
+        let smoothed = stemSeriesClock.position(rawSeconds: seconds, now: CACurrentMediaTime())
+        guard let sampled = currentStemSeries.sample(atPlaybackSeconds: smoothed) else { return }
         pipeline.setStemFeatures(sampled)
         latestBassAttackRatio = sampled.bassAttackRatio
     }
