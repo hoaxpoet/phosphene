@@ -164,6 +164,14 @@ extension VisualizerEngine {
             sessionRecorder?.log("STEM_SOURCE: live separation (no series for this track)")
             return
         }
+        // LFSTEM.2 — say what stops as well as what starts. The per-separation stem WAV dump
+        // (`stems/` in the session directory) is written from live separation output, so it is
+        // not produced for this track. That is the accepted cost recorded in the LFSTEM spec §9:
+        // to listen to separation quality on a local file, play one whose series is absent, or
+        // use the streaming path. Recorded here rather than left for someone to discover.
+        sessionRecorder?.log(
+            "STEM_SOURCE: live separation SUPPRESSED for this track (LFSTEM.2) — "
+            + "no stems/ WAV dump; the series drives StemFeatures")
         sessionRecorder?.log(String(
             format: "STEM_SOURCE: series frames=%d covers=%.1fs hop=%.1fms",
             series.frames.count,
@@ -197,7 +205,24 @@ extension VisualizerEngine {
         )
     }
 
+    /// LFSTEM.2 — is live separation superseded by a pre-analysed series for this track?
+    ///
+    /// A track with a series has no use for live separation: its output is already ignored
+    /// (`runPerFrameStemAnalysis` stands down at LFSTEM.1c), so the 142 ms MPSGraph job every 2 s
+    /// was pure waste on the same GPU the renderer draws with.
+    ///
+    /// The switch is "a series is installed for THIS track", never "the source is a local file":
+    /// a cache miss, a schema mismatch or a failed analysis all leave the series empty and must
+    /// keep the live path exactly as it was.
+    func separationSupersededBySeries() -> Bool {
+        guard stemSeriesLock.withLock({ !currentStemSeries.isEmpty }) else { return false }
+        suppressedSeparations += 1
+        return true
+    }
+
     func runStemSeparation() {
+        if separationSupersededBySeries() { return }
+
         let now = CACurrentMediaTime()
 
         // Record the start of the pending window on first entry (not on retries).
@@ -633,6 +658,7 @@ extension VisualizerEngine {
             latestRawPlaybackSeconds = 0
             latestStemSeriesPosition = nil
         }
+        suppressedSeparations = 0        // LFSTEM.2 — per-track, like everything else here
         sessionRecorder?.recordStemSeriesPosition(nil)
 
         // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).

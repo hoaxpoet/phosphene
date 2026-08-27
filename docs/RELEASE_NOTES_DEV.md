@@ -10,6 +10,41 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-185933] LFSTEM.2 — live separation retired on tracks that have a series
+
+**Implemented; the live before/after is owed.** A track with a pre-analysed series had no use for
+live separation — `runPerFrameStemAnalysis` already stood down for it at LFSTEM.1c — so a 142 ms
+MPSGraph job was running every 2 s on the same GPU the renderer draws with, and its output was
+computed and discarded. `separationSupersededBySeries()` now skips the dispatch.
+
+**The gate is on the SERIES, never on the source.** "Is this a local file" would strand a cache
+miss, a schema mismatch or a failed analysis with no stems at all: those leave the series empty
+and keep the live path exactly as it was. The wiring test asserts the condition, not just the
+call.
+
+**The three consumers, checked before removing anything** — the spec named them so this would
+start from a list rather than a grep:
+
+- **The per-frame analyser** — already standing down since LFSTEM.1c. Replaced.
+- **`chain_health.json` / the ASH monitors — clear, with evidence.** `ChainAnalyzer` contains
+  **zero** stem references; `SignalHealthMonitor` has six and all are sample-rate comments, over
+  raw tap samples rather than stems. Neither can read "no separations happening" as a fault, so
+  the BUG-070 shape — a health monitor reporting a deliberately-stopped pipeline as dead — is not
+  reachable here.
+- **The `stems/` WAV dump is LOST on tracks with a series, and the log says so.** It is written
+  from live separation output, and there is no substitute that means the same thing:
+  `CachedTrackData.stemWaveforms` holds only the track's first ~10 s, so dumping it would label
+  the intro as though it were the passage being played. `STEM_SOURCE: live separation SUPPRESSED
+  for this track (LFSTEM.2) — no stems/ WAV dump` now appears at track change. To listen to
+  separation quality on a local file: play one whose series is absent, or use the streaming path.
+
+Suppressions are counted into `GPU_PRESSURE` as `stem_suppressed`, so a session shows zero
+`STEM_SEPARATION` lines against a rising count — the saving measured rather than asserted.
+
+⚠ **Owed: a 4K local-file session** for the `frame_gpu_ms` before/after this increment claims.
+
+---
+
 ### [dev-2026-08-27-182236] M7 PASSED — LFSTEM.1 complete, BUG-110/108/109 closed
 
 **Matt, session `2026-08-27T18-17-50Z`: *"Looks good."*** 106 s of Skein at 3840×2160 — well past
