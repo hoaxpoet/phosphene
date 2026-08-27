@@ -63,6 +63,10 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment LFSTEM.1d — the series was read on a 100 ms clock, and then the smoother rewound ✅ (2026-08-27, two rounds)
+
+**Round 2.** The round-1 smoother treated every tick as a resync, which rewound the position when dead reckoning had legitimately run past the tick confirming it — replayed against session `2026-08-27T14-33-03Z`, **27 of 1,871 frames went backwards by up to 3.2 series frames**. The position is now held in a band that follows the clock (never behind, never more than `maxDeadReckonSeconds` ahead, monotone inside), with genuine discontinuities resyncing exactly. Replayed on the same session: **0 backward positions, 0 rewound frames**. Also answered: **BUG-107 is Skein's own** — the cost ramp reproduced unchanged with the clock fixed. Also filed: **BUG-108**, Skein's overlap flicker, a per-fragment coverage argmax with no tie-break (a look decision for Matt).
+
 ### Increment LFSTEM.1d — the series was read on a 100 ms clock ✅ (2026-08-27)
 
 **Done-when:** a 23 ms series read through the local path's playback clock advances every frame. `MIRPipeline.elapsedSeconds` moves in 100 ms steps there (39 % of analysis frames do not advance it at all), which turned LFSTEM.1's series into a staircase — values held 2–6 frames then jumped 4+ grid frames onto deviation spikes (|Δ| up to 6.0), the twitchiness Matt reported on Skein. `PlaybackClockSmoother` dead-reckons between ticks and resyncs on each, capped at 0.25 s, reset on track change. `PlaybackClockSmootherTests` is the gate the alignment test could not be — it tests the clock, not the map — and fails without the smoother. **Filed, not fixed: BUG-107** (Skein 15.60 ms at 4K in the harness, ~170 ms after 50 s live; mechanism not established, and the next 4K Skein session is a free A/B on whether the staircase was inflating it).

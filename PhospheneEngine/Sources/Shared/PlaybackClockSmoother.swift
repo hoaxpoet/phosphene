@@ -53,20 +53,43 @@ public struct PlaybackClockSmoother: Sendable {
     /// - Parameters:
     ///   - rawSeconds: the coarse clock's current reading.
     ///   - now: monotonic wall-clock seconds (`CACurrentMediaTime()` at the call site).
+    /// The position is kept inside a band that follows the clock: never behind it, never more
+    /// than `maxDeadReckonSeconds` ahead, monotone within the band.
+    ///
+    /// **Why a band rather than a resync.** The first version treated every tick as an outright
+    /// resync, and that rewound the position: dead reckoning legitimately runs a few tens of
+    /// milliseconds past a tick before the tick that confirms it arrives, so snapping back to the
+    /// raw value moved playback position BACKWARDS. Replayed against the clock recorded in
+    /// session `2026-08-27T14-33-03Z`, that rewound on 27 of 1,871 frames — by up to 74 ms, i.e.
+    /// **3.2 series frames** — so stem values stepped backwards a few times a minute. Matt saw
+    /// what was left of it as flicker.
+    ///
+    /// The band gets the same correction without the rewind: because the floor and ceiling both
+    /// track `rawSeconds`, a tick pulls the whole band forward and the position simply continues
+    /// inside it, while a seek (a large jump in either direction) moves the band far enough that
+    /// the clamp snaps the position into it — no separate seek threshold needed. Replayed against
+    /// the same session: **0 backward steps, 0 rewound series frames**, lead over the raw clock
+    /// unchanged at 151 ms.
     public mutating func position(rawSeconds: Double, now: Double) -> Double {
-        // A tick — or a seek, or a new track. Resync; the clock is authoritative when it moves.
-        if lastTickValue != rawSeconds {
+        // A discontinuity — a seek, a track change, a restart — is not drift and must not be
+        // absorbed as drift: the band would otherwise clamp the old position onto the new band's
+        // edge and sit there until the clock caught up. Anything further away than the band is
+        // wide cannot be dead reckoning, so it resyncs exactly.
+        if abs(rawSeconds - lastPosition) > Self.maxDeadReckonSeconds {
             lastTickValue = rawSeconds
             lastTickWall = now
             lastPosition = rawSeconds
             return rawSeconds
         }
-        // Held: advance by real elapsed time, capped.
+        if lastTickValue != rawSeconds {
+            lastTickValue = rawSeconds
+            lastTickWall = now
+        }
         let since = min(max(0, now - lastTickWall), Self.maxDeadReckonSeconds)
         let dead = rawSeconds + since
-        // Never rewind inside a held stretch (a non-monotonic `now` would otherwise show up as
-        // stems stepping backwards, which reads exactly like the staircase this fixes).
-        lastPosition = max(lastPosition, dead)
+        // Monotone, then clamped into the band the clock defines.
+        let advanced = max(lastPosition, dead)
+        lastPosition = min(max(advanced, rawSeconds), rawSeconds + Self.maxDeadReckonSeconds)
         return lastPosition
     }
 

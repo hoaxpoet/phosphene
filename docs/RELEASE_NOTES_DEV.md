@@ -10,6 +10,48 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-144324] LFSTEM.1d round 2 — the smoother itself rewound the position
+
+**Matt: *"Improved, but I'm still seeing some flickering in the areas of overlap between two
+different-colors lines."* Three findings from session `2026-08-27T14-33-03Z`, one fixed here and
+two filed.**
+
+**Fixed: the smoother rewound.** Round 1 treated every tick of the coarse clock as an outright
+resync. Dead reckoning legitimately runs tens of milliseconds past a tick before the tick that
+confirms it arrives, so snapping back to the raw value moved the playback position **backwards**.
+Replayed against the clock recorded in Matt's session: **27 of 1,871 frames went backwards, by up
+to 74 ms — 3.2 series frames** — so stem values re-read frames they had already passed, several
+times a minute.
+
+The position is now kept inside a band that follows the clock: never behind it, never more than
+`maxDeadReckonSeconds` ahead, monotone inside. A tick pulls the band forward and the position
+continues within it, so drift is still corrected without a jump backwards. A genuine
+discontinuity — seek, track change — is further away than the band is wide and resyncs exactly.
+Replayed against the same session, the shipped algorithm produces **0 backward positions and 0
+rewound series frames**.
+
+One test had to change its mind: `tick_resyncs` asserted that a tick snaps back to the raw value,
+which is exactly the rewind. It is now `tick_correctsWithoutRewinding`, with the reason recorded
+in the test, plus a separate case for seeks.
+
+**Filed, not fixed: BUG-108 — Skein's overlap flicker.** `Skein.metal` composites marks opaquely
+on purpose (the §colour-mud audit rejected blending two stem colours), via
+`if (cov > bestCover) { bestCover = cov; bestCol = col; }` at eight sites. That is a hard
+per-fragment argmax with **no tie-break and no hysteresis**, whose decision boundary is the
+equal-coverage contour between two marks. On that contour the winner flips on sub-pixel motion or
+a sixth-decimal coverage difference, and the flip is a full colour swap. **Flicker at overlaps is
+what the rule does by construction.** It predates LFSTEM.1 — nothing in the argmax has changed
+since Skein certified — and became visible because on-time stem values move the audio-driven
+radius terms more per frame than 2.5 s-late smoothed ones did. Fix options (lay-order tie-break,
+narrow blend band, coverage quantisation) are a look decision for Matt, not an engineering one.
+
+**Answered by the same session: BUG-107 is Skein's own.** The cost ramp reproduced with the clock
+fixed — 38 ms at t=14 s rising to 127 ms at t=40 s and ~170–250 ms after — essentially identical
+to the pre-fix session. The stem staircase was not inflating it, which is what the free A/B was
+for.
+
+---
+
 ### [dev-2026-08-27-134158] LFSTEM.1d — the stem series was being read on a 100 ms clock
 
 **Matt, on the first Skein session with a pre-analysed series: *"Skein's performance is a little

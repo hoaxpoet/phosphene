@@ -48,6 +48,7 @@ reads" are not reads — see the entry.)*
 |---|---|---|---|
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
+| BUG-108 | P2 · open, mechanism in source 2026-08-27; **fix is a look decision** | preset.skein / render-state | **Skein's overlap colour is `if (cov > bestCover)` — a per-fragment argmax with no tie-break or hysteresis, at eight sites.** On the equal-coverage contour between two differently-coloured marks the winner flips on sub-pixel motion or a sixth-decimal coverage difference, and the flip is a full colour swap because the rule is deliberately discrete (the §colour-mud audit rejected blending). Predates LFSTEM.1; became visible because on-time stem values move the audio-driven radius terms more per frame. Options are a lay-order tie-break (recommended), a narrow blend band (fights the mud rule), or coverage quantisation. |
 | BUG-107 | P2 · open, measured 2026-08-27; mechanism NOT established | preset.skein / performance | **Skein costs 15.60 ms at 4K in the frame-budget harness and ramps to ~170 ms (≈6 fps) over 50 s of live playback, then plateaus.** Constant resolution, constant preset; GPU memory flat at 5.1 %, `ml_forced=0`, thermal nominal — none of BUG-100's excluded mechanisms. Candidate: cost scaling with canvas coverage on the canvas-hold path, unproven. The free A/B is the next Skein 4K session on the LFSTEM.1d build (which fixes a stem staircase that may have been inflating the flick rate). |
 | BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
@@ -227,6 +228,66 @@ Contained to `LocalFilePlaybackProvider`'s start path, but the design needs care
 - BUG-021 / BUG-059 (the lock-ordering constraints any fix must preserve)
 - `SessionLifecycleChurnTests`, `LocalFilePlaybackStartRaceTests` (the racing-start tests that enter the window)
 - RECON.14 (found while running its closeout evidence; not introduced by it)
+
+---
+
+### BUG-108 — Skein's overlap colour is a per-fragment argmax with no tie-break, so it flickers where two coloured marks cross (2026-08-27)
+
+**Status: open, mechanism identified in source, fix is a look decision.** Matt, on session
+`2026-08-27T14-33-03Z`: *"still seeing some flickering in the areas of overlap between two
+different-colors lines."*
+
+**The mechanism, from the shader.** `Skein.metal` composites marks OPAQUELY on purpose — the
+§colour-mud audit rejected averaging two stem colours, because a blend of two paints reads as the
+dead-mat anti-reference. Every contribution runs:
+
+```metal
+if (cov > bestCover) { bestCover = cov; bestCol = col; }   // ×8 sites, lines 399–558
+```
+
+So a fragment takes the colour of whichever mark **covers it most**. That is a hard argmax with
+**no tie-break and no hysteresis**, and its decision boundary is the contour where two marks'
+coverage is equal. On that contour the winner is decided by whatever is smallest in the frame —
+sub-pixel painter motion, the per-frame radius (`lineWiden` moves with `lineVisc`/`lineFlow`,
+both audio-driven), a coverage difference in the sixth decimal. Any of that flips the winner, and
+the flip is a full colour swap because the rule is deliberately discrete. **Flicker at overlaps is
+what this rule does by construction**, not a symptom of something upstream.
+
+**Why it is showing up now, and why that does not make it LFSTEM's defect.** LFSTEM.1 replaced
+stem values that arrived 2.5 s late and heavily smoothed with values that arrive on time and move
+at their own rate, so the audio-driven radius terms move more per frame than they used to — more
+crossings of the equal-coverage contour per second, so a latent instability became visible. The
+instability itself predates it: nothing in the argmax has changed since Skein certified (2026-06-11).
+LFSTEM.1d fixed the two real defects on the reading side (a 100 ms-quantised clock, then a position
+that rewound on 1 % of frames); replayed against this session's own clock the shipped smoother
+produces **0 backward positions and 0 rewound series frames**, so what Matt is still seeing is not
+the clock.
+
+**Fix options — a look decision, not an engineering one.**
+
+- **(a) Stable tie-break by lay order.** At an overlap, prefer the mark laid LATER rather than the
+  one with more coverage. Physically what paint does, and lay order does not jitter, so the
+  boundary stops flickering. Changes which colour wins in some overlaps — a visible change to a
+  certified preset.
+- **(b) A narrow blend band.** Blend the two colours only where coverage is within ε, a few pixels
+  wide. Keeps the discrete rule everywhere else. ⚠ This is the one the §colour-mud audit ruled
+  against; ε would have to stay genuinely narrow or it reintroduces the mud.
+- **(c) Quantise the decision.** Compare coverage at reduced precision so sixth-decimal differences
+  cannot flip the winner. Cheapest, but it converts a flicker into a stable-but-arbitrary choice
+  and does nothing where the coverages genuinely cross.
+
+Recommendation: **(a)**. It is the only one with a physical justification, it removes the
+instability rather than damping it, and it does not touch the mud rule. It needs Matt's eye on
+which colour wins at overlaps afterwards.
+
+**Verification criteria (before any fix).**
+- [ ] A rendered A/B at a known overlap — two marks of different stem colour crossing — showing the boundary stable across consecutive frames with the same audio input.
+- [ ] The §colour-mud anti-reference still fails: no overlap region averages two stem colours into a third.
+- [ ] `PresetRegressionTests` Skein golden hashes re-baselined deliberately, with the change stated — this alters output by design.
+- [ ] Matt's M7: the overlaps stop flickering AND the colour that wins is the right one.
+
+**Related:** LFSTEM.1d (fixed the reading side; not this), BUG-107 (Skein's cost ramp, same
+session, unrelated mechanism), Skein.4.1 / the §colour-mud audit (why the rule is discrete).
 
 ---
 
