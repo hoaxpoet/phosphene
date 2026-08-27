@@ -63,6 +63,79 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG102.2 — money re-annotated + arbitrated; a masked 4% tempo error surfaces ✅ (2026-08-27)
+
+Closes BUG-102. Matt re-tapped money at the quarter note: **121.06 BPM, meter 7 at ratio 6.95**,
+tempo ratio **×1.01** against both backends — the octave error the entry was filed about is gone.
+
+What remained was *phase*, not level. The taps sit a systematic **−42.3 / −44.7 ms** early against
+librosa/madmom, which agree with each other to within 2.4 ms. Not the rig: bleed was tapped in the
+same session on the same calibration at −13.6 / −0.4 ms, and every other track is inside ±32 ms.
+On a track carried by a syncopated bass riff, Matt hears the beat ~45 ms ahead of the onset
+detectors. **His call: the taps are the truth** — a visualizer should fire where a listener feels
+the pulse, not where a detector fires.
+
+**New tooling, small:** `reconcile.py` gained the arbitration path BUG-102's own fix note called
+for and the tooling lacked. Decisions live in `Tests/Fixtures/beatbench/arbitrations.json` with
+their reasoning and are stamped into the ground truth as `status: arbitrated_<decision>`. It never
+invents timings — `decision: taps` keeps exactly what was tapped; it records that a disagreement
+no re-tap can settle was resolved deliberately, so provenance survives instead of being
+hand-edited away.
+
+**⚠ The headline is what the bad reference was hiding.** money moves the OPPOSITE way to bleed:
+AMLt **0.88 → 0.43**, F 0.58 → 0.44, CMLt 0.00 → 0.43. Nothing in the engine changed — the metric
+stopped being fooled. Phosphene's grid reads **116.19 where the truth is 121.06, a 4% tempo
+error**. Against the old half-rate reference that looked like a clean ×1.91 octave, which AMLt
+forgives by design; against the true level it is not an octave and is not forgiven. Suite 2's
+picture is worse and more honest — money's AMLt was never 0.88 in any meaningful sense, and the
+ratified suite-2 baseline (1.00/1.00/0.88/0.75/0.21) should be re-quoted as
+**1.00/1.00/0.43/0.75/0.21**. This is a live tracking defect owned by D-202; it wants its own BUG
+number under the defect-handling evidence gate rather than being filed in passing.
+
+**Both halves of BUG-102 together make one point.** The same class of bad reference concealed
+opposite truths — on bleed it hid a grid that was *right* (CMLt 0.03 → 1.00), on money a grid
+that is *wrong* (AMLt 0.88 → 0.43). A benchmark scored against untrusted ground truth does not
+fail loudly; it reports confident numbers in both directions.
+
+### Increment BUG102.1 — bleed's ground truth re-annotated; suite 4 was never a tracking problem ✅ (2026-08-27)
+
+BUG-102 held that BeatBench's references for `money` and `bleed` sat at a metrical level Matt did
+not trust. Matt re-tapped bleed at the quarter note; `reconcile.py` returns **`confirmed`** with
+both backends AGREE (librosa F=0.919, madmom F=0.942), meter 4 at ratio 3.96, extended to the
+full track by madmom.
+
+**The grid was right the whole time.** Re-scored against the corrected reference, bleed moves
+from F 0.61 / CMLt **0.03** / AMLt 0.84 to **F 0.99 / Cemgil 0.96 / CMLt 1.00 / AMLt 1.00**. The
+CMLt jump is the finding: the grid had been tracking at the reference's own level and scoring
+near-zero because the reference was an octave off. Suite 4's D-205 gate (AMLt ≥ 0.80) is met at
+1.00 on ground truth that can now be cited. No other suite moved — suite 2 is identical to the
+ratified baseline (AMLt 1.00 / 1.00 / 0.88 / 0.75 / 0.21) and suite 1 holds at F 0.97. New
+baseline: `docs/diagnostics/BEATBENCH_BASELINE_2026-08-27.md`.
+
+**It also resolves a contradiction the repo had been carrying.** BUG-076's body asserted bleed's
+~115 reading was correct against three independent sources while `bleed.groundtruth.json`
+asserted 226.72 and the baseline scored suite 4 against that. BUG-076's row wins; both statements
+can no longer be live at once.
+
+**And it exposes what the bad reference was hiding: downbeats.** With a trustworthy truth,
+bleed's downbeat F is **0.08** — meter read correctly as 4/4, bar phase essentially uncorrelated.
+Not unique to bleed: on this baseline only billie_jean has usable downbeats (0.90), against money
+0.14, solsbury_hill 0.13, take_five 0.26, bohemian_rhapsody 0.25. Consistent with FT.3's
+`BarLineEstimator` being built and **not wired**. D-205 makes meter/downbeat a hard gate because
+Nacre's and Glaze's downbeat pushes are their connection layer, so this is a real program-level
+gap — now measurable rather than masked.
+
+**Process notes.** The first re-tap ran the full 441 s and slipped back to the fast subdivision
+for 54 s (157–211 s), fitting 120.63 BPM; it was caught and rejected *before* reconcile rather
+than after, and the accepted pass is 90 s — matching every other track in the set (87–99 s). All
+rejected passes are preserved under `Tests/Fixtures/beatbench/taps/pre-BUG102/`. Separately,
+`reconcile.py`'s `PHOSPHENE_GRID` context dict was a stale 2026-07-27 preview-clip snapshot
+recording bleed at 174.6 and money at 123.2 against live readings of 115.00 and 116.19 — a third
+apparent metrical level, embedded in the very artifacts under dispute. Re-measured for the nine
+ground-truthed tracks; the rest are marked stale in place.
+
+**`money` remains open** and still needs its level chosen by ear (7-at-61 vs 7-at-122).
+
 ### Increment RECON.23 — Tier-2 systematisation, items 2–6 ✅ (2026-08-27)
 
 The preset audit's optional-polish tier. **−213 net lines, two new gates, no pixel change** —

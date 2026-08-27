@@ -1,4 +1,5 @@
 {
+  "arbitration": null,
   "backends": {
     "librosa": {
       "f_measure": 0.407,
@@ -527,7 +528,7 @@
   "extended_by": "madmom",
   "meter_from_taps": 7,
   "meter_note": "ratio 7.00",
-  "phosphene_grid_bpm": 102.5,
+  "phosphene_grid_bpm": 102.68,
   "source": "taps validated, extended by madmom",
   "status": "confirmed",
   "suite": 2,

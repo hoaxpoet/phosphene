@@ -1,4 +1,5 @@
 {
+  "arbitration": null,
   "backends": {
     "librosa": {
       "f_measure": 0.225,
@@ -151,7 +152,7 @@
   "extended_by": null,
   "meter_from_taps": null,
   "meter_note": "downbeat pass REJECTED \u2014 Matt's judgement, 2026-07-30: recorded in a loud environment and worse than the first attempt (CoV 0.237 vs 0.376 \u2014 both above the 0.12 usable bar), and he is not confident the downbeats of this track are findable by ear at all. Corroborated by the reference side: madmom's meter answer moved 7 -> 12 purely on widening the candidate set, so the tool is not confident either. Pyramid Song's METER is recorded as undetermined; its BEATS pass remains valid ground truth.",
-  "phosphene_grid_bpm": 70.0,
+  "phosphene_grid_bpm": 65.08,
   "source": "taps",
   "status": "metrical_review",
   "suite": 2,
