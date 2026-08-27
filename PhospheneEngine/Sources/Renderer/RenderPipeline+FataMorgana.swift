@@ -156,9 +156,7 @@ extension RenderPipeline {
 
     // MARK: Draw branch
 
-    /// Live entry point: render the Fata Morgana frame to the drawable, then present.
-    /// Thin wrapper over `renderFataMorgana(target:)` so the live path and the diag
-    /// harness run the EXACT SAME render code (FA #66 — no reimplemented test path).
+    /// Live entry point: render the FataMorgana frame to the drawable, then present.
     @MainActor
     func drawWithFataMorgana(
         commandBuffer: MTLCommandBuffer,
@@ -167,16 +165,15 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         warpState: MVWarpState
     ) {
-        guard let drawable = instrumentedDrawable(
-            from: view, commandBuffer: commandBuffer, site: "fataMorgana.drawable"
-        ) else { return }
-        renderFataMorgana(
-            commandBuffer: commandBuffer,
-            features: features,
-            stemFeatures: stemFeatures,
-            warpState: warpState,
-            target: drawable.texture)
-        instrumentedPresent(drawable, on: commandBuffer)
+        let feat = features
+        drawCustomWarp(commandBuffer: commandBuffer, view: view, site: "fataMorgana.drawable") { target in
+            renderFataMorgana(
+                commandBuffer: commandBuffer,
+                features: feat,
+                stemFeatures: stemFeatures,
+                warpState: warpState,
+                target: target)
+        }
     }
 
     /// Fata Morgana feedback loop rendered into `target`: blur → warp → shapes (= the

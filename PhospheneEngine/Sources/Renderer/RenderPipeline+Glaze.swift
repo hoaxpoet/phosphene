@@ -158,9 +158,7 @@ extension RenderPipeline {
 
     // MARK: Draw branch
 
-    /// Live entry point: render the Glaze frame to the drawable, then present. Thin wrapper
-    /// over `renderGlaze(target:)` so the live path and the diag harness run the EXACT SAME
-    /// render code (FA #66 — no reimplemented test path).
+    /// Live entry point: render the Glaze frame to the drawable, then present.
     @MainActor
     func drawWithGlaze(
         commandBuffer: MTLCommandBuffer,
@@ -169,16 +167,15 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         warpState: MVWarpState
     ) {
-        guard let drawable = instrumentedDrawable(
-            from: view, commandBuffer: commandBuffer, site: "glaze.drawable"
-        ) else { return }
-        renderGlaze(
-            commandBuffer: commandBuffer,
-            features: features,
-            stemFeatures: stemFeatures,
-            warpState: warpState,
-            target: drawable.texture)
-        instrumentedPresent(drawable, on: commandBuffer)
+        let feat = features
+        drawCustomWarp(commandBuffer: commandBuffer, view: view, site: "glaze.drawable") { target in
+            renderGlaze(
+                commandBuffer: commandBuffer,
+                features: feat,
+                stemFeatures: stemFeatures,
+                warpState: warpState,
+                target: target)
+        }
     }
 
     /// Glaze feedback loop rendered into `target`: warp → display comp (→ target) → swap.
@@ -267,11 +264,7 @@ extension RenderPipeline {
         enc.endEncoding()
     }
 
-    /// Reduced-motion (U.9 / a11y) Glaze frame into `target`: the display comp of the
-    /// CURRENT (un-advanced) feedback — NO warp pass, NO swap → no accumulation, no motion.
-    /// Mirrors `renderNacreReducedMotion` (BUG-061): Glaze's direct pipeline is compiled for
-    /// `.rgba16Float`, so routing reduced-motion through the drawable-format comp pipeline is
-    /// both crash-safe and the correct "static frame" the U.9 contract wants.
+    /// Reduced-motion (U.9 / a11y) Glaze frame — see `renderCustomWarpReducedMotion`.
     @MainActor
     func renderGlazeReducedMotion(
         commandBuffer: MTLCommandBuffer,
@@ -279,16 +272,10 @@ extension RenderPipeline {
         warpState: MVWarpState,
         target: MTLTexture
     ) {
-        var uni = computeGlazeUniforms(features: features, stems: .zero)
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture     = target
-        desc.colorAttachments[0].loadAction  = .dontCare
-        desc.colorAttachments[0].storeAction = .store
-        guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        enc.setRenderPipelineState(warpState.blitPipeline)        // glaze_comp (drawable format)
-        enc.setFragmentTexture(warpState.warpTexture, index: 0)   // current feedback, NOT advanced
-        enc.setFragmentBytes(&uni, length: MemoryLayout<GlazeUniforms>.stride, index: 1)
-        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        enc.endEncoding()
+        renderCustomWarpReducedMotion(
+            commandBuffer: commandBuffer,
+            warpState: warpState,
+            target: target,
+            uniforms: computeGlazeUniforms(features: features, stems: .zero))   // static frame
     }
 }

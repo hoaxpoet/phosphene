@@ -71,7 +71,7 @@ struct SkeinBurstGPU {
 /// One PRE-RESOLVED tail sample — 8 floats / 32 bytes. Must match `SkeinTailGPU` in Skein.metal
 /// byte-for-byte.
 ///
-/// **BUG-107.** The fragment's tail loop walks `tailFrames` points back along the painter's path.
+/// **BUG-110.** The fragment's tail loop walks `tailFrames` points back along the painter's path.
 /// Everything it needed per point — the painter POSITION at that painter-clock value, and the
 /// breakpoint COLOUR / OFFSET / START in force there — depends only on the painter clock, the seed
 /// phases and the breakpoint ring. **None of it depends on the fragment**, and it was nevertheless
@@ -154,7 +154,7 @@ public final class SkeinState: @unchecked Sendable {
     /// live at once; 48 leaves generous headroom for dense passages without blowing the stride.
     public static let maxBursts: Int = 48
 
-    /// Pre-resolved tail samples written per frame (BUG-107). MUST equal
+    /// Pre-resolved tail samples written per frame (BUG-110). MUST equal
     /// `kSkeinTailFrames + 1` in Skein.metal — entry 0 is the tip, entry `tailFrames` the far end.
     static let tailSamples: Int = 41
 
@@ -403,7 +403,7 @@ public final class SkeinState: @unchecked Sendable {
             + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
             + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride
             + MemoryLayout<SIMD4<Float>>.stride   // Skein.5.3b: the LINEAR ground tail
-            + Self.tailSamples * MemoryLayout<SkeinTailGPU>.stride  // BUG-107: pre-resolved tail
+            + Self.tailSamples * MemoryLayout<SkeinTailGPU>.stride  // BUG-110: pre-resolved tail
         guard let buf = device.makeBuffer(length: bufferSize, options: .storageModeShared) else {
             logger.error("SkeinState: failed to allocate skeinBuffer (\(bufferSize) bytes)")
             return nil
@@ -633,7 +633,7 @@ public final class SkeinState: @unchecked Sendable {
             .bindMemory(to: SIMD4<Float>.self, capacity: 1)
         groundPtr[0] = SIMD4<Float>(snap.groundLinear, 0)
 
-        // BUG-107: the pre-resolved tail follows the ground (third additive tail).
+        // BUG-110: the pre-resolved tail follows the ground (third additive tail).
         let tailPtr = ptr.advanced(by: MemoryLayout<SkeinHeaderGPU>.stride
                                    + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
                                    + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride

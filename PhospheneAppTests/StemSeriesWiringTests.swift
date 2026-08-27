@@ -21,7 +21,7 @@ import Testing
 
 @testable import PhospheneApp
 
-@Suite("Stem series wiring (LFSTEM.1c/1e)")
+@Suite("Stem series wiring (LFSTEM.1c/1e/2)")
 struct StemSeriesWiringTests {
 
     private func source(_ relativePath: String) -> String? {
@@ -73,6 +73,41 @@ struct StemSeriesWiringTests {
                     this frame draws the previous frame's stems — an off-by-one-frame lag.
                     """)
         }
+    }
+
+    /// Invariant 1b (LFSTEM.2) — live separation stops for a track that has a series, and ONLY
+    /// for such a track.
+    ///
+    /// The gate has to sit on the series, not on the source. "This is a local file" would strand
+    /// a cache miss, a schema mismatch or a failed analysis with no stems at all: those leave the
+    /// series empty and must keep the live path exactly as it was. The suppression is counted so
+    /// a session can show the saving rather than assert it — zero `STEM_SEPARATION` lines and a
+    /// rising `stem_suppressed` in `GPU_PRESSURE`.
+    @Test("Live separation is suppressed by the SERIES, not by the source being a local file")
+    func test_separationSuppressedBySeriesOnly() {
+        guard let stems = source("PhospheneApp/VisualizerEngine+Stems.swift"),
+              let initHelpers = source("PhospheneApp/VisualizerEngine+InitHelpers.swift")
+        else { return }
+
+        #expect(stems.contains("if separationSupersededBySeries() { return }"), """
+                runStemSeparation must skip the MPSGraph dispatch when a series supersedes it — \
+                that 142 ms job every 2 s is LFSTEM.2's whole saving.
+                """)
+        let seriesGate = "guard stemSeriesLock.withLock({ !currentStemSeries.isEmpty }) "
+            + "else { return false }"
+        #expect(stems.contains(seriesGate), """
+                the suppression must be gated on the SERIES, not on the source. A local file with \
+                no series (cache miss, schema mismatch, failed analysis) must keep live \
+                separation, or it plays with no stems at all.
+                """)
+        #expect(!stems.contains("origin == .localFile") || !stems.contains("suppressedSeparations"), """
+                the suppression appears to be gated on the playback SOURCE rather than on whether \
+                a series exists — that is the fallback policy inverted.
+                """)
+        #expect(initHelpers.contains("stem_suppressed"), """
+                the suppression count must reach the session artifact, or the saving is an \
+                assertion rather than a measurement.
+                """)
     }
 
     /// Invariant 2 — cleared on every track change, installed on the one path that has data.

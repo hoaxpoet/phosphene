@@ -225,6 +225,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Last position the series was sampled at (diagnostics — the `stem_series_pos_s` column).
     var latestStemSeriesPosition: Double?
 
+    /// LFSTEM.2 — live separations skipped because this track has a pre-analysed series.
+    /// Counted so a session can show the saving was real rather than assumed: a track with a
+    /// series should log zero `STEM_SEPARATION` lines and a rising count here.
+    var suppressedSeparations: Int = 0
+
     /// Gossamer wave-pool state — allocated when the Gossamer preset is active,
     /// nil otherwise. Tick closure and waveBuffer are wired into the render pipeline
     /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.

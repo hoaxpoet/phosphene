@@ -175,9 +175,7 @@ extension RenderPipeline {
 
     // MARK: Draw branch
 
-    /// Live entry point: render the Nacre frame to the drawable, then present. Thin
-    /// wrapper over `renderNacre(target:)` so the live path and the diag harness run the
-    /// EXACT SAME render code (FA #66 — no reimplemented test path).
+    /// Live entry point: render the Nacre frame to the drawable, then present.
     @MainActor
     func drawWithNacre(
         commandBuffer: MTLCommandBuffer,
@@ -186,16 +184,15 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         warpState: MVWarpState
     ) {
-        guard let drawable = instrumentedDrawable(
-            from: view, commandBuffer: commandBuffer, site: "nacre.drawable"
-        ) else { return }
-        renderNacre(
-            commandBuffer: commandBuffer,
-            features: features,
-            stemFeatures: stemFeatures,
-            warpState: warpState,
-            target: drawable.texture)
-        instrumentedPresent(drawable, on: commandBuffer)
+        let feat = features
+        drawCustomWarp(commandBuffer: commandBuffer, view: view, site: "nacre.drawable") { target in
+            renderNacre(
+                commandBuffer: commandBuffer,
+                features: feat,
+                stemFeatures: stemFeatures,
+                warpState: warpState,
+                target: target)
+        }
     }
 
     /// Nacre feedback loop rendered into `target`: warp → signature comp (→ target) →
@@ -252,17 +249,7 @@ extension RenderPipeline {
         }
     }
 
-    /// Reduced-motion (U.9 / a11y) Nacre frame into `target`: the signature comp of the
-    /// CURRENT (un-advanced) feedback — NO warp pass, NO swap → no feedback accumulation,
-    /// hence no motion. Target-agnostic (FA #66) so the live drawable path and a headless
-    /// test drive the same code.
-    ///
-    /// This exists because the shared `drawMVWarpReducedMotion` renders a preset's DIRECT
-    /// pipeline straight to the drawable, and Nacre's direct pipeline is compiled for its
-    /// `.rgba16Float` feedback format — a 16-float pipeline → 8-bit drawable is an
-    /// attachment-format mismatch that crashes (BUG-061). The comp (blit) pipeline is
-    /// compiled for the drawable format, so routing reduced-motion Nacre through it is
-    /// both crash-safe and the correct "static frame" the U.9 contract wants.
+    /// Reduced-motion (U.9 / a11y) Nacre frame — see `renderCustomWarpReducedMotion`.
     @MainActor
     func renderNacreReducedMotion(
         commandBuffer: MTLCommandBuffer,
@@ -270,16 +257,10 @@ extension RenderPipeline {
         warpState: MVWarpState,
         target: MTLTexture
     ) {
-        var uni = computeNacreUniforms(features: features, stems: .zero)   // static frame; no vocal pulse
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture     = target
-        desc.colorAttachments[0].loadAction  = .dontCare
-        desc.colorAttachments[0].storeAction = .store
-        guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        enc.setRenderPipelineState(warpState.blitPipeline)        // nacre_comp (drawable format)
-        enc.setFragmentTexture(warpState.warpTexture, index: 0)   // current feedback, NOT advanced
-        enc.setFragmentBytes(&uni, length: MemoryLayout<NacreUniforms>.stride, index: 1)
-        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        enc.endEncoding()
+        renderCustomWarpReducedMotion(
+            commandBuffer: commandBuffer,
+            warpState: warpState,
+            target: target,
+            uniforms: computeNacreUniforms(features: features, stems: .zero))   // static frame
     }
 }

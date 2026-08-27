@@ -40,60 +40,9 @@ public struct PresetScoreBreakdown: Sendable, Hashable {
     public let total: Float
 }
 
-// MARK: - PresetScoring
-
-/// Protocol for preset scoring implementations.
-///
-/// Conforming types must be `Sendable` and deterministic: the same
-/// `(preset, track, context)` tuple must always produce the same score.
-public protocol PresetScoring: Sendable {
-    /// Returns the final combined score for the preset (0–1, or 0 if excluded).
-    func score(
-        preset: PresetDescriptor,
-        track: TrackProfile,
-        context: PresetScoringContext
-    ) -> Float
-
-    /// Returns the full breakdown for inspection and debugging.
-    func breakdown(
-        preset: PresetDescriptor,
-        track: TrackProfile,
-        context: PresetScoringContext
-    ) -> PresetScoreBreakdown
-}
-
-// MARK: PresetScoring default extensions
-
-public extension PresetScoring {
-    /// Ranks a catalog of presets from highest to lowest score.
-    ///
-    /// Hard-excluded presets (diagnostic per D-074, uncertified, over-budget,
-    /// beat-irregular, already-active, user-excluded — see `breakdown`'s exclusion
-    /// gate) score 0 and sort last; they are **kept in the output, not removed**, so
-    /// callers can inspect *why* a preset scored 0 (e.g. `PresetScorerTests.
-    /// rankStabilityAcrossTiers` compares the zero across device tiers).
-    ///
-    /// Therefore a caller selecting a preset to **install** MUST take
-    /// `.first(where: { $0.1 > 0 })`, never a bare `.first` or a `!isDiagnostic`-only
-    /// filter — otherwise an excluded preset installs whenever everything ahead of it
-    /// is also excluded (CLEAN.3.2; `score > 0` subsumes every exclusion, diagnostics
-    /// included).
-    ///
-    /// Ties are broken by the preset's position in the input array (stable sort).
-    func rank(
-        presets: [PresetDescriptor],
-        track: TrackProfile,
-        context: PresetScoringContext
-    ) -> [(PresetDescriptor, Float)] {
-        presets
-            .map { ($0, score(preset: $0, track: track, context: context)) }
-            .sorted { $0.1 > $1.1 }
-    }
-}
-
 // MARK: - DefaultPresetScorer
 
-/// Concrete implementation of `PresetScoring` using the weighted sub-score model.
+/// Preset scoring on the weighted sub-score model.
 ///
 /// ## Weight rationale (D-032)
 /// - **mood (0.30)**: highest weight — the primary axis of Orchestrator fit.
@@ -104,7 +53,7 @@ public extension PresetScoring {
 /// Weights sum to 1.0 so `raw` is already in [0, 1] and interpretable at a glance.
 /// Multiplicative penalties compose cleanly and are separate from exclusions so
 /// "why is this score zero" is always answerable from the breakdown.
-public struct DefaultPresetScorer: PresetScoring {
+public struct DefaultPresetScorer: Sendable {
 
     // MARK: Weight constants
 
@@ -128,7 +77,7 @@ public struct DefaultPresetScorer: PresetScoring {
 
     public init() {}
 
-    // MARK: - PresetScoring
+    // MARK: - Scoring
 
     public func score(
         preset: PresetDescriptor,
@@ -136,6 +85,31 @@ public struct DefaultPresetScorer: PresetScoring {
         context: PresetScoringContext
     ) -> Float {
         breakdown(preset: preset, track: track, context: context).total
+    }
+
+    /// Ranks a catalog of presets from highest to lowest score.
+    ///
+    /// Hard-excluded presets (diagnostic per D-074, uncertified, over-budget,
+    /// beat-irregular, already-active, user-excluded — see `breakdown`'s exclusion
+    /// gate) score 0 and sort last; they are **kept in the output, not removed**, so
+    /// callers can inspect *why* a preset scored 0 (e.g. `PresetScorerTests.
+    /// rankStabilityAcrossTiers` compares the zero across device tiers).
+    ///
+    /// Therefore a caller selecting a preset to **install** MUST take
+    /// `.first(where: { $0.1 > 0 })`, never a bare `.first` or a `!isDiagnostic`-only
+    /// filter — otherwise an excluded preset installs whenever everything ahead of it
+    /// is also excluded (CLEAN.3.2; `score > 0` subsumes every exclusion, diagnostics
+    /// included).
+    ///
+    /// Ties are broken by the preset's position in the input array (stable sort).
+    public func rank(
+        presets: [PresetDescriptor],
+        track: TrackProfile,
+        context: PresetScoringContext
+    ) -> [(PresetDescriptor, Float)] {
+        presets
+            .map { ($0, score(preset: $0, track: track, context: context)) }
+            .sorted { $0.1 > $1.1 }
     }
 
     public func breakdown(

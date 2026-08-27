@@ -1,4 +1,5 @@
 {
+  "arbitration": null,
   "backends": {
     "librosa": {
       "f_measure": 0.58,
@@ -454,7 +455,7 @@
   "extended_by": null,
   "meter_from_taps": null,
   "meter_note": "ratio 15.39 \u2014 no clean meter; unresolved",
-  "phosphene_grid_bpm": 141.1,
+  "phosphene_grid_bpm": 233.61,
   "source": "taps",
   "status": "metrical_review",
   "suite": 2,

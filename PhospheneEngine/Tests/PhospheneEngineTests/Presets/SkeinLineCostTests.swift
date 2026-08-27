@@ -1,5 +1,5 @@
 // SkeinLineCostTests — what Skein actually costs, and why the frame-budget harness cannot see it
-// (BUG-107).
+// (BUG-110).
 //
 // **The gap this measures.** `PresetFrameBudgetTests` reports Skein at **15.60 ms** at 3840×2160 —
 // 0.8× the median preset, one of the cheapest in the roster. Live, the same preset at the same
@@ -28,7 +28,7 @@ import Testing
 @testable import Renderer
 @testable import Shared
 
-@Suite("Skein line-layer cost (BUG-107, env-gated)")
+@Suite("Skein line-layer cost (BUG-110, env-gated)")
 struct SkeinLineCostTests {
 
     // No hand-mirrored layout here: the real `SkeinHeaderGPU` / `SkeinBreakGPU` / `SkeinTailGPU`
@@ -39,7 +39,7 @@ struct SkeinLineCostTests {
     private static let maxBursts = 48
     private static let maxBreaks = 16
     private static let groundStride = 16     // float4
-    private static let tailSamples = 41      // BUG-107 — kSkeinTailFrames + 1
+    private static let tailSamples = 41      // BUG-110 — kSkeinTailFrames + 1
 
     /// Build the slot-6 buffer with `breaks` colour breakpoints laid across the painter clock.
     private static func makeUniforms(device: MTLDevice, breaks: Int) -> MTLBuffer? {
@@ -76,7 +76,7 @@ struct SkeinLineCostTests {
             .bindMemory(to: SkeinBreakGPU.self, capacity: maxBreaks)
         for (i, bk) in ring.enumerated() { breakBase[i] = bk }
 
-        // BUG-107: the fragment reads a PRE-RESOLVED tail table instead of recomputing the painter
+        // BUG-110: the fragment reads a PRE-RESOLVED tail table instead of recomputing the painter
         // path and scanning the ring per pixel, so fill it through the production resolver.
         let tailPtr = buf.contents()
             .advanced(by: MemoryLayout<SkeinHeaderGPU>.stride
@@ -94,7 +94,7 @@ struct SkeinLineCostTests {
     /// This renders the marks at a known painter state and asserts the paint lands where
     /// `SkeinState.painterPosition` says the painter is. If the table's byte layout drifts from
     /// `SkeinTailGPU` in Skein.metal, the line moves or vanishes and this goes red.
-    @Test("The pre-resolved tail puts the paint where the painter actually is (BUG-107)")
+    @Test("The pre-resolved tail puts the paint where the painter actually is (BUG-110)")
     func hoistedTailDrawsInTheRightPlace() throws {
         guard let device = MTLCreateSystemDefaultDevice(),
               let queue = device.makeCommandQueue() else { return }
@@ -176,7 +176,7 @@ struct SkeinLineCostTests {
                 """)
     }
 
-    @Test("Measure Skein's fragment cost against the breakpoint count (BUG-107)")
+    @Test("Measure Skein's fragment cost against the breakpoint count (BUG-110)")
     func measureLineCost() throws {
         guard ProcessInfo.processInfo.environment["PHOSPHENE_SKEIN_COST"] == "1" else {
             print("SkeinLineCostTests: PHOSPHENE_SKEIN_COST not set, skipping"); return
@@ -263,10 +263,10 @@ struct SkeinLineCostTests {
         #expect(one > zero * 5, """
                 breakCount 0→1 barely changed cost (\(zero) → \(one) ms). The line layer is \
                 supposed to be gated on breakCount > 0; if it is not, PresetFrameBudgetTests is \
-                no longer blind and BUG-107 needs re-measuring.
+                no longer blind and BUG-110 needs re-measuring.
                 """)
 
-        // 2. Cost NO LONGER grows with the breakpoint count. Before the BUG-107 hoist this
+        // 2. Cost NO LONGER grows with the breakpoint count. Before the BUG-110 hoist this
         //    asserted the opposite — the growth WAS the defect, 17.06 → 55.65 ms from 1 to 16
         //    breakpoints, because skeinLineLookupAt scanned the ring once per tail frame per
         //    fragment. With the tail resolved once per frame the fragment does no scanning at

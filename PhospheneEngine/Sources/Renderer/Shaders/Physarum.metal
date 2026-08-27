@@ -49,14 +49,6 @@ struct PhysAgent {
     float  age;
 };
 
-// MARK: - Cheap integer-hash RNG → [0,1)
-
-static inline float phys_hash(uint x) {
-    x ^= x >> 16; x *= 0x7feb352du;
-    x ^= x >> 15; x *= 0x846ca68bu;
-    x ^= x >> 16;
-    return float(x) * (1.0 / 4294967296.0);
-}
 
 // Toroidal sampler: address::repeat gives the wrap for free.
 constexpr sampler physTrailSampler(address::repeat, filter::linear, coord::normalized);
@@ -87,12 +79,12 @@ kernel void physarum_agents(device PhysAgent*    agents [[buffer(0)]],
     // coarse. Probabilistic per frame so over the ~0.6 s re-seed the whole population
     // redistributes uniformly, then re-grows a fresh fine web as energy returns.
     if (cfg.collapseEnv > 0.001) {
-        float rr = phys_hash(gid * 2654435761u + cfg.frame * 40503u);
+        float rr = lowbias32_unit(gid * 2654435761u + cfg.frame * 40503u);
         if (rr < cfg.collapseEnv * 0.12) {
-            float hx = phys_hash(gid * 668265263u + cfg.frame * 374761u);
-            float hy = phys_hash(gid * 2246822519u + cfg.frame * 3266489917u);
+            float hx = lowbias32_unit(gid * 668265263u + cfg.frame * 374761u);
+            float hy = lowbias32_unit(gid * 2246822519u + cfg.frame * 3266489917u);
             a.pos = float2(hx, hy) * size;
-            a.heading = phys_hash(gid * 374761393u + cfg.frame * 668265u) * 6.2831853;
+            a.heading = lowbias32_unit(gid * 374761393u + cfg.frame * 668265u) * 6.2831853;
             a.age = 0.0;
             // Relocate only — no instant deposit. The agent senses + deposits normally
             // below from its new spot, so the re-seed reads as a smooth coarse→fine
@@ -111,7 +103,7 @@ kernel void physarum_agents(device PhysAgent*    agents [[buffer(0)]],
 
     // Steer toward the brightest sensor (Jones); random tie-break when both
     // sides win.
-    float rnd = phys_hash(gid * 2654435761u + cfg.frame * 40503u);
+    float rnd = lowbias32_unit(gid * 2654435761u + cfg.frame * 40503u);
     float ra = cfg.rotationAngle;
     if (wF >= wL && wF >= wR) {
         // straight
@@ -127,7 +119,7 @@ kernel void physarum_agents(device PhysAgent*    agents [[buffer(0)]],
     // Reroute, not erase: total deposit is conserved, so global luminance holds
     // (flash-safe per §5 / D-157).
     if (cfg.collapseEnv > 0.001) {
-        float jitter = phys_hash(gid * 668265263u + cfg.frame * 374761u) - 0.5;
+        float jitter = lowbias32_unit(gid * 668265263u + cfg.frame * 374761u) - 0.5;
         a.heading += jitter * cfg.collapseEnv * 2.5;
     }
 
@@ -137,7 +129,7 @@ kernel void physarum_agents(device PhysAgent*    agents [[buffer(0)]],
     // subdivide into many cells; low at high energy → let cells consolidate. A baseline
     // keeps the network perpetually restless so merging+dividing never freezes.
     if (cfg.explore > 0.0001) {
-        float je = phys_hash(gid * 2246822519u + cfg.frame * 3266489917u) - 0.5;
+        float je = lowbias32_unit(gid * 2246822519u + cfg.frame * 3266489917u) - 0.5;
         a.heading += je * cfg.explore;
     }
 

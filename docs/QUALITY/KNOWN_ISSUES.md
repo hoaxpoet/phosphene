@@ -48,14 +48,15 @@ reads" are not reads — see the entry.)*
 |---|---|---|---|
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
-| BUG-102 | **P1** · open, blocks the beat-sync benchmark | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
+| BUG-102 | **P1** · **RESOLVED 2026-08-27 (BUG102.1 bleed, BUG102.2 money)** — both re-annotated; see the new finding it exposed | test.groundtruth / dsp.beat | **BeatBench's reference for `money` and `bleed` is at a metrical level Matt does not trust, and the repo already contradicts itself about it.** Both carry `status: metrical_review` — the GT.2 pipeline's own unresolved-disagreement flag — and on both, BOTH independent reference annotators say the TAPS are the octave-off side: librosa and madmom each report *"reference is double the tapped pulse (×2.01)"* for money and *"reference is half the tapped pulse (×0.51)"* for bleed. `money.groundtruth.json`'s own `meter_note` says *"beats tapped at HALF the bar pulse"*. **Matt, 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** ⚠ **The contradiction is already committed:** BUG-076's body states bleed's ~115 BPM is *"correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1"* — a THIRD independent source — while `bleed.groundtruth.json` says the truth is 226.72 and BeatBench scores bleed F 0.61 / CMLt 0.03 against that. **Consequence: every number scored against these two references is untrustworthy at the metrical level**, which is most of suite 2 and *all* of suite 4 (bleed is its only track). Not a code defect and NOT fixable by editing the JSON (`beatbench` skill: ground truth changes only through tap + reconcile). Needs re-annotation or arbitration. Evidence: `docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`. *(Filed as BUG-101 on 2026-08-19 and renumbered to BUG-102 at merge — a parallel session took 101 for the Volumetric Lithograph perf defect the same day.)* |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
 | BUG-087 | P2 · **partial fix 2026-08-13 (10 → 16.4 Hz); ≥40 Hz NOT met — audio arrival rate is the ceiling, not slicing** | audio.capture / calibration | **Local-file playback runs the whole MIR chain at 10 Hz where streaming runs it at 51 Hz — a 5.1× rate loss on the primary development session type.** `LocalFilePlaybackProvider` asks for `installTap(bufferSize: 1024)` (≈47 Hz) and AVAudioEngine ignores it, delivering **0.1-second** buffers instead — 4414 frames measured at 44.1 kHz, 4808/4810 at 48 kHz. `processAnalysisFrame` runs once per audio callback with no time gate, so the callback rate *is* the analysis rate: every `FeatureVector` field — bands, deviation primitives, `beatPhase01`, centroid, flux, mood inputs — updates at 10 Hz on local files. Proven a fixed *duration* rather than a frame count by the rate-independence discriminator (both sample rates land on 0.1 s). This is the same 10 Hz the FTR program hit from the preset side. Diagnosis only — no fix code. Detail below |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
-| BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files |
+| BUG-107 | **P2** · open · **PREMISE CORRECTED 2026-08-27 (BUG107.1) — it is not a tempo error** | dsp.beat | **Money accelerates ~120 → ~140 → ~130 BPM across the track and the analyzer emits ONE constant tempo for the whole file, so a single grid cannot be right for all of it.** Filed as a "4 % tempo error"; the window sweep refuted that. Surfaced by re-annotating money at BUG102.2: AMLt fell 0.88 → 0.43 and CMLt rose 0.00 → 0.43 with NO engine change, because the old 60.97 reference made 116.19 look like a clean ×1.91 octave (which AMLt forgives by design) while against the true level it is a plain tempo error (which it does not). Owned by the beat-sync program (D-202). No fix proposed — the `dsp.beat` artifact obligations are unmet, see the entry. |
+| BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files | **2026-08-27 (BUG102.1): the ~115 reading is now backed by a `confirmed` ground truth** — bleed was re-tapped at the quarter note, both backends AGREE, and the grid scores F 0.99 / CMLt 1.00 against it. The BUG-102 contradiction (this row saying 115 is correct while `bleed.groundtruth.json` asserted 226.72) is resolved in this row's favour. The window-position instability itself is unaffected and still open.
 | BUG-065 | P3 | dsp.beat | **Live BeatGrid phase drifts off the audible beat over a track** — the cached grid has the right BPM but `LiveBeatDriftTracker` *bounds* the live drift without *tightening* it: drift grows ~11 ms (track start) → **50–70 ms (mid/late-track)**, and **28 % of frames exceed the ~60 ms perceptual window** (evidence: session `2026-06-29T12-43-51Z`, Cherub Rock 171.3 BPM 4/4 — drift-by-10s-window 11/37/49/54/69/66/55/48 ms; lock_state=2 only 67 %-within-60 ms). **Caps how frame-locked beat-driven presets can feel** — the live example is Glaze's GLAZE.7 downbeat push (reads connected but not *tight*; tightest early, loosens as the track plays). NOT a functional break (phase is approximately right). **NEW EVIDENCE — session `2026-07-30T15-39-21Z` (Lumen Mosaic, 80.45 BPM 4/4). Matt: "feels a little laggy, otherwise working as intended." This is the strongest case yet and it is WORSE than the 2026-06-29 baseline:** **50 % of frames exceed the ~60 ms perceptual window** (baseline 28 %), `lock_state == 2` only 63 % of frames, and drift **grows monotonically across the session** — by 10 s window: **0 / 6 / 8 / 52 / 70 / 59 / 68 / 104 / 119 ms**. `grid_bpm` is rock-constant at 80.45, so the BPM is right and it is purely the PHASE slipping. Frame rate is NOT the cause and was ruled out first: p50 59.9 fps, only 0.08 % of frames below 30 fps, and `frame_cpu_ms` p50 actually IMPROVED to 11.06 (from 17.30 on `2026-07-27T16-31-01Z`). The "lag" a listener feels is the visual falling up to ~119 ms behind the audible beat late in the track, not stutter. Confirms the mechanism in the original report — the tracker BOUNDS drift without TIGHTENING it — and strengthens the case for the suggested live re-lock / cached-BPM-error correction. In scope for the beat-sync program (D-202).
 
 **Suggested improvement (Matt 2026-06-29):** live re-lock / cached-BPM-error correction so drift holds < ~30 ms across the track. The cold-start *automated phase* premise was retired (CLAUDE.md §Cold-Start), but this is **mid-track drift convergence** — a different surface (the tracker should tighten, not just bound). Logged for a dedicated beat-sync session |
@@ -229,10 +230,210 @@ Contained to `LocalFilePlaybackProvider`'s start path, but the design needs care
 
 ---
 
+### BUG-107 — money's prep grid is 4 % slow (116.19 vs 121.06), masked until the reference was fixed (2026-08-27)
+
+**Status: open. Premise CORRECTED 2026-08-27 (BUG107.1) by the BUG-076 window sweep — the
+original "4 % tempo error" framing is refuted and retained below only for the reasoning trail.**
+Still no code changed.
+
+**⚠ What the sweep actually found: money has real tempo drift, and the analyzer emits one
+constant tempo per file.** 30 s windows stepped across the track, against both reference
+backends measured over the same spans:
+
+| span | librosa | madmom | Phosphene 30 s window |
+|---|---|---|---|
+| 0–60 s | 119.68 | 120.00 | 116.19 (@0 s) · 121.05 (@30 s) |
+| 60–120 s | 125.00 | 125.00 | 124.25 · 125.59 |
+| 120–180 s | 125.00 | 125.00 | 126.27 · 125.68 |
+| 180–240 s | 133.93 | 136.36 | 134.24 · 136.27 |
+| 240–300 s | 137.20 | 139.53 | 135.37 · 140.19 |
+| 300–360 s | 130.81 | 130.43 | 129.73 · 129.82 |
+
+**Windowed, Phosphene tracks the references closely at every point in the track.** Matt's own
+taps corroborate the shape independently — in 20-tap blocks they run 120.3 / 118.0 / 121.1 /
+121.4 / 120.5 / 122.7 / 122.3, i.e. rising across the tapped span. Three independent sources
+agree the track speeds up by ~17 %.
+
+**So this is not a 4 % tracking error.** It is a *category* mismatch, in three parts:
+
+1. `DefaultBeatGridAnalyzer` returns a **single scalar BPM for the whole file**. Given money's
+   380 s it returns 116.19 — which is exactly the 0–30 s window value, i.e. the opening tempo,
+   not a mid-range compromise.
+2. money's **ground truth spans only its first 90 s** (4.39–89.97 s), so the reference itself
+   describes the opening tempo, not the track.
+3. `offline-grid` scores that one constant grid against the reference wherever both exist. A
+   constant grid over a track that accelerates 17 % can only be right for part of it, which is
+   what CMLt 0.43 looks like: tracked early, lost later.
+
+**The suite-2 AMLt 0.88 → 0.43 movement recorded at BUG102.2 stands as a fact** — the octave
+error was real and its removal is what exposed this — but the *reason* is tempo drift, not a
+tracking defect at a fixed tempo.
+
+**Open questions this raises, which are bigger than the original filing.**
+
+- **money is probably a suite-3 case, not just suite 2.** Suite 3 is "mid-song tempo changes",
+  and D-205 **deferred** its targets "until FT + session-replay". If money belongs there, suite
+  2's gate should not be judged on it in its current form.
+- **Should a 90 s ground truth score a 380 s grid at all?** bleed's truth was extended to the
+  full track by an agreeing backend; money's could not be, because the backends disagree on
+  phase and the taps were kept (BUG102.2). A short truth against a long grid is not obviously a
+  fair comparison.
+- **Does the grid lay uniformly-spaced beats, or adapt within the file?** Not determined here —
+  the sweep only shows the reported scalar. This is the first thing to establish in a diagnosis
+  increment, and it decides whether the fix is "emit a time-varying grid" or "re-scope the
+  benchmark comparison".
+
+**How this differs from BUG-076.** BUG-076 is *window-position instability* on bleed — a third
+of 30 s windows give a wrong tempo, spread 2.11×, with no musical trend. money's sweep is a
+**monotonic ramp that all three sources agree on**. Same method, opposite diagnosis: bleed's
+windows disagree with each other and with the truth; money's windows agree with the references
+and with each other, and disagree only with the single whole-file number.
+
+---
+
+**Original filing, refuted — retained for the trail:**
+
+**Expected.** `DefaultBeatGridAnalyzer` returns a grid BPM within the F-measure tolerance of the
+track's true tempo. money's ground truth, re-tapped and arbitrated at BUG102.2, is **121.06 BPM,
+meter 7** (tempo ratio ×1.01 against both librosa and madmom, which read 122.28 / 122.45).
+
+**Actual.** The grid reads **116.19 BPM** — 4.0 % slow. Scored against the corrected reference:
+
+| | F | Cemgil | CMLt | AMLt |
+|---|---|---|---|---|
+| against the old 60.97 reference | 0.58 | 0.43 | 0.00 | **0.88** |
+| against the corrected 121.06 reference | 0.44 | 0.31 | 0.43 | **0.43** |
+
+**Nothing in the engine changed between those rows.** The metric stopped being fooled: 116.19 is
+×1.906 of 60.97, near enough to a clean octave that AMLt — which accepts double/half by design —
+scored it 0.88. Against the true level it is not an octave relationship at all, so nothing
+forgives the 4 %. This is why the defect was invisible: **the benchmark reported a confident,
+passing-looking number in the wrong direction.**
+
+**Reproduction.** Deterministic, offline, no session required:
+
+```
+cd PhospheneEngine && swift run BeatBench --mode offline-grid --tracks money
+```
+
+Reads `money.groundtruth.json` (`status: arbitrated_taps`, 121.06 BPM) and the fixture at
+`$BEATBENCH_FIXTURES_DIR/money.wav`.
+
+**Suspected failure class:** `algorithm` (tempo estimation), *not* `calibration` — the error is a
+period error, not a phase offset. Note that money's taps also carry a separate systematic −45 ms
+phase offset against both backends, which Matt arbitrated in the taps' favour at BUG102.2; that
+is a distinct question from this one and is settled.
+
+**Artifact obligations NOT yet met** (`dsp.beat`, per the defect-handling protocol): this entry
+has BeatBench before/after, which is the required evidence substrate, but **not** the
+`features.csv` beat-sync columns (`lock_state`, `grid_bpm`, `drift_ms`, `barPhase01_permille`),
+the SpectralCartograph mode label, or a `BeatSyncSnapshot` from a real session including the
+Love Rehab 125 BPM minimum. Those are required before any fix increment opens.
+
+**Open questions for whoever picks this up.**
+
+- Is 116.19 stable, or is it the window-position instability BUG-076 documents on bleed showing
+  up on a second track? BUG-076's method (`--audio` over an ffmpeg window sweep) answers this
+  directly and cheaply, and the answer changes the diagnosis completely.
+- Is money's 7/4 implicated? solsbury_hill is also 7 and reads 102.68 against a 102.44 truth —
+  0.2 % — so odd meter alone does not predict the error.
+- Does it survive to the live path, or is it confined to the prep grid?
+
+**Related.** Owned by the beat-sync program (D-202). Suite 2's ratified baseline must now be
+quoted as AMLt 1.00 / 1.00 / **0.43** / 0.75 / 0.21, not 0.88 — see BUG-102 and
+`docs/diagnostics/BEATBENCH_BASELINE_2026-08-27.md`.
+
 ### BUG-102 — BeatBench's reference for money and bleed is at an untrusted metrical level (2026-08-19)
 
-**Status: open. Not a code defect — a ground-truth defect that caps what the beat-sync
-program can measure. Cannot be fixed by editing the JSON.**
+**Status: RESOLVED 2026-08-27 — bleed by re-annotation (BUG102.1), money by re-annotation plus a recorded arbitration (BUG102.2).** Not a code defect
+— a ground-truth defect that caps what the beat-sync program can measure. Cannot be fixed by
+editing the JSON.
+
+---
+
+**✅ bleed — resolved 2026-08-27 by re-annotation (BUG102.1)**
+
+Matt re-tapped both passes at the quarter note over a 90 s span. `reconcile.py` now returns
+**`confirmed`**, both backends AGREE (librosa F=0.919, madmom F=0.942), meter 4 at ratio 3.96,
+and the ground truth is extended to the full track by madmom (884 beats / 73 downbeats).
+
+**Phosphene's grid was right the whole time — the reference was wrong.** Re-scored against the
+corrected truth, bleed goes from the values D-205 ratified suite 4 against to a near-perfect
+result:
+
+| | F | Cemgil | CMLt | AMLt |
+|---|---|---|---|---|
+| against the old 226.72 reference | 0.61 | — | **0.03** | 0.84 |
+| against the confirmed 114.67 reference | **0.99** | 0.96 | **1.00** | **1.00** |
+
+CMLt 0.03 → 1.00 is the whole finding: the grid was tracking at the reference's own level and
+scoring near-zero because the reference was an octave off. **Suite 4 was never a tracking
+problem.** Its D-205 gate (AMLt ≥ 0.80) is met at 1.00, and now on a trustworthy reference.
+
+**Two things this settles.** BUG-076's body — which asserted bleed's ~115 reading was "correct —
+matches madmom 115.0, librosa 115.0, drums-stem 115.1" — is vindicated; the repo no longer
+contradicts itself. And the suite-4 half of the contamination list below is closed.
+
+**One thing it opens.** With a reference that can be trusted, bleed's **downbeat F is 0.08** —
+the meter is read correctly as 4/4 but bar phase is essentially uncorrelated. That was invisible
+while the reference was wrong. It is consistent with FT.3's `BarLineEstimator` being built and
+**not wired**, and it is not unique to bleed: on this baseline only billie_jean has usable
+downbeats (0.90) against money 0.14, solsbury_hill 0.13, take_five 0.26, bohemian_rhapsody 0.25.
+D-205 makes meter/downbeat a hard gate because Nacre's and Glaze's downbeat pushes are their
+connection layer, so this is a real program-level gap — now measurable, where before it was
+masked.
+
+**Two caveats recorded, not swept.** Matt's first re-tap attempt ran the full 441 s and slipped
+back to the fast subdivision for 54 s (157–211 s), fitting 120.63 BPM overall; it was rejected
+before reconcile rather than after. The accepted pass is 90 s, matching every other track in the
+set (87–99 s). The rejected passes are preserved at
+`Tests/Fixtures/beatbench/taps/pre-BUG102/` — that the level slipped mid-track on a 7-minute
+take is itself evidence about how hard this track is to annotate.
+
+**✅ money — resolved 2026-08-27 by re-annotation + arbitration (BUG102.2)**
+
+Re-tapped at the quarter note over 90 s: **121.06 BPM, meter 7 at ratio 6.95**, tempo ratio
+**×1.01** against both backends. The octave error this entry was filed about is gone.
+
+What remained was a *phase* disagreement, not a level one: the taps sit a systematic
+**−42.3 ms (librosa) / −44.7 ms (madmom)** early, with the two backends agreeing to within
+2.4 ms of each other. It is not the capture rig — bleed was tapped in the same session on the
+same calibration and lands at −13.6 / −0.4 ms, and every other track is inside ±32 ms. On a
+track whose pulse is carried by a syncopated bass riff, Matt hears the beat ~45 ms ahead of
+where the onset detectors place it.
+
+**Matt's call (2026-08-27): the taps are the truth.** Phosphene is a visualizer — a preset
+should fire where a listener feels the pulse, not where an onset detector fires. Recorded in
+`Tests/Fixtures/beatbench/arbitrations.json` with its reasoning, and stamped into the ground
+truth as `status: arbitrated_taps` by `reconcile.py`, so the decision keeps its provenance
+instead of being hand-edited into the truth. This is the arbitration path this entry's original
+fix note called for and the tooling did not have.
+
+**⚠ It exposed a real tracking error that the old reference was hiding.** Re-scored against the
+corrected truth, money goes the *opposite* way to bleed:
+
+| | F | Cemgil | CMLt | AMLt |
+|---|---|---|---|---|
+| against the old 60.97 reference | 0.58 | 0.43 | 0.00 | **0.88** |
+| against the corrected 121.06 reference | 0.44 | 0.31 | 0.43 | **0.43** |
+
+Nothing in the engine changed — the metric stopped being fooled. Phosphene's grid reads
+**116.19 where the truth is 121.06**, a **4% tempo error**. Against the old half-rate reference
+that looked like a clean ×1.91 octave, which AMLt forgives by design; against the true level it
+is not an octave and is not forgiven. **Suite 2's picture is worse and more honest**: money's
+AMLt was never 0.88 in any meaningful sense.
+
+This is a live tracking defect, previously masked, and it belongs to the beat-sync program
+(D-202) rather than to this ground-truth entry. It wants its own BUG number — not filed here so
+the defect-handling protocol's evidence gate gets applied deliberately rather than in passing.
+
+**Still open elsewhere in the set:** `pyramid_song`, `yyz` and `bohemian_rhapsody` are also
+`metrical_review`, and `clair_de_lune` is `needs_arbitration` (for which "no stable grid" may
+legitimately be the annotation). None of them contaminate a ratified gate the way money and
+bleed did. solsbury_hill's separate `meter_from_taps: 7` inconsistency is also still open.
+
+---
+
 
 Found while running FT.3.1, which existed to detect a wrong *grid* metrical level on exactly
 these two tracks. The label set did not survive contact with its own ground truth.
@@ -262,9 +463,9 @@ both be right.
 
 **What this contaminates.** Anything scored against these two references at the metrical level:
 
-- **BeatBench suites 2 and 4.** money is one of five suite-2 tracks; **bleed is the only suite-4
-  track**, so suite 4's entire score rests on an untrusted reference. D-205 ratified `AMLt ≥ 0.80`
-  for suite 4 against exactly that number.
+- **BeatBench suite 2.** money is one of five suite-2 tracks. *(**Suite 4 is CLOSED** —
+  bleed was its only track and its reference is now `confirmed`; re-scored AMLt 1.00 / CMLt 1.00
+  against it, so the D-205 gate is met on trustworthy ground truth.)*
 - **`AMLt − CMLt` as a "wrong grid level" signal.** It measures grid-vs-tap *disagreement* and is
   silent about which side is wrong. D-210's evidence table reads the gap as the grid being wrong;
   that reading is not established. D-210's *decision* (decline the bar, keep the beat) does not
@@ -1534,13 +1735,13 @@ Three details that decide whether it works rather than merely runs:
   smoother is now touched from one thread only, behind `stemSeriesLock`.
 
 ⚠ **A CORRECTION THIS SESSION FORCED, recorded because it is already published elsewhere.**
-BUG107.3's note that "the analysis loop now runs at 59.9 Hz where pre-fix local sessions ran at
+BUG110.3's note that "the analysis loop now runs at 59.9 Hz where pre-fix local sessions ran at
 ~18 Hz, so part of BUG-087's ceiling was the GPU starving the loop" is **WRONG**. Those were
 RENDER rates: 18 fps pre-fix (consistent with 170–250 ms frames) and 60 fps after. The analysis
 rate was never measured that way, and **BUG-087's ceiling claim is untouched** by it. The row-rate
 was read as an analysis rate — the same class of mistake as reading a metric by its name.
 
-Found while confirming BUG-107 on session `2026-08-27T16-17-34Z` (local file, Skein, 4K, 78 s,
+Found while confirming BUG-110 on session `2026-08-27T16-17-34Z` (local file, Skein, 4K, 78 s,
 analysis at 59.9 Hz). The numbers that do not add up:
 
 | | count |
@@ -1580,7 +1781,7 @@ track change naming the source and the series' size. No sampling behaviour was c
 | position holds with the raw clock | the smoother is not being reached at the sample site |
 
 **Related:** LFSTEM.1c (the sampling), LFSTEM.1d (the smoother, whose own replay is clean on this
-session's clock), BUG-107 (found during its live confirmation, unrelated mechanism).
+session's clock), BUG-110 (found during its live confirmation, unrelated mechanism).
 
 ---
 
@@ -1604,7 +1805,7 @@ winner on sub-pixel motion, and the flip is a full colour swap.
 **That explains both halves of what Matt saw.** *Less prominent*, because the mark-level case was
 genuinely fixed and only the line-internal one remained. *Only after 70–80 s*, because such pairs
 require differently-coloured segments inside the same 40-frame tail, and colour breakpoints
-accumulate over a track — the same ring whose filling drove BUG-107's cost ramp.
+accumulate over a track — the same ring whose filling drove BUG-110's cost ramp.
 
 The line now takes the colour of the **first covering segment in a newest→oldest walk**, which is
 the latest-laid one by construction — no comparison, nothing to jitter. Coverage still comes from
@@ -1689,13 +1890,19 @@ the mud rule. It still needs Matt's eye on which colour wins at overlaps afterwa
 - [x] Structural gate: `SkeinCanvasHoldTest` fails if colour is ever selected by a coverage comparison again.
 - [x] **Matt's M7: the overlaps stop flickering AND the colour that wins is the right one.** Round 1's report — *"still happens but only after 70–80 s and is not as prominent"* — located the residual (the line-internal argmin) rather than refuting the fix; round 2 addressed it and round 2's M7 passed on a 106 s run.
 
-**Related:** LFSTEM.1d (fixed the reading side; not this), BUG-107 (Skein's cost ramp, same
+**Related:** LFSTEM.1d (fixed the reading side; not this), BUG-110 (Skein's cost ramp, same
 session, unrelated mechanism), Skein.4.1 / the §colour-mud audit (why the rule is discrete).
 
 ---
 
 
-### BUG-107 — FIXED (BUG107.2, pending live confirmation): the fragment recomputed the painter's whole tail for every pixel (2026-08-27)
+### BUG-110 — FIXED (BUG110.2): the fragment recomputed the painter's whole tail for every pixel (2026-08-27)
+
+> **Renumbered 107 → 110 at merge.** Filed as BUG-107 against a tree where 106 was the highest; a
+> parallel session landed a *different* BUG-107 (money's prep grid, `b35c2897`) on `main` first, and
+> `DocIntegrityTests` gates BUG-number uniqueness. **The commits on this branch are titled
+> `[BUG110.1]` / `[BUG110.2]` / `[BUG110.3]` — they mean this entry.** Same collision, same
+> resolution as BUG-082 and BUG-105.
 
 **Status: ✅ FIXED AND CONFIRMED LIVE 2026-08-27.** Session `2026-08-27T16-17-34Z`, Skein at
 3840×2160 for 78 s:
@@ -1829,7 +2036,7 @@ still ramps (this is Skein's own, independent of stems) or does not (it was the 
 **Verification criteria.**
 - [x] The ramp reproduced on the LFSTEM.1d build, same preset and resolution — 38 ms at t=14 s → 127 ms at t=40 s → ~170–250 ms, essentially identical to the pre-fix session. **The stem staircase was not inflating it.**
 - [x] Cost measured as a function of the state that drives it, offline and repeatably: `SkeinLineCostTests`, the table above.
-- [x] **The hoist implemented** (BUG107.2), with the same harness showing the `breakCount` dependence gone and the 16-breakpoint case at 3.67 ms — *below* the 1-breakpoint floor of 4.77 ms.
+- [x] **The hoist implemented** (BUG110.2), with the same harness showing the `breakCount` dependence gone and the 16-breakpoint case at 3.67 ms — *below* the 1-breakpoint floor of 4.77 ms.
 - [x] Re-measured at 4K **live** — session `2026-08-27T16-17-34Z`, `frame_gpu` p50 flat at 11.55–13.10 ms across 78 s of Skein, against 38 → 250 ms before.
 - [ ] **`PresetFrameBudgetTests` gains a note, or a mechanism, for state-gated layers.** It reports 15.60 ms for a preset that delivers ~6 fps in production; that gap is the harness's, not Skein's, and any preset with runtime-state-gated work has it.
 

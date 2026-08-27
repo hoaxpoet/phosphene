@@ -10,7 +10,42 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
-### [dev-2026-08-27-182236] M7 PASSED — LFSTEM.1 complete, BUG-107/108/109 closed
+### [dev-2026-08-27-185933] LFSTEM.2 — live separation retired on tracks that have a series
+
+**Implemented; the live before/after is owed.** A track with a pre-analysed series had no use for
+live separation — `runPerFrameStemAnalysis` already stood down for it at LFSTEM.1c — so a 142 ms
+MPSGraph job was running every 2 s on the same GPU the renderer draws with, and its output was
+computed and discarded. `separationSupersededBySeries()` now skips the dispatch.
+
+**The gate is on the SERIES, never on the source.** "Is this a local file" would strand a cache
+miss, a schema mismatch or a failed analysis with no stems at all: those leave the series empty
+and keep the live path exactly as it was. The wiring test asserts the condition, not just the
+call.
+
+**The three consumers, checked before removing anything** — the spec named them so this would
+start from a list rather than a grep:
+
+- **The per-frame analyser** — already standing down since LFSTEM.1c. Replaced.
+- **`chain_health.json` / the ASH monitors — clear, with evidence.** `ChainAnalyzer` contains
+  **zero** stem references; `SignalHealthMonitor` has six and all are sample-rate comments, over
+  raw tap samples rather than stems. Neither can read "no separations happening" as a fault, so
+  the BUG-070 shape — a health monitor reporting a deliberately-stopped pipeline as dead — is not
+  reachable here.
+- **The `stems/` WAV dump is LOST on tracks with a series, and the log says so.** It is written
+  from live separation output, and there is no substitute that means the same thing:
+  `CachedTrackData.stemWaveforms` holds only the track's first ~10 s, so dumping it would label
+  the intro as though it were the passage being played. `STEM_SOURCE: live separation SUPPRESSED
+  for this track (LFSTEM.2) — no stems/ WAV dump` now appears at track change. To listen to
+  separation quality on a local file: play one whose series is absent, or use the streaming path.
+
+Suppressions are counted into `GPU_PRESSURE` as `stem_suppressed`, so a session shows zero
+`STEM_SEPARATION` lines against a rising count — the saving measured rather than asserted.
+
+⚠ **Owed: a 4K local-file session** for the `frame_gpu_ms` before/after this increment claims.
+
+---
+
+### [dev-2026-08-27-182236] M7 PASSED — LFSTEM.1 complete, BUG-110/108/109 closed
 
 **Matt, session `2026-08-27T18-17-50Z`: *"Looks good."*** 106 s of Skein at 3840×2160 — well past
 the 70–80 s mark where the round-1 overlap residual appeared — with the series driving
@@ -26,7 +61,7 @@ That sign-off closes three defects and completes the increment they hung off:
   pass.
 - **BUG-109** — stem values updated 12.8 times a second because the series was sampled on the
   analysis frame. Now sampled per render frame: 56–58 Hz measured live.
-- **BUG-107** — Skein's 4K cost ramp, from a fragment recomputing the painter's whole 41-sample
+- **BUG-110** — Skein's 4K cost ramp, from a fragment recomputing the painter's whole 41-sample
   tail per pixel. 38 → 250 ms before, flat ~13 ms now.
 
 **LFSTEM.1 is complete.** For a local file, stems are analysed ahead of time, arrive at the
@@ -57,7 +92,7 @@ sub-pixel motion, and the flip is a full colour swap.
 **Both halves of the report fall out of that.** *Less prominent*, because the mark-level case was
 genuinely fixed and only the line-internal one remained. *Only after 70–80 s*, because such pairs
 need differently-coloured segments inside the same 40-frame tail, and colour breakpoints
-accumulate over a track — the same ring whose filling drove BUG-107's cost ramp. A report that
+accumulate over a track — the same ring whose filling drove BUG-110's cost ramp. A report that
 locates a residual is worth more than one that just says "still broken", and this one located it.
 
 The line now takes the colour of the **first covering segment in a newest→oldest walk** — the
@@ -67,7 +102,7 @@ colour, because nothing is laid over anything in the anti-aliased fringe. `Skein
 now gates both levels: no colour selection by coverage at the mark level, and none by distance
 inside the line.
 
-**Also confirmed by the same session, both LFSTEM.1e and BUG-107 live:** the series samples at
+**Also confirmed by the same session, both LFSTEM.1e and BUG-110 live:** the series samples at
 **~56 Hz** (was 12.8 — LFSTEM.1e), `STEM_SOURCE` reports the series driving, and `frame_gpu` p50
 holds **12.55–13.21 ms flat across 90 s** at 4K. Matt: *"Frame rate is smooth."*
 
@@ -128,13 +163,13 @@ has no such bound: sampling it is an array lookup. Moving `applyStemSeriesFrame`
 frame turns 12.8 Hz into the series' full 43 Hz. Not implemented — it changes what every
 stem-driven preset sees.
 
-⚠ **A correction this session forced, to something already published.** BUG107.3 recorded that
+⚠ **A correction this session forced, to something already published.** BUG110.3 recorded that
 "the analysis loop now runs at 59.9 Hz where pre-fix local sessions ran at ~18 Hz, so part of
 BUG-087's ceiling was the GPU starving the loop". **That is wrong** — both were RENDER rates
 (18 fps pre-fix, consistent with 170–250 ms frames; 60 fps after). The analysis rate was never
 measured that way and **BUG-087's ceiling claim is untouched**. Reading a row rate as an analysis
 rate is the same class of mistake as reading a metric by its name, which this project has now
-made often enough to have a rule about it. Retracted in the BUG-107 entry rather than quietly
+made often enough to have a rule about it. Retracted in the BUG-110 entry rather than quietly
 edited away.
 
 ---
@@ -169,7 +204,7 @@ not been exercised live yet at all.
 
 ---
 
-### [dev-2026-08-27-162253] BUG-107 confirmed live — Skein at 4K is flat at ~12.6 ms, and a new question is filed
+### [dev-2026-08-27-162253] BUG-110 confirmed live — Skein at 4K is flat at ~12.6 ms, and a new question is filed
 
 **Confirmed.** Session `2026-08-27T16-17-34Z`, Skein at 3840×2160 for 78 s:
 
@@ -204,7 +239,7 @@ happening.
 
 ---
 
-### [dev-2026-08-27-160607] BUG-107 fixed — Skein recomputed the painter's whole tail for every pixel
+### [dev-2026-08-27-160607] BUG-110 fixed — Skein recomputed the painter's whole tail for every pixel
 
 **The hoist.** `skeinLineLookupAt` and `skeinPainterPos` depend only on the painter clock, the seed
 phases and the breakpoint ring — **never on fragment position** — and both were being recomputed
@@ -242,9 +277,9 @@ says how much of the ramp this removed.
 
 ---
 
-### [dev-2026-08-27-154702] BUG-107 diagnosed — the frame-budget harness has been measuring Skein with its most expensive layer switched off
+### [dev-2026-08-27-154702] BUG-110 diagnosed — the frame-budget harness has been measuring Skein with its most expensive layer switched off
 
-**Diagnosis, not a fix.** BUG-107 held that Skein costs 15.60 ms at 4K in `PresetFrameBudgetTests`
+**Diagnosis, not a fix.** BUG-110 held that Skein costs 15.60 ms at 4K in `PresetFrameBudgetTests`
 and ~170 ms live. `SkeinLineCostTests` (`PHOSPHENE_SKEIN_COST=1`) binds a **synthetic
 `SkeinUniforms`** — no audio, no `SkeinState`, just bytes — and times the real marks overlay at
 3840×2160. That is the seam Skein has never had, and it settles both halves:
@@ -356,7 +391,7 @@ since Skein certified — and became visible because on-time stem values move th
 radius terms more per frame than 2.5 s-late smoothed ones did. Fix options (lay-order tie-break,
 narrow blend band, coverage quantisation) are a look decision for Matt, not an engineering one.
 
-**Answered by the same session: BUG-107 is Skein's own.** The cost ramp reproduced with the clock
+**Answered by the same session: BUG-110 is Skein's own.** The cost ramp reproduced with the clock
 fixed — 38 ms at t=14 s rising to 127 ms at t=40 s and ~170–250 ms after — essentially identical
 to the pre-fix session. The stem staircase was not inflating it, which is what the free A/B was
 for.
@@ -394,7 +429,7 @@ measured 100 ms quantisation at the measured 18 Hz frame rate, and **fails witho
 (16 of 35 frames do not advance), with a control asserting an already-continuous clock passes
 through untouched.
 
-**The second finding is filed, not fixed: BUG-107.** Skein measures **15.60 ms at 4K** in the
+**The second finding is filed, not fixed: BUG-110.** Skein measures **15.60 ms at 4K** in the
 frame-budget harness and ramps to **~170 ms (≈6 fps)** over 50 s of live playback, then plateaus —
 constant resolution, constant preset, GPU memory flat at 5.1 %, `ml_forced=0`, thermal nominal.
 A cost that scales with canvas coverage fits the shape and is **not demonstrated**; the harness
@@ -402,6 +437,49 @@ renders 30 frames with no audio and can never see it. Whether LFSTEM.1's stairca
 the flick rate and hence the ramp is a hypothesis with a mechanism and no measurement, which is
 exactly the shape that cost BUG-100 four reproduction attempts. The A/B is free: the next Skein 4K
 session on this build either still ramps or does not.
+### [dev-2026-08-27-180955] BUG-102 resolved — both disputed references re-annotated, and they hid opposite truths
+
+BeatBench's references for `money` and `bleed` both carried `status: metrical_review` — the
+pipeline's own unresolved-disagreement flag — with both independent backends saying the taps were
+an octave off, and Matt saying he would not trust his tapping on them. Everything scored against
+those two tracks was uncitable, including the whole of suite 4.
+
+Both have been re-tapped at the quarter note over 90 s spans, which is what every other track in
+the set uses (87–99 s). **The two results point in opposite directions, which is the finding.**
+
+- **bleed → `confirmed`.** 114.67 BPM, meter 4 at ratio 3.96, both backends AGREE (librosa 0.919,
+  madmom 0.942), extended to the full track by madmom. Re-scored, the grid goes from
+  F 0.61 / CMLt **0.03** / AMLt 0.84 to **F 0.99 / CMLt 1.00 / AMLt 1.00**. Phosphene was right all
+  along; suite 4 was never a tracking problem. It also resolves a contradiction the repo had been
+  carrying, where BUG-076's body called bleed's ~115 correct against three sources while the
+  ground truth asserted 226.72.
+- **money → `arbitrated_taps`.** 121.06 BPM, meter 7 at ratio 6.95, ratio ×1.01 against both
+  backends — so the octave error is gone. What remained was a systematic −45 ms *phase* offset
+  against both backends (which agree with each other to 2.4 ms). Not the rig: bleed was tapped in
+  the same session on the same calibration at −13.6 / −0.4 ms. Matt's call is that the taps are
+  the truth — a visualizer should fire where a listener feels the pulse, not where an onset
+  detector does. Re-scored, money goes the OTHER way: AMLt **0.88 → 0.43**. The old half-rate
+  reference made the grid's 116.19 look like a clean ×1.91 octave, which AMLt forgives by design;
+  against the true 121.06 it is a plain 4 % tempo error. **Filed as BUG-110**, unfixed — the
+  `dsp.beat` artifact obligations are deliberately not yet met.
+
+**Tooling.** `reconcile.py` gained the arbitration path BUG-102's own fix note called for and the
+repo lacked: decisions live in `Tests/Fixtures/beatbench/arbitrations.json` with their reasoning
+and are stamped into the ground truth as `status: arbitrated_<decision>`. It never invents
+timings — `decision: taps` keeps exactly what was tapped — so a disagreement no re-tap can settle
+is recorded with provenance instead of hand-edited into the truth. Its `PHOSPHENE_GRID` context
+dict was also a stale 2026-07-27 preview-clip snapshot listing bleed at 174.6 and money at 123.2
+against live readings of 115.00 and 116.19 — a third apparent metrical level embedded in the very
+artifacts under dispute; re-measured for the nine ground-truthed tracks.
+
+**Suite 2's ratified baseline must now be quoted as AMLt 1.00 / 1.00 / 0.43 / 0.75 / 0.21.** New
+baseline: `docs/diagnostics/BEATBENCH_BASELINE_2026-08-27.md`. Suite 1 holds at F 0.97.
+
+**One thing the fixed references made visible: downbeats.** Only billie_jean has usable downbeat
+F (0.90), against bleed 0.08, solsbury_hill 0.13, money 0.21, bohemian_rhapsody 0.25,
+take_five 0.26. Consistent with FT.3's `BarLineEstimator` being built and not wired, and it
+matters because D-205 makes meter/downbeat a hard gate — Nacre's and Glaze's downbeat pushes are
+their connection layer.
 
 ---
 

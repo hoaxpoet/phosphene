@@ -190,7 +190,7 @@ struct SkeinBurstGPU {        // 12 floats = 48 bytes (matches Swift SkeinBurstG
     float hashSeed;                    // per-burst droplet-placement seed
 };
 
-// BUG-107 — one PRE-RESOLVED tail sample, 8 floats = 32 bytes (matches Swift SkeinTailGPU).
+// BUG-110 — one PRE-RESOLVED tail sample, 8 floats = 32 bytes (matches Swift SkeinTailGPU).
 //
 // The tail loop below walks `kSkeinTailFrames` points back along the painter's path. Everything it
 // needed per point — the painter POSITION at that painter-clock value, and the breakpoint COLOUR /
@@ -237,7 +237,7 @@ struct SkeinUniforms {        // 64-byte header + 48 × 48-byte bursts + 16 × 2
                                        // Offset 2752 = 64 + 48·48 + 16·24, 16-byte aligned — the second
                                        // additive tail. The comp paint-mask compares the auto-decoded
                                        // (linear) canvas sample against it; per-track in library mode.
-    SkeinTailGPU  tail[41];            // BUG-107 — == kSkeinTailFrames + 1, pre-resolved per frame
+    SkeinTailGPU  tail[41];            // BUG-110 — == kSkeinTailFrames + 1, pre-resolved per frame
 };
 
 // Skein.4.1 — the line state in effect at a given painter-clock value: frozen colour + new-pour offset
@@ -433,7 +433,7 @@ fragment float4 skein_geometry_fragment(
     float  lineWiden = mix(1.0, 1.5, lineVisc) + 0.5 * clamp(st.lineFlow, 0.0, 1.0);
     if (int(st.breakCount) > 0) {   // Skein.5.1: no committed pour yet ⇒ no line (never white)
         // Per-frame radius (never per-segment). Speed estimated from the natural (un-offset) path.
-        // BUG-107: the tail table is pre-resolved per frame — entry k is the painter state at
+        // BUG-110: the tail table is pre-resolved per frame — entry k is the painter state at
         // `tau − k·dτ`, so entry 0 is the tip and entry kSkeinTailFrames is the tail's far end.
         float2 tip0  = float2(st.tail[0].posX, st.tail[0].posY);
         float2 oldP0 = float2(st.tail[kSkeinTailFrames].posX, st.tail[kSkeinTailFrames].posY);

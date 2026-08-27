@@ -52,6 +52,78 @@ struct PresetSidecarKeyGateTests {
     /// Top-level keys that are deliberately present and deliberately NOT decoded.
     /// Every entry needs a reason; an entry without one is how `concept_tags` would
     /// have survived this gate.
+    /// Decoded keys that deliberately have no adopter, each with the decision behind it.
+    /// Adding a row here is a decision, not a formality — it says the mechanism is wired
+    /// and waiting, not that nobody checked.
+    private static let deliberateZeroAdopterKeys: [String: String] = [
+        "requires_regular_beat": """
+            D-154 as amended (FBS.S5c, 2026-06-11): Matt watched Pyramid Song under the \
+            Ferrofluid beat-sync and chose to retire the ban outright rather than narrow it. \
+            Zero adopters is the amendment working; the mechanism stays for a future preset. \
+            Pinned separately by `test_realFFOSidecar_doesNotDeclareRequiresRegularBeat`.
+            """,
+        "scene_orbit_speed": """
+            WHIT.2b shipped the camera orbit for Rosette; D-223 removed Rosette's use of it \
+            (a constant-rate orbit read as disconnected from the music) and D-224 retired \
+            Rosette itself. The plumbing is live and exercised — RayMarchPipeline applies it \
+            and SessionReplayHarness mirrors it — so a future ray-march preset with real \
+            out-of-plane geometry can adopt it by declaring the key.
+            """,
+    ]
+
+    /// Parse `PresetDescriptor`'s own `CodingKeys` (its JSON surface), skipping the nested
+    /// enums belonging to sub-objects like `MVWarpFlags`, which are gated by their own shape.
+    private static func descriptorCodingKeys(in source: String) -> Set<String> {
+        let lines = source.components(separatedBy: "\n")
+        // Several nested types declare their own CodingKeys; pick the descriptor's own
+        // block by a key only it declares, so this never silently gates a sub-object.
+        let starts = lines.indices.filter {
+            lines[$0].hasPrefix("    enum CodingKeys: String, CodingKey {")
+        }
+        var start = -1
+        var end = -1
+        for candidate in starts {
+            var depth = 0
+            for index in candidate ..< lines.count {
+                depth += lines[index].filter { $0 == "{" }.count
+                depth -= lines[index].filter { $0 == "}" }.count
+                if depth == 0 && index > candidate {
+                    if lines[candidate ... index].contains(where: { $0.contains("\"audio_routes\"") }) {
+                        start = candidate
+                        end = index
+                    }
+                    break
+                }
+            }
+            if start >= 0 { break }
+        }
+        guard start >= 0 else { return [] }
+
+        var keys: Set<String> = []
+        for line in lines[(start + 1) ..< end] {
+            let body = line.trimmingCharacters(in: .whitespaces)
+            guard body.hasPrefix("case ") else { continue }
+            let rest = String(body.dropFirst("case ".count))
+            if let eq = rest.firstIndex(of: "=") {
+                let raw = rest[rest.index(after: eq)...]
+                    .trimmingCharacters(in: .whitespaces)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                if !raw.isEmpty { keys.insert(raw) }
+            } else {
+                for name in rest.split(separator: ",") {
+                    let trimmed = name.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty { keys.insert(trimmed) }
+                }
+            }
+        }
+        return keys
+    }
+
+    /// Keys `PresetDescriptor.AudioRoute` decodes, plus `note` — an author annotation
+    /// kept deliberately: it explains WHY a route exists to the next reader, and unlike a
+    /// `_comment` prefix it sits with the route it describes.
+    private static let audioRouteKeys: Set<String> = ["route", "primitive", "kind", "response", "note"]
+
     private static let documentationOnlyKeys: [String: String] = [
         "inspired_by": """
             Milkdrop provenance block (D-111 as amended, schema in D-215 §13.3). \
@@ -179,6 +251,113 @@ struct PresetSidecarKeyGateTests {
               • decode it — add a case to PresetDescriptor.CodingKeys and read it somewhere;
               • document it — add it to `documentationOnlyKeys` above WITH a reason it is
                 not decoded and what keeps it honest;
+              • delete it — it was never doing anything.
+            """)
+    }
+
+    /// **Every decoded sidecar key has at least one in-tree adopter, or a stated reason.**
+    ///
+    /// The inverse of the gate above, and the one that closes the loop. That gate catches
+    /// a sidecar key nothing decodes; this catches a DECODED key no sidecar sets — schema
+    /// the tree pays for and no preset uses. RECON.22 deleted four of exactly that shape
+    /// (`thin_film`, the legacy `use_*` synthesis, `beat_source`, `mesh_additive_blend`);
+    /// `beat_source` had reached 27 sidecars declaring a control that was never read.
+    /// This test would have caught all of it the day the adopter count hit zero.
+    ///
+    /// Zero adopters is allowed — it just has to be a decision someone wrote down.
+    @Test func decodedSidecarKeysHaveAnAdopterOrAStatedReason() throws {
+        guard let root = Self.repoRoot else {
+            print("PresetSidecarKeyGateTests: not a source checkout — skipping")
+            return
+        }
+        let descriptorSource = try String(
+            contentsOf: root.appendingPathComponent("PhospheneEngine/Sources/Presets/PresetDescriptor.swift"),
+            encoding: .utf8)
+        let declared = Self.descriptorCodingKeys(in: descriptorSource)
+        #expect(declared.count > 30, "Only \(declared.count) coding keys parsed — the gate lost its source")
+
+        let shaders = root.appendingPathComponent("PhospheneEngine/Sources/Presets/Shaders")
+        let sidecars = try #require(
+            try? FileManager.default.contentsOfDirectory(at: shaders, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "json" },
+            "Shaders directory unreadable at \(shaders.path) — never a pass.")
+        var adopted: Set<String> = []
+        for url in sidecars {
+            guard let data = try? Data(contentsOf: url),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            adopted.formUnion(object.keys)
+        }
+
+        let orphans = declared
+            .subtracting(adopted)
+            .subtracting(Self.deliberateZeroAdopterKeys.keys)
+            .sorted()
+
+        #expect(orphans.isEmpty, """
+            Decoded sidecar key(s) with zero in-tree adopters:
+
+            \(orphans.joined(separator: "\n            "))
+
+            `PresetDescriptor` decodes these and no shipped sidecar sets them. That is how \
+            `beat_source` reached 27 sidecars declaring a control nothing read (RECON.22).
+
+            Pick one, deliberately:
+              • adopt it — a shipped preset declares it and something reads the value;
+              • state it — add it to `deliberateZeroAdopterKeys` above WITH the decision \
+                that made it deliberate (D-number or increment);
+              • delete it — the key, its CodingKey, its decode and its property.
+            """)
+    }
+
+    /// **Every key inside an `audio_routes` entry is decoded, or allow-listed.**
+    ///
+    /// The top-level gate above stops at depth 1, so a typo INSIDE a route object was
+    /// invisible: `Stave.json` carried a `note` field that `AudioRoute` does not decode,
+    /// and it was silently dropped — the exact failure this gate exists to catch, one
+    /// level down. A route manifest is the QG.1 certification contract; a route whose
+    /// key is misspelled reads as declared and gates nothing.
+    @Test func audioRouteObjectKeysAreDecodedOrAllowListed() throws {
+        guard let root = Self.repoRoot else {
+            print("PresetSidecarKeyGateTests: not a source checkout — skipping")
+            return
+        }
+        let shaders = root.appendingPathComponent("PhospheneEngine/Sources/Presets/Shaders")
+        let sidecars = try #require(
+            try? FileManager.default.contentsOfDirectory(at: shaders, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "json" }.sorted(by: { $0.path < $1.path }),
+            "Shaders directory unreadable at \(shaders.path) — never a pass."
+        )
+
+        var offences: [String] = []
+        var routesSeen = 0
+        for url in sidecars {
+            guard let data = try? Data(contentsOf: url),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let routes = object["audio_routes"] as? [[String: Any]]
+            else { continue }
+            for route in routes {
+                routesSeen += 1
+                let name = route["route"] as? String ?? "<unnamed>"
+                for key in route.keys.sorted() where !Self.audioRouteKeys.contains(key) {
+                    offences.append("\(url.lastPathComponent): audio_routes[\(name)].\"\(key)\"")
+                }
+            }
+        }
+
+        #expect(routesSeen > 100, "Only \(routesSeen) routes seen; the gate is not reading the manifests")
+        #expect(offences.isEmpty, """
+            Unrecognised key(s) inside audio_routes entries:
+
+            \(offences.joined(separator: "\n            "))
+
+            `PresetDescriptor.AudioRoute` does not decode these, so they are inert. A route \
+            manifest is the QG.1 certification contract — an inert key there reads as a \
+            declared route property and gates nothing.
+
+            Pick one, deliberately:
+              • decode it — add a case to AudioRoute.CodingKeys and read it somewhere;
+              • document it — add it to `audioRouteKeys` above WITH a reason;
               • delete it — it was never doing anything.
             """)
     }

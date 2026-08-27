@@ -25,13 +25,13 @@ public actor PresetCertificationStore {
     // MARK: Private state
 
     private var cache: [String: RubricResult]?
-    private let rubric: any FidelityRubricEvaluating
+    private let rubric: DefaultFidelityRubric
     private let deviceTier: DeviceTier
 
     // MARK: Init
 
     public init(
-        rubric: any FidelityRubricEvaluating = DefaultFidelityRubric(),
+        rubric: DefaultFidelityRubric = DefaultFidelityRubric(),
         deviceTier: DeviceTier = .tier2
     ) {
         self.rubric = rubric
