@@ -246,7 +246,7 @@
   "phosphene_grid_bpm": 116.19,
   "source": "taps",
   "status": "arbitrated_taps",
-  "suite": 2,
+  "suite": 3,
   "tap_bpm": 121.06,
   "tap_count": 166,
   "tap_downbeat_count": 27,

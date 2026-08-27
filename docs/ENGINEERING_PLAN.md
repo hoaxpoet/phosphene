@@ -64,6 +64,43 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 ## Recently Completed
 
 ### Increment SKEIN.OVERLAP.2 — the same argmin, one level down ✅ M7 PASSED (2026-08-27)
+### Increment BUG107.2 — the offline beat grid only ever analyses the first ~30 s ✅ diagnosis (2026-08-27)
+
+Diagnosis increment for BUG-107; no fix code, no behavioural change. Also moves **money to
+suite 3** (mid-song tempo changes) per Matt — its ~17 % tempo rise is a suite-3 property, and
+D-205 deferred suite-3 targets, so it should not have been gating suite 2.
+
+**Root cause.** `BeatThisModel.tMax = 1500` frames ≈ 30 s (its own comment says so, and
+`ARCHITECTURE.md` documents it). `DefaultBeatGridAnalyzer.analyzeBeatGrid` calls `model.predict`
+**once with no tiling**, so any longer input is silently truncated — no warning, no log.
+`PreviewAudio.fromLocalFile` reads `file.length`, the whole track, so on the local-file path the
+analyzer is handed a full song and uses its opening 30 s. On streaming it is a no-op (the preview
+is 30 s by construction).
+
+Measured directly: money's whole file and its 0–30 s clip return **identical** output — bpm
+116.19, 51 beats, barConfidence 0.77. 51 beats is ~26 s at that tempo; a 380 s track contains
+~735. bleed's whole file returns 58 beats ≈ 30 s of a 442 s track.
+
+**So money was never 4 % slow.** Its tempo rises ~17 %, making the opening 30 s the least
+representative window in the song; the grid reports a correct reading *of the opening* and has no
+beats past ~26 s. `offline-grid` then clips the 90 s truth to the grid's ~26 s span, so the
+reported F/CMLt describe 26 seconds of a 380-second track.
+
+**⚠ It also scopes BUG102.1's headline.** bleed's F 0.99 / CMLt 1.00 is real **over its first
+~30 s**, not the full track. "Phosphene's grid was right, suite 4 was never a tracking problem"
+holds for the opening and should be quoted with that scope.
+
+**The product consequence is on local files.** LFSTEM.1 has just moved local-file *stems* to a
+full-file series sampled by playback position — so stems now span the track while the beat grid
+still does not. Any preset consuming bar position on a local file whose tempo moves is running on
+an opening-30 s estimate, silently.
+
+**Deliberately not attempted.** Wiring FT.1's already-built tiler (parity-tested byte-identical)
+into the analyzer is the obvious move and is NOT assumed to help: FT.1's own finding was that
+13–25× more context recovered no odd meter and regressed bohemian. A fix increment starts from
+that, carries a five-suite before/after BeatBench table, and ships behind an env flag with a
+one-increment A/B path (plan §4).
+
 ### Increment BUG102.2 — money re-annotated + arbitrated; a masked 4% tempo error surfaces ✅ (2026-08-27)
 
 Closes BUG-102. Matt re-tapped money at the quarter note: **121.06 BPM, meter 7 at ratio 6.95**,
