@@ -325,6 +325,34 @@ extension PresetLoader {
 
     // MARK: - Ray March G-buffer Preamble
 
+    /// The MSL mirror of `SceneUniforms` (Shared/AudioFeatures+SceneUniforms.swift):
+    /// 15 × float4 = 240 bytes. Part of the GPU contract — the field ORDER is the
+    /// layout, so this text and the Swift struct must change together.
+    ///
+    /// Both preambles that need it (mv_warp and ray-march G-buffer) emit THIS string
+    /// behind the same `SCENE_UNIFORMS_DEFINED` guard, so a preset declaring both
+    /// passes still sees exactly one definition. They carried hand-synced copies that
+    /// had already drifted in their comments by RECON.23.
+    static let sceneUniformsMSL: String = """
+        struct SceneUniforms {
+            float4 cameraOriginAndFov;        // xyz = camera pos, w = fov (radians)
+            float4 cameraForward;             // xyz = forward direction, w = 0
+            float4 cameraRight;               // xyz = right direction, w = 0
+            float4 cameraUp;                  // xyz = up direction, w = 0
+            float4 lightPositionAndIntensity; // xyz = light pos, w = intensity
+            float4 lightColor;                // xyz = linear RGB, w = 0
+            float4 sceneParamsA;              // x=audioTime, y=aspectRatio, z=near, w=far
+            float4 sceneParamsB;              // x=fogNear, y=fogFar, z=D-057 step mult, w=reserved
+            float4 light1PositionAndIntensity; // RMENV.1 additional lights (appended)
+            float4 light1Color;
+            float4 light2PositionAndIntensity;
+            float4 light2Color;
+            float4 light3PositionAndIntensity;
+            float4 light3Color;
+            float4 lightingParams;            // x = lightCount (1..4); yzw reserved
+        };
+        """
+
     /// Additional shader preamble for ray march presets only.
     /// Contains `SceneUniforms`, `GBufferOutput`, `sceneSDF`/`sceneMaterial` forward
     /// declarations, and `raymarch_gbuffer_fragment`. Kept separate from `shaderPreamble`
@@ -336,23 +364,7 @@ extension PresetLoader {
         // Guard against redefinition when mv_warp and ray_march passes are both active.
         #ifndef SCENE_UNIFORMS_DEFINED
         #define SCENE_UNIFORMS_DEFINED
-        struct SceneUniforms {
-            float4 cameraOriginAndFov;        // xyz = camera pos, w = fov (radians)
-            float4 cameraForward;             // xyz = forward direction, w = 0
-            float4 cameraRight;               // xyz = right direction, w = 0
-            float4 cameraUp;                  // xyz = up direction, w = 0
-            float4 lightPositionAndIntensity; // xyz = light pos, w = intensity
-            float4 lightColor;                // xyz = linear RGB, w = 0
-            float4 sceneParamsA;              // x=audioTime, y=aspectRatio, z=near, w=far
-            float4 sceneParamsB;              // x=fogNear, y=fogFar, z=D-057 step mult, w=SSGI radius
-            float4 light1PositionAndIntensity; // RMENV.1 additional lights (appended)
-            float4 light1Color;
-            float4 light2PositionAndIntensity;
-            float4 light2Color;
-            float4 light3PositionAndIntensity;
-            float4 light3Color;
-            float4 lightingParams;            // x = lightCount (1..4); yzw reserved
-        };
+        \(sceneUniformsMSL)
         #endif
 
         // G-buffer output for ray march presets. See CLAUDE.md §G-Buffer Layout

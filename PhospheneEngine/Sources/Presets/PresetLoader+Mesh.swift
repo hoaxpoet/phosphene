@@ -29,17 +29,8 @@ extension PresetLoader {
         }
 
         let fullSource = Self.shaderPreamble + "\n\n" + fragmentSource
-        let options = MTLCompileOptions()
-        options.fastMathEnabled = true
-        options.languageVersion = .version3_1
-
-        let library: MTLLibrary
-        do {
-            library = try device.makeLibrary(source: fullSource, options: options)
-        } catch {
-            meshLogger.error("Mesh shader compilation failed for \(url.lastPathComponent): \(error)")
-            return nil
-        }
+        guard let library = compileLibrary(
+            source: fullSource, url: url, label: "Mesh shader compilation") else { return nil }
 
         let fragmentName = descriptor.fragmentFunction
         let meshName = fragmentName.replacingOccurrences(of: "_fragment", with: "_mesh_shader")
