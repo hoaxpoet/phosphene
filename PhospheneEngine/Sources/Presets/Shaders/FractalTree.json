@@ -61,7 +61,7 @@
     {
       "route": "silence_gate",
       "primitive": "pulseAmp01",
-      "kind": "continuous"
+      "kind": "gate"
     },
     {
       "route": "trunk_step",

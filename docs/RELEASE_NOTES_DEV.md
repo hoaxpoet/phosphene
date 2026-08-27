@@ -10,6 +10,195 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-26-225906] LFSTEM.1 — local-file stems arrive on time instead of 2.5 s late
+
+**Code-complete; the Skein M7 is owed before this can be called done.**
+
+Live stem separation is late by construction — a 2 s window plus inference — so every
+stem-driven behaviour has been following the music by about a bar. For a local file that was
+never necessary: the whole file is decoded during preparation, and the codebase already shipped
+the pattern (`instrumentFamilySeries`, sampled by playback position, IFC.4 / D-177). Stems were
+cached as a single snapshot of the track's first ten seconds where they could have been a series.
+
+- **1a — the sweep.** `SessionPreparer.analyzeStemSeries` steps the separator across the whole
+  file, keeping spans of 2 s and placing each at the END of its ~10 s window: deliberately the
+  same relative position the live path reads from, so the series carries the character presets
+  were tuned against without the lag. One analyzer instance sweeps in playback order so its AGC
+  carries across spans, as it does across live separations. Placing a span flush with the window
+  end dropped the frame starting on its last sample — 10 of 1292 over 30 s, invisible within any
+  one span — which the drift gate caught on its first run.
+- **1b — persistence, schema v10.** A raw `[StemFeatures]` dump in `stem_series.bin` (JSON for
+  ~10,000 frames × 55 floats would dominate the entry), safe only because every stored property
+  of `StemFeatures` is a `Float`, and guarded by a stored `stemSeriesFeatureStride`. Every read
+  failure degrades to `.empty`: the series is an accelerator, and discarding a good cache entry
+  over it would mean re-analysing a file that was already analysed.
+- **1c — playback.** The local prep path builds the series; the analysis frame samples it at
+  `mir.elapsedSeconds`; the live path stands down when one is installed, because both publishing
+  every frame is a race, not a feature.
+
+The alignment gate is the one that matters and it is asserted against a signal whose timing is
+known by construction: silence then a tone at a known second, with energy required never to
+appear EARLY (a start-placed window would surface it up to 8 s early) and only a little slack on
+the late side for the analyzer's own EMA.
+
+**Streaming is untouched and cannot have this** — a tap only ever carries audio that has already
+played. `analyzePreview` stays free of the sweep for that reason, asserted by a wiring test.
+
+⚠ **Owed before this is done:** the Skein M7. Around ten certified presets have stem routes tuned
+against values that arrive 2.5 s late, and this makes them arrive on time — expected better, but
+it is a real change in feel across the roster. **LFSTEM.2** (retiring live separation on the
+local path, which takes a 142 ms MPSGraph job off the GPU every 2 s) runs after that M7.
+
+---
+
+### [dev-2026-08-26-224840] BUG-100 closed — the "sustained 4K degradation" was a preset switch inside the measurement window
+
+**CLOSED, not fixed — there was nothing to fix.** BUG-100 held that sustained 4K rendering
+degraded the whole app rather than the preset on screen: `frame_cpu` 17.6 → 44.9 ms and
+`frame_gpu` 3.6 → 12.9 ms over 70 s, persisting into the next preset. Four 4K sessions have now
+been measured with instruments in place, and both pieces of that evidence have an explanation
+that needs no mechanism.
+
+Matt ran the one reproduction never tried — **Stave for 101 s, then Witchlight, at 3840×2160**
+(`2026-08-26T22-33-09Z`), the exact sequence the entry was filed from. With preset boundaries
+taken from the data (a 101-frame rolling median of `frame_gpu_ms`) rather than log timestamps,
+so no bucket straddles the switch:
+
+- **Stave's `frame_gpu` p50 is 4.94 ms in every one of seven 15 s buckets across 101 s.** Flat to
+  two decimals. Witchlight's is 11.44–11.48.
+- `GPU_PRESSURE` holds `alloc_mb=489 used_pct=4.0 ml_forced=0` throughout; thermal `nominal`.
+
+**The "persists into the next preset" evidence** was Witchlight's 24.4 ms compared against
+*Stave's own* 17.4 ms — two presets with different costs, not one preset degrading. Measured
+here in a session where nothing degraded: Witchlight 25.7 ms, Stave 16–20 ms.
+
+**The ramp** matches a preset switch almost exactly: Stave→Witchlight moves `frame_gpu`
+4.94 → 11.44 ms against the reported 3.6 → 12.9. A window spanning that switch produces the
+reported shape by itself — the trap this program already documented when a 16.44 ms figure was
+published off 89 frames spanning a transition.
+
+⚠ **Residual, stated rather than papered over:** the original CPU endpoint (44.9 ms) exceeds
+anything measured in any reproduction, and that session's artifacts have aged out of retention.
+The GPU half is explained cleanly; the CPU half only partly. Reopen only on a new capture showing
+`frame_gpu_ms` rising inside ONE preset at ONE resolution.
+
+**One trend seen and correctly not filed as this defect:** inside Stave, `frame_cpu` p50 drifts
+16.3 → 20.2 ms over 75 s with GPU flat. That is waiting, not working — `renderframe_cpu_ms` wraps
+`renderFrame`, and the feedback path calls `view.currentDrawable` inside it, so the blocking
+present wait is inside the timer (the same definition trap behind this entry's retracted
+`encode_cpu_ms` finding). The values drift from just under the 16.7 ms vsync interval to just
+over it.
+
+What remains true and user-visible is that Stave and Witchlight are over budget at 4K — ~50 and
+~39 fps. That is steady-state cost (BUG-098/099/101), not degradation. The instruments added
+while chasing this (`GPU_PRESSURE`, `THERMAL_STATE`) stay.
+
+---
+
+### [dev-2026-08-26-215039] BUG-106 fixed — the ML dispatch gate now measures jank, not resolution
+
+**Matt's call: (a) stems on time.** `MLDispatchScheduler` held the 142 ms MPSGraph stem
+separation until every frame in a 20–30 frame window came in under `deviceTier == .tier1 ? 14.0
+: 16.0` — a constant with no resolution term, compared against the *worst* frame of the window.
+At 4K the median frame was 17.6 ms rising to 44.9 in BUG-100's session, so the window was never
+clean: every dispatch deferred in 100 ms steps to the 1.5–2.0 s ceiling and force-fired anyway,
+against a 2.0 s stem period. The gate prevented nothing and cost every stem update about a full
+period.
+
+`MLDispatchScheduler.budgetMs(floorMs:recentMedianFrameMs:)` now returns
+`max(floorMs, median × 1.5)`, with the median taken over the same rolling window the max comes
+from (`FrameBudgetManager.recentMedianFrameMs`). The question the gate asks changes from "is this
+machine fast" to "is this frame worse than what this session normally delivers" — an absolute
+threshold on a quantity whose scale varies with the input is the same mistake the audio side
+corrected with deviation primitives (D-026 / FA #31).
+
+- **1080p unchanged.** Median ≈ 8 ms → `8 × 1.5 = 12`, under both tier floors, so the floor
+  decides exactly as before. An 18 ms frame there still defers.
+- **4K opens.** A steady 25 ms session budgets 37.5 ms and dispatches; the same window against
+  the old 16 ms constant still returns `.defer`, which is what proves the case bites.
+- **Still a gate.** A 60 ms spike inside that same 4K session defers. Median rather than mean, so
+  one 200 ms hitch does not raise the bar the next dispatch is judged against.
+
+⚠ **One correction to the recommendation as written.** BUG-106 proposed deriving the budget from
+the display's refresh interval. That would not have worked: at 60 Hz the interval is 16.7 ms, so
+a 4K session at 17–45 ms never clears it and the gate stays shut. It has to follow what the
+renderer actually delivers at this resolution.
+
+Still owed: one fullscreen 4K session on this build — `ml_forced` should stay flat where it
+previously climbed ~one per 2 s, and Matt's eye on whether stems now read with the music without
+new stutter. That is the same session BUG-100 needs for `GPU_PRESSURE`.
+
+---
+
+### [dev-2026-08-26-212617] BUG-100 instrumented, and the ML dispatch gate turns out to be inoperative at 4K (BUG-106)
+
+**Instrumentation, not a fix.** BUG-100 — sustained 4K rendering degrading the whole app rather
+than the preset on screen — had one degrading session, two clean ones, thermal `nominal`
+throughout, and its own artifacts have since aged out of retention. Two candidate mechanisms had
+never been recorded at all, and both fit the reported signature (whole-app, survives a preset
+switch, partially recovers after a lower-res interlude). Sessions now log one line per
+`DRAWABLE_LIFECYCLE` heartbeat bucket:
+
+```
+GPU_PRESSURE alloc_mb=… budget_mb=… used_pct=… ml_forced=… ml_last=…
+```
+
+`alloc_mb`/`budget_mb` is this process's Metal allocation against
+`recommendedMaxWorkingSetSize` — at 4K every render target is 4× its 1080p size, and a working
+set nearing the budget makes the driver evict, which is slow globally and recovers only when a
+smaller target frees memory. `ml_forced` is `MLDispatchScheduler.forceDispatchCount`. What is
+needed now is **one ~2-minute fullscreen 4K session** on a preset mix that has degraded before;
+both mechanisms are then decided by three lines of log.
+
+**BUG-106, found on the way and filed separately.** `MLDispatchScheduler` (D-059) is supposed to
+hold the 142 ms MPSGraph stem separation until recent frames are inside budget. The budget it
+compares against is `let budgetMs: Float = deviceTier == .tier1 ? 14.0 : 16.0` — **a constant
+with no resolution term** — and the number it compares is the *worst* frame of a 20–30 frame
+window. At 4K the median frame in BUG-100's own session was 17.6 ms rising to 44.9, so the window
+is never clean: every dispatch defers in 100 ms steps to the 1.5–2.0 s ceiling and force-fires
+regardless, against a **2.0 s** stem period. The gate never prevents anything at 4K and stems run
+about a full period late there, compounding BUG-086.
+
+⚠ **It is not offered as BUG-100's mechanism, and one recorded session refutes that reading:** the
+PERF.15 Volumetric Lithograph run held flat across 172 s at 4K at p50 ≈ 31 ms — permanently over
+the same budget, forced dispatch happening, nothing degraded. A mechanism that predicts the
+direction of an effect is not an explanation of its magnitude (the BUG-090 shape). The fix is a
+product decision — stems on time at 4K, or jank-free — and is Matt's call, written up on BUG-106.
+
+---
+
+### [dev-2026-08-26-204620] BUG-088 fixed — Aurora Veil's undeclared stem routes were dead computation, and a silence gate is not a driver
+
+**RESOLVED.** BUG-088 was filed from a capture, which said Aurora Veil reads three primitives it
+does not declare — `drumsEnergyDev`, `vocalsPitchHz`, `vocalsPitchConfidence` — and prescribed
+adding them to the manifest so `RouteCoverageTests` could see them. Read against the source
+instead, the premise inverts: **`AuroraVeil.metal` reads exactly the five fields its sidecar
+declares** (`arousal`, `bar_phase`, `bass_att_rel`, `pulse_amp`, `valence`). The three
+"undeclared reads" were consumed by `AuroraVeilState`, which computed a drum-kink charge and a
+5-frame smoothed vocal pitch every frame and flushed them to `[[buffer(6)]]` — the buffer AV.7
+stopped reading when it reauthored the preset as a nimitz *Auroras* port. Declaring those routes
+would have gated values with no consumer.
+
+**Deleted, not re-wired.** `AuroraVeilState.swift` (the class, its GPU struct, the slot-6 bind,
+the per-frame tick closure), the `AuroraVeilStateGPU` struct + `[[buffer(6)]]` parameter in
+`AuroraVeil.metal`, the app-side `auroraVeilState` property and `bindAuroraVeilRuntime`, and the
+slot-6 binding in three test harnesses. Also `PresetSessionReplay/AuroraVeilRoutes.swift` — a
+*second* manifest describing the same three deleted routes, which made `--preset aurora_veil`
+report verdicts about a shader that no longer exists; `aurora_veil` no longer resolves there.
+Aurora Veil's golden hashes are unchanged, because none of this reached a pixel.
+
+**The recurrence fix: `AudioRoute.Kind.gate`.** The entry's second finding was that `pulseAmp01`
+is declared `continuous` while the shader uses it as a silence gate — pinned at 1.000 through
+music, p5–p95 range 0.000. That is correct gate behaviour, so the `continuous` floor
+(non-constant + variance) is the wrong assertion; it passes today only because the fixtures open
+in silence. A `gate` kind now carries its own floor — **peak ≥ 0.9 on every fixture**, i.e. the
+only failure a gate has is never opening — and the three routes that were misdeclared are
+reclassified: Aurora Veil `star_beat_twinkle`, Fractal Tree `silence_gate`, Ferrofluid Ocean
+`spike_punch_gate`. **The arm was verified to bite**: floor temporarily raised to 1.5 → all three
+routes red with peak 1.00; restored → 201 routes / 21 presets / 0 red.
+
+---
+
 ### [dev-2026-08-26-141947] BUG-104 fixed — Rosette's curve had visible gaps from a nearest-point search locking onto the wrong branch
 
 **RESOLVED.** Right after BUG-103's wing fix, Matt's next live look: *"Still too basic... Still

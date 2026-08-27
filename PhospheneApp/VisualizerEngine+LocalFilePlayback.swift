@@ -636,6 +636,86 @@ extension VisualizerEngine: LocalFilePreparing {
         }
     }
 
+    /// The two full-file analyses the local path can do and streaming cannot, plus the shared
+    /// `analyzePreview`.
+    ///
+    /// Both extras exist for the same reason: this path has decoded the entire track, where
+    /// `analyzePreview` is shared with streaming and only ever sees a 30 s preview window.
+    /// `LoudnessProfile` (DYN.1c) is the track's own quiet-to-loud range; `StemFeatureSeries`
+    /// (LFSTEM.1) is its stems at every playback second.
+    nonisolated private static func analyzeWholeFile(
+        preview: PreviewAudio,
+        separator: any StemSeparating,
+        inputs: LocalFilePrepWorkerInputs
+    ) throws -> CachedTrackData {
+        let loudness = LoudnessProfile.measure(
+            samples: preview.pcmSamples,
+            sampleRate: Double(preview.sampleRate)
+        )
+        inputs.recorder?.log(
+            "LOUDNESS_PROFILE: track='\(inputs.filename)', "
+            + (loudness?.summary ?? "none — surge keeps the fixed band"))
+        let analyzed = try SessionPreparer.analyzePreview(
+            preview,
+            separator: separator,
+            analyzer: inputs.analyzer,
+            classifier: inputs.classifier,
+            beatGridAnalyzer: inputs.beatGridAnalyzer,
+            familyAnalyzer: inputs.familyAnalyzer,
+            prefetchedProfile: nil
+        )
+        let series = analyzeStemSeriesForLocalFile(
+            preview: preview,
+            separator: separator,
+            filename: inputs.filename,
+            recorder: inputs.recorder
+        )
+        return analyzed
+            .with(loudnessProfile: loudness)
+            .with(stemFeatureSeries: series)
+    }
+
+    /// LFSTEM.1 — sweep the whole decoded file into a `StemFeatureSeries`.
+    ///
+    /// This is the point of the local path. Live separation is late by construction — a 2 s
+    /// window plus inference, ~2.5 s before a stem value reaches a preset — but this path has
+    /// already decoded the entire file, so the stems can be analysed now and read at the
+    /// playback second they describe. Streaming cannot do this and `analyzePreview` is shared
+    /// with it, which is why the sweep lives here, next to the loudness profile, for exactly
+    /// the same reason.
+    ///
+    /// A FRESH `StemAnalyzer`, never the session's: the sweep relies on owning its band-energy
+    /// AGC across the whole file, and the shared instance is live-playback state.
+    ///
+    /// Failure returns `.empty`, which leaves live separation in charge — a file that cannot be
+    /// swept still plays, just with the old latency.
+    private static func analyzeStemSeriesForLocalFile(
+        preview: PreviewAudio,
+        separator: any StemSeparating,
+        filename: String,
+        recorder: SessionRecorder?
+    ) -> StemFeatureSeries {
+        let start = Date()
+        let series = (try? SessionPreparer.analyzeStemSeries(
+            samples: preview.pcmSamples,
+            sampleRate: preview.sampleRate,
+            separator: separator,
+            analyzer: StemAnalyzer(sampleRate: Float(preview.sampleRate))
+        )) ?? .empty
+        let elapsed = Date().timeIntervalSince(start)
+        let tail = series.isEmpty ? " — EMPTY, playback falls back to live separation" : ""
+        recorder?.log(String(
+            format: "STEM_SERIES: track='%@', frames=%d, hop=%.1f ms, covers %.1f s, took %.1f s%@",
+            filename,
+            series.frames.count,
+            series.hopSeconds * 1000,
+            series.durationSeconds,
+            elapsed,
+            tail
+        ))
+        return series
+    }
+
     /// Run `analyzePreview`, persist the result to disk, return the outcome.
     /// Returns `nil` when the separator is missing or the analysis pipeline
     /// throws. Persist failure is non-fatal — logs a warning and still returns
@@ -655,26 +735,8 @@ extension VisualizerEngine: LocalFilePreparing {
         let cached: CachedTrackData
         do {
             preview = try PreviewAudio.fromLocalFile(at: inputs.url, contentHash: contentHash)
-            // DYN.1c: measured over the WHOLE decoded file, which only this path has —
-            // `analyzePreview` is shared with streaming, where the same call would
-            // describe a 30 s preview window rather than the track.
-            let loudness = LoudnessProfile.measure(
-                samples: preview.pcmSamples,
-                sampleRate: Double(preview.sampleRate)
-            )
-            inputs.recorder?.log(
-                "LOUDNESS_PROFILE: track='\(inputs.filename)', "
-                + (loudness?.summary ?? "none — surge keeps the fixed band"))
-            let analyzed = try SessionPreparer.analyzePreview(
-                preview,
-                separator: separator,
-                analyzer: inputs.analyzer,
-                classifier: inputs.classifier,
-                beatGridAnalyzer: inputs.beatGridAnalyzer,
-                familyAnalyzer: inputs.familyAnalyzer,
-                prefetchedProfile: nil
-            )
-            cached = analyzed.with(loudnessProfile: loudness)
+            cached = try Self.analyzeWholeFile(
+                preview: preview, separator: separator, inputs: inputs)
         } catch {
             let msg = error.localizedDescription
             lfLogger.error(

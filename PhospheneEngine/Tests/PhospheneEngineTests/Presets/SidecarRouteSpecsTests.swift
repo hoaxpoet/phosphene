@@ -66,6 +66,9 @@ struct SidecarRouteSpecsTests {
                 #expect(input.spec.gateThreshold == SidecarRouteSpecs.KindGate.accent)
             case .continuous, .structural:
                 #expect(input.spec.gateThreshold == SidecarRouteSpecs.KindGate.continuousFloor)
+            case .gate:
+                // BUG-088: an enable, not a driver — the only thing to assert is that it opens.
+                #expect(input.spec.gateThreshold == SidecarRouteSpecs.KindGate.gateOpen)
             }
         }
     }

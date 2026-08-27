@@ -276,6 +276,7 @@ extension VisualizerEngine {
         // series (Layer 5a) by live playback position and write it into the
         // live StemFeatures (floats 48–55). Empty series → `.zero` (cleared on
         // track change), so this is inert for every non-orchestral track.
+        applyStemSeriesFrame(atPlaybackSeconds: mir.elapsedSeconds)
         let family = InstrumentFamilyActivity.sample(
             currentFamilySeries,
             atPlaybackSeconds: mir.elapsedSeconds,
@@ -373,7 +374,29 @@ extension VisualizerEngine {
     /// lag, and every stem-driven preset was running ≈5.4 s behind unnoticed.
     /// Latency is a cost to be minimised against inference duty, not a free
     /// parameter justified by section persistence.
+    /// LFSTEM.1c — publish this playback second's pre-analysed stem frame, when the track has
+    /// a series.
+    ///
+    /// A local file that was analysed ahead of time reads its stems from the second it is ON,
+    /// rather than from audio that has already gone past — live separation is late by
+    /// construction (a 2 s window plus inference). An empty series (streaming, a cache miss, a
+    /// file analysed before schema v10) leaves the live path in charge, which is the condition
+    /// `runPerFrameStemAnalysis` checks on the other side.
+    func applyStemSeriesFrame(atPlaybackSeconds seconds: Double) {
+        guard let sampled = currentStemSeries.sample(atPlaybackSeconds: seconds) else { return }
+        pipeline.setStemFeatures(sampled)
+        latestBassAttackRatio = sampled.bassAttackRatio
+    }
+
     func runPerFrameStemAnalysis(fps: Float) {
+        // LFSTEM.1c — when this track has a pre-analysed series, that IS the stem source and
+        // the live window is not consulted. Both writing `setStemFeatures` would mean the last
+        // writer per frame wins, which is a race dressed as a feature.
+        //
+        // The separator keeps running for now; retiring it on this path is LFSTEM.2, kept
+        // separate on purpose (this increment's risk is alignment, that one's is removal).
+        if !currentStemSeries.isEmpty { return }
+
         var stems: [[Float]] = []
         var sepTime: CFAbsoluteTime = 0
         stemsStateLock.withLock {

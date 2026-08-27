@@ -14,8 +14,9 @@ extension RenderPipeline {
     /// Binds the audio buffers + per-preset slot-6/7/8 state + noise textures and
     /// draws the fullscreen direct-preset fragment (and any particles) into
     /// `encoder`. Shared by the full-res and half-res `drawDirect` paths so the
-    /// binding contract stays in one place. (Slot-6 was AV.2.2's first direct
-    /// consumer — `AuroraVeilState`; an unbound `[[buffer(6)]]` read crashes.)
+    /// binding contract stays in one place. (Slot-6's first direct consumer was
+    /// `AuroraVeilState` at AV.2.2, deleted at BUG-088; Nimbus, Gossamer, Arachne
+    /// and Skein still read it, and an unbound `[[buffer(6)]]` read crashes.)
     func encodePresetVisualization(
         into encoder: MTLRenderCommandEncoder,
         activePipeline: MTLRenderPipelineState,

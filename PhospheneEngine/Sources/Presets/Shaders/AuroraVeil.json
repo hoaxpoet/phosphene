@@ -11,7 +11,7 @@
   "stem_affinity": {},
   "audio_routes": [
     { "route": "star_beat_twinkle", "primitive": "barPhase01", "kind": "accent" },
-    { "route": "star_beat_twinkle", "primitive": "pulseAmp01", "kind": "continuous" },
+    { "route": "star_beat_twinkle", "primitive": "pulseAmp01", "kind": "gate" },
     { "route": "veil_breathe", "primitive": "arousal", "kind": "continuous" },
     { "route": "veil_breathe", "primitive": "bassAttRel", "kind": "continuous" },
     { "route": "mood_colour", "primitive": "valence", "kind": "continuous" }

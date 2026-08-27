@@ -25,12 +25,6 @@ import Metal
 @testable import Presets
 @testable import Shared
 
-private struct AuroraVeilStateGPUMirror {
-    var kinkAccumulator: Float
-    var smoothedPitchNorm: Float
-    var padA: Float = 0
-    var padB: Float = 0
-}
 
 @Suite("AuroraVeil mood colour")
 struct AuroraVeilMoodColourTest {
@@ -153,8 +147,7 @@ struct AuroraVeilMoodColourTest {
             let fft  = ctx.makeSharedBuffer(length: 512 * floatStride),
             let wav  = ctx.makeSharedBuffer(length: 2048 * floatStride),
             let stem = ctx.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
-            let hist = ctx.makeSharedBuffer(length: 4096 * floatStride),
-            let avState = ctx.makeSharedBuffer(length: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
+            let hist = ctx.makeSharedBuffer(length: 4096 * floatStride)
         else { return nil }
 
         _ = fft.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 512 * floatStride)
@@ -180,12 +173,6 @@ struct AuroraVeilMoodColourTest {
         features.barPhase01 = 0.5
         features.pulseAmp01 = 0
 
-        var avMirror = AuroraVeilStateGPUMirror(
-            kinkAccumulator: 0,
-            smoothedPitchNorm: 0.5
-        )
-        avState.contents().copyMemory(from: &avMirror,
-                                      byteCount: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
 
         guard let cmd = ctx.commandQueue.makeCommandBuffer() else { return nil }
         let rpd = MTLRenderPassDescriptor()
@@ -201,7 +188,6 @@ struct AuroraVeilMoodColourTest {
         enc.setFragmentBuffer(wav, offset: 0, index: 2)
         enc.setFragmentBuffer(stem, offset: 0, index: 3)
         enc.setFragmentBuffer(hist, offset: 0, index: 5)
-        enc.setFragmentBuffer(avState, offset: 0, index: 6)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.endEncoding()
         cmd.commit()

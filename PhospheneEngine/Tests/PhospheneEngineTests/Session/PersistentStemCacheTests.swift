@@ -149,6 +149,101 @@ struct PersistentStemCacheTests {
         #expect(loaded.stemFeatures.drumsEnergyDevSmoothed == 0.12)
     }
 
+    // MARK: - Stem feature series (LFSTEM.1, schema v10)
+
+    /// The series is persisted as a RAW MEMORY DUMP of `[StemFeatures]`, not JSON — ~10,000
+    /// frames of 55 floats would dominate both the entry's bytes and its parse cost. That is
+    /// only safe while every stored property of `StemFeatures` is a `Float`, so this asserts
+    /// the values survive byte-for-byte rather than approximately.
+    @Test("Roundtrip preserves the full-file stem series byte-for-byte (schema v10)")
+    func test_roundtrip_stemFeatureSeries() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+
+        // Distinct per-frame values across several fields, including ones far from the front of
+        // the struct — a truncated or misaligned dump shows up as a tail of zeros.
+        let frames: [StemFeatures] = (0..<500).map { i in
+            var f = StemFeatures.zero
+            f.drumsEnergy = Float(i) * 0.001
+            f.bassEnergy = Float(i) * 0.002
+            f.vocalsPitchHz = 80 + Float(i)
+            f.drumsEnergyDevSmoothed = Float(i) * 0.003
+            return f
+        }
+        let series = StemFeatureSeries(frames: frames, hopSeconds: 1024.0 / 44_100.0)
+        let data = CachedTrackData(
+            stemWaveforms: (0..<4).map { _ in [Float]([0.1, 0.2, 0.3]) },
+            stemFeatures: .zero,
+            trackProfile: TrackProfile(),
+            stemFeatureSeries: series)
+
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
+        let loaded = try cache.load(hash: Self.fixtureHash).cached.stemFeatureSeries
+
+        #expect(loaded.frames.count == 500, "frame count survives")
+        #expect(loaded.hopSeconds == series.hopSeconds, "grid spacing survives")
+        #expect(loaded.frames == frames, "every frame survives byte-for-byte")
+        // And the read path a caller actually uses lands on the right frame.
+        let atTwoSeconds = try #require(loaded.sample(atPlaybackSeconds: 2.0))
+        let expectedIndex = Int((2.0 / series.hopSeconds).rounded())
+        #expect(atTwoSeconds.drumsEnergy == frames[expectedIndex].drumsEnergy)
+    }
+
+    /// An entry written before the series existed must still load — the series is an
+    /// accelerator, and losing a whole cache entry over its absence would mean re-analysing
+    /// every already-cached file.
+    @Test("An entry with no series loads fine and reports an empty one")
+    func test_roundtrip_noSeriesIsNotAnError() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+
+        let data = Self.makeCachedTrackData(stemSampleCount: 512)
+        #expect(data.stemFeatureSeries.isEmpty, "fixture carries no series")
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
+        let loaded = try cache.load(hash: Self.fixtureHash)
+        #expect(loaded.cached.stemFeatureSeries.isEmpty)
+        Self.expectEqual(loaded.cached, data)
+    }
+
+    /// GUARDS THE GUARD. The raw dump is only readable while `StemFeatures` has the layout it
+    /// had when written, so the stride is stored alongside and checked on load. Corrupt the
+    /// stride in `metadata.json` and the series must be dropped — NOT read as garbage, and NOT
+    /// taken down along with the rest of the entry.
+    @Test("A stride mismatch drops the series and keeps the rest of the entry")
+    func test_strideMismatchDropsOnlyTheSeries() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+
+        let frames = [StemFeatures](repeating: .zero, count: 10)
+        let data = Self.makeCachedTrackData(stemSampleCount: 512)
+            .with(stemFeatureSeries: StemFeatureSeries(frames: frames, hopSeconds: 0.02))
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
+        #expect(try cache.load(hash: Self.fixtureHash).cached.stemFeatureSeries.isEmpty == false,
+                "control: the series loads before the stride is corrupted")
+
+        // Rewrite metadata.json with a stride that no longer matches the struct.
+        let dir = tempDir
+            .appendingPathComponent("sha256")
+            .appendingPathComponent(String(Self.fixtureHash.prefix(2)))
+            .appendingPathComponent(Self.fixtureHash)
+        let metaPath = dir.appendingPathComponent("metadata.json")
+        var json = try String(contentsOf: metaPath, encoding: .utf8)
+        let actual = MemoryLayout<StemFeatures>.stride
+        json = json.replacingOccurrences(
+            of: "\"stemSeriesFeatureStride\" : \(actual)",
+            with: "\"stemSeriesFeatureStride\" : \(actual + 4)")
+        try json.write(to: metaPath, atomically: true, encoding: .utf8)
+
+        let loaded = try cache.load(hash: Self.fixtureHash)
+        #expect(loaded.cached.stemFeatureSeries.isEmpty,
+                "a stride mismatch drops the series rather than reading it as garbage")
+        #expect(loaded.cached.stemWaveforms.count == 4,
+                "the rest of the entry still loads — the series is an accelerator, not a gate")
+    }
+
     @Test("Roundtrip preserves the instrument-family series (schema v6, IFC.6)")
     func test_roundtrip_instrumentFamilySeries() throws {
         let tempDir = try Self.makeTempDir()

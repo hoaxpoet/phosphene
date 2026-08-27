@@ -380,6 +380,16 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
             /// Section-boundary driven — floor: ≥ 1 event on a fixture that
             /// contains a section boundary.
             case structural
+            /// An enable the visual reads as "is there music at all" — a silence
+            /// gate (`pulseAmp01`), a confidence gate. A gate sitting pinned open
+            /// through a whole track is CORRECT behaviour, so the `continuous`
+            /// floor (non-constant + variance) is the wrong assertion for one:
+            /// declared as `continuous` it reads as a driver and passes only
+            /// because the fixtures happen to open in silence (BUG-088, measured
+            /// on Aurora Veil: `pulseAmp01` pinned 1.000 through music, p5–p95
+            /// range 0.000). Floor: the gate must OPEN — max ≥ 0.9 on every
+            /// fixture. A gate that never opens suppresses its visual forever.
+            case gate
         }
         /// Measured band the VISUAL response must land in on the canonical fixtures (QG.5).
         ///

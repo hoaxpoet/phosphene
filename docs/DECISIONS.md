@@ -26,7 +26,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-053 | Accepted | PresetScoringContext gains excludedFamilies + qualityCeiling, backward-compatible |
 | D-057 | Accepted | Frame Budget Manager: governor design, OR-gate, tier targets |
 | D-058 | Accepted | U.6b live-adaptation keyboard semantics and undo architecture |
-| D-059 | Accepted | ML dispatch scheduling: scheduler design, budget signal, deferral caps |
+| D-059 | Accepted | ML dispatch scheduling: scheduler design, budget signal, deferral caps *(budget signal amended at BUG-106, 2026-08-26 — the tier constant became `max(tierFloor, sessionMedian × 1.5)`; the constant could not be met at 4K, so the gate never opened there)* |
 | D-064 | Accepted | Visual references library structure, exemptions, lint tool, quality reel |
 | D-065 | Accepted | Composite-preset image counts; AI-generated anti-reference carve-out |
 | D-067 | Accepted | Certification pipeline placement, lightweight exemptions, manual gate |
@@ -2436,7 +2436,7 @@ unsolved), arXiv 1912.10211 (PANNs).
 
 **Decision.** Mechanize per-route firing evidence as a standing test.
 
-1. **`audio_routes` manifest** (SHADER_CRAFT §17.1). Every preset's JSON sidecar declares its routes: `{ "route": "<behaviour>", "primitive": "<FeatureVector/StemFeatures field>", "kind": "continuous|accent|structural" }`. Decoded onto `PresetDescriptor.audioRoutes`. The manifest is the routing contract; **audit before declaring** — a declared route the shader doesn't read is as wrong as an unread route left undeclared (backfill enumerated each preset's `.metal` preamble *and* its CPU driver — `RenderPipeline+<Preset>.swift` / `<Preset>State.swift` / `<Preset>Geometry.swift`, where mv_warp and geometry presets consume most primitives).
+1. **`audio_routes` manifest** (SHADER_CRAFT §17.1). Every preset's JSON sidecar declares its routes: `{ "route": "<behaviour>", "primitive": "<FeatureVector/StemFeatures field>", "kind": "continuous|accent|structural|gate" }` (`gate` added at BUG-088 — an enable is not a driver). Decoded onto `PresetDescriptor.audioRoutes`. The manifest is the routing contract; **audit before declaring** — a declared route the shader doesn't read is as wrong as an unread route left undeclared (backfill enumerated each preset's `.metal` preamble *and* its CPU driver — `RenderPipeline+<Preset>.swift` / `<Preset>State.swift` / `<Preset>Geometry.swift`, where mv_warp and geometry presets consume most primitives).
 2. **`RouteCoverageTests`** replays the canonical fixture set (`Fixtures/route_coverage/` — the three tempo fixtures through the production separation + analysis chain, FA #27) and asserts per route, per fixture: **continuous** = non-constant (stddev > 1e-5 — a liveness floor, not an amplitude bar; low-but-varying is a fixture-breadth note, not a defect); **accent** = ≥ 1 rising crossing above 0.02 per fixture (calibrated to the smallest-range accent primitive, `bassAttRel`); **structural** = the section index changes on ≥ 1 fixture (the set must contain a boundary). Un-gated (0.73 s over 145 routes) so the gate is always enforced.
 3. **Certification wiring.** `FidelityRubricTests.certifiedPresetsDeclareAudioRoutes` requires a non-empty manifest for every certified preset; `RouteCoverageTests` independently reddens if any declared route is dead. Together: a preset cannot be certified without a manifest whose every route demonstrably fires on real music. `AudioRouteSchemaTests` rejects a `primitive` with no recordable CSV column (typo / unrecordable field).
 
