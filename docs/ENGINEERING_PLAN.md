@@ -63,6 +63,49 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment RECON.23 — Tier-2 systematisation, items 2–6 ✅ (2026-08-27)
+
+The preset audit's optional-polish tier. **−213 net lines, two new gates, no pixel change** —
+the 29-preset dHash gate stayed green throughout, so nothing needs re-certification.
+
+**Item 2 — sidecar schema hygiene, and the gate that closes the loop.** The five feedback
+decode defaults (`decay` 0.955, `base_zoom` 0.12, `beat_zoom` 0.03, `base_rot` 0.03,
+`beat_rot` 0.01) now default to 0. A preset that simply omitted `decay` used to get a strong
+feedback trail it never asked for, and nine presets carried 37 lines of explicit `0.0` purely
+to say "none of that". Safe because every preset declaring `feedback` or `mv_warp` declares
+every key it consumes — verified across all 29 rather than assumed. Two new gates: the key
+gate now reads one level into `audio_routes` entries (Stave's `note` was being silently
+dropped — a route manifest is the QG.1 contract, so a misspelled key there reads as declared
+and gates nothing), and a new gate asserts the inverse — every decoded key has ≥1 in-tree
+adopter or a written-down reason. **That second gate is the one that matters**: it would have
+caught `beat_source` the day its adopter count hit zero rather than after it reached 27
+sidecars declaring a control nothing read. Both were negative-controlled.
+
+**Item 4 — loader dedupes, and a bug that lived in dead code.** The item flagged that
+`onPresetLoadFailed` never fires on the shader-reuse path. True, but no sidecar declares
+`shader_file` and there are no orphan JSONs, so that path has had zero users since the
+Fantasia rebuild gave Ricercar its own `.metal`. Deleted per D-203 rather than deduplicated,
+along with the `shader_file` decode it alone fed. One `compileLibrary` helper replaced five
+byte-identical compile blocks; one `sceneUniformsMSL` replaced two hand-synced MSL mirrors of
+the 240-byte GPU contract — which had already drifted, the mv_warp copy still describing
+`sceneParamsB.w` as "SSGI radius", a field RECON.18 retired.
+
+**Items 3, 5 and 6 — scoped to what survived checking.** Item 3's census did not hold up
+(`arachSmoothstep`, `nbSmoothstep`, `gossamerFract` do not exist; the named duplicates appear
+once each), so the duplicates were found mechanically instead by hashing 837 normalised
+function bodies: ~88 lines, nearly all 3–6 line helpers. The engine-side one was shared
+(three copies of `lowbias32` in one translation unit); the cross-preset remainder was
+deliberately left — ~30 lines across five certified shaders is not worth the dHash
+re-verification, and D-097 argues for presets owning their own math. Item 5 likewise: the
+four custom-warp *loops* genuinely differ (43/43/59/68 lines), so only the verbatim
+scaffolding either side moved to `RenderPipeline+CustomWarp`. Item 6 collapsed `PresetScoring`
+and `FidelityRubricEvaluating` — one conformer each, no test double, nothing ever injected.
+
+**Three items out of five had a wrong premise.** The audit's own consumer census has now been
+wrong in RECON.16, .22 and .23. Treat its counts as leads, never evidence: verify name by
+name, and where the claim is "these N things are duplicates", measure it rather than reading
+the list.
+
 ### Increment RECON.22 — dead decoder surface + the small verified deads ✅ (2026-08-26)
 
 Closes the preset-audit backlog: Tier-1 items 11 and 12, the last two of the twelve. **−1,151 lines across
