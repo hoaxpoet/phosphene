@@ -10,6 +10,40 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-182236] M7 PASSED — LFSTEM.1 complete, BUG-107/108/109 closed
+
+**Matt, session `2026-08-27T18-17-50Z`: *"Looks good."*** 106 s of Skein at 3840×2160 — well past
+the 70–80 s mark where the round-1 overlap residual appeared — with the series driving
+(`STEM_SOURCE: series frames=10815`), sampling at **58.3 Hz**, and `frame_gpu` p50 flat at
+**12.08–13.76 ms**.
+
+That sign-off closes three defects and completes the increment they hung off:
+
+- **BUG-108** — the overlap flicker, fixed in two rounds. Round 1: which MARK wins an overlap was
+  a coverage argmax. Round 2: the same argmin one level down, inside the line, where the colour
+  came from the nearest segment. Matt's round-1 report — *"only after 70–80 s and not as
+  prominent"* — located the residual rather than refuting the fix, which is why round 2 took one
+  pass.
+- **BUG-109** — stem values updated 12.8 times a second because the series was sampled on the
+  analysis frame. Now sampled per render frame: 56–58 Hz measured live.
+- **BUG-107** — Skein's 4K cost ramp, from a fragment recomputing the painter's whole 41-sample
+  tail per pixel. 38 → 250 ms before, flat ~13 ms now.
+
+**LFSTEM.1 is complete.** For a local file, stems are analysed ahead of time, arrive at the
+playback second they describe rather than 2.5 s late, and move at the series' own rate rather than
+the analysis loop's. It took four corrections after the first "done" — on time (1c), continuous
+(1d r1), non-rewinding (1d r2), full-rate (1e) — and every one was found by a session artifact
+rather than a test.
+
+**LFSTEM.2 is unblocked** (retire live separation on the local path), which was gated on this M7.
+
+§Open is back to 20 entries; BUG-100/103/104 rotate to history to keep §Resolved inside its 50 KB
+budget. ⚠ BUG-103 was moved to history by mistake during that rotation and restored — it is an
+OPEN entry (a parallel session's `AVAudioPlayerNode` NSException), not a resolved one, and the
+§Open Index gate is what caught it.
+
+---
+
 ### [dev-2026-08-27-180020] BUG-108 round 2 — the same argmin, one level down, inside the line
 
 **Matt on the round-1 build:** *"Flickering still happens but only after significant time has
