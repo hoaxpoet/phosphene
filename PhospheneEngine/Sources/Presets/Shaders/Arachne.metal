@@ -1484,79 +1484,11 @@ fragment float4 arachne_composite_fragment(
         // removed, the chord SDF (0.0007 UV) reads at its intended thinness.
     }
 
-    // ── V.7.5 pool webs RETIRED (V.7.7C.3 / D-095 follow-up) ─────────────────
-    //
-    // Pre-V.7.7C.3 the pool loop iterated webs[1..3] (V.7.5 spawn/eviction)
-    // as "background depth context". Live LTYL session 2026-05-08T17-01-15Z
-    // showed the user perceived this as "full webs flash on and fade away
-    // throughout playback ... new webs form over the central web being spun"
-    // — the V.7.5 churn competed with the foreground build, not framing it.
-    // V.7.7C.3 disables pool web rendering entirely; only the build-aware
-    // foreground hero (above) renders. CPU-side V.7.5 spawn/eviction state
-    // continues to advance harmlessly (preserved so existing ArachneState
-    // unit tests still cover the spawn machinery), but no slot reaches the
-    // shader after this commit. The 1–2 saturated background webs spec'd
-    // by §5.12 + ArachneBackgroundWeb CPU array remain a V.7.10 follow-up
-    // (would require a side buffer at slot 8).
-    //
-    // The empty loop body is retained as a structural marker for the future
-    // §5.12 background-web flush; if you remove it, also remove the loop
-    // header.
-    for (int wi = 1; wi < 1; wi++) {
-        ArachneWebGPU w = webs[wi];
-        if (w.is_alive == 0u || w.opacity < 0.015) continue;
-
-        float2 hubUV = float2((w.hub_x + 1.0) * 0.5, (1.0 - w.hub_y) * 0.5)
-                     + arachHubJitter(w.rng_seed);
-        float  webR  = w.radius * 0.5;
-
-        // V.7.7C.3 / D-095 follow-up: empty-loop call site — polygon mode
-        // disabled (polyCount=0) so the dead-reference path stays at V.7.5
-        // circular geometry for any future revival.
-        float2 poolPoly[6] = { float2(0.0), float2(0.0), float2(0.0),
-                                float2(0.0), float2(0.0), float2(0.0) };
-        ArachneWebResult wr = arachneEvalWeb(
-            vibUV, hubUV, webR, w.rot_angle, w.spiral_revolutions,
-            w.rng_seed, w.stage, w.progress,
-            arachSpokeCount(w.rng_seed), arachAspect(w.rng_seed),
-            arachAspectAngle(w.rng_seed), arachKSag(w.rng_seed),
-            0, poolPoly
-        );
-
-        float scaledStrand = wr.strandCov * w.opacity;
-        if (scaledStrand < 0.003) continue;
-
-        float newStrandD   = op_blend(strandPseudo, 1.0 - scaledStrand, 0.012);
-        float newStrandCov = 1.0 - newStrandD;
-        float delta        = max(0.0, newStrandCov - prevStrandCov);
-
-        if (delta > 0.001) {
-            // §5.10 (V.7.9): silk as thin lines + axial highlight (Marschner-lite removed)
-            // BUG-011 round 5 — axial fixed at 1.6 (the V.7.5 peak) for uniform
-            // line brightness. This block is dead (loop is `wi < 1`) but the
-            // change tracks the active-block fix for consistency if revived.
-            // BUG-011 L5 cheap-cleanup: `tang2D` retired (sourced from the
-            // now-removed `wr.strandTangent` and immediately `(void)`-cast).
-            float  finalHue = fract(w.birth_hue + hueDrift * 0.12);
-            float3 silkBase = hsv2rgb(float3(finalHue, 0.45, 0.80));
-            const float axial = 1.6;
-            float emGain = baseEmissionGain + beatAccent;
-            float3 silk_col = silkBase * 0.60 * w.opacity * axial * emGain;
-            silk_col *= kLightCol;
-            silk_col += silkBase * kAmbCol * 0.25;
-            strandColor    += silk_col * delta;
-            strandPseudo    = newStrandD;
-            prevStrandCov   = newStrandCov;
-        } else {
-            strandPseudo  = op_blend(strandPseudo, 1.0 - scaledStrand, 0.012);
-            prevStrandCov = 1.0 - strandPseudo;
-        }
-
-        // V.7.7C §5.8 dewdrop block (pool variant) REMOVED (BUG-011 follow-up).
-        // This loop body was already dead (`for wi=1; wi<1` after V.7.7C.3
-        // retired pool rendering — D-095), but the drop math is gone now
-        // too so any future revival starts from a clean baseline.
-    }
+    // V.7.5's background web pool was retired at V.7.7C.3 — the loop that
+    // consumed slots 1..3 was left as `for (wi = 1; wi < 1; wi++)`, a structural
+    // marker for a §5.12 follow-up that was never built. Deleted at RECON.20 along
+    // with the CPU spawn/eviction machinery that fed it. webs[0] (the foreground
+    // hero, above) and the row-4 mood broadcast are unaffected.
 
     // ── V.7.7D Spider — 3D SDF anatomy + chitin material (D-094) ─────────────
     //

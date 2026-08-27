@@ -274,31 +274,6 @@ public struct ArachneBuildState: Sendable {
     public static func zero() -> ArachneBuildState { ArachneBuildState() }
 }
 
-// MARK: - BackgroundWeb (V.7.7C.2 §5.12)
-
-/// A finished saturated web that decorates the depth backdrop.
-///
-/// 1–2 entries on `ArachneState`; their build state is trivially full
-/// (`stage = .stable`, all radials drawn, all spiral chords laid, all drops at
-/// max count). They do NOT advance — they're already finished.
-///
-/// Commit 2 owns the CPU-side state machine (capacity 2, migration on
-/// completion). The shader reads them in Commit 3.
-public struct ArachneBackgroundWeb: Sendable {
-    /// Full GPU-form web descriptor (Row 5 zeroed — no progressive build).
-    public var webGPU: WebGPU
-    /// `ArachneState.segmentClock` value at construction; oldest is evicted first.
-    public var birthTime: Float
-    /// 1.0 by default; ramps 1→0 during eviction (`migrateOnCompletion`).
-    public var opacity: Float
-
-    public init(webGPU: WebGPU, birthTime: Float, opacity: Float = 1.0) {
-        self.webGPU = webGPU
-        self.birthTime = birthTime
-        self.opacity = opacity
-    }
-}
-
 // MARK: - ArachneState
 
 /// Owns the Arachne web pool and its GPU-side buffer.
@@ -368,12 +343,6 @@ public final class ArachneState: @unchecked Sendable {
     /// GPU-side web descriptor array — bound at object/mesh buffer(1) each frame.
     public let webBuffer: MTLBuffer
 
-    /// Number of alive webs this frame (updated by tick).
-    public private(set) var webCount: Int = 0
-
-    /// Spawn accumulator exposed for diagnostics.
-    public private(set) var spawnAccumulator: Float = 0
-
     // MARK: - Spider State (Increment 3.5.9)
 
     /// GPU-side spider descriptor buffer — 80 bytes; bound at fragment buffer(7).
@@ -384,12 +353,6 @@ public final class ArachneState: @unchecked Sendable {
     /// V.7.7C.2 — replaces V.7.5's 300 s session cooldown (D-095 / §6.5).
     /// Spider may fire AT MOST ONCE per Arachne segment. Reset by `reset()`.
     var spiderFiredInSegment: Bool = false
-    /// Pre-V.7.7C.2 V.7.5 session-cooldown timer. **Deprecated** — superseded
-    /// by `spiderFiredInSegment`. Kept as a no-op stub so the
-    /// `ARACHNE_M7_DIAG` diagnostic build (`ArachneState+M7Diag.swift`)
-    /// continues to compile against the same name. The field is no longer
-    /// updated; the diag log will print a constant value.
-    var timeSinceLastSpider: Float = 300.0
     var spiderPosX: Float = 0; var spiderPosY: Float = 0; var spiderHeading: Float = 0
     var spiderLegPhase: Float = 0
     var spiderLegTips: [SIMD2<Float>] = Array(repeating: .zero, count: 8)
@@ -410,10 +373,7 @@ public final class ArachneState: @unchecked Sendable {
 
     var webs: [WebGPU]
     var globalBeatIndex: Float = 0
-    /// Beat-index at last spawn fire. Internal so M7 diag extension can read.
-    var lastSpawnBeatIndex: Float = -10
     private var prevBeatPhase01: Float = 0
-    private var prevBeatComposite: Float = 0
     /// V.7.7C.4 / D-095 follow-up — rising-edge tracker for the hybrid audio
     /// coupling. `advanceSpiralPhase` advances `spiralChordIndex` by 1 on
     /// each rising-edge beat (in addition to the time-based pace), so the
@@ -431,16 +391,12 @@ public final class ArachneState: @unchecked Sendable {
     // Commit 2; the shader's Row 5 read lands in Commit 3. Internal access
     // exposes the state to ArachneStateBuildTests via @testable import.
     var buildState: ArachneBuildState = .zero()
-    /// 1–2 saturated background webs (capacity 2). Migration on completion
-    /// pushes the foreground hero into this pool; oldest is evicted at capacity.
-    var backgroundWebs: [ArachneBackgroundWeb] = []
-    /// Capacity of `backgroundWebs`; oldest evicted on overflow.
-    public static let backgroundWebsCapacity: Int = 2
     /// Wall-clock seconds since the most recent `reset()` (segment start).
     /// Drives `BackgroundWeb.birthTime` ordering and migration crossfade timing.
     var segmentClock: Float = 0
-    /// 1 s migration crossfade clock; nil when no migration in flight.
-    var migrationCrossfadeElapsed: Float?
+    /// Seconds since the segment completed, while the next build cycle waits to
+    /// start; `nil` when no rollover is pending. See `ArachneState+SegmentRollover`.
+    var segmentRolloverElapsed: Float?
 
     /// V.7.7C.2 — fires once when the foreground build cycle reaches `.stable`.
     /// Subscribed by `VisualizerEngine+Presets.wirePresetCompletionSubscription`
@@ -461,8 +417,6 @@ public final class ArachneState: @unchecked Sendable {
     private var loggedStableSlots: Set<Int> = []
     #endif
     #if DEBUG && ARACHNE_M7_DIAG
-    /// Last `Int(globalBeatIndex / 2)` bucket logged. Internal so M7 diag extension can read.
-    var lastM7DiagBucket: Int = -1
     #endif
 
     // MARK: - Init
@@ -515,30 +469,16 @@ public final class ArachneState: @unchecked Sendable {
                             + stems.otherEnergy + stems.vocalsEnergy
         let stemMix = arachSmoothstep(0.02, 0.06, totalStemEnergy)
 
-        accumulateSpawn(features: features, stems: stems, stemMix: stemMix, dt: dt)
-
-        // Advance all alive web stages.
-        for i in 0..<Self.maxWebs where webs[i].isAlive != 0 {
-            advanceStage(index: i, beatsDt: beatsDt)
-        }
-        webCount = webs.filter { $0.isAlive != 0 }.count
-
         updateSpider(dt: dt, features: features, stems: stems)
 
-        // V.7.7C.2 — advance the foreground BuildState. Runs in addition to
-        // (not in place of) the V.7.5 spawn/eviction driver above; in Commit 2
-        // both coexist because the shader does not yet read Row 5. Commit 3
-        // hooks the shader to Row 5 and removes the V.7.5 driver. The pause
-        // guard MUST be evaluated before computing `effectiveDt` — order
-        // matters per V.7.7C.2 RISKS.
+        // V.7.7C.2 — advance the foreground BuildState. This is the only build
+        // driver since RECON.20 removed the retired V.7.5 spawn/eviction path.
+        // The pause guard MUST be evaluated before computing `effectiveDt` —
+        // order matters per V.7.7C.2 RISKS.
         advanceBuildState(features: features, stems: stems, dt: dt)
-        // Maintain background-web migration timers and write Row 5 for webs[0].
-        advanceMigrationCrossfade(dt: dt)
+        // Roll the segment over 1 s after completion, then write Row 5 for webs[0].
+        advanceSegmentRollover(dt: dt)
         writeBuildStateToWebs0()
-
-        #if DEBUG && ARACHNE_M7_DIAG
-        m7DiagSnapshot(features: features)
-        #endif
 
         #if DEBUG && ARACHNE_DIAG
         for i in 0..<Self.maxWebs
@@ -581,41 +521,6 @@ public final class ArachneState: @unchecked Sendable {
         for i in 0..<Self.maxWebs { webs[i].moodData = moodRow }
     }
 
-    /// V.7.5 spawn driver — drum-onset accumulator + FV beat-rising-edge
-    /// fallback. Shared with V.7.7C.2 in Commit 2 because the shader has not
-    /// yet been hooked to the BuildState Row 5; this driver still owns the
-    /// visible web pool.
-    private func accumulateSpawn(features: FeatureVector,
-                                 stems: StemFeatures,
-                                 stemMix: Float,
-                                 dt: Float) {
-        // Stem path: drumsOnsetRate [onsets/sec] × dt → fraction of spawn threshold.
-        let drumDrive = stems.drumsOnsetRate * dt * stemMix
-
-        // FV fallback: rising edge on beat_composite / beat_bass counts as one onset.
-        // Suppressed by actual drum activity, not by general stem warmup — so
-        // quiet/drumless tracks (post-rock openings, drumsOnsetRate=0 but stems
-        // warm) still get a working spawn path from the beat detector.
-        let currentBeat = max(features.beatComposite, features.beatBass)
-        let risingEdge: Float = (currentBeat > 0.5 && prevBeatComposite <= 0.5) ? 0.8 : 0.0
-        prevBeatComposite = currentBeat
-        // Fully suppressed at ≥ 20 onsets/s.
-        let drumActivity = min(stems.drumsOnsetRate * 0.05, 1.0)
-        let fvDrive = risingEdge * (1.0 - drumActivity)
-
-        spawnAccumulator += drumDrive + fvDrive
-
-        if spawnAccumulator >= Self.spawnThreshold &&
-           (globalBeatIndex - lastSpawnBeatIndex) >= Self.minSpawnGapBeats {
-            spawnAccumulator -= Self.spawnThreshold
-            if let slot = freeSlot() {
-                trySpawn(features: features, stems: stems, stemMix: stemMix, slot: slot)
-            } else {
-                _ = evictAndRetry()
-            }
-        }
-    }
-
     // MARK: - Private: beat index advancement
 
     /// Returns the beat-fraction elapsed this frame and advances globalBeatIndex.
@@ -627,115 +532,6 @@ public final class ArachneState: @unchecked Sendable {
         globalBeatIndex += beatsDt
         prevBeatPhase01 = features.beatPhase01
         return beatsDt
-    }
-
-    // MARK: - Private: web spawning
-
-    private func trySpawn(features: FeatureVector, stems: StemFeatures, stemMix: Float, slot: Int) {
-        lastSpawnBeatIndex = globalBeatIndex
-
-        // Per-slot golden-ratio hue so each web slot has a distinct, evenly
-        // distributed color. Small centroid jitter (±0.03) prevents adjacent spawns
-        // looking identical even when the same slot is reused.
-        let centroidJitter = arachMix(features.spectralCentroid,
-                                      stems.otherCentroid,
-                                      stemMix) * 0.06 - 0.03
-        let rawHue = Float(slot) * 0.618 + centroidJitter
-        // Map golden-ratio 0-1 to bioluminescent palette: cyan (0.42) → blue → violet (0.82).
-        let hue = 0.42 + (rawHue - floor(rawHue)) * 0.40
-        let sat = 0.88 + lcg(&rng) * 0.10   // 0.88–0.98, always vivid
-        let brt = 0.50 + lcg(&rng) * 0.45   // 0.50–0.95
-
-        let seed = rng
-        let hubX   = lcg(&rng) * 1.6 - 0.8       // −0.8..0.8 clip
-        let hubY   = lcg(&rng) * 1.6 - 0.8
-        let radius = 0.25 + lcg(&rng) * 0.30     // 0.25..0.55 clip
-        let depth  = lcg(&rng)
-        let rot    = lcg(&rng) * .pi * 2
-        let anchors = UInt32(5) + UInt32(lcg(&rng) * 3.99)   // 5..8
-        let revs   = 4.0 + lcg(&rng) * 4.0                   // 4..8
-
-        webs[slot] = WebGPU(
-            hubX: hubX,
-            hubY: hubY,
-            radius: radius,
-            depth: depth,
-            rotAngle: rot,
-            anchorCount: anchors,
-            spiralRevolutions: revs,
-            rngSeed: seed,
-            birthBeatPhase: globalBeatIndex,
-            stage: WebStage.frame.rawValue,
-            progress: 0,
-            opacity: 1,
-            birthHue: hue,
-            birthSat: sat,
-            birthBrt: brt,
-            isAlive: 1
-        )
-    }
-
-    // MARK: - Private: stage advancement
-
-    private func advanceStage(index: Int, beatsDt: Float) {
-        var web = webs[index]
-        let stage = WebStage(rawValue: web.stage) ?? .stable
-
-        switch stage {
-        case .frame:
-            web.progress = min(web.progress + beatsDt / Self.frameDuration, 1)
-            if web.progress >= 1 { web.stage = WebStage.radial.rawValue; web.progress = 0 }
-
-        case .radial:
-            let dur = Self.radialDuration(web.anchorCount)
-            web.progress = min(web.progress + beatsDt / dur, 1)
-            if web.progress >= 1 { web.stage = WebStage.spiral.rawValue; web.progress = 0 }
-
-        case .spiral:
-            let dur = Self.spiralDuration(web.spiralRevolutions)
-            web.progress = min(web.progress + beatsDt / dur, 1)
-            if web.progress >= 1 { web.stage = WebStage.stable.rawValue; web.progress = 1 }
-
-        case .stable:
-            break
-
-        case .evicting:
-            web.progress = min(web.progress + beatsDt / Self.evictingDuration, 1)
-            web.opacity = max(1 - web.progress, 0)
-            if web.progress >= 1 { web = .zero }
-        }
-
-        webs[index] = web
-    }
-
-    // MARK: - Private: pool management
-
-    private func freeSlot() -> Int? {
-        webs.indices.first { webs[$0].isAlive == 0 }
-    }
-
-    /// Begin evicting an eligible web; returns nil (spawn will retry next frame).
-    private func evictAndRetry() -> Int? {
-        // Prefer oldest .stable web.
-        let stableIndices = webs.indices.filter {
-            webs[$0].isAlive != 0 && WebStage(rawValue: webs[$0].stage) == .stable
-        }
-        if let oldest = stableIndices.min(by: { webs[$0].birthBeatPhase < webs[$1].birthBeatPhase }) {
-            webs[oldest].stage = WebStage.evicting.rawValue
-            webs[oldest].progress = 0
-            return nil
-        }
-        // Fallback: evict highest-progress building web (never .anchorPulse).
-        let buildable = webs.indices.filter {
-            guard webs[$0].isAlive != 0 else { return false }
-            let webStage = WebStage(rawValue: webs[$0].stage) ?? .stable
-            return webStage == .radial || webStage == .spiral
-        }
-        if let highest = buildable.max(by: { webs[$0].progress < webs[$1].progress }) {
-            webs[highest].stage = WebStage.evicting.rawValue
-            webs[highest].progress = 0
-        }
-        return nil
     }
 
     // MARK: - Private: initial pool seeding
@@ -789,7 +585,6 @@ public final class ArachneState: @unchecked Sendable {
             birthBrt: 0.70,
             isAlive: 1
         )
-        webCount = 2
     }
 
     // MARK: - Private: PRNG (LCG)
@@ -984,7 +779,7 @@ public final class ArachneState: @unchecked Sendable {
             _presetCompletionEvent.send()
             // Trigger the migration crossfade (1 s) on completion. Foreground
             // ramps 1→0.4; oldest background ramps 1→0 if pool at capacity.
-            beginMigrationCrossfade()
+            beginSegmentRollover()
         }
     }
 
@@ -1129,7 +924,7 @@ public final class ArachneState: @unchecked Sendable {
         prevBeatForSpiral = 0
 
         // Migration crossfade clears.
-        migrationCrossfadeElapsed = nil
+        segmentRolloverElapsed = nil
         segmentClock = 0
     }
 

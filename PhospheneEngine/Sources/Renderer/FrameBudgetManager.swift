@@ -267,12 +267,14 @@ public final class FrameBudgetManager {
     /// Map a thermal state + Low Power Mode flag to a minimum quality floor. Pure — the
     /// listener reads `ProcessInfo` and feeds the values here, keeping this controller
     /// `ProcessInfo`-free. Tunable policy (D-167): serious → no-bloom, critical →
-    /// step-0.75. Low Power Mode previously imposed a `.noSSGI` floor, which was a no-op in
-    /// practice — no preset ever declared the SSGI pass, so the rung reduced nothing. SSGI and
-    /// that rung were deleted at RECON.18 and the Low Power Mode floor is NOT silently promoted
-    /// to `.noBloom`: that would be a new, user-visible reduction. It therefore imposes no floor
-    /// today, exactly matching prior behaviour. **Open question for Matt (D-167 amendment):**
-    /// should Low Power Mode floor at `.noBloom` instead?
+    /// step-0.75; Low Power Mode imposes at least no-bloom.
+    ///
+    /// **The Low Power Mode floor is new behaviour as of RECON.19 (Matt, 2026-08-26).** It was
+    /// `.noSSGI` from D-167 until RECON.18, but that rung only ever suppressed SSGI, which no
+    /// preset ever declared — so Low Power Mode reduced nothing for its entire life. RECON.18
+    /// deleted the rung and deliberately left the floor absent rather than promote it silently;
+    /// Matt then chose `.noBloom`. Low Power Mode now genuinely drops bloom (ACES tone-mapping
+    /// still runs, so the image is dimmer in the highlights, not flat).
     public static func qualityFloor(
         thermalState: ProcessInfo.ThermalState,
         lowPowerMode: Bool
@@ -284,8 +286,12 @@ public final class FrameBudgetManager {
         case .critical:       floor = .reducedRayMarch
         @unknown default:     floor = .noBloom
         }
-        // See the doc comment: no floor from Low Power Mode, pending Matt's D-167 call.
-        _ = lowPowerMode
+        // D-167 amended (Matt, 2026-08-26): Low Power Mode floors at `.noBloom`.
+        // Its previous `.noSSGI` floor reduced nothing, so this is the first time
+        // Low Power Mode actually costs anything visually — bloom off, ACES kept.
+        if lowPowerMode {
+            floor = max(floor, .noBloom)
+        }
         return floor
     }
 
