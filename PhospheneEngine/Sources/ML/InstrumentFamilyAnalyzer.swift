@@ -101,7 +101,7 @@ public final class InstrumentFamilyAnalyzer: InstrumentFamilyAnalyzing, @uncheck
             // floatChannelData is non-nil for a standard Float32 format; baseAddress
             // is non-nil for srcCount >= 1 (guarded above).
             // swiftlint:disable:next force_unwrapping
-            memcpy(srcBuf.floatChannelData![0], src.baseAddress!, srcCount * MemoryLayout<Float>.size)
+            _ = memcpy(srcBuf.floatChannelData![0], src.baseAddress!, srcCount * MemoryLayout<Float>.size)
         }
         nonisolated(unsafe) var consumed = false
         nonisolated(unsafe) let capturedSrcBuf = srcBuf

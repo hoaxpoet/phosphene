@@ -24,7 +24,7 @@ public extension RicercarEchoGeometry {
     ///
     /// A reallocation necessarily drops the trail, so marks vanish for a frame. That is correct on
     /// a resize and must not be "fixed" by keeping a stale-size texture.
-    public func ensureAllocated(width: Int, height: Int) {
+    func ensureAllocated(width: Int, height: Int) {
         let newW = max(1, width), newH = max(1, height)
         guard newW != configuration.width || newH != configuration.height else { return }
         guard let fresh = Self.makeTrail(device: device, width: newW, height: newH) else { return }

@@ -56,7 +56,6 @@ extension RenderPipeline {
         target: MTLTexture,
         uniforms: Uniforms
     ) {
-        var uni = uniforms
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture     = target
         desc.colorAttachments[0].loadAction  = .dontCare
@@ -64,7 +63,9 @@ extension RenderPipeline {
         guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
         enc.setRenderPipelineState(warpState.blitPipeline)        // the preset's comp (drawable format)
         enc.setFragmentTexture(warpState.warpTexture, index: 0)   // current feedback, NOT advanced
-        enc.setFragmentBytes(&uni, length: MemoryLayout<Uniforms>.stride, index: 1)
+        withUnsafeBytes(of: uniforms) { buf in
+            if let base = buf.baseAddress { enc.setFragmentBytes(base, length: buf.count, index: 1) }
+        }
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.endEncoding()
     }

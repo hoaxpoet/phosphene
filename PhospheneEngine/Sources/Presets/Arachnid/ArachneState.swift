@@ -461,13 +461,8 @@ public final class ArachneState: @unchecked Sendable {
 
     private func _tick(features: FeatureVector, stems: StemFeatures) {
         let dt = max(features.deltaTime, 0.001)
-        let beatsDt = advanceBeatIndex(features: features, dt: dt)
+        advanceBeatIndex(features: features, dt: dt)
         updateMoodRow(features: features, dt: dt)
-
-        // D-019 warmup blend: 0 = FV only, 1 = stems fully warm.
-        let totalStemEnergy = stems.drumsEnergy + stems.bassEnergy
-                            + stems.otherEnergy + stems.vocalsEnergy
-        let stemMix = arachSmoothstep(0.02, 0.06, totalStemEnergy)
 
         updateSpider(dt: dt, features: features, stems: stems)
 

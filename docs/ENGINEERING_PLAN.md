@@ -8279,3 +8279,39 @@ Unison/WHIT.C) is unaffected.
 **Remaining:** nothing for Rosette — this closes Phase WHIT.A. Frieze and Unison remain open,
 unscoped future work under `docs/presets/WHITNEY_PROGRAM.md`, whenever Matt wants to pick up
 either one.
+
+---
+
+### Increment CLEAN.9.1 — Xcode build warnings cleared ✅ (2026-08-28)
+
+**Trigger.** Matt's Xcode issue navigator showed four warnings under the `PhospheneApp` scheme; a
+fifth surfaced in the same build once those were fixed. Warnings-as-errors is enforced per-target
+via `PhospheneApp/Phosphene.xcconfig`, so warnings that persist are ones no target promotes — they
+accumulate silently and train the eye to ignore the navigator.
+
+**Fixed.**
+
+| File | Warning | Fix |
+|---|---|---|
+| `PhospheneEngine/Sources/Presets/Arachnid/ArachneState.swift` | `beatsDt` never used | `advanceBeatIndex` is already `@discardableResult` and mutates `globalBeatIndex`; the binding was vestigial. Call it for the side effect. |
+| `PhospheneEngine/Sources/Presets/Arachnid/ArachneState.swift` | `stemMix` never used | Deleted `stemMix` and its sole input `totalStemEnergy`. The D-019 warmup blend they were computed for no longer has a consumer in `_tick` — `updateSpider`/`advanceBuildState` take `stems` directly. |
+| `PhospheneEngine/Sources/Renderer/Geometry/RicercarEchoGeometry+Sizing.swift` | redundant `public` on an instance method in a `public extension` | Dropped the modifier. |
+| `PhospheneEngine/Sources/Renderer/RenderPipeline+CustomWarp.swift` | forming `UnsafeRawPointer` to a generic `Uniforms` value | `&uni` on an unconstrained generic is only valid if the type is POD, which Swift cannot prove. Replaced with `withUnsafeBytes(of: uniforms)`. Length is now `size` rather than `stride`; the trailing stride padding is never read by the comp shader. |
+| `PhospheneEngine/Sources/ML/InstrumentFamilyAnalyzer.swift` | result of `withUnsafeBufferPointer` unused | The single-expression closure was returning `memcpy`'s pointer, which made the whole call value-returning. `_ = memcpy(...)`. |
+
+**Non-obvious one, worth keeping.** The `UnsafeRawPointer` warning is not cosmetic — `&value` on
+an unconstrained generic passed to `setFragmentBytes` is undefined behaviour the moment a caller
+instantiates `Uniforms` with a type holding a reference. Every current caller passes a POD struct,
+so nothing was broken in practice, but the guarantee lived in caller discipline rather than in the
+code. `withUnsafeBytes(of:)` is the correct spelling for handing a generic value's bytes to Metal.
+
+**Verification.** `xcodebuild build` warning-free (only `appintentsmetadataprocessor` tooling
+noise remains, which is not a code warning); `swiftlint --strict` 0 violations across 516 files;
+full engine suite green.
+
+**Not visually verifiable.** No shader, uniform layout, routing, or timing behaviour changed —
+`ArachneState`'s deleted values fed nothing, and the warp path binds the identical bytes.
+
+**Capability registry:** no rows changed. No renderer capability was added, promoted, or blocked.
+
+**Remaining:** nothing. `PhospheneApp` builds clean from a fresh `xcodebuild`.
