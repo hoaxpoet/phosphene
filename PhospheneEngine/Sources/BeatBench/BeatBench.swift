@@ -185,8 +185,15 @@ struct BeatBenchCommand: ParsableCommand {
         let grid = analyzer.analyzeBeatGrid(samples: samples, sampleRate: rate)
         let span = String(format: "%.1f", Double(samples.count) / rate)
         let bpm = String(format: "%.2f", grid.bpm)
+        // Downbeat count + span are reported because a low downbeat F is ambiguous
+        // without them: too few downbeats and a wrong bar phase look identical in the
+        // score (BUG-107 / the 2026-08-27 downbeat survey).
+        let dbSpan = grid.downbeats.isEmpty
+            ? "none"
+            : String(format: "%.1f-%.1fs", grid.downbeats.first ?? 0, grid.downbeats.last ?? 0)
         print("\(url.lastPathComponent)  analysed \(span)s  →  bpm \(bpm)  "
               + "beatsPerBar \(grid.beatsPerBar)  beats \(grid.beats.count)  "
+              + "downbeats \(grid.downbeats.count) [\(dbSpan)]  "
               + "barConfidence \(String(format: "%.2f", grid.barConfidence))")
     }
 
