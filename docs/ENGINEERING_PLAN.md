@@ -63,6 +63,70 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment FT.4.1 — the estimator alone wins; the tiler was the whole regression ✅ (2026-08-27)
+
+Matt's call after FT.4: isolate the two halves. The flag splits into
+`PHOSPHENE_FULLTRACK_DECODE` (tiler) and `PHOSPHENE_BARLINE` (estimator);
+`PHOSPHENE_FULLTRACK_BARS` still sets both so FT.4's arm stays reproducible. Report appended to
+[`FT4_FULLTRACK_BARS_AB_2026-08-27.md`](diagnostics/FT4_FULLTRACK_BARS_AB_2026-08-27.md).
+
+**Every beat-layer figure is identical to OFF on all nine tracks** — F, Cemgil, CMLt, AMLt. The
+estimator never touches `grid.beats`, and without the tiler nothing else does. Suite-1
+no-regression holds exactly.
+
+**It reproduces FT.3's figure that the bundled arm destroyed: answers 2 of 9, both right,
+declines 7.** take_five goes meter 5/**2** → 5/**5** with downbeat F **0.26 → 0.97** — better
+than the tiled arm's 0.68. billie_jean answers 4/4 on the right phase with **downbeat F 0.90
+preserved**, where the bundled arm had dropped it to 0.37.
+
+**FT.4's first disqualifying finding is therefore WITHDRAWN.** The threshold was not
+mis-calibrated; the tiler was moving the beats underneath the estimator. FT.4's second finding
+stands and hardens: the tiler moved bleed's grid 115.00 → 123.62 against a truth of 114.67.
+
+**Honest cost of the 7 declines:** they trade a *wrong* bar for *no* bar, and the declined tracks
+scored 0.08–0.26 — at or below a random bar-1 guess — so little is lost. But on bleed and
+bohemian_rhapsody the OFF arm had the *meter* right while the phase was wrong, and a decline
+gives up the meter too. D-205 makes bar *position* the hard gate because Nacre's and Glaze's
+pushes consume phase, so the trade is the right way round — a trade, not a free win.
+
+**Consequence for BUG-107:** more context is available and measurably makes beat tracking worse,
+so BUG-107 must not be "fixed" by switching the full-track decode on. Any future attempt owns
+the 115.00 → 123.62 number first.
+
+**Still not shipped.** `PHOSPHENE_BARLINE` defaults OFF. Production adoption is the next
+increment and needs Matt: it changes what certified presets receive for bar position.
+
+### Increment FT.4 — full-track decode + BarLineEstimator, A/B'd and NOT adopted ⏸ (2026-08-27)
+
+Matt approved wiring FT.3's `BarLineEstimator` with decline (2026-08-27), on the strength of its
+"answers 2 of 9, gets both right, declines 7". Wired behind `PHOSPHENE_FULLTRACK_BARS`
+(default OFF, nothing ships) and A/B'd through the real analyzer. **It does not reproduce that
+result. Do not adopt as built.** Report:
+[`FT4_FULLTRACK_BARS_AB_2026-08-27.md`](diagnostics/FT4_FULLTRACK_BARS_AB_2026-08-27.md).
+
+Only 4 of 9 tracks can be compared fairly — `BeatBench` trims the reference to the grid's span
+but not the estimate to the reference's, which is right for a 30 s preview grid and wrong for a
+full-track one, so the five short-GT tracks are dominated by false positives. FT.3's report
+flagged the same asymmetry.
+
+**Two independent disqualifying failures.** On **billie_jean** — suite 1, the reference working
+case, where suite-1 no-regression is a hard gate — the estimator answered *confidently and
+wrongly*: correct meter 4/4, wrong bar phase, **downbeat F 0.90 → 0.37**. That is precisely what
+the decline threshold exists to prevent, and it did not catch it; FT.3's own task-5 finding
+predicted the mechanism, that margins labelled by bar rather than meter overlap. Separately,
+FT.1's tiler **degrades the beat layer**: on bleed (full-length GT, the cleanest comparison) the
+grid moves 115.00 → 123.62 against a truth of 114.67, F 0.99 → 0.76, CMLt 1.00 → 0.56.
+
+**One real win, recorded rather than talked up:** take_five goes meter 5/2 → **5/5** and downbeat
+F 0.26 → **0.68**. The accent method does recover an odd meter the downbeat head collapses. It is
+mis-thresholded and bundled with a decode that costs more than it returns — not worthless.
+
+**Attempt 1 on this premise; no attempt 2 without a changed one** (two-strikes rule). What a
+changed premise must address: the threshold cannot separate right phase from wrong phase; the
+tiler and the estimator are independent and should be separable (`BarLineEstimator` takes any
+`beats` array); and the benchmark's asymmetric trimming needs fixing before any full-track arm is
+scored again, or five of nine tracks stay unmeasurable.
+
 ### Increment SKEIN.OVERLAP.2 — the same argmin, one level down ✅ M7 PASSED (2026-08-27)
 
 **Done-when:** the overlap flicker is gone at every level, not just between marks. Matt on the round-1 build: *"flickering still happens but only after 70-80 s and is not as prominent as before. Frame rate is smooth."* Inside the pour line the colour still came from the NEAREST segment (`d < lineSDF`) — the same argmin one level below the one round 1 fixed — so two near-equidistant segments of different pours flipped it frame to frame. Both halves of the report follow: less prominent because the mark-level case was fixed, only after 70-80 s because such pairs need differently-coloured segments in the same 40-frame tail and colour breakpoints accumulate (the same ring that drove BUG-110's ramp). The line now takes the FIRST covering segment in a newest→oldest walk — the latest-laid one by construction — with coverage still the nearest-segment distance. `SkeinCanvasHoldTest` gates both levels. **Same session confirmed LFSTEM.1e (series sampling at ~56 Hz, was 12.8) and BUG-110 live (`frame_gpu` p50 12.55–13.21 ms flat across 90 s at 4K).**
@@ -1272,13 +1336,13 @@ loss was silent, which is the part worth not repeating.
 
 *(Rewritten at RECON.2, 2026-08-03. This section had not been updated since 2026-05-06 and still presented the QR → DSP → V → MD → SB ordering as current — none of which is the active queue. It named a "June-30 commit" that closed five weeks ago and pointed at nothing anyone was actually working on. The 2026-08-03 production audit found it the single most misleading section in this file: a reader following it would plan against a three-month-old world. The superseded ordering is preserved verbatim at the bottom of this section.)*
 
-**What is actually in flight, 2026-08-03.** Each entry names its own owner section; this list is a pointer, not a second source of truth.
+**What is actually in flight, refreshed 2026-08-27.** Each entry names its own owner section; this list is a pointer, not a second source of truth. *(Refreshed at PLAN.1 — item 1 still named BUG-102 as the beat-sync program's live question hours after it was resolved, and item 6 described LFSTEM as "not started" after both LFSTEM.1 and .2 had landed. This section drifts fast because it summarises five programs; re-read it against `git log` before planning against it.)*
 
-1. **Beat-sync program (D-202)** — the largest active program. Phase TRK is ⏸ **PARKED** (D-206) and must not reopen without a changed premise about the **grid**, not the tracker. **DBN.3** is the live thread but its stated gate ("blocked on FT.1") is **satisfied-but-unresolved**: FT.1 landed 2026-07-31 with a **negative** payoff, so the block condition is met while the decision it was waiting for was never made — see the DBN.3 row for the successor state. **FT.3 is COMPLETE** (tasks 1–3 2026-07-31, tasks 4–6 2026-08-19 — `BarLineEstimator` built, parity 1.6e-7, **not wired**); **FT.3.1 ran 2026-08-19 and STOPPED AT ITS PREMISE** — the two wrong-level positives are `metrical_review` ground truth that both reference backends contradict, so `AMLt − CMLt` measures grid-vs-tap disagreement, not a grid error. **The live question is now a ground-truth arbitration, not an engine increment — BUG-102.** Owner section: §Phase FT / §Beat-Sync Program.
+1. **Beat-sync program (D-202)** — the largest active program, and **UNBLOCKED as of 2026-08-27**. Phase TRK stays ⏸ **PARKED** (D-206) and must not reopen without a changed premise about the **grid**, not the tracker. **BUG-102 is RESOLVED** (BUG102.1/.2) — the ground-truth arbitration that had blocked everything since 2026-08-19 is done, both disputed references re-annotated, and the benchmark is citable again. **The live question is now downbeats.** With trustworthy references, only billie_jean has a usable downbeat F (0.90) against bleed 0.08, solsbury_hill 0.13, money 0.21, bohemian_rhapsody 0.25, take_five 0.26 — invisible while the references were wrong. FT.3's `BarLineEstimator` is **built, parity 1.6e-7, and NOT WIRED**; D-205 makes meter/downbeat a hard gate because Nacre's and Glaze's downbeat pushes are their connection layer. Two older threads remain unresolved *decisions* rather than work: **DBN.3**'s gate is satisfied-but-unresolved (FT.1 landed with a negative payoff, so the block condition was met while the decision it waited on was never made), and **BUG-107** is root-caused but unfixed — the offline grid only ever analyses the first ~30 s of any input, which is a local-file exposure now that LFSTEM has moved stems to a full-file series. Owner section: §Phase FT / §Beat-Sync Program.
 2. **Preset work in flight** *(corrected 2026-08-20 at PERF.16 — this row named two presets as in-flight that had already certified)*. ~~FTR.3/.4/.5 (Fractal Tree)~~ **✅ CERTIFIED 2026-08-19, the 20th** (FTR.5; M7 on `2026-08-19T17-25-03Z`); ~~**MEN.2b/.3/.4** (Meniscus)~~ **✅ CERTIFIED 2026-08-05** (MEN.5 / D-214 — the row below had been stale for two weeks); ~~**CHR.3/.4** (Stave)~~ **✅ CERTIFIED 2026-08-19, the 19th** (CHR.3k — certified in the tree while this file still read "Next: CHR.4"; the plan entries were lost in a merge and are restored under §Recently Completed). Genuinely open: **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). ~~**Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.~~ **✅ Disposition taken and CERTIFIED 2026-08-20** (RICERCAR-WIRE.1/.2/.3/RICERCAR-CERT.1, the 21st) — the ECHO prototype from the "fourth reboot branch" was wired in, its blur/beading defects fixed, and it certified on its second live M7. `RicercarFlowGeometry` (the FL arc this row referred to) is deleted.
 3. **CLEAN backlog** — Phases 0–5 and 7 are closed. **Phase 6** (5 open rows) and **Phase 8** (4 open rows, the XL decomposition) remain. Phase 8 is the same work as PUB **R3.5**. Authoritative queue: [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) Part C.
 4. **PUB R3 decomposition** — slices R3.1/R3.2 done; **R3.3 (analysis), R3.4 (LF transport), R3.5 (orchestrator bridge)** queued. R3.5 = CLEAN Phase 8; do not schedule them as separate efforts.
-5. **Open defects worth scheduling** *(refreshed 2026-08-07; reconciled again 2026-08-26 at **KI-AUDIT.1** — §Open had accumulated twelve entries whose own bodies said they were fixed (BUG-086/089/090/092/093/094/095/096/097/098/099/101); all twelve verified against the tree and moved out, leaving **20 genuinely open**. Two dispositions changed: **BUG-088** was re-scoped from a manifest fix to a **deletion** and is now ✅ RESOLVED (BUG088.1) — `AuroraVeil.metal` reads exactly the five fields its sidecar declares, and the "undeclared" stem/pitch reads live in `AuroraVeilState.swift` feeding a buffer AV.7 stopped reading; and **BUG-102** (ground-truth arbitration) is now the beat-sync program's blocking item, ahead of any engine increment)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
+5. **Open defects worth scheduling** *(refreshed 2026-08-07; reconciled 2026-08-26 at **KI-AUDIT.1**, and again 2026-08-27 at PLAN.1 — **20 open**. Since KI-AUDIT.1: **BUG-102 RESOLVED** and moved to §Resolved; **BUG-107 filed and root-caused** (offline grid capped at ~30 s); BUG-108/109/110 filed and fixed inside the LFSTEM/Skein work. BUG-106 keeps its row deliberately — fixed and live-confirmed, but its felt half still needs Matt's eye on stem timing.)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
    - **Unblocked and bounded:** ~~BUG-051~~ **done 2026-08-07 (BUG051.1)** — the m3u extension/canonicalization guard landed at the parser boundary; remaining here is BUG-085's one permitted experiment (suppress stem separation for a full session and see whether the freeze class survives; every other hypothesis on that entry is refuted).
    - **Owned by the beat-sync program, not standalone:** BUG-076 / BUG-065 / BUG-028 all belong to D-202 — **FT.3** is the live thread. **BUG-077** is a one-comparison change; do it inside DBN.3 when the resolver is already open.
    - **Closed 2026-08-26:** **BUG-100** — explained, not reproduced. Four 4K sessions, both candidate mechanisms measured dead, and a Stave→Witchlight switch shown to move `frame_gpu` 4.94 → 11.44 ms, which is the "ramp" the entry was filed from.
@@ -1286,7 +1350,7 @@ loss was silent, which is the part worth not repeating.
    - **Accept as-is:** BUG-084, BUG-054, BUG-056, the AUDIT-2026-06-09 P3 residue. No product impact; not worth an increment until something depends on them.
 
    Full list and per-entry evidence: [`docs/QUALITY/KNOWN_ISSUES.md`](QUALITY/KNOWN_ISSUES.md) §Open Index.
-6. **LFSTEM — local-file stems land on the beat** *(scoped 2026-08-26, not started; Matt's question, costs measured)*. Stem features reach presets ~2.5 s late. For a **local file** that is not physics: `PreviewAudio.fromLocalFile` already decodes the whole file, and `instrumentFamilySeries` (IFC.4 / D-177) already proves the "pre-analysed series sampled by playback position" pattern in production. Stems are cached as a **single snapshot of the first ~10 s** (`StemSeparator` truncates to 440320 samples) where they could be cached as a dense series. Measured cost of the change: **≈31 s of extra preparation per 4-minute track, once per file** (15 s separation + 16 s feature sweep; `LocalFilePrepCostHarness`, `PHOSPHENE_PREP_COST=1`). Streaming structurally cannot have this — the tap has no future to analyse. **Both decisions taken by Matt 2026-08-26: preparation BLOCKS** (no progressive path — the +31 s is carried by the existing progress UI, once per file), **and retiring live separation on the local path is its own increment, LFSTEM.2**, run after LFSTEM.1 is M7'd (its payoff — a 142 ms MPSGraph job leaving the GPU every 2 s, which lands on the same 4K budget BUG-100 and BUG-106 circle — must be measured before/after, and the live separator's other consumers, notably the diagnostic stem WAV dump, checked before it stops firing). LFSTEM.1 still owes an M7 on Skein, since ~10 certified presets' stem routes were tuned against values that arrive late. Spec: [`docs/prompts/LFSTEM_LOCAL_FILE_STEM_SERIES.md`](prompts/LFSTEM_LOCAL_FILE_STEM_SERIES.md).
+6. **LFSTEM — local-file stems land on the beat** ✅ **DONE 2026-08-26/27.** LFSTEM.1 landed the full-file stem series (schema v10) and **its Skein M7 PASSED**; LFSTEM.2 retired live separation on tracks that have a series. Stem features no longer arrive ~2.5 s late on the local path. ⚠ **One asymmetry this created:** stems now span the whole file while the **beat grid still does not** — `DefaultBeatGridAnalyzer` is capped at ~30 s (BUG-107 / BUG107.2), so a preset consuming bar position on a local file whose tempo moves runs on an opening-30 s estimate. That is the open question, not the stems.
 7. **RECON follow-ups** — the 2026-08-03 audit's own queue: consolidate the three fixture-restore mechanisms behind one shared manifest (the recorded BUG-080 follow-up), CI "Option B" (full-suite-minus-skip-list, replacing the hand-maintained ~130-test allow-list), wire `check_drums_beat_intensity.sh` into CI/closeout, and ~~delete the zero-consumer RMENV.2/.3 + MFX.1 capabilities per Matt's 2026-08-03 call~~ **done 2026-08-25 (RECON.14)**.
 
 > **Capability Audit (Phase CA, 2026-05-20).** The originally-planned `docs/CAPABILITY_GAP_AUDIT.md` (now at `archive/CAPABILITY_GAP_AUDIT.md`) single-deliverable was superseded 2026-05-20 by the multi-increment **Phase CA** audit, which produces one per-subsystem registry under [`docs/CAPABILITY_REGISTRY/`](CAPABILITY_REGISTRY/). **CA.1–CA.7b all shipped ✅ (2026-05-20 → 2026-05-21)** — see §Phase CA for the per-increment detail. *(This paragraph read "CA.1 landed; CA.2+ pending" until RECON.2, 2026-08-03, contradicting the Phase CA section in the same file.)* Preliminary 2026-05-12 inventory data (shader-utility-consumer matrix, distinct from CA's per-subsystem audits) lives at [`docs/diagnostics/capability-audit-pre-2026-05-12.md`](diagnostics/capability-audit-pre-2026-05-12.md) and continues to feed shader-cleanup increments.
