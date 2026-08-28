@@ -10,6 +10,39 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-27-153500] PERF.17 — the frame-budget harness was timing the roster at the AGC mean
+
+BUG-110's follow-up asked for "a note or a mechanism for state-gated layers" in the frame-budget
+harness. The mechanism already existed for Fractal Tree; the finding was that the defect is not
+Skein-shaped.
+
+**The shared drive built every band at exactly `0.5` and left every `Rel`/`Dev` field zero.**
+`bassRel = (bass − 0.5) × 2` is zero at 0.5 by construction, and `StemFeatures` derives nothing in
+its initialiser — so the whole roster was timed at the one point where **D-026's deviation
+primitives, the default primary driver for every preset, are identically zero**.
+
+Skein shows what that costs. Its pour-commit machine never committed a second pour, so the
+breakpoint ring held **1** where playback holds 16 and `skein_geometry_fragment` skipped most of
+Layer A. Skein read **5.31 ms — the cheapest third of the roster** — against 17.06 ms at one
+breakpoint and 55.65 ms at sixteen in `SkeinLineCostTests`.
+
+**Now:** the bands sweep 0.20–0.95 with Rel/Dev derived by the analyzer's own formula (a hand-set
+`bassDev` beside a disagreeing `bass` is its own trap), sized against real material's p99 ≈ 0.85
+rather than against 1.0; stem dominance rotates on a ~1 s cycle with a decisive leader, because an
+argmax route reads fixed dominance as "nothing ever changed"; and `warmSkein` ticks the state to a
+full ring before the timed frames, stopping on the ring rather than a frame count so it survives a
+`minPourTau` retune.
+
+**Skein 5.31 → 13.19 ms, 4th most expensive preset.** `skeinIsMeasuredMidPainting` gates it with a
+COLD control — a fresh state still holds 1 breakpoint after the 24 timed frames — so deleting the
+warm-up goes red instead of both halves passing vacuously.
+
+All 21 baselines re-recorded in one isolated run. **Several moved DOWN** (Nebula/Plasma/Waveform
+9.5 → 6.3): a band sweeping 0.2–0.95 is not the same work as one pinned at 0.5, and the old figure
+was no more correct for being higher. Nothing tripped the ratio gate or the absolute ceiling.
+
+---
+
 ### [dev-2026-08-27-185933] LFSTEM.2 — live separation retired on tracks that have a series
 
 **Complete — and the payoff is not the one this was justified by; see the measurement below.** A track

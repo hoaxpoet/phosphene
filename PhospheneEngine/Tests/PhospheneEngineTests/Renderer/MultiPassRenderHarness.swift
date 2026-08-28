@@ -625,6 +625,7 @@ struct MultiPassRenderHarness {
             let g = state.groundLinear
             pipeline.setMVWarpCanvasGround(SIMD4<Double>(Double(g.x), Double(g.y), Double(g.z), 1))
             pipeline.clearMVWarpCanvasToGround()
+            Self.warmSkein(state)
             skein = state
         } else {
             skein = nil
@@ -837,6 +838,33 @@ struct MultiPassRenderHarness {
             generator.draw(encoder: enc, features: live[frame], stems: stems[frame])
             enc.endEncoding()
             try commit(cmd, target, into: &pixels)
+        }
+    }
+
+    /// ★★ THE SKEIN ANALOGUE OF `openTheGates`, and the reason PERF.17 exists.
+    ///
+    /// `openTheGates` fixes a gate that lives in the drive VECTOR. Skein's lives in Swift-side
+    /// preset state: `skein_geometry_fragment` skips Layer A entirely at `breakCount == 0`, and the
+    /// breakpoint ring only fills through the pour-commit state machine — a first pour after
+    /// `firstPourSettleTau`, then one commit per sustained dominant-stem switch, each separated by
+    /// `minPourTau` (2.65 τ) of painter clock. Twenty-four timed frames buy 0.4 s. The ring
+    /// therefore held **one** breakpoint while BUG-110 measured the same overlay at 17.06 ms with
+    /// one and 55.65 ms with sixteen, at 4K.
+    ///
+    /// So the state is warmed to a painting in progress before the timed frames start. `tick` is
+    /// CPU-only — no encoder, no draw — so several thousand of them cost milliseconds, and the
+    /// loop stops on the ring rather than on a frame count, which keeps it correct if `minPourTau`
+    /// or the painter speed is ever retuned. The cap is a backstop, not the intent: if it is ever
+    /// reached the ring is short and `skeinIsMeasuredMidPainting` goes red rather than the budget
+    /// quietly reverting to the cheap picture.
+    ///
+    /// **Fix the drive, never the floor** — the same rule `fractalTreeIsMeasuredAlive` states.
+    static func warmSkein(_ state: SkeinState, cap: Int = 8000) {
+        for i in 0..<cap {
+            state.tick(deltaTime: 1.0 / 60.0,
+                       features: PresetFrameBudgetTests.driveFeature(frame: i),
+                       stems: PresetFrameBudgetTests.driveStems(frame: i))
+            if state.colorBreakpoints.count >= SkeinState.maxColorBreaks { return }
         }
     }
 
