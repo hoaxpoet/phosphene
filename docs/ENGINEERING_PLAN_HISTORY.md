@@ -5,6 +5,161 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Increment CHR.3 — Stave: authoring to code-complete ✅ (2026-08-14)
+
+**Preset count 28 → 29. `certified: false` — certification is CHR.4 and needs Matt's live M7.**
+Stave registers as the 29th production preset: `Presets/Shaders/Stave.metal` (the
+audio-independent ruled field) + `Stave.json`, `Renderer/Geometry/StaveTrace.swift` +
+`+Drivers.swift` (the `ParticleGeometry` conformer, D-097 sibling) +
+`Renderer/Shaders/StaveTrace.metal` (tint wash, beat verticals, thread, beads), the
+`ParticleGeometryRegistry` entry and the app-layer factory/resolve pair.
+
+**Task 1, the D4 gate, is the session's load-bearing finding — and it changed the drive.**
+The field tint was STAVE_DESIGN §7's one grounding-level-3 mechanism and D-216 had moved the
+entire stem story onto it. Rendered alone across six captures the answer is **yes, readable,
+decisively** — the extreme-section pair is deep slate-teal against warm amber on every
+multi-section capture, including two at the actual post-BUG086.1 3.0 s latency. D-216 option A
+stays retired. But the gate forced three corrections, all written back into `STAVE_DESIGN.md`
+§6/§7 and detailed in `docs/diagnostics/CHR3_FIELD_TINT_GATE_2026-08-14.md`:
+**(1)** the drive is the `drums+bass` **raw-energy SHARE**, not `energyRel` — `energyRel` is
+centred on a per-stem 10 s EMA so a sustained section self-cancels on exactly the timescale a
+field tint lives at; between-section variance share (eta²) measures 0.26–0.76 for the share
+against 0.11–0.20 for the deviation difference, the share winning on all seven captures, and a
+share is scale-invariant so FA #31 does not apply. **(2)** the field's own time constant is
+**8 s**, not D-216's 3.0 s — that figure is the stem *pipeline's* latency and the two were
+being conflated; τ=3 churns inside a section (within-section sd 0.168), τ=8 halves it (0.092)
+for 7 % of the between-section gap. **(3)** the palette follows a **hue path**, because a
+linear RGB lerp between complementary hues greys out at the midpoint, which is where the tint
+spends most of its time.
+
+**Three defects found by rendering, not by reasoning.** The field rendered **upside down** —
+`fullscreen_vertex` emits texture-space uv (`uv.y = 1 − uv.y`), so the horizon pointed at the
+floor; measured band luma ran 0.112 (top) → 0.286 (bottom) against the reference's
+0.175 → 0.103, and nothing else showed it because a haze gradient is plausible either way. The
+field was a **pale tan wash** — mean luma 0.30 with **0.0 %** dark pixels and 33.8 % pale,
+failing the SHADER_CRAFT ≤30 % pale-tone floor, against the reference's 0.156–0.179 mean with
+15–28 % dark; now 0.18–0.22 mean, 0.0–0.2 % pale. And both traces now carry the **same** cyan:
+different hues would have re-introduced the frequency-band colour label D-216 retired, and
+CHR.2's flat-white control already read as two voices with no colour difference at all.
+
+**Both CHR.2 qualifications are closed.** Per-trace fixed gain + `limit·tanh(x/limit)` soft
+saturation tuned against p99 (decided over a running normaliser, §6) means Dance Yrself Clean
+no longer clips off frame; the meter-free density fade (§5 decision (c)) means Bleed at 172 bpm
+/ 22.9 rules per window no longer reads as graph paper while its rules stay visible. Bleed's
+two traces still collapse (r +0.695) — that is what the material does, measured before the
+render, and it was not chased.
+
+**Gates.** 10 `audio_routes` rows (4 visual behaviours × contributing primitives) all firing on
+all three canonical fixtures; `RouteCoverageTests` green. D-157 flash gate wired at **authoring**
+time per the Meniscus lesson: **MEASURED, 0.00 flashes/s, SAFE**. Getting there needed two real
+fixes the `responded` guard caught by refusing to call a static render safe — the tiled drive
+train repeats `features.time` and Stave is the one preset that plots on absolute time; and
+whole-frame mean cannot see traces covering ~2 % of the frame, so the gate now drives the one
+route that CAN change the whole frame (the tint, slammed between extremes every ~0.3 s, ~10×
+faster than real music) and measures whether the 8 s envelope holds it safe. It does.
+`compare_render.sh` per-trait table and `motion_gate.sh` verdict (0 spikes / 0 frozen on three
+captures, read as a sequence) are in the closeout.
+
+**Also fixed, not Stave-specific:** `compare_render.sh` now finds SYMLINKED reference images.
+Reference imagery is gitignored repo-wide, so in a worktree it is symlinks into the primary
+checkout (`link_fixtures.sh` / WTFIX.1) and a bare `find -type f` found none — dying with "no
+reference images", which reads as an un-curated reference set rather than a worktree artefact.
+That would mis-fire for every preset session run in a worktree.
+
+**Next:** CHR.4 — Matt's live M7, then certification. Nothing in this increment claims the
+preset is certified.
+
+### Increment CHR.1.3 — Stave: the design-doc half CHR.1 withheld ✅ (2026-08-14)
+
+**Docs + reference curation only. No shader, no sidecar, preset count stays 28.** Unblocks
+CHR.3, which could not start: its own objective names the design doc as *authoritative* and
+the design doc did not exist. The CHR.1 amendment had already recorded the obligation —
+*"CHR.1 must be re-run for its design-doc half once the driver is settled"* — and the driver
+is now settled (2026-08-13) **and** gated (CHR.2) **and** revised (D-216).
+
+**Delivered.** [`docs/presets/STAVE_DESIGN.md`](presets/STAVE_DESIGN.md) — musical role
+locked to the post-D-216 sentence, three-part bar cleared with the CHR.2 spike as evidence
+rather than assertion, seven locked decisions, rendering architecture carrying the spike's
+four fixed defects forward, routing table with one primitive per layer, phased CHR.3 plan,
+D-116 bullet-3 divergence argument, and five open questions for Matt.
+[`docs/VISUAL_REFERENCES/stave/`](VISUAL_REFERENCES/stave/README.md) — five annotated
+references curated from a fresh render of the source.
+
+**The source, rendered for the first time in this program.** `Martin - charisma` confirmed as
+1 of the 100 butterchurn built-ins; rendered through `tools/milkdrop-render/` against 12 s of
+real music (Dance Yrself Clean, from the corpus tap). sha256 of the artifact read is recorded
+in the reference README. **The JSON itself is NOT committed** — D-116 bullet 4 names `.milk`
+specifically, so a butterchurn built-in is ambiguous, and `docs/VISUAL_REFERENCES/nacre/`
+*does* commit its source. Left uncommitted on the conservative reading; flagged for Matt.
+
+**What the render changed.** Three things the plan had assumed were wrong or unstated:
+- **D-216 is *more* source-faithful, not less.** The source's traces are all one cyan; its
+  colour lives in the field tint and the sparkles. Moving stems off the traces onto the field
+  lands closer to `Martin - charisma` than the rejected per-trace-colour scheme did.
+- **The source rules the field in BOTH axes.** Horizontal rules are the *stave*; verticals
+  become the beat. That is the preset's name made literal, and it was not in the plan.
+- **⚠ A curation reading corrected mid-session:** the sparkles are **scattered**, not sitting
+  on grid intersections. The macro frame suggested nodal placement; the crop refuted it. The
+  annotation records the correction so CHR.3 does not build grid-node sparkles.
+
+**Grounding risk surfaced, not resolved (checklist §Design grounding).** The stem-driven
+field tint is the one mechanism at **level 3 — no empirical grounding**. D-216 reasons a
+3.0 s lag is invisible on a slow diffuse surface; that is an argument, nothing has rendered
+it, and it is now carrying the entire post-D-216 stem story. The design doc recommends CHR.3
+**opens** with a field-tint spike so the answer arrives before a field pass is built around it.
+
+**Rejected as out of scope:** authoring anything. CHR.3 remains its own session.
+
+### Increment CHR.2 — Stave look spike: geometry passes, stem colour fails ✅ (2026-08-14)
+
+**Throwaway motion-gated spike. Nothing registered — preset count stays 28**, no sidecar,
+no golden, no `certified` flag. Output:
+[`docs/diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md`](diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md)
+plus four evidence frames in `docs/diagnostics/chr2_frames/`. Code lives in the test target
+only (`StaveLookSpike.swift`) and is **proposed as CHR.3's skeleton**.
+
+**Done-when: a written, rendered answer to both gate halves, and Matt has said go or
+re-scope.** Both halves answered; **Matt's gate is the open item and CHR.3 does not start
+until it lands.**
+
+- **Half 1 — geometry: PASS on 3 of 4 captures.** Two band-driven traces read as two
+  voices on Bohemian Rhapsody, Clair De Lune and Dance Yrself Clean. Median trace-to-beat
+  offset **0 ms** on every capture, so the driver decision delivered the in-time marks it
+  was chosen for. Gridline rate matches `grid_bpm` exactly (71/71, 97/98, 172/174.6).
+- **Half 1 misses.** **Bleed collapses** — `r +0.695`, the two traces read as one flat
+  band; predicted by measurement, not fixable by tuning. One fixed gain does **not**
+  survive the excursion span (Dance Yrself Clean clips off frame). Dense grids (>150 bpm)
+  read as graph paper.
+- **Half 2 — colour: FAIL.** Stem-driven colour separates the two traces but cannot carry
+  instrument identity: at the moment a mark is drawn, `r(position, colour)` is
+  **−0.15…+0.25**, because the colour is describing a moment **3.0 s** earlier (measured on
+  a post-BUG086.1 capture; the spike's renders are on the 5.4 s pre-fix capture). The hue
+  is a static label assigned by frequency band, and it is asserted even on solo piano,
+  where neither `drums+bass` nor `vocals+other` exists.
+- **Retired claim:** CHR.1 §7a's "converge and diverge" reading. Its divergence statistic
+  is dominated by the rhythm/melodic amplitude mismatch (std ratio 4.4–17.5×) and collapses
+  onto `√(2(1−r))` once both traces are drawn at visible scale. What survives is
+  near-independence, which is the property the concept actually wants.
+- **Corrected:** CHR.1 §4's common-mode table has shifted track labels; a banner is now on
+  that file and corrected figures for all 15 tracks are in the CHR.2 doc §0. **"Jazz is the
+  worst (Take Five, 93.0 %)" does not survive** — Take Five is 82.9 %, among the easiest.
+- **Instrument correction, not spike-specific:** `accumulatedAudioTime` is energy-weighted
+  by definition, so it advances ~12× slower than wall-clock here and at a music-dependent
+  rate. It is an animation phase, not a clock — anything plotting a **time series** must
+  use `time`. Measuring the beat offsets on it first gave a false pass by that factor.
+- **Motion gate:** 0 spike frames and 0 frozen frames on all four sequences (stdev
+  0.36–0.67 against means 3.3–6.4). The FTR beat-stepped caveat does not apply — Stave
+  scrolls continuously rather than stepping per beat.
+
+**✅ RESOLVED same day — Matt chose option D, filed as D-216.** The stem channel comes off
+the traces and onto the **field** (tint / backdrop / grid luminance), where a 3.0 s lag is
+invisible; traces carry band-derived, in-time information only. **Accepted consequence: no
+per-mark instrument identity** — the concept sentence becomes *"low against high, ruled by
+the beat, in a room the stems tint."* Rejected: A (discards a working capability), B (changes
+the medium, not the lag), C (weighed and rejected 2026-08-13; CHR.2 strengthens the case
+against). **CHR.3 is unblocked**; its brief in `STAVE_PLAN.md` is amended to build to this.
+
+
 ### Increment BUG087.1 — Local-file playback analyses at 10 Hz, streaming at 51 Hz ✅ (2026-08-11)
 
 **Diagnosis increment. No fix code.** Filed as **BUG-087**. Found while chasing a
