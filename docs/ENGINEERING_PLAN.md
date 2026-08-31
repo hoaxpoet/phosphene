@@ -172,7 +172,7 @@ beats past ~26 s. `offline-grid` then clips the 90 s truth to the grid's ~26 s s
 reported F/CMLt describe 26 seconds of a 380-second track.
 
 **⚠ It also scopes BUG102.1's headline.** bleed's F 0.99 / CMLt 1.00 is real **over its first
-~30 s**, not the full track. "Uzume's grid was right, suite 4 was never a tracking problem"
+~30 s**, not the full track. "Phosphene's grid was right, suite 4 was never a tracking problem"
 holds for the opening and should be quoted with that scope.
 
 **The product consequence is on local files.** LFSTEM.1 has just moved local-file *stems* to a
@@ -5476,7 +5476,7 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 
 **2026-05-05 audit.** Full architecture audit of the Beat This! BeatGrid lifecycle, live drift tracking, reactive-mode surface, Spectral Cartograph diagnostic coverage, FeatureVector product contract for complex meters, and test fixture gaps. Audit document: `docs/diagnostics/DSP.3-beat-sync-test-environment-audit.md`.
 
-**Root cause of observed "Uzume shifts into Reactive mode" when switching to Spectral Cartograph:** The `SpectralCartographText` overlay labels `lockState=0` as "REACTIVE." When `LiveBeatDriftTracker` is in UNLOCKED state — either because `resetStemPipeline(for:)` has not yet fired (music not started) or because fewer than 4 tight-match onsets have been accumulated — the orb reads "REACTIVE" even though `livePlan` is non-nil and the engine is in planned mode. This is a display ambiguity, not a session mode regression. However, a second structural problem makes Spectral Cartograph unusable as a held diagnostic surface: `DefaultLiveAdapter` mood-override fires every ~60 seconds when the current preset scores 0.0 (diagnostic-excluded), switching the engine away from Spectral Cartograph.
+**Root cause of observed "Phosphene shifts into Reactive mode" when switching to Spectral Cartograph:** The `SpectralCartographText` overlay labels `lockState=0` as "REACTIVE." When `LiveBeatDriftTracker` is in UNLOCKED state — either because `resetStemPipeline(for:)` has not yet fired (music not started) or because fewer than 4 tight-match onsets have been accumulated — the orb reads "REACTIVE" even though `livePlan` is non-nil and the engine is in planned mode. This is a display ambiguity, not a session mode regression. However, a second structural problem makes Spectral Cartograph unusable as a held diagnostic surface: `DefaultLiveAdapter` mood-override fires every ~60 seconds when the current preset scores 0.0 (diagnostic-excluded), switching the engine away from Spectral Cartograph.
 
 **Sub-increments:**
 

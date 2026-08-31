@@ -1116,7 +1116,7 @@ The reframe is operative on three axes:
 
 **Why.** Two alternatives were on the table:
 
-- **"Uzume-native with Milkdrop accents."** Would have required a hard ceiling on inspired-by share (~25%) and aggressive Phase G-uplift / Phase AV / Phase CC throughput to keep parity. Matches the original §3 strategy's implicit framing.
+- **"Phosphene-native with Milkdrop accents."** Would have required a hard ceiling on inspired-by share (~25%) and aggressive Phase G-uplift / Phase AV / Phase CC throughput to keep parity. Matches the original §3 strategy's implicit framing.
 - **"Milkdrop-influenced modern platform."** Committed brand identity. Matches the actual work distribution — Phase MD is the long-tail catalog-growth engine; Uzume-native phases are the differentiating but slower work stream.
 
 Matt picked the second 2026-05-12 in response to the adversarial review's call for an explicit brand commitment. The pick acknowledges the empirical work distribution and avoids the "catalog accidentally drifts Milkdrop-forward without a brand framing to support it" failure mode the adversarial review flagged.
@@ -1467,7 +1467,7 @@ The launch path reads `UZUME_LOCAL_FILE_PLAYBACK` at app start (`.task` modifier
 
 Matt M7 on Spike 2 (session `2026-06-02T13-37-09Z`) confirmed bilateral symmetry (no clipart) but flagged "not really seeing petals." Reading `source.milk` (and confirming in a faithful butterchurn reference — `tools/dragon_bloom_reference/`) established that **Spike 1's mechanic is structurally different from the reference's** (flat polar ring vs. 3 tumbling 3-D spectral strands + a 5-fold `sin(ang·5)^5` per-pixel petal warp + a chromatic colour-separation warp shader, smeared through heavy feedback). See DRAGON_BLOOM_PLAN §0.
 
-Matt then reframed the work: **"This is an UPLIFT specifically for Uzume. Recommend an approach to translating this preset to Uzume's platform and taking better advantage of the technologies that are part of Uzume but were not a part of Milkdrop/Butterchurn."** — i.e., translate the preset's *identity*, do not slavishly reproduce Milkdrop's line-drawing + HLSL-warp mechanics.
+Matt then reframed the work: **"This is an UPLIFT specifically for Phosphene. Recommend an approach to translating this preset to Phosphene's platform and taking better advantage of the technologies that are part of Phosphene but were not a part of Milkdrop/Butterchurn."** — i.e., translate the preset's *identity*, do not slavishly reproduce Milkdrop's line-drawing + HLSL-warp mechanics.
 
 ### Decision
 

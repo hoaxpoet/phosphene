@@ -1,8 +1,8 @@
-# Website Plan — Uzume (formerly Uzume)
+# Website Plan — Uzume (formerly Phosphene)
 
 *2026-08-09 · Public-beta website: promotion + education for users and contributors*
 
-> The name is decided: **Uzume** (see NAMING_REPORT.md §Final Decision). References to "Uzume" below mean the current app repo, pre-rename.
+> The name is decided: **Uzume** (see NAMING_REPORT.md §Final Decision). References to "Phosphene" below mean the current app repo, pre-rename.
 
 ## 1. Decisions locked
 
@@ -14,7 +14,7 @@ One platform note from current research: Cloudflare now steers new projects towa
 
 The site serves two audiences with different jobs, and the IA keeps them separate after a shared front door.
 
-**Listeners** need to understand what Uzume is in ten seconds (it performs visuals to whatever you're playing; it does not control playback), see it moving (footage is the argument — no static screenshot can make the case), know whether their machine qualifies (Apple Silicon, macOS 14+), and get it installed without fear (the Screen Recording permission for system-audio capture is the single scariest moment in onboarding; the site must explain it before the OS dialog does — audio-only capture, nothing else, and local-file playback needs no permission at all).
+**Listeners** need to understand what Phosphene is in ten seconds (it performs visuals to whatever you're playing; it does not control playback), see it moving (footage is the argument — no static screenshot can make the case), know whether their machine qualifies (Apple Silicon, macOS 14+), and get it installed without fear (the Screen Recording permission for system-audio capture is the single scariest moment in onboarding; the site must explain it before the OS dialog does — audio-only capture, nothing else, and local-file playback needs no permission at all).
 
 **Contributors** need to learn that presets are the contribution surface (a two-file Metal + JSON drop-in), see that the path is real (hot-reload loop, `swift test` gates, no accounts or hardware needed), and be routed into the repo's existing contributor docs, which are already strong.
 
@@ -34,7 +34,7 @@ Public-beta framing throughout: free, in beta, feedback wanted — with GitHub I
 
 **Gallery (`/gallery`).** A grid of certified presets, each a looping muted clip (lazy-loaded, playing only in viewport) with name, author, and `inspired_by` attribution where present. This page is the strongest marketing asset the project can have and doubles as the contributor trophy case — a merged preset means your work on the site with your name on it, which is worth more than any "please contribute" copy. Entries are a content collection with a schema (name, author, certified date, attribution block, clip/poster paths) — deliberately congruent with the preset sidecar JSON, so a script can generate gallery entries from the repo's own sidecars and CREDITS.md rather than hand-maintaining them.
 
-**Docs (`/docs`).** Starlight. Curated for the web, not a mirror of the repo — the repo docs are written maintainers-first (increment IDs, D-### decisions, M7) and remain canonical; the site carries the outsider-facing subset, rewritten where needed: Getting Started (requirements, install, first run, the permission explainer, local files vs. streaming), Using Uzume (Spotify connector setup, troubleshooting the silent-tap gotcha), and Contributing Presets (what a preset is, the hot-reload loop, your-first-preset walkthrough, the gates and certification lifecycle, Milkdrop-porting posture). Each page carries frontmatter naming its upstream repo doc; CI link-checks upstream references so drift gets caught. Start with manual curation — the web versions need rewriting anyway — and revisit script-driven sync only if drift becomes a real cost.
+**Docs (`/docs`).** Starlight. Curated for the web, not a mirror of the repo — the repo docs are written maintainers-first (increment IDs, D-### decisions, M7) and remain canonical; the site carries the outsider-facing subset, rewritten where needed: Getting Started (requirements, install, first run, the permission explainer, local files vs. streaming), Using Phosphene (Spotify connector setup, troubleshooting the silent-tap gotcha), and Contributing Presets (what a preset is, the hot-reload loop, your-first-preset walkthrough, the gates and certification lifecycle, Milkdrop-porting posture). Each page carries frontmatter naming its upstream repo doc; CI link-checks upstream references so drift gets caught. Start with manual curation — the web versions need rewriting anyway — and revisit script-driven sync only if drift becomes a real cost.
 
 **Download (`/download`).** Points at GitHub Releases as the artifact host (free bandwidth, versioned, no extra infra); install steps; Gatekeeper/notarization note; beta expectations; requirements repeated. **Hard dependency flagged:** the repo today is clone-and-build. A public beta needs a signed, notarized `.dmg` or `.zip` on GitHub Releases — Apple Developer Program ($99/yr), Developer ID signing, `notarytool` in the release pipeline. That work lives in the app repo, not the site repo, but the site's central CTA is blocked without it. It belongs at the top of the pre-launch checklist.
 
@@ -104,7 +104,7 @@ Scripts/           encode_captures.sh, sync helpers
 
 **Phase 4 — Launch polish (1–2 sessions).** OG/social images (a frame from the hero reel per page), favicons/app-icon derivation, 404 page, sitemap + basic SEO pass, `prefers-reduced-motion` audit, Lighthouse pass on throttled mobile, and the launch checklist below.
 
-**Launch gate (site-external dependencies):** signed + notarized beta build on GitHub Releases; at least ~6–8 certified presets captured for a gallery that looks alive; the Uzume → Uzume rename propagated through the app repo (RN.1 session prompt exists in prompts/; mechanical checklist also in NAMING_REPORT.md).
+**Launch gate (site-external dependencies):** signed + notarized beta build on GitHub Releases; at least ~6–8 certified presets captured for a gallery that looks alive; the Phosphene → Uzume rename propagated through the app repo (RN.1 session prompt exists in prompts/; mechanical checklist also in NAMING_REPORT.md).
 
 ## 9. Costs
 
