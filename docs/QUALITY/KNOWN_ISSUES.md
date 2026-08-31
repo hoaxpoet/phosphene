@@ -1380,6 +1380,46 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-111 — RESOLVED (BUG111.1): the first-run permission card could not lead to a grant (2026-08-31)
+
+**Severity:** P1 · **Domain:** `app.ui` / permission · **Failure class:** `api-contract`
+
+**Expected:** on a machine with no Screen Recording grant, the permission card's primary action leads to a state where the user can grant capture.
+
+**Actual:** the card's only action deep-links to Privacy & Security → Screen & System Audio Recording, which does not list the app at all. There is nothing to toggle, and no other UI is reachable — the permission gate in `ContentView` sits above the session-state switch, so the app cannot be entered.
+
+**Reproduce:** `tccutil reset ScreenCapture io.uzume.mac`, relaunch. (Equivalently: a fresh install, or the RN.1 bundle-ID change, which orphaned the `com.phosphene.app` grant.)
+
+**Artifacts:** source verification, not a session capture — `grep -rn CGRequestScreenCaptureAccess --include='*.swift'` returns exactly one call site, `PhospheneApp/VisualizerEngine+PublicAPI.swift:56`, on `startAudio()`. Matt confirmed on the live app that no path reaches it from the gated state.
+
+**Root cause:** macOS registers an app in the Screen & System Audio Recording list only when the app calls `CGRequestScreenCaptureAccess()`. U.2 (2026-04-22, `63908e94`) chose preflight + URL scheme and explicitly never prompted — "the request API's system dialog doesn't compose with 'Open System Settings and return'" (`ENGINEERING_PLAN.md` §U.2 Key decisions). **That rationale silently assumed the app was already listed.** It holds for the revoke-and-re-grant case it was written for; it does not hold on first run, where the deep link has no target. (The rationale dates from U.2, not U.11 — verified against the commit that introduced the file.)
+
+**Fix (BUG111.1):** `PermissionOnboardingView`'s primary CTA now calls `CGRequestScreenCaptureAccess()` ("Allow Access"), which registers the app with TCC and shows the OS dialog. The old deep link is kept as a secondary link ("Already allowed it? Open System Settings") for the already-denied case, where macOS suppresses the dialog but the app *is* listed. No state, no branch — both routes are always available, so the card is actionable whatever the TCC state. `SystemScreenCapturePermissionProvider` still never prompts: it stays the passive probe `PermissionMonitor` polls, and its header comment now says why rather than repeating the retired rationale.
+
+**Verification criteria:** *automated* — app build green, `PermissionOnboardingViewTests` identifier set covers `phosphene.onboarding.grantAccess`, `Scripts/check_user_strings.sh` PASS, `swiftlint --strict` 0. *Manual (Matt, required — UX-flow change per the defect skill)* — `tccutil reset ScreenCapture <bundle id>`, relaunch, press **Allow Access**: the OS dialog appears, the app is thereafter listed in the pane, and after toggling it on the app auto-advances past the card without a relaunch (`PermissionMonitor`'s `didBecomeActive` refresh).
+
+**Status:** fix landed and green on the automated gates; **not resolved until Matt's live first-run walk.** Per the defect skill's multi-increment rule the instrumentation and diagnosis increments were collapsed into the fix — the root cause was established from source and Matt's live observation with nothing left for instrumentation to expose. **Matt approved the collapse in chat, 2026-08-31** ("yes, collapsing them is fine").
+
+---
+
+**Live validation (Matt, 2026-08-31).** Walked on a machine reset to the first-run state with
+`tccutil reset ScreenCapture com.phosphene.app`. All four steps held: the card showed **Allow
+Access** as its primary button; clicking it raised the macOS system dialog — the thing that did
+not previously exist, and the whole deadlock; the app then appeared in Privacy & Security →
+Screen & System Audio Recording without being added by hand; and the card advanced to the normal
+UI with no manual relaunch, `pollForScreenCapturePermission()` picking the grant up on its own.
+
+**Validated on the pre-rename identity, deliberately.** This branch predates RN.1, so it builds
+`com.phosphene.app` / `PhospheneApp.app`. The fix is identity-independent — it is about whether
+the card calls `CGRequestScreenCaptureAccess()` at all — and testing on `io.uzume.mac` would have
+burned the Screen Recording grant set up for RN.1's own verification. Worth an opportunistic
+re-check under the new identity, but nothing in the fix touches identity.
+
+**One false negative en route, tooling not code.** The first walk launched via a
+`DerivedData/PhospheneApp-*` glob and hit a stale build (25 such directories exist on this
+machine), reporting "only Open System Settings" — indistinguishable from the fix not working.
+Resolve the exact `BUILT_PRODUCTS_DIR` before quoting a launch path in any manual walk.
+
 ### BUG-102 — RESOLVED (BUG102.1 / BUG102.2): BeatBench's money and bleed references were at an untrusted metrical level (2026-08-19 → 2026-08-27)
 
 Both carried `status: metrical_review`, both reference backends said the taps were an octave off,

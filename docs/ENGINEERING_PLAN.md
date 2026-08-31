@@ -67,6 +67,20 @@ The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami who
 
 ## Recently Completed
 
+### Increment BUG111.1 — first-run permission card requests access ✅ (landed 2026-08-31; pending Matt's live first-run walk)
+
+**Surfaced by RN.1.** The bundle-ID change (`com.phosphene.app` → `io.uzume.mac`) orphaned the existing TCC grant and put the app into the never-granted state for the first time since U.2 — which exposed a first-run deadlock that had been latent since 2026-04-22. macOS lists an app in Privacy & Security → Screen & System Audio Recording only after that app calls `CGRequestScreenCaptureAccess()`; the sole call site was `startAudio()`, and `ContentView`'s permission gate sits above the session-state switch, so the card's "Open System Settings" deep link pointed at a pane the app was absent from and nothing could reach the code that would register it. Same failure on a fresh install and after `tccutil reset ScreenCapture`.
+
+**Fix:** primary CTA "Allow Access" → `CGRequestScreenCaptureAccess()`; the deep link survives as a secondary link for the already-denied case (dialog suppressed, app listed). Stateless by design — both controls always present, no "have we asked" flag. `SystemScreenCapturePermissionProvider` unchanged, still never prompts.
+
+**Evidence:** app build green; app suite 421/421 in 73 suites; `swiftlint --strict` 0 in 516 files; `Scripts/check_user_strings.sh` PASS. **Manual gate outstanding (Matt):** `tccutil reset ScreenCapture <bundle id>` → relaunch → Allow Access → dialog appears → app listed → toggle on → card auto-advances without relaunch. BUG-111 stays open until that walk. The instrumentation/diagnosis increments were collapsed into the fix (root cause established from source + his live observation) — **Matt approved the collapse in chat, 2026-08-31**.
+
+**Docs:** `KNOWN_ISSUES.md` BUG-111 (open + detail), `RELEASE_NOTES_DEV.md`, `UX_SPEC.md` §3.2, `DECISIONS.md` D-226, §U.2 Key decisions struck through. No registry change (permission-gate UX, not a renderer/harness/preset capability).
+
+**Known-red gate while this branch is unmerged.** `DocIntegrityTests.decisionsIntegrity` fails twice — a continuity hole at D-225 and an unresolved citation of it from this very paragraph. **That number is RN.1's** (`claude/rn1-uzume-identity`, verified in that tree at `docs/DECISIONS.md:4252`): both sessions filed a D-225 off `dbf48694`, and this branch moved to D-226 on the tiebreak that RN.1 is closeout-complete while BUG-111 is still open (DOC.8's parallel-numbering tax). **Both failures clear when RN.1 merges** — nothing is missing here. The transient red is deliberate: whichever branch cedes the number carries the hole until the other lands, and ceding it *now* is what keeps the eventual merge clean. Leaving both branches on D-225 would instead surface as a duplicate-header failure on `main`, forcing the renumber inside a merge conflict.
+
+---
+
 ### Increment FT.4.1 — the estimator alone wins; the tiler was the whole regression ✅ (2026-08-27)
 
 Matt's call after FT.4: isolate the two halves. The flag splits into
@@ -1487,8 +1501,15 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 - `IdleView` updated with `.onAppear` + `.sheet(isPresented:)` for the notice.
 
 **Key decisions:**
-- Preflight + URL scheme, NOT `CGRequestScreenCaptureAccess()` — the request
-  API's system dialog doesn't compose with "Open System Settings and return."
+- ~~Preflight + URL scheme, NOT `CGRequestScreenCaptureAccess()` — the request
+  API's system dialog doesn't compose with "Open System Settings and return."~~
+  **SUPERSEDED 2026-08-31 by D-226 / BUG111.1.** The rationale assumed macOS
+  already listed the app in the Screen & System Audio Recording pane. It only
+  does so *after* the app has called `CGRequestScreenCaptureAccess()`, so on a
+  first run the deep link opened an empty pane and the card — which gates all
+  other UI — could not lead to a grant. The card now requests; the deep link is
+  demoted to a secondary link. `SystemScreenCapturePermissionProvider` still
+  never prompts (it is the passive probe `PermissionMonitor` polls).
 - Permission gate lives above the state switch, not inside `SessionStateViewModel` —
   permission routing outranks session state per UX_SPEC §3.1.
 - Photosensitivity sheet on `IdleView`, not a separate top-level state — timing

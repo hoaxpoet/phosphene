@@ -102,7 +102,8 @@
 
 "onboarding.permission.headline"        = "Uzume needs permission to hear music playing on your Mac.";
 "onboarding.permission.body"            = "To follow along with your music, Uzume listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
-"onboarding.permission.open_settings"   = "Open System Settings";
+"onboarding.permission.grant"           = "Allow Access";
+"onboarding.permission.open_settings"   = "Already allowed it? Open System Settings";
 "onboarding.permission.why_label"       = "Why does this need screen recording permission?";
 "onboarding.permission.why_body"        = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Uzume uses only the audio portion.";
 

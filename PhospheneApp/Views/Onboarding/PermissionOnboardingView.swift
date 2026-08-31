@@ -4,10 +4,19 @@
 // sits above the state switch). No "Retry" button — return-detection is automatic
 // via PermissionMonitor's didBecomeActiveNotification observer.
 //
-// Opens x-apple.systempreferences:…?Privacy_ScreenCapture via NSWorkspace.
-// Never calls CGRequestScreenCaptureAccess.
+// Primary CTA calls CGRequestScreenCaptureAccess (BUG-111). U.2 deliberately never
+// prompted — "the system dialog doesn't compose with Open System Settings and return."
+// That rationale assumed macOS already listed the app in Privacy & Security → Screen &
+// System Audio Recording, which it only does AFTER the app has requested access once.
+// On a fresh install (or after tccutil reset / the RN.1 bundle-ID change) the pane is
+// empty, the deep link is a dead end, and this card is the only reachable UI — a closed
+// loop. Requesting registers the app and lets the user grant from the OS dialog.
+//
+// The secondary "Open System Settings" link keeps the deep link for the already-denied
+// case, where macOS suppresses the dialog but the app IS listed.
 
 import AppKit
+import CoreGraphics
 import SwiftUI
 
 // MARK: - PermissionOnboardingView
@@ -33,11 +42,19 @@ struct PermissionOnboardingView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button(String(localized: "onboarding.permission.open_settings")) {
-                openSettings()
+            Button(String(localized: "onboarding.permission.grant")) {
+                // Registers the app with TCC and shows the OS dialog. Return value is
+                // ignored: PermissionMonitor's didBecomeActive refresh does the routing.
+                _ = CGRequestScreenCaptureAccess()
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("phosphene.onboarding.grantAccess")
+
+            Button(String(localized: "onboarding.permission.open_settings")) {
+                openSettings()
+            }
+            .buttonStyle(.link)
             .accessibilityIdentifier("phosphene.onboarding.openSettings")
 
             DisclosureGroup(

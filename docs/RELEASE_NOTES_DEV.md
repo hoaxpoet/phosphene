@@ -10,6 +10,48 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-31-142005] BUG111.1 — the first-run permission card was a dead end
+
+**The Screen Recording onboarding card could not lead to a grant on any machine that had never
+granted capture.** macOS adds an app to Privacy & Security → Screen & System Audio Recording only
+after the app calls `CGRequestScreenCaptureAccess()`. The single call site was `startAudio()`
+(`VisualizerEngine+PublicAPI.swift:56`), and `ContentView`'s permission gate sits above the
+session-state switch — so the card's "Open System Settings" deep link opened a pane the app was
+absent from, and the code path that would have registered it was behind the card. Closed loop.
+Fresh install, `tccutil reset ScreenCapture`, or the RN.1 bundle-ID change (`com.phosphene.app` →
+`io.uzume.mac`, which orphaned the old grant) all land in it. Matt hit the third on 2026-08-31.
+
+**U.2's "never prompt" rule was right for the case it was written for and wrong for this one.**
+`63908e94` (2026-04-22) chose preflight + URL scheme because "the request API's system dialog
+doesn't compose with 'Open System Settings and return'" — which assumes the app is already listed.
+It is not, on first run. (The rationale dates from U.2, not U.11; verified against the introducing
+commit rather than the comment's own claim.)
+
+**Fix:** the card's primary CTA is now **"Allow Access"** and calls `CGRequestScreenCaptureAccess()`,
+which registers the app and shows the OS dialog. The deep link survives as a secondary link
+("Already allowed it? Open System Settings") for the already-denied case, where macOS suppresses the
+dialog but the app *is* listed. Deliberately stateless — no "have we asked yet" flag, no branch —
+so the card is actionable in every TCC state and there is nothing to go stale.
+`SystemScreenCapturePermissionProvider` is unchanged and still never prompts; it is the passive
+probe `PermissionMonitor` polls, and its header now says that instead of restating the retired
+rationale.
+
+**Files:** `PhospheneApp/Views/Onboarding/PermissionOnboardingView.swift`,
+`PhospheneApp/Permissions/ScreenCapturePermissionProvider.swift` (comment),
+`PhospheneApp/en.lproj/Localizable.strings` (+`onboarding.permission.grant`, reworded
+`open_settings`), `PhospheneAppTests/PermissionOnboardingViewTests.swift`.
+
+**Evidence:** app build green; app suite **421/421** in 73 suites; `swiftlint --strict` 0 violations
+in 516 files; `Scripts/check_user_strings.sh` PASS.
+
+**Not resolved yet.** This is a UX-flow change, so the defect skill mandates a manual walk:
+`tccutil reset ScreenCapture <bundle id>` → relaunch → **Allow Access** → dialog appears → app is
+listed → toggling it on auto-advances past the card with no relaunch. Only Matt can run that.
+The instrumentation and diagnosis increments were collapsed into the fix (root cause established
+from source + his live observation; nothing left to instrument) — **Matt approved the collapse in
+chat, 2026-08-31**.
+
+---
 ### [dev-2026-08-31-133921] RN.1 — the app is Uzume everywhere macOS looks
 
 The external rename landed. Bundle ID `com.phosphene.app` → **`io.uzume.mac`**, product
