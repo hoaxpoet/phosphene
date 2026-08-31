@@ -111,7 +111,8 @@ enum IdentityMigrator {
             logger.info("IdentityMigrator: merged \(children.count) item(s) into Application Support/Uzume")
         } catch {
             // A stranded cache is recomputed, not corrupted. Never fail launch.
-            logger.error("IdentityMigrator: Application Support migration skipped — \(error.localizedDescription, privacy: .public)")
+            let reason = error.localizedDescription
+            logger.error("IdentityMigrator: Application Support migration skipped — \(reason, privacy: .public)")
         }
     }
 }
