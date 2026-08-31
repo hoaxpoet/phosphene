@@ -75,7 +75,9 @@ The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami who
 
 **Evidence:** app build green; app suite 421/421 in 73 suites; `swiftlint --strict` 0 in 516 files; `Scripts/check_user_strings.sh` PASS. **Manual gate outstanding (Matt):** `tccutil reset ScreenCapture <bundle id>` → relaunch → Allow Access → dialog appears → app listed → toggle on → card auto-advances without relaunch. BUG-111 stays open until that walk. Also for Matt: the instrumentation/diagnosis increments were collapsed into the fix (root cause established from source + his live observation).
 
-**Docs:** `KNOWN_ISSUES.md` BUG-111 (open + detail), `RELEASE_NOTES_DEV.md`, `UX_SPEC.md` §3.2, `DECISIONS.md` D-225, §U.2 Key decisions struck through. No registry change (permission-gate UX, not a renderer/harness/preset capability).
+**Docs:** `KNOWN_ISSUES.md` BUG-111 (open + detail), `RELEASE_NOTES_DEV.md`, `UX_SPEC.md` §3.2, `DECISIONS.md` D-226, §U.2 Key decisions struck through. No registry change (permission-gate UX, not a renderer/harness/preset capability).
+
+**Known-red gate while this branch is unmerged.** `DocIntegrityTests.decisionsIntegrity` fails twice — a continuity hole at D-225 and an unresolved citation of it from this very paragraph. **That number is RN.1's** (`claude/rn1-uzume-identity`, verified in that tree at `docs/DECISIONS.md:4252`): both sessions filed a D-225 off `dbf48694`, and this branch moved to D-226 on the tiebreak that RN.1 is closeout-complete while BUG-111 is still open (DOC.8's parallel-numbering tax). **Both failures clear when RN.1 merges** — nothing is missing here. The transient red is deliberate: whichever branch cedes the number carries the hole until the other lands, and ceding it *now* is what keeps the eventual merge clean. Leaving both branches on D-225 would instead surface as a duplicate-header failure on `main`, forcing the renumber inside a merge conflict.
 
 ---
 
@@ -1501,7 +1503,7 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 **Key decisions:**
 - ~~Preflight + URL scheme, NOT `CGRequestScreenCaptureAccess()` — the request
   API's system dialog doesn't compose with "Open System Settings and return."~~
-  **SUPERSEDED 2026-08-31 by D-225 / BUG111.1.** The rationale assumed macOS
+  **SUPERSEDED 2026-08-31 by D-226 / BUG111.1.** The rationale assumed macOS
   already listed the app in the Screen & System Audio Recording pane. It only
   does so *after* the app has called `CGRequestScreenCaptureAccess()`, so on a
   first run the deep link opened an empty pane and the card — which gates all
