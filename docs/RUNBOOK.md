@@ -162,6 +162,47 @@ error. This clears the moment RN.2 lands on `main`; until then a worktree that w
 gitignored, and the file you had was named `Phosphene.local.xcconfig`. Same contents (see
 §Spotify connector setup step 4).
 
+### Renaming the checkout directory itself — `Projects/phosphene` → `Projects/uzume`
+
+Not done by RN.2 or RN.3, and **not a repository operation**: nothing tracked in
+either repo depends on the directory name (the only absolute-path references are
+in `docs/diagnostics/` and `prompts/`, which are frozen captures of past runs).
+It is a workstation migration, and it cannot be run from a shell whose working
+directory is inside the tree being moved.
+
+Three things break, and the second one is the expensive surprise:
+
+1. **Every worktree's git linkage.** Each worktree's `.git` file holds an
+   absolute `gitdir:` into `Projects/phosphene/.git/worktrees/<name>`, and each
+   admin `gitdir` file points back out at the worktree. There were 11 worktrees
+   at RN.3, and **two live outside the tree** (`~/.claude-worktrees/…`,
+   `~/.codex/worktrees/…`) so they do not move with it. `git worktree repair`
+   fixes both directions but must be told about the external ones.
+2. **Claude Code's per-project state.** Session transcripts and the project
+   memory store live in `~/.claude/projects/<slugified-cwd>/`. At RN.3 that was
+   25 directories rooted at `-Users-braesidebandit-Documents-Projects-phosphene`,
+   including `…/memory/` with the whole memory index. Rename the checkout without
+   renaming these and a new session looks for a `…-uzume` slug, finds nothing, and
+   **silently loses all project memory and history** — no error, just an empty
+   store. Rename them in the same sitting.
+3. **DerivedData** re-hashes to a new `UzumeApp-*` directory. Harmless; prune the
+   orphan.
+
+Sequence — from a shell **outside** the tree, with no Claude Code or Xcode
+sessions open on it:
+
+```bash
+cd ~/Documents/Projects
+mv phosphene uzume
+git -C uzume worktree repair
+git -C uzume worktree repair ~/.claude-worktrees/meniscus-2a ~/.codex/worktrees/85ac/phosphene
+git -C uzume worktree list          # every path resolves, no "prunable" entries
+```
+
+Then rename the matching `~/.claude/projects/-Users-…-phosphene*` directories to
+the `-uzume` slug, delete the stale `PhospheneApp-*` / `UzumeApp-*` DerivedData,
+and re-run `Scripts/closeout_evidence.sh` once from the renamed tree.
+
 **Nothing changed about identity.** `PRODUCT_NAME` is still `Uzume`, the bundle is still
 `Uzume.app` with bundle ID `io.uzume.mac`, and TCC grants, the keychain and the Spotify
 redirect URI are untouched by RN.2 — the RN.1 steps above are not repeated.
