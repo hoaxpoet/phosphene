@@ -73,7 +73,7 @@ The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami who
 
 **Fix:** primary CTA "Allow Access" → `CGRequestScreenCaptureAccess()`; the deep link survives as a secondary link for the already-denied case (dialog suppressed, app listed). Stateless by design — both controls always present, no "have we asked" flag. `SystemScreenCapturePermissionProvider` unchanged, still never prompts.
 
-**Evidence:** app build green; app suite 421/421 in 73 suites; `swiftlint --strict` 0 in 516 files; `Scripts/check_user_strings.sh` PASS. **Manual gate outstanding (Matt):** `tccutil reset ScreenCapture <bundle id>` → relaunch → Allow Access → dialog appears → app listed → toggle on → card auto-advances without relaunch. BUG-111 stays open until that walk. Also for Matt: the instrumentation/diagnosis increments were collapsed into the fix (root cause established from source + his live observation).
+**Evidence:** app build green; app suite 421/421 in 73 suites; `swiftlint --strict` 0 in 516 files; `Scripts/check_user_strings.sh` PASS. **Manual gate outstanding (Matt):** `tccutil reset ScreenCapture <bundle id>` → relaunch → Allow Access → dialog appears → app listed → toggle on → card auto-advances without relaunch. BUG-111 stays open until that walk. The instrumentation/diagnosis increments were collapsed into the fix (root cause established from source + his live observation) — **Matt approved the collapse in chat, 2026-08-31**.
 
 **Docs:** `KNOWN_ISSUES.md` BUG-111 (open + detail), `RELEASE_NOTES_DEV.md`, `UX_SPEC.md` §3.2, `DECISIONS.md` D-226, §U.2 Key decisions struck through. No registry change (permission-gate UX, not a renderer/harness/preset capability).
 

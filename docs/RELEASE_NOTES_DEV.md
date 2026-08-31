@@ -47,8 +47,9 @@ in 516 files; `Scripts/check_user_strings.sh` PASS.
 **Not resolved yet.** This is a UX-flow change, so the defect skill mandates a manual walk:
 `tccutil reset ScreenCapture <bundle id>` → relaunch → **Allow Access** → dialog appears → app is
 listed → toggling it on auto-advances past the card with no relaunch. Only Matt can run that.
-Also flagged for Matt: the instrumentation and diagnosis increments were collapsed into the fix
-(root cause established from source + his live observation; nothing left to instrument).
+The instrumentation and diagnosis increments were collapsed into the fix (root cause established
+from source + his live observation; nothing left to instrument) — **Matt approved the collapse in
+chat, 2026-08-31**.
 
 ---
 

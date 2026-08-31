@@ -95,7 +95,7 @@ reads" are not reads — see the entry.)*
 
 **Verification criteria:** *automated* — app build green, `PermissionOnboardingViewTests` identifier set covers `phosphene.onboarding.grantAccess`, `Scripts/check_user_strings.sh` PASS, `swiftlint --strict` 0. *Manual (Matt, required — UX-flow change per the defect skill)* — `tccutil reset ScreenCapture <bundle id>`, relaunch, press **Allow Access**: the OS dialog appears, the app is thereafter listed in the pane, and after toggling it on the app auto-advances past the card without a relaunch (`PermissionMonitor`'s `didBecomeActive` refresh).
 
-**Status:** fix landed and green on the automated gates; **not resolved until Matt's live first-run walk.** Per the defect skill's multi-increment rule the instrumentation and diagnosis increments were collapsed into the fix — the root cause was established from source and Matt's live observation with nothing left for instrumentation to expose. That collapse needs Matt's explicit OK; flagging it here rather than assuming it.
+**Status:** fix landed and green on the automated gates; **not resolved until Matt's live first-run walk.** Per the defect skill's multi-increment rule the instrumentation and diagnosis increments were collapsed into the fix — the root cause was established from source and Matt's live observation with nothing left for instrumentation to expose. **Matt approved the collapse in chat, 2026-08-31** ("yes, collapsing them is fine").
 
 ---
 
