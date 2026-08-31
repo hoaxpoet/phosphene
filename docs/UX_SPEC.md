@@ -119,7 +119,9 @@ One screen. No wizard.
 
 > To follow along with your music, Phosphene listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn't record your screen, your microphone, or anything else. Nothing ever leaves your Mac.
 
-**Primary CTA:** "Open System Settings" — opens `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`.
+**Primary CTA:** "Allow Access" — calls `CGRequestScreenCaptureAccess()`, which shows the OS permission dialog **and registers the app in Privacy & Security → Screen & System Audio Recording**. macOS only lists an app there once it has requested access, so the Settings deep link cannot be the primary action: on a first run the pane is empty and the card is the only reachable UI (BUG-111, D-225).
+
+**Secondary link:** "Already allowed it? Open System Settings" — opens `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`. This is the path for the already-denied case, where macOS suppresses the dialog but the app *is* listed. Both controls are always shown — there is no "have we asked yet" state to go stale.
 
 **Secondary link:** "Why does this need screen recording permission?" — reveals a second paragraph:
 

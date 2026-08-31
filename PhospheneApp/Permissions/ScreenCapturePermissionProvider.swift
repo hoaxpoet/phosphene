@@ -1,5 +1,6 @@
 // ScreenCapturePermissionProvider — Abstracts CGPreflightScreenCaptureAccess for testability.
-// Never calls CGRequestScreenCaptureAccess (system dialog doesn't compose with URL-scheme flow).
+// Never calls CGRequestScreenCaptureAccess — this type is the passive status probe that
+// PermissionMonitor polls. Prompting is the card's job (PermissionOnboardingView, BUG-111).
 
 import CoreGraphics
 

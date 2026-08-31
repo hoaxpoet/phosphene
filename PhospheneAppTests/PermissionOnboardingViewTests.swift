@@ -42,11 +42,13 @@ struct PermissionOnboardingViewTests {
         // Guard the string literals used in the view bodies so renaming one doesn't
         // silently break automation or test selectors in future increments.
         let expected: Set<String> = [
+            "phosphene.onboarding.grantAccess",
             "phosphene.onboarding.openSettings",
             "phosphene.onboarding.whyExplainer"
         ]
         // We re-declare the expected set; if these strings change in the view they
         // must also change here — making drift a test failure rather than a silent miss.
+        #expect(expected.contains("phosphene.onboarding.grantAccess"))
         #expect(expected.contains("phosphene.onboarding.openSettings"))
         #expect(expected.contains("phosphene.onboarding.whyExplainer"))
     }
