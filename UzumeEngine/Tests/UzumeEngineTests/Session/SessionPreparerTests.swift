@@ -303,7 +303,7 @@ struct SessionPreparerTests {
         let preparer = makePreparer(separator: separator)
 
         // Same file listed twice → identical placeholder identities + URLs.
-        let url = URL(fileURLWithPath: "/tmp/phosphene-bug030-dup.flac")
+        let url = URL(fileURLWithPath: "/tmp/uzume-bug030-dup.flac")
         let placeholder = makeTrack("dup.flac", artist: "Local File")
 
         let result = await preparer.prepareLocalFiles(

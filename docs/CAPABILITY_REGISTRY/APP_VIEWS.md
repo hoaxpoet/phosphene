@@ -94,7 +94,7 @@ Three small file-internal docstring-vs-code drift findings and the same systemic
    - `uzume.view.ended` — EndedView.swift:21 ✓
    - Plus connector / settings / playback-chrome sub-IDs across all interactive surfaces.
 
-10. **CA.5-FU-2 status (LiveAdaptationToastBridge engine-event docstring)** — **still pending** as of CA.6 entry. The bridge's docstring still claims two observation sources (user actions + engine events) while only user-action acks reach `emitAck()`. CA.6 verifies no further drift but does not propose a fix (it remains a product call awaiting Matt's input). The Apple-side consumers (`DefaultPlaybackActionRouter` 11 sites) all reach `LiveAdaptationToastBridge.emitAck` correctly from the View-tree perspective — the SettingsViewModel binding for `uzume.settings.visuals.showLiveAdaptationToasts` (`SettingsViewModel.swift:114-117`) flows to the UserDefaults flag the bridge gates emission on.
+10. **CA.5-FU-2 status (LiveAdaptationToastBridge engine-event docstring)** — **still pending** as of CA.6 entry. The bridge's docstring still claims two observation sources (user actions + engine events) while only user-action acks reach `emitAck()`. CA.6 verifies no further drift but does not propose a fix (it remains a product call awaiting Matt's input). The Apple-side consumers (`DefaultPlaybackActionRouter` 11 sites) all reach `LiveAdaptationToastBridge.emitAck` correctly from the View-tree perspective — the SettingsViewModel binding for `phosphene.settings.visuals.showLiveAdaptationToasts` (`SettingsViewModel.swift:114-117`) flows to the UserDefaults flag the bridge gates emission on.
 
 **Four follow-up items registered in [§Follow-up Backlog](#follow-up-backlog).**
 

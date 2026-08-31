@@ -179,7 +179,7 @@ Services/ (23):
 - `DisplayManager.swift` — `@MainActor ObservableObject` for screen tracking + window-move with fullscreen-quirk handling. Publishes `allScreens`, `currentScreen`, `primaryScreen`. `attach(to:)`, `moveToSecondaryDisplay()`, `moveToPrimaryDisplay()`. Plus `onScreensAdded` / `onScreensRemoved` callbacks consumed by `MultiDisplayToastBridge`.
 - `FirstAudioDetector.swift` — `@MainActor ObservableObject`; subscribes to `AudioSignalState` publisher; sets `hasDetectedAudio` after ≥ 250 ms sustained `.active` state. Per UX_SPEC §6.3.
 - `FullscreenObserver.swift` — `@MainActor ObservableObject` wrapping `NSWindow.didEnterFullScreenNotification` / `didExitFullScreenNotification`; publishes `isFullscreen: Bool`.
-- `LiveAdaptationToastBridge.swift` — User-action ack toast bridge; `emitAck(_:)` gated on `uzume.settings.visuals.showLiveAdaptationToasts` UserDefaults; 2 s coalescing window. (See `unverified-claim` finding above.)
+- `LiveAdaptationToastBridge.swift` — User-action ack toast bridge; `emitAck(_:)` gated on `phosphene.settings.visuals.showLiveAdaptationToasts` UserDefaults; 2 s coalescing window. (See `unverified-claim` finding above.)
 - `LocalizedCopy.swift` — `UserFacingError` → localized string resolver. Jargon deny-list enforcement (`containsJargon(_:)`) per UX_SPEC §9.5.
 - `MultiDisplayToastBridge.swift` — `DisplayManager.onScreensAdded/Removed` → `ToastManager` queue. Info toast on screen-added; warning toast + auto-move on current-screen-removed. (See `production-orphan` finding above for dead `coalesceTask`/`pendingEvents` fields.)
 - `NetworkRecoveryCoordinator.swift` — `@MainActor`; wires `ReachabilityMonitor.isOnlinePublisher` to `SessionManager.resumeFailedNetworkTracks()`; 2 s additional debounce on top of monitor's 1 s (3 s total); max 3 attempts per session; `.preparing` state guard. D-061(d,e).
@@ -501,7 +501,7 @@ Declarative keyboard shortcut catalog. `ShortcutCategory` enum + `PlaybackShortc
 
 #### LiveAdaptationToastBridge.swift (80 lines) — `production-active` + `unverified-claim` docstring
 
-User-action ack toast bridge per U.6 Part C. `emitAck(_:)` gated on `uzume.settings.visuals.showLiveAdaptationToasts` UserDefaults (default true for new installs). 2-second coalescing window. **Docstring drift:** see `unverified-claim` finding above — engine-event observation source mentioned in docstring is not wired in practice.
+User-action ack toast bridge per U.6 Part C. `emitAck(_:)` gated on `phosphene.settings.visuals.showLiveAdaptationToasts` UserDefaults (default true for new installs). 2-second coalescing window. **Docstring drift:** see `unverified-claim` finding above — engine-event observation source mentioned in docstring is not wired in practice.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|

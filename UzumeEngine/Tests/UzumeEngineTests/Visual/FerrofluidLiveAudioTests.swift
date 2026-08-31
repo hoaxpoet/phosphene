@@ -555,7 +555,7 @@ final class FerrofluidLiveAudioTests: XCTestCase {
         samples: [Float], sampleRate: Float, channels: Int, name: String
     ) -> URL? {
         let outDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("PhospheneLiveAudio")
+            .appendingPathComponent("UzumeLiveAudio")
         try? FileManager.default.createDirectory(
             at: outDir, withIntermediateDirectories: true)
         let url = outDir.appendingPathComponent("\(name).wav")

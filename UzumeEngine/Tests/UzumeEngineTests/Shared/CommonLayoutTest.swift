@@ -34,8 +34,8 @@ struct CommonLayoutTest {
     /// declaration sites directly.
     ///
     /// **Ascend to an anchor, not to a name and not by a count (FTR.6, hardened QG.6).**
-    /// The original form walked up until it found a directory literally named `phosphene` —
-    /// which in a git worktree at `phosphene/.claude/worktrees/<name>/` sails straight past
+    /// The original form walked up until it found a directory literally named `uzume` —
+    /// which in a git worktree at `uzume/.claude/worktrees/<name>/` sails straight past
     /// the worktree and lands on the PRIMARY checkout. The gate then read the worktree's
     /// Swift struct and the primary's `.metal`, so an MSL edit made in a worktree was
     /// invisible to it while an untouched primary reported a phantom mismatch. Both

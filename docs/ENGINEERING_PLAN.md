@@ -1490,7 +1490,7 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path UzumeEngine --filter test_pr
 - `SystemScreenCapturePermissionProvider` (production) — `CGPreflightScreenCaptureAccess`.
   Never calls `CGRequestScreenCaptureAccess` (system dialog doesn't compose with URL-scheme flow).
 - `PhotosensitivityAcknowledgementStore` — injectable `UserDefaults` suite; key
-  `uzume.onboarding.photosensitivityAcknowledged`.
+  `phosphene.onboarding.photosensitivityAcknowledged`.
 - `PermissionOnboardingView` per UX_SPEC §3.2; opens
   `x-apple.systempreferences:…?Privacy_ScreenCapture` via `NSWorkspace.shared.open`.
   No Retry button — return-detection is automatic via `PermissionMonitor`.
@@ -1704,7 +1704,7 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 
 **Landed (2026-04-24):** Three-part delivery across two commits (`5ec23e71`, `b67ec770`).
 
-Part A+B: `SettingsTypes` (5 enums/structs), `QualityCeiling` (Orchestrator module), `SettingsStore` (`uzume.settings.*` key scheme, 11 properties, `captureModeChanged` subject), `SettingsMigrator`, `SettingsViewModel` + `AboutSectionData`, `SettingsView` (`NavigationSplitView`, 720×520pt), `AudioSettingsSection` + `VisualsSettingsSection` + `DiagnosticsSettingsSection` + `AboutSettingsSection`, `SourceAppPicker` + `PresetCategoryBlocklistPicker`, `CaptureModeReconciler` (LIVE-SWITCH, D-052), `SessionRecorderRetentionPolicy` (injected `now`/`wallClock`, active-session guard), `OnboardingReset`, `PresetScoringContextProvider` (effectiveTier + Part C TODOs).
+Part A+B: `SettingsTypes` (5 enums/structs), `QualityCeiling` (Orchestrator module), `SettingsStore` (`phosphene.settings.*` key scheme, 11 properties, `captureModeChanged` subject), `SettingsMigrator`, `SettingsViewModel` + `AboutSectionData`, `SettingsView` (`NavigationSplitView`, 720×520pt), `AudioSettingsSection` + `VisualsSettingsSection` + `DiagnosticsSettingsSection` + `AboutSettingsSection`, `SourceAppPicker` + `PresetCategoryBlocklistPicker`, `CaptureModeReconciler` (LIVE-SWITCH, D-052), `SessionRecorderRetentionPolicy` (injected `now`/`wallClock`, active-session guard), `OnboardingReset`, `PresetScoringContextProvider` (effectiveTier + Part C TODOs).
 
 Part C: `PresetScoringContext` + `excludedFamilies`/`qualityCeiling` (backward-compat defaults, D-053), `DefaultPresetScorer` blocklist+quality-ceiling gates, `PresetScoringContextProvider.build()` wired, `SessionRecorder.init(enabled:)`, `LiveAdaptationToastBridge` key migrated, `UzumeApp.swift` launch-time migration+pruning, settings gear sheet in `PlaybackView`. 50 `Localizable.strings` keys. 39 app tests + 9 engine tests. 573 engine total; 0 SwiftLint violations.
 

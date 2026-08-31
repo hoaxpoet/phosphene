@@ -248,7 +248,7 @@ orchestrator trust; users with strong tier preferences need an out.
 
 **Locks in:** Settings UI gains three new toggles under "Visuals"
 section; `SettingsStore` gains three persisted keys (e.g.
-`uzume.settings.visuals.milkdrop.classic`, `.evolved`, `.hybrid`).
+`phosphene.settings.visuals.milkdrop.classic`, `.evolved`, `.hybrid`).
 The `PresetScoringContext.excludedFamilies` already supports per-
 family exclusion (D-053), so wiring is shallow.
 
@@ -824,7 +824,7 @@ below.
 |---|---|---|---|
 | **D-103 — Tier structure** | Three tiers: Classic Port / Evolved / Hybrid. | **Single tier: `milkdrop_inspired`.** Every uplift is a new creation; tiering on fidelity-to-source re-introduces "derivative" connotation. Authoring fidelity is governed by the discipline rule (§12.5), not by tier. | Amendment block on D-103. |
 | **D-105 — Catalog presentation** | Three `family` values (`milkdrop_classic` / `_evolved` / `_hybrid`). | **One `family` value: `milkdrop_inspired`.** Filesystem path stays `UzumeEngine/Sources/Presets/Shaders/Milkdrop/<theme>_<source_name>.{metal,json}`. | Amendment block on D-105. |
-| **D-106 — Settings toggle exposure** | Three per-tier toggles in disclosure row. | **One toggle:** `uzume.settings.visuals.milkdrop.inspired`. Defaults to `true` once first inspired-by preset ships. | Amendment block on D-106. |
+| **D-106 — Settings toggle exposure** | Three per-tier toggles in disclosure row. | **One toggle:** `phosphene.settings.visuals.milkdrop.inspired`. Defaults to `true` once first inspired-by preset ships. | Amendment block on D-106. |
 | **D-110 — Transpiler scope** | Expression sub-languages only; HLSL excluded. | **Transpiler retired.** Source `.milk` files become *reference material*, read by authors. HLSL-bearing presets are no longer excluded by tooling — every preset in the 9,795-pack is a viable inspiration source. MD.1 grammar audit is preserved but reframed (§12.7 / §12.9). | Amendment block on D-110. |
 | **D-111 — License / attribution** | MIT-derivative with `milkdrop_source` provenance block; pre-release notification protocol. | **Inspired-by posture.** Provenance schema renamed `inspired_by` (see below); notification protocol retired (§12.8 / D-113 / amendment block on D-111). CREDITS.md "Milkdrop preset attribution" section becomes a "Milkdrop-inspired preset attribution" section. | Amendment block on D-111. |
 | **D-112 — MD.5 candidate list** | 9 named + 1 TBD Geometric, HLSL-free subset only. | **HLSL-free constraint dissolves** (all 9,795 presets become viable inspiration sources). The 10-preset list reframes as the **initial inspiration batch for the 20-preset first-release bundle** (§12.4 / D-114). Specific candidates remain operative as inspiration sources unless substituted at authoring. | Amendment block on D-112. |
@@ -1344,9 +1344,9 @@ the only criterion that has produced certified presets.
 ### §13.5 Settings exposure — deleted (Matt 2026-08-07)
 
 **There is no Milkdrop toggle, and there will not be one.**
-`uzume.settings.visuals.milkdrop.inspired` was never adopted;
+`phosphene.settings.visuals.milkdrop.inspired` was never adopted;
 the QR.4 / D-091 `#if DEBUG` stub that stood in its place —
-`uzume.settings.visuals.includeMilkdropPresets`, reading
+`phosphene.settings.visuals.includeMilkdropPresets`, reading
 "Coming in a future update," `.disabled(true)` — was **removed at
 MD.0** along with its store property, persistence key, view-model
 flag, view row, two strings and three tests.

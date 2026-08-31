@@ -10,9 +10,9 @@
 //    metadata tag, not in any upstream Beat This! artifact. The committed
 //    PyTorch reference for love_rehab.m4a lists `bpm_trimmed_mean = 118.05`,
 //    so the upstream model itself produces 118 BPM on this audio.
-//  - Phosphene's Swift port reproduces the upstream output to within ≈0.05
+//  - Uzume's Swift port reproduces the upstream output to within ≈0.05
 //    BPM. The 5.5 % delta from the metadata-tag tempo is therefore an
-//    upstream-model property, not a Phosphene bug.
+//    upstream-model property, not a Uzume bug.
 //  - This test is a permanent tripwire: if a future change to preprocessing,
 //    resampling, or the model shifts the produced BPM toward 125, this test
 //    fails and flags the regression / unintended fix. If a future Beat This!
@@ -42,10 +42,10 @@ private struct LoveRehabReference: Decodable {
 @Suite("BeatGridAccuracyDiagnostic — BUG-008")
 struct BeatGridAccuracyDiagnosticTests {
 
-    /// Asserts the Phosphene Swift port reproduces the upstream PyTorch
+    /// Asserts the Uzume Swift port reproduces the upstream PyTorch
     /// reference BPM for Love Rehab. **This test passing is the
     /// documentation of BUG-008** — the upstream model itself produces
-    /// 118 BPM on this audio; Phosphene faithfully reproduces that.
+    /// 118 BPM on this audio; Uzume faithfully reproduces that.
     ///
     /// Tolerance: ±0.5 BPM matches the existing
     /// `BeatGridResolverGoldenTests.test_bpm_withinTolerance` gate.
@@ -108,7 +108,7 @@ struct BeatGridAccuracyDiagnosticTests {
             differs from upstream PyTorch reference \
             \(String(format: "%.2f", ref.bpmTrimmedMean)) by more than 0.5 BPM. \
             The upstream Beat This! model produces 118.05 BPM on this audio; \
-            the Phosphene port should match. If this is now closer to 125 BPM \
+            the Uzume port should match. If this is now closer to 125 BPM \
             (the metadata tag), it means either (a) the model output changed, \
             (b) the resolver changed, or (c) someone "fixed" the BPM by adding \
             a correction layer — confirm intent, then update this gate.
@@ -124,7 +124,7 @@ struct BeatGridAccuracyDiagnosticTests {
             """
             Produced bpm=\(grid.bpm) is now within ±3 BPM of the metadata-tag \
             tempo (125 BPM). Upstream Beat This! returns 118 BPM on this audio; \
-            if Phosphene now returns 125, an undocumented correction layer has \
+            if Uzume now returns 125, an undocumented correction layer has \
             been added or the model checkpoint changed. Update BUG-008 diagnosis.
             """
         )

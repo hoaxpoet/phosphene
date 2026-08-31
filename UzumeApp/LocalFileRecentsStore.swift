@@ -1,6 +1,6 @@
 // LocalFileRecentsStore — LF.5 / D-132 "Open Recent ▸" persistence layer.
 //
-// Owns the `uzume.lf.recents` UserDefaults entry: a JSON-encoded list
+// Owns the `phosphene.lf.recents` UserDefaults entry: a JSON-encoded list
 // of the last `maxRecents` (default 10) local-file / folder / M3U opens.
 // `File → Open Recent ▸` reactively rebuilds from the published list, and
 // the entry-add hook in `LocalFileMenuCommands` calls `addOrPromote(...)`
@@ -90,7 +90,7 @@ public struct RecentItem: Codable, Sendable, Equatable, Identifiable, Hashable {
 
 // MARK: - LocalFileRecentsStore
 
-/// Observable wrapper around `uzume.lf.recents` UserDefaults persistence.
+/// Observable wrapper around `phosphene.lf.recents` UserDefaults persistence.
 ///
 /// Constructed once per app launch in `UzumeApp` and injected into the
 /// `File → Open Recent ▸` menu builder + the LF dispatch glue so every

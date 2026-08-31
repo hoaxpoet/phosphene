@@ -26,10 +26,10 @@ struct PreviewAudioContentHashTests {
         return url
     }
 
-    /// Literal ASCII bytes "phosphene" (9 bytes). Used as a small,
+    /// Literal ASCII bytes "uzume" (9 bytes). Used as a small,
     /// audio-decoder-free input for the hash-stability and
     /// content-vs-path tests below.
-    private static let phospheneBytes: [UInt8] = [
+    private static let uzumeBytes: [UInt8] = [
         0x70, 0x68, 0x6f, 0x73, 0x70, 0x68, 0x65, 0x6e, 0x65,
     ]
 
@@ -37,7 +37,7 @@ struct PreviewAudioContentHashTests {
 
     @Test("sha256(of:) returns a 64-char lowercase hex digest")
     func test_sha256_returnsLowercaseHex() throws {
-        let url = try Self.makeTempFile(bytes: Self.phospheneBytes)
+        let url = try Self.makeTempFile(bytes: Self.uzumeBytes)
         defer { try? FileManager.default.removeItem(at: url) }
 
         let hash = try PreviewAudio.sha256(of: url)
@@ -53,7 +53,7 @@ struct PreviewAudioContentHashTests {
 
     @Test("sha256(of:) is stable across repeated reads of the same bytes")
     func test_sha256_isStable() throws {
-        let url = try Self.makeTempFile(bytes: Self.phospheneBytes)
+        let url = try Self.makeTempFile(bytes: Self.uzumeBytes)
         defer { try? FileManager.default.removeItem(at: url) }
 
         let a = try PreviewAudio.sha256(of: url)
@@ -65,9 +65,9 @@ struct PreviewAudioContentHashTests {
 
     @Test("sha256(of:) ignores the file path — bytes are all that matter")
     func test_sha256_isContentNotPath() throws {
-        let url1 = try Self.makeTempFile(bytes: Self.phospheneBytes)
+        let url1 = try Self.makeTempFile(bytes: Self.uzumeBytes)
         defer { try? FileManager.default.removeItem(at: url1) }
-        let url2 = try Self.makeTempFile(bytes: Self.phospheneBytes)
+        let url2 = try Self.makeTempFile(bytes: Self.uzumeBytes)
         defer { try? FileManager.default.removeItem(at: url2) }
 
         #expect(url1.path != url2.path, "fixture sanity: paths differ")
@@ -78,9 +78,9 @@ struct PreviewAudioContentHashTests {
 
     @Test("sha256(of:) distinguishes different byte content")
     func test_sha256_distinguishesContent() throws {
-        let url1 = try Self.makeTempFile(bytes: Self.phospheneBytes)
+        let url1 = try Self.makeTempFile(bytes: Self.uzumeBytes)
         defer { try? FileManager.default.removeItem(at: url1) }
-        let url2 = try Self.makeTempFile(bytes: Self.phospheneBytes + [0x00])
+        let url2 = try Self.makeTempFile(bytes: Self.uzumeBytes + [0x00])
         defer { try? FileManager.default.removeItem(at: url2) }
 
         let h1 = try PreviewAudio.sha256(of: url1)

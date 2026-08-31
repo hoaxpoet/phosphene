@@ -252,7 +252,7 @@ struct MeniscusDropRateTests {
 
 /// Reports the distribution of the source's `amp` against its 0.02 gate.
 ///
-/// Every constant in `MeniscusDrops` is in MILKDROP's spectrum units; Phosphene's
+/// Every constant in `MeniscusDrops` is in MILKDROP's spectrum units; Uzume's
 /// `FFTProcessor` magnitudes have a different scale, so one conversion is unresolved.
 /// `amp` scales as 1/level², so this measures where amp actually sits and the required
 /// scale follows in closed form rather than from trying values.

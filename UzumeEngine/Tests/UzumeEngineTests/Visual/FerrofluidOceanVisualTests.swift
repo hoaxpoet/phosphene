@@ -51,7 +51,7 @@ final class FerrofluidOceanVisualTests: XCTestCase {
     // V.9 Session 4.5: bumped from the 384×216 thumbnail resolution to
     // full 1920×1080 (production-target 1080p). Lower resolutions hid
     // pixel-scale artifacts and led to incorrect "production won't show this"
-    // assessments; tests now render at the resolution Phosphene actually
+    // assessments; tests now render at the resolution Uzume actually
     // ships at. Per-pixel threshold-based assertions (avg channel diff, lit
     // count) are resolution-independent so all gate values port as-is.
     private static let renderWidth  = 1920
@@ -523,7 +523,7 @@ final class FerrofluidOceanVisualTests: XCTestCase {
 
     private func makeOutputDirectory(suffix: String) throws -> URL {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("PhospheneFerrofluidOceanV9Session1")
+            .appendingPathComponent("UzumeFerrofluidOceanV9Session1")
             .appendingPathComponent(suffix)
         try FileManager.default.createDirectory(at: url,
                                                 withIntermediateDirectories: true)

@@ -89,7 +89,7 @@ import Metal
     }
 
     let tempDir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("phosphene-test-empty-\(UUID().uuidString)")
+        .appendingPathComponent("uzume-test-empty-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: tempDir) }
 
@@ -410,7 +410,7 @@ private func testSidecar(name: String, family: String = "waveform") -> String {
 /// Creates a temporary directory with .metal and optional .json files for testing.
 private func makeTempPresetDirectory(shaders: [(name: String, metalSource: String, jsonSidecar: String?)]) throws -> URL {
     let tempDir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("phosphene-test-\(UUID().uuidString)")
+        .appendingPathComponent("uzume-test-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
     for shader in shaders {

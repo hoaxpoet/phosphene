@@ -45,7 +45,7 @@ struct DocsExampleCompileTests {
         let json = try #require(fencedBlock("json", in: doc), "doc must contain a ```json block")
 
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("phosphene-docs-example-\(UUID().uuidString)")
+            .appendingPathComponent("uzume-docs-example-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
         try metal.write(to: tempDir.appendingPathComponent("Halo.metal"), atomically: true, encoding: .utf8)

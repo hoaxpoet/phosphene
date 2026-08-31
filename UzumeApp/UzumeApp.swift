@@ -30,7 +30,7 @@ struct UzumeApp: App {
     @StateObject private var accessibilityState = AccessibilityState()
 
     /// LF.5 Recents store — last 10 local-file / folder / M3U opens persisted
-    /// in `uzume.lf.recents` UserDefaults. Drives `File → Open Recent ▸`.
+    /// in `phosphene.lf.recents` UserDefaults. Drives `File → Open Recent ▸`.
     @StateObject private var recentsStore = LocalFileRecentsStore()
 
     /// Long-lived Spotify OAuth actor — not `@StateObject` because actors are not
@@ -42,7 +42,7 @@ struct UzumeApp: App {
         // stem cache). Runs before SettingsMigrator so the key migration below
         // sees the carried-over values. Idempotent; a no-op after first launch.
         IdentityMigrator.migrate()
-        // Migrate legacy UserDefaults keys to the uzume.settings.* scheme.
+        // Migrate legacy UserDefaults keys to the phosphene.settings.* scheme.
         SettingsMigrator.migrate()
         // Prune old session folders according to the persisted retention policy.
         // Read the key directly to avoid a second SettingsStore allocation before @StateObject init.

@@ -295,7 +295,7 @@ fragment float4 preset_fragment(VertexOut in [[stage_in]],
 
 private func makeTempPresetDir(shaders: [(name: String, metal: String, json: String)]) throws -> URL {
     let tempDir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("phosphene-integration-\(UUID().uuidString)")
+        .appendingPathComponent("uzume-integration-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
     for shader in shaders {

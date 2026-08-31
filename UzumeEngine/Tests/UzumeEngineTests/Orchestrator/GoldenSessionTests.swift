@@ -370,7 +370,7 @@ private func makePreset(
 /// production catalog. Added Arachne, Gossamer, Lumen Mosaic, Staged Sandbox.
 /// Spectral Cartograph and Staged Sandbox carry `isDiagnostic: true` so the
 /// orchestrator excludes them categorically per D-074. Lumen Mosaic is
-/// Phosphene's first production certified preset (LM.7 / 2026-05-12) and
+/// Uzume's first production certified preset (LM.7 / 2026-05-12) and
 /// participates in golden scoring as a real eligible candidate.
 private func makeRealCatalog() -> [PresetDescriptor] {
     [

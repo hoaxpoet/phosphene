@@ -1,4 +1,4 @@
-// PresetVisualReviewTests — On-demand visual review harness for Phosphene presets.
+// PresetVisualReviewTests — On-demand visual review harness for Uzume presets.
 //
 // Renders a named preset at 1920×1280 for three audio fixtures (silence, steady
 // mid-energy, beat-heavy), encodes each frame to PNG, and (for Arachne only)
