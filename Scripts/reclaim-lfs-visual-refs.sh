@@ -12,7 +12,7 @@
 # is that follow-up. Budget for it.
 set -euo pipefail
 
-REMOTE="https://github.com/hoaxpoet/phosphene.git"
+REMOTE="https://github.com/hoaxpoet/uzume.git"
 WORK="${TMPDIR:-/tmp}/phosphene-lfs-purge"
 # Purge ONLY raster images under these dirs, plus the retired ML weights.
 # Text records (READMEs, diagnoses, rendering contracts, source_*.txt/json) live

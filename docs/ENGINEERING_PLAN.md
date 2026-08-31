@@ -63,7 +63,7 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Phase RN — Rename (Phosphene → Uzume) 🔨 (2026-08-30; name decided 2026-08-09 after a five-round naming sprint)
 
-The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami whose planned, drummed performance lured the sun out of the cave. **RN.0** ✅ (2026-08-30) — preparation only: the naming sprint's evidence (`docs/planning/NAMING_REPORT.md`, `MYTH_RESEARCH.md`, `WEBSITE_PLAN.md`) and the two session prompts that commission the rename (`prompts/RN.1-prompt.md`, `prompts/BRAND.1-prompt.md`) move from an untracked working directory into the repo, so the decision's provenance survives independently of one machine's filesystem. No code, no identifiers, no user-visible strings touched. **RN.1** queued — external identity: bundle ID `com.phosphene.app` → `io.uzume.mac`, logger subsystems, the Application Support path (clean break, no migration shim), repo URLs, and living docs; pre-flight-blocked on Matt renaming the GitHub repo to `hoaxpoet/uzume` and on the BRAND.1 icon master. **RN.2** queued pending Matt's pick — whether the internal tree (`PhospheneApp`/`PhospheneEngine` targets, directories, scheme) renames too.
+The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami whose planned, drummed performance lured the sun out of the cave. **RN.0** ✅ (2026-08-30) — preparation only: the naming sprint's evidence (`docs/planning/NAMING_REPORT.md`, `MYTH_RESEARCH.md`, `WEBSITE_PLAN.md`) and the two session prompts that commission the rename (`prompts/RN.1-prompt.md`, `prompts/BRAND.1-prompt.md`) move from an untracked working directory into the repo, so the decision's provenance survives independently of one machine's filesystem. No code, no identifiers, no user-visible strings touched. **RN.1** queued — external identity: bundle ID `io.uzume.mac` → `io.uzume.mac`, logger subsystems, the Application Support path (clean break, no migration shim), repo URLs, and living docs; pre-flight-blocked on Matt renaming the GitHub repo to `hoaxpoet/uzume` and on the BRAND.1 icon master. **RN.2** queued pending Matt's pick — whether the internal tree (`PhospheneApp`/`PhospheneEngine` targets, directories, scheme) renames too.
 
 ## Recently Completed
 
@@ -3784,7 +3784,7 @@ replaying production.
 **Not certified.** FTR.5 remains Matt's call.
 
 **FTR.23 — retune the continuous glide; FTR.22 shipped 3.5× too slow.** ✅ code-complete,
-**pending live M7** (2026-08-17, merged in [#101](https://github.com/hoaxpoet/phosphene/pull/101))
+**pending live M7** (2026-08-17, merged in [#101](https://github.com/hoaxpoet/uzume/pull/101))
 Matt on the FTR.22 build (`2026-08-17T12-47-58Z`, *Carry The Zero*): *"Now it barely moves AND the
 tree still grows and shrinks with no clear connection to the music."*
 

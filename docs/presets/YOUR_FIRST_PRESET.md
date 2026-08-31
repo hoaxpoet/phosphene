@@ -1,7 +1,7 @@
 # Your first preset — a complete working pair in ~60 lines
 
 The fastest path from zero to pixels-moving-with-music (PUB.7). Copy both
-files into `~/Library/Application Support/Phosphene/Presets/` while the app
+files into `~/Library/Application Support/Uzume/Presets/` while the app
 runs — hot-reload compiles every save and swaps it in live. Jargon:
 [docs/GLOSSARY.md](../GLOSSARY.md); when it lands in the repo, follow
 [NEW_PRESET_CHECKLIST.md](NEW_PRESET_CHECKLIST.md).
@@ -77,7 +77,7 @@ fragment float4 preset_fragment(VertexOut in [[stage_in]],
 2. File → Open Local File (⌘O) — no streaming account needed.
 3. Cycle to *Halo* (arrow keys). Edit the `.metal`, save — it hot-swaps.
    A broken save toasts and keeps the last-good version
-   (`log stream --predicate 'subsystem == "com.phosphene.presets"'` for the
+   (`log stream --predicate 'subsystem == "io.uzume.presets"'` for the
    compiler diagnostics).
 
 ## Where to go next
