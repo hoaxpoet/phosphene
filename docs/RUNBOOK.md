@@ -199,9 +199,36 @@ git -C uzume worktree repair ~/.claude-worktrees/meniscus-2a ~/.codex/worktrees/
 git -C uzume worktree list          # every path resolves, no "prunable" entries
 ```
 
-Then rename the matching `~/.claude/projects/-Users-…-phosphene*` directories to
-the `-uzume` slug, delete the stale `PhospheneApp-*` / `UzumeApp-*` DerivedData,
-and re-run `Scripts/closeout_evidence.sh` once from the renamed tree.
+Then migrate Claude Code's per-project state. **Do not blind-`mv`:** the harness
+creates the new-slug directory as soon as a session opens in the renamed tree, so
+`mv old new` would nest the old directory *inside* the new one instead of
+replacing it. **Copy the memory store, verify, then remove the old** — memory is
+the irreplaceable part:
+
+```bash
+P=~/.claude/projects
+O=$P/-Users-braesidebandit-Documents-Projects-phosphene
+N=$P/-Users-braesidebandit-Documents-Projects-uzume
+mkdir -p "$N/memory"
+cp -Rn "$O/memory/." "$N/memory/"        # -n: never clobber a newer file
+for f in "$O"/*.jsonl; do cp -n "$f" "$N/"; done
+diff -r "$O/memory" "$N/memory" && echo IDENTICAL
+```
+
+Only after `IDENTICAL` should the old directory go. The per-worktree slugs
+(`…-phosphene--claude-worktrees-*`) hold **session transcripts only, no memory**;
+renaming them just preserves `/resume` for those worktrees and is optional.
+
+Finally: delete the stale `PhospheneApp-*` / `UzumeApp-*` DerivedData, and re-run
+`Scripts/closeout_evidence.sh` once from the renamed tree.
+
+**Verified in practice, 2026-08-31.** The move was run without the repair step and
+without the state migration. Consequence: all 8 nested worktrees plus the 2
+external ones reported **`prunable`** in `git worktree list` — a `git worktree
+prune` at that moment would have dropped every admin record. `git worktree repair`
+with explicit paths fixed all 11; no commits were ever at risk (they live in the
+main object store). The 84-file memory store was stranded under the old slug while
+a fresh, empty `memory/` had already been created under the new one.
 
 **Nothing changed about identity.** `PRODUCT_NAME` is still `Uzume`, the bundle is still
 `Uzume.app` with bundle ID `io.uzume.mac`, and TCC grants, the keychain and the Spotify
