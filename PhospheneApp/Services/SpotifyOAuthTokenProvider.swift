@@ -170,7 +170,7 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
     public func handleCallback(url: URL) async {
         guard
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-            components.scheme == "phosphene",
+            components.scheme == "uzume",
             components.host == "spotify-callback"
         else { return }
 

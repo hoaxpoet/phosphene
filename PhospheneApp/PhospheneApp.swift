@@ -105,7 +105,7 @@ struct PhospheneApp: App {
             // Route uzume://spotify-callback back to the OAuth actor (U.11)
             // and file:// URLs to the LF.5 file-association dispatch path.
             .onOpenURL { url in
-                if url.scheme == "phosphene", url.host == "spotify-callback" {
+                if url.scheme == "uzume", url.host == "spotify-callback" {
                     Task { await spotifyOAuth.handleCallback(url: url) }
                     return
                 }
