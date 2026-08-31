@@ -13,7 +13,7 @@ struct SpotifyKeychainStoreTests {
     private static let testService = "io.uzume.spotify.test"
 
     private func makeStore() -> SpotifyKeychainStore {
-        SpotifyKeychainStore(service: Self.testService, account: "refresh_token_test", legacyService: nil)
+        SpotifyKeychainStore(service: Self.testService, account: "refresh_token_test")
     }
 
     @Test("save and load round-trip returns same token")
