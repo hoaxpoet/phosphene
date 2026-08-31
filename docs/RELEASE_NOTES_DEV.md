@@ -10,6 +10,74 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-31-210000] RN.3 — the app repo and uzume-site stop contradicting each other
+
+Two repositories were both describing Uzume and neither said which one was
+authoritative. Each had drifted into asserting things the other could disprove.
+RN.3 draws the boundary on **verifiability**: `uzume-site` owns brand story,
+voice, palette, the First Opening design system, identity assets, naming
+research and public copy; this repo owns product behaviour, engineering
+decisions, contributor commands, and **whether a claim is true of the shipped
+build**. Written into both READMEs. `docs/planning/` here is now a frozen RN.0
+snapshot with a header naming the site's copies as live.
+
+**The icon is provably the approved one.** All ten PNGs in
+`UzumeApp/Assets.xcassets/AppIcon.appiconset/` are byte-identical (SHA-256) to
+`uzume-site`'s `brand/icon/Uzume.iconset/` — no re-export between the approved
+First Opening master and the shipped bundle. It just was not written down
+anywhere. Now in `docs/CREDITS.md` §App icon with the re-verification command,
+and in the site's `ARTIFACTS.md` with the digests.
+
+**Five claims were false; three were the site's, two were ours.**
+
+Site-ward: its planning docs still carried the **pre-2026-08-12 domain call** —
+uzume.app "available and canonical", and a bundle ID of `app.uzume.mac` —
+against registrar ground truth (uzume.app registered and parked, **uzume.io**
+canonical, shipped `io.uzume.mac`). "Certified presets are measured at **0
+flashes per second**" has no basis in this repo at all; the real gate is D-157
+steady luminance, a bounded max per-frame brightness change, and the figure had
+reached four separate published surfaces. And "free, open-source **public
+beta**" describes a repository that is not public, with no signed or notarized
+build (CLEAN.2.5b is blocked on a paid Apple Developer membership).
+
+App-ward, and the more interesting half: **the README explained the wrong
+word.** Its second paragraph read "The name references the phenomenon of
+perceiving light and patterns without external visual stimulus" — a correct
+gloss of *phosphene*, left attached to the name *Uzume* by RN.2's sweep. This is
+a **new variant** of D-227's dictionary-word hazard: the sentence contains no
+`Phosphene` token, so no lexical residual scan could ever find it. Only reading
+the prose for meaning catches a **semantic orphan** — a sentence whose subject
+was renamed out from under it. Replaced with the Ame-no-Uzume story as `BRAND.md`
+tells it. Second: the **"AI orchestrator"** framing, which the site retired as a
+product claim, survived in README and CLAUDE.md — the session planner is
+deterministic and rules-based (D-034); ML does stem separation, beat tracking and
+mood classification, none of which plan anything.
+
+**Two stale contributor instructions, both first-contact.** The README told new
+contributors to install `git-lfs` *before cloning* or receive stub files —
+untrue since D-211 (`git lfs ls-files` returns zero). `PUBLISHING.md` still said
+"LFS keeps reference media only."
+
+**Divergence, not staleness.** The duplicated planning docs had drifted in
+*opposite* directions: this repo held the corrected domain facts, the site held
+the newer retirement of the AI framing. Neither copy was wholly authoritative, so
+RN.3 merged them and then designated a single owner — rather than declaring a
+winner and losing half the corrections.
+
+**Not done, deliberately:** no website architecture was invented. There is no
+Astro app, no marketing pages, no OG/manifest surface, so none was created. The
+design system's "Download the beta" specimens stay — they are component
+placeholders, and `catalogue.js` already models the honest unavailable state ("A
+signed and notarized build has not been published yet"). Public wording for an
+unreleased app is Matt's call; the closeout lists the pending picks.
+
+**Evidence:** this repo — `Scripts/closeout_evidence.sh` ALL GREEN. `uzume-site`
+@ `03d5478` — JS syntax checks, catalogue-reference gate (7 pages), contrast gate
+(60 pairings), and the SwiftUI package suite all pass. Both branches are local
+and unpushed.
+
+---
+
 ### [dev-2026-08-31-180000] RN.2 — the internal tree becomes Uzume
 
 RN.1 renamed what the user sees; RN.2 renames what a contributor sees. Directories, Xcode

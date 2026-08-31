@@ -222,6 +222,33 @@ front-end. BatchNorm folded at MPSGraph init time.
 
 ---
 
+## App icon — "First Opening" (first-party, from the brand repository)
+
+**Source of truth:** [`hoaxpoet/uzume-site`](https://github.com/hoaxpoet/uzume-site)
+— `brand/icon/Uzume.iconset/`, produced in that repo's BRAND.1 increment and
+selected by Matt ("First Opening wins"). Brand rules live in its `BRAND.md`;
+the artifact inventory and licences in its `ARTIFACTS.md`.
+
+**What is installed here:** the ten PNGs in
+`UzumeApp/Assets.xcassets/AppIcon.appiconset/` are **byte-identical** (SHA-256)
+to the approved iconset — installed at RN.1, verified at RN.3. There is no
+re-export, crop, or recolour between the approved master and the shipped
+`Uzume.app`. `BRAND.md` forbids recolouring, sharpening, adding type or glow,
+flattening the spectrum, and monochrome substitutes.
+
+**Do not regenerate the icon in this repository.** Change it in `uzume-site`,
+re-export there, and copy the iconset across; then re-run the checksum
+comparison in that repo's `ARTIFACTS.md` §RN.1 handoff.
+
+The `.icns` container and the favicon set are deliberately **not** vendored
+here: macOS builds the icon from the asset catalogue, and the app has no web
+surface.
+
+Fonts (Alumni Sans, PT Sans — both SIL OFL 1.1) are brand-repo assets used for
+the wordmark; the application itself ships neither as a bundled resource.
+
+---
+
 ## Other dependencies
 
 System frameworks (Apple): Metal, MetalKit, MetalPerformanceShadersGraph,

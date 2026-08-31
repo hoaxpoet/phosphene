@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Uzume is a native macOS music visualization engine for Apple Silicon. Before the music starts, Uzume connects to a playlist, downloads 30-second preview clips for every track, and runs full ML-powered stem separation and MIR analysis on each. By the time the user presses play, the AI Orchestrator has planned the entire visual session — which visualizer for each track, where transitions land, and what the emotional arc looks like across the playlist. During playback, real-time audio analysis via Core Audio taps (`AudioHardwareCreateProcessTap`) refines the pre-analyzed data, and the Orchestrator adapts its plan as the music unfolds.
+Uzume is a native macOS music visualization engine for Apple Silicon. Before the music starts, Uzume connects to a playlist, downloads 30-second preview clips for every track, and runs full ML-powered stem separation and MIR analysis on each. By the time the user presses play, the Orchestrator has planned the entire visual session (a deterministic, rules-based planner — ML does the listening, not the planning; the brand source of truth retired "AI" as a product claim, D-228) — which visualizer for each track, where transitions land, and what the emotional arc looks like across the playlist. During playback, real-time audio analysis via Core Audio taps (`AudioHardwareCreateProcessTap`) refines the pre-analyzed data, and the Orchestrator adapts its plan as the music unfolds.
 
 Uzume does not control playback — the user starts the music in their streaming app when Uzume signals it is ready.
 
@@ -72,6 +72,7 @@ One-line pointers to the load-bearing references (the former per-topic pointer s
 | UX contract — state-to-view mapping, copy principles (§9.5), error taxonomy (§9), accessibility | [docs/UX_SPEC.md](docs/UX_SPEC.md) — SettingsStore + string-externalization invariants are gated (`SettingsStoreEnvironmentRegressionTests`, `Scripts/check_user_strings.sh`); the unmechanized rule: tooltips describe what a control does *now* — hide unwired controls behind a build flag |
 | ML inference — no-CoreML decision (D-009), model shapes, dispatch scheduling (D-059) | [docs/ARCHITECTURE.md §ML Inference](docs/ARCHITECTURE.md#ml-inference) |
 | Beat-sync capability + cold-start history | [docs/CAPABILITY_REGISTRY/BEAT_SYNC.md](docs/CAPABILITY_REGISTRY/BEAT_SYNC.md) |
+| **Brand, naming, design system — NOT owned here** | `hoaxpoet/uzume-site` (`BRAND.md`, `DESIGN.md`, `ARTIFACTS.md`, `docs/planning/`). The app repo consumes it; `docs/planning/` here is RN.0's frozen snapshot (D-228) |
 
 ---
 

@@ -2,6 +2,12 @@
 
 *2026-08-09 · Naming sprint round 4: myths, legends, and folk histories that resonate with the mission*
 
+> **Frozen RN.0 snapshot — not maintained here.** The live version of this document is owned by the
+> brand repository [`hoaxpoet/uzume-site`](https://github.com/hoaxpoet/uzume-site) (`docs/planning/`).
+> This copy exists as the rename's preserved evidence (RN.0) and is deliberately left as written.
+> RN.3 reconciled the two: the site's copies now carry this copy's registrar-corrected domain facts,
+> and this copy is not updated again. Read the site's version for anything current. (D-228)
+
 ## The filter
 
 Generic light gods and generic music gods are everywhere and mean nothing. The filter applied here: traditions where **sound and light interlock** — music that summons light, light that listens, performances that bring brightness back into a dark world. That interlock is the product: it listens to music and answers in light.

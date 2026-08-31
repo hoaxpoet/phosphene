@@ -122,6 +122,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-211 | Accepted | **Reference/diagnostic images leave git; the LFS purge is a separate, explicit step** (LFS.2, Matt 2026-07-31). Raster images under `docs/VISUAL_REFERENCES/` + `docs/diagnostics/` are gitignored and **untracked** — dev-only material no build target reads. Supersedes an earlier attempt that added the `.gitignore` rules but never ran `git rm --cached`: because gitignore does not affect already-tracked paths, dropping the LFS filter converted 189 pointers into real blobs and would have added **~100 MB to git history** (25.7 KB → 100.6 MB measured) while leaving the LFS objects — and the bill — in place. **Untracking stops NEW objects; it does not reclaim the old ones.** GitHub does not GC unreferenced LFS objects, so reclaiming storage needs a history rewrite (`Scripts/reclaim-lfs-visual-refs.sh`) followed by a GitHub Support purge request — deliberately NOT done here. Text records in those dirs stay in git. Worktree consequence handled: `Scripts/link_fixtures.sh` now symlinks the images too, since the preset workflow is "read the README and LOOK at the images" and a worktree without them degrades silently rather than failing. §Rationale below. |
 | D-213 | Accepted — executed (RECON.14, 2026-08-25) | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
+| D-228 | Accepted | **`uzume-site` is the brand/design source of truth; the app owns product facts (RN.3, 2026-08-31).** Each repo owns what it can verify: the site owns brand story, voice, palette, the First Opening design system, production identity assets and public copy; the app owns product behaviour, engineering decisions, contributor commands, and **whether any claim is true of the shipped build**. The app's `docs/planning/` becomes a **frozen RN.0 snapshot** — the site's copies are live. Three corrections flowed site-ward from app ground truth: the site's naming/website plans carried the **pre-2026-08-12 domain call** (uzume.app "available and canonical", bundle ID `app.uzume.mac`) against the registrar-confirmed reality (uzume.app parked, **uzume.io canonical**, shipped ID `io.uzume.mac`); "certified presets are measured at **0 flashes per second**" has **no basis in this repo** (the real gate is [D-157] steady luminance — a bounded max per-frame brightness change) and was published in four places; and "free, open-source **public beta**" overstates a repo that is not public with no signed or notarized build ([CLEAN.2.5b] is blocked on a paid Apple Developer membership). Two corrections flowed app-ward: the README's name sentence still explained the **phosphene phenomenon** under the name Uzume (an RN.2 sweep orphan — no `Phosphene` token in it, so no lexical scan could catch it), and the **"AI orchestrator"** framing the site retired as a product claim survived in README + CLAUDE.md though the planner is deterministic and rules-based. §Rationale below. |
 | D-227 | Accepted | **Internal tree renamed to Uzume; runtime string identity deliberately left behind (RN.2, 2026-08-31).** Directories, Xcode targets/scheme, Swift packages/products, the app module, test host and bundle, env vars, scripts, CI and living docs all move to Uzume. **`PRODUCT_MODULE_NAME` is repointed to `UzumeApp`, not unpinned** — unpinning would make the module `Uzume` (from `PRODUCT_NAME`), which no longer matches the target; `PRODUCT_NAME = Uzume` is untouched so the shipped `Uzume.app` is byte-identical in identity. **Four surfaces stay `phosphene`, each for a reason:** persisted `UserDefaults` keys (`phosphene.settings.*`, `phosphene.lf.recents`, `phosphene.onboarding.photosensitivityAcknowledged`, `phosphene.cache.localFile.maxBytes`) — renaming silently resets every user's settings and belongs with a `SettingsMigrator` entry, not a structural rename; on-disk output paths (`~/Documents/phosphene_sessions/`, `~/phosphene_features.csv`, `~/phosphene_beatbench_fixtures`, `/tmp/phosphene_visual`, …) — renaming orphans every captured session and invalidates every documented diagnostic command against them, and it is a **product call, not an engineering one**; `IdentityMigrator`/`SpotifyKeychainStore`'s legacy `com.phosphene.*` constants — load-bearing RN.1 migration aliases; and `.metal` comments + preset `.json` descriptions — excluded by RN.2's own "do not edit shaders or presets" constraint. **Accessibility identifiers DID move** (`phosphene.view.*` → `uzume.*`) — no persistence, no migration cost. §Rationale below. |
 | D-226 | Accepted | §Rationale below. **The permission card requests capture access itself; the Settings deep link is demoted to a secondary link** (BUG111.1, 2026-08-31). Supersedes U.2's key decision that the app would never call `CGRequestScreenCaptureAccess()` because "the system dialog doesn't compose with 'Open System Settings and return.'" **That rationale assumed macOS already listed the app** in Privacy & Security → Screen & System Audio Recording. It only lists an app once that app has requested access — so on a machine that has never granted (fresh install, `tccutil reset ScreenCapture`, or RN.1's `com.phosphene.app` → `io.uzume.mac` change, which orphaned the grant) the deep link opened an empty pane, and the only call site that would have registered the app was `startAudio()`, behind the permission gate that `ContentView` puts above the session-state switch. **A closed loop: the card was the only reachable UI and it could not lead to a grant** — the sole escape was adding the `.app` by hand with the pane's "+" button. Matt hit it live 2026-08-31 during RN.1. **Fix:** primary CTA "Allow Access" calls `CGRequestScreenCaptureAccess()` (registers the app, shows the OS dialog); "Already allowed it? Open System Settings" keeps the deep link for the already-denied case, where macOS suppresses the dialog but the app *is* listed. **Deliberately stateless** — both controls always shown, no "have we asked yet" flag to go stale, no branch to test. `SystemScreenCapturePermissionProvider` is unchanged and still never prompts: it stays the passive probe `PermissionMonitor` polls, which is what U.2's rule was actually protecting. Rejected: the original task's option (b), rewording the card to tell the user to start a session — starting a session is precisely what the gate prevents. |
 | D-224 | Accepted | **Rosette retired** (WHIT-RETIRE.1, Matt's call, 2026-08-26). After the WHIT.2b ray-march conversion's jaggedness fix and the WHIT.2c orbit removal, Matt's next live look, on a fresh session: *"Ugh, it's terrible. The camera angle is weird, the design is ugly, the motion is basic. It's a loser across the board. This feels like it's going nowhere fast. Thinking we should just move to retire."* Offered a bounded, concrete two-item fix (camera recomposition so the epicycle reads as the hero rather than the wing arcs; tightness-calibration recalibration against real track data) or retirement as the alternative; Matt: *"Even a harness difference will not be enough to save this preset, I'm afraid."* Six live rounds (WHIT.0 through WHIT.2c) each landed a technically-correct fix for the specific defect raised and the overall verdict never turned positive — the D-201/D-204 pattern (a correct, working mechanism that still doesn't produce a compelling image) rather than an unfixed bug. All preset code deleted: `Rosette.metal`, `Rosette.json`, `Rosette/RosetteState.swift`, `RosetteRayMarchTests.swift`, `RosetteStateTests.swift`, `docs/presets/ROSETTE_DESIGN.md`, `docs/VISUAL_REFERENCES/rosette/`. `expectedProductionPresetCount` 30 → 29. The `RosetteUniforms` ray-march buffer-6 ABI parameter (D-220/WHIT.2b) is also fully removed from the shared preamble and all three other ray-march presets (Volumetric Lithograph, Lumen Mosaic, Ferrofluid Ocean) — unlike `scene_orbit_speed`/`scene_dolly_speed` (a generic scalar reusable by any future preset) or `LumenPatternState`/slot 8 (a live, actively-shipping consumer), `RosetteUniforms` was a bespoke struct with zero remaining consumers; a future preset needing cross-frame CPU state can reintroduce the same pattern from git history rather than carrying dead ABI weight in the meantime (D-097 — siblings, not subclasses; "reusable infrastructure" is not a defense for a failed concept). `scene_orbit_speed` itself, and the generic `presetFragmentBuffer1`-style slot-6 mechanism, are kept per the RMENV/D-188 zero-consumer-capability precedent. Phase WHIT itself is NOT closed — `docs/presets/WHITNEY_PROGRAM.md` governs three siblings (Rosette/WHIT.A built and retired; Frieze/WHIT.B and Unison/WHIT.C unstarted), and this decision retires only WHIT.A. §Rationale below. |
@@ -4431,3 +4432,73 @@ tests, app 426 tests, SwiftLint 0 violations in 518 files, doc gates 13/13 — A
 
 **References.** [D-225] (RN.1, external identity); `docs/ENGINEERING_PLAN.md` §Phase RN RN.2;
 `docs/RUNBOOK.md` §After the Uzume rename.
+
+---
+
+## D-228: uzume-site is the brand source of truth; the app owns product facts (RN.3)
+
+**Status:** Accepted · 2026-08-31 · Companion to [D-227] (RN.2).
+
+**The boundary.** Two repositories were both describing Uzume and neither said which
+one was authoritative, so each had drifted into asserting things the other could
+disprove. The split is now explicit, and it is drawn on *verifiability*:
+
+| `hoaxpoet/uzume-site` owns | `hoaxpoet/uzume` owns |
+|---|---|
+| Brand story, voice, palette, typography (`BRAND.md`) | Product behaviour + UX contract (`PRODUCT_SPEC.md`, `UX_SPEC.md`) |
+| The First Opening design system (`DESIGN.md`, `DesignSystem/`) | Engineering decisions (`DECISIONS.md`) |
+| Production identity assets (`brand/`) | Build/test/contributor commands |
+| Naming research + website planning (`docs/planning/`) | Preset authoring and certification |
+| Public marketing copy | **Whether a claim is true of the shipped build** |
+
+The app repo does not redesign brand; the site repo does not assert product facts.
+
+**`docs/planning/` here is frozen.** RN.0 copied the three planning documents in as
+rename evidence, and RN.2 restored them verbatim after a sweep falsified them. They
+now carry an explicit snapshot header naming the site's copies as live. They had
+diverged **in both directions** — this repo's copy held the registrar-corrected
+domain facts, the site's held the newer retirement of the AI framing — so RN.3
+merged rather than overwrote, and only the site's copies continue.
+
+**The two corrections that came back to this repo.**
+
+*The README explained the wrong word.* Its second paragraph read "The name references
+the phenomenon of perceiving light and patterns without external visual stimulus" —
+a correct gloss of **phosphene**, left attached to the name **Uzume** by RN.2's sweep.
+It is the sharpest instance of D-227's dictionary-word hazard and a **new variant**:
+the sentence contains no `Phosphene` token at all, so no lexical residual scan could
+find it. Only reading the prose for meaning catches a **semantic orphan** — a
+sentence whose subject was renamed out from under it. Replaced with the Ame-no-Uzume
+story as `BRAND.md` tells it.
+
+*"AI orchestrator" is not a product claim.* The site retired that framing on the
+grounds that the session planner is deterministic and rules-based ([D-034], and
+[D-170]'s "★ Premise correction" is about ML for *analysis*, not planning); ML does
+stem separation, beat tracking and mood classification, none of which plan anything.
+README and CLAUDE.md both still led with it. Now: "a deterministic session planner
+sequences the whole visual session … machine learning does the listening; the
+planning is rules-based and reproducible."
+
+**The icon is traceable, and now says so.** All ten PNGs in
+`UzumeApp/Assets.xcassets/AppIcon.appiconset/` are byte-identical (SHA-256) to
+`uzume-site`'s `brand/icon/Uzume.iconset/` — no re-export between the approved
+master and the shipped bundle. Recorded in `docs/CREDITS.md` with the re-verification
+command, and in the site's `ARTIFACTS.md` with the digests.
+
+**Two stale contributor instructions fixed on the way through.** The README told a
+new contributor to install `git-lfs` **before cloning** or get stub files — nothing
+has been LFS-tracked since [D-211] (`git lfs ls-files` returns zero), so the warning
+sent people down a wrong path on first contact. `PUBLISHING.md` §Decisions likewise
+still said "LFS keeps reference media only."
+
+**What RN.3 deliberately did not do.** It did not build website architecture that
+does not exist: there is no Astro app, no marketing pages, no OG/manifest surface, so
+none was invented. The design system's "Download the beta" specimens stay — they are
+component placeholders, and `catalogue.js` already models the honest unavailable
+state ("A signed and notarized build has not been published yet"). Public wording for
+an unreleased app is Matt's call, not a mechanical fix; the closeout lists what needs
+his pick.
+
+**References.** `uzume-site` @ `03d5478` (branch `claude/rn3-ecosystem-reconcile`);
+[D-227] (RN.2); [D-157] (steady luminance); [D-211] (LFS cutover);
+`docs/CREDITS.md` §App icon; `docs/ENGINEERING_PLAN.md` §Phase RN RN.3.

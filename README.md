@@ -2,17 +2,20 @@
 
 Uzume is a native macOS music-visualization engine for Apple Silicon. It
 connects to a playlist, pre-analyzes every track (ML stem separation + music
-information retrieval on preview clips) before the music starts, and an AI
-orchestrator plans the whole visual session — which visualizer accompanies
-each track, where transitions land, and the emotional arc across the
-playlist. During playback, real-time analysis of the system audio refines the
-plan as the music unfolds.
+information retrieval on preview clips) before the music starts, and a
+deterministic session planner sequences the whole visual session — which
+visualizer accompanies each track, where transitions land, and the emotional
+arc across the playlist. During playback, real-time analysis of the system
+audio refines the plan as the music unfolds. Machine learning does the
+listening; the planning is rules-based and reproducible.
 
 Uzume does not control playback: you play music in your streaming app (or
-from local files) while Uzume listens and performs the visual
-accompaniment. The name references the phenomenon of perceiving light and
-patterns without external visual stimulus — which is what this software does
-with sound.
+from local files) while Uzume listens and performs the visual accompaniment.
+The name is **Ame-no-Uzume** (oo-ZOO-meh), the kami whose planned, drummed
+performance drew the sun back out of the cave — a session is planned, a
+performance unfolds, and music is answered in light. Brand, naming evidence
+and the design system live in the companion repo
+[`hoaxpoet/uzume-site`](https://github.com/hoaxpoet/uzume-site).
 
 See [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md) for the full product
 definition.
@@ -22,9 +25,6 @@ definition.
 - **Apple Silicon Mac** (performance target: 60 fps at 1080p)
 - **macOS 14.0+** (Sonoma)
 - **Xcode 26.5** (pinned in [.xcode-version](.xcode-version)) — Swift 6.0, Metal 3.1+
-- **git-lfs** — install **before** cloning (`brew install git-lfs && git lfs install`).
-  Reference images and diagnostic media are LFS-tracked; without LFS you get
-  stub files.
 
 ## Getting started
 

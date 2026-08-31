@@ -2,7 +2,8 @@
 
 **Decisions CONFIRMED by Matt, 2026-07-12:** (1) the history rewrite RUNS
 before first publish (§2 below is no longer optional); (2) weights ship as a
-Release asset, LFS keeps reference media only (§1); (3) `prompts/` ships with
+Release asset (§1) — and since D-211/LFS.2 the reference media left git too,
+so **nothing is LFS-tracked any more**; (3) `prompts/` ships with
 its framing README (done at PUB.1); (4) preset hot-reload gets wired with
 compile errors surfaced on the toast surface (queued — review Phase 2).
 
