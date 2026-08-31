@@ -63,7 +63,7 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Phase RN — Rename (Phosphene → Uzume) 🔨 (2026-08-30; name decided 2026-08-09 after a five-round naming sprint)
 
-The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami whose planned, drummed performance lured the sun out of the cave. **RN.0** ✅ (2026-08-30) — preparation only: the naming sprint's evidence (`docs/planning/NAMING_REPORT.md`, `MYTH_RESEARCH.md`, `WEBSITE_PLAN.md`) and the two session prompts that commission the rename (`prompts/RN.1-prompt.md`, `prompts/BRAND.1-prompt.md`) move from an untracked working directory into the repo, so the decision's provenance survives independently of one machine's filesystem. No code, no identifiers, no user-visible strings touched. **RN.1** queued — external identity: bundle ID `com.phosphene.app` → `io.uzume.mac`, logger subsystems, the Application Support path (clean break, no migration shim), repo URLs, and living docs; pre-flight-blocked on Matt renaming the GitHub repo to `hoaxpoet/uzume` and on the BRAND.1 icon master. **RN.2** queued pending Matt's pick — whether the internal tree (`PhospheneApp`/`PhospheneEngine` targets, directories, scheme) renames too.
+The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami whose planned, drummed performance lured the sun out of the cave. **RN.0** ✅ (2026-08-30) — preparation only: the naming sprint's evidence (`docs/planning/NAMING_REPORT.md`, `MYTH_RESEARCH.md`, `WEBSITE_PLAN.md`) and the two session prompts that commission the rename (`prompts/RN.1-prompt.md`, `prompts/BRAND.1-prompt.md`) move from an untracked working directory into the repo, so the decision's provenance survives independently of one machine's filesystem. No code, no identifiers, no user-visible strings touched. **RN.1** ✅ (2026-08-31, D-225) — external identity: bundle ID `io.uzume.mac`, product `Uzume.app` (module pinned to `PhospheneApp` for RN.2), `uzume://`, Keychain `io.uzume.spotify`, loggers `io.uzume.*`, Application Support `Uzume/`, repo `hoaxpoet/uzume`, and the first app icon the project has ever shipped. `IdentityMigrator` carries settings + the stem cache; TCC grants and the Spotify token deliberately do not migrate (the Keychain attempt froze app launch on a modal SecurityAgent prompt — see D-225). **RN.2** queued pending Matt's pick — whether the internal tree (`PhospheneApp`/`PhospheneEngine` targets, directories, scheme) renames too.
 
 ## Recently Completed
 
@@ -873,59 +873,6 @@ expected to be an improvement — the columns are additive — but it is not a S
 and wants its own increment.
 
 ### Increment CHR.3b — Stave rebuilt: the visible spectrum aligned to the frequency spectrum ✅ (2026-08-16)
-
-**Preset count stays 29. `certified: false`.** CHR.3's Stave was rejected at Matt's live M7 —
-*"deeply boring"*, *"not sure what is being plotted"*, *"what is the purpose of the horizontal
-and vertical grid lines?"*, *"why the starry background"*. Retirement was recommended and
-**declined** (*"you cannot retire the preset, you have to make it work"*), and after five
-mechanism-first pitches were rejected in turn (*"a technical demo, not a performance"*,
-*"vague"*, *"this is a waveform preset, don't build me something else"*, *"you need to build
-something EMOTIONAL, not academic"*) Matt gave the concept directly:
-**"align the visible light spectrum to the frequency spectrum for this preset."**
-
-**The diagnosis that mattered, and it was mechanical.** Stave is `family: waveform` and **never
-read the waveform** — `Stave.metal` took `waveformData` at buffer 2 and never touched a sample.
-It plotted an 8 s scrolling window of EMA-centred band energy, an envelope statistic, and every
-stage removed life: 20 Hz decimation killed everything fast, EMA-centring removed level, soft
-saturation compressed the dynamics, the window smeared the rest. Worse, every route it had was
-~0.3 s or per-beat, so it had no channel through which to know where it was in a song: the M7
-track had five sections and a 4× arousal climb and the preset read none of it. Two gates
-actively rewarded this — `motion_gate` scored the uniform scroll as "smooth, 0 spikes" (stdev
-0.05–0.14) and every QG gate was green on the exact session Matt rejected.
-
-**What Stave is now.** The live waveform, split into eight bands, each drawn in the colour of
-its own frequency (82 Hz at 662 nm deep red → ~11 kHz at 404 nm violet), one pass across the
-visible band, compressed rather than octave-wrapped, converted with Bruton's standard spectral
-fit so the colour IS the physical wavelength. Additive, so a full spectrum sums toward white
-like mixed light. Bands offset by wavelength so the spectrum separates as a prism separates
-light, red deviating least.
-
-**The dispersion is DRIVEN, and that came from a measured failure.** A fixed fan collapsed Take
-Five into a static rainbow layer cake — on smooth quiet material the wave excursions go small
-next to the gaps, so the spread stops being an effect of the music and becomes decoration, the
-original disease in a new costume. Driving it from the on-screen amplitude fixes that and
-supplies quiet-vs-loud contrast on limited masters: Carry The Zero spans only **1.4× RMS across
-the entire song**, so level alone can never carry dynamics there.
-
-**Removed on Matt's instruction:** beads, stems, star sparkles, static horizontal rules, beat
-verticals, the scroll, the haze, the cloud. The stem tint is not merely cut but **contradictory**
-— colour now means frequency, and colour cannot mean two things at once, so a stem wash would
-corrupt the one rule that makes the image legible. That is D-216's rejected option A arriving on
-its own merits.
-
-**Measured across four tracks** (guitar rock / solo piano / jazz / metal), fan range
-0.08–0.40 with Clair De Lune using the full swing on the piano's own dynamics. Motion gate mean
-**4.2–22.2** against the old build's 1.26–1.96 — roughly 10× more frame-to-frame change, 0
-spikes, 0 frozen. D-157 flash gate re-authored for the waveform driver (broadband noise gated
-on/off at the accent rate, the harshest signal the preset can be given): **MEASURED, 0.00
-flashes/s, SAFE**.
-
-**Open, carried to CHR.4:** QG.1 cannot gate this preset — its only driver is the engine's
-waveform buffer, which is not a session-recordable primitive, so `audio_routes` is empty and
-that **blocks certification**; the fan saturates on loud material (0.38–0.40 of a 0.40 ceiling
-on two of four tracks); the reference set still describes the retired beaded-trace look and
-needs recuration.
-
 ### Increment CHR.3 — Stave: authoring to code-complete ✅ (2026-08-14)
 ### Increment CHR.1.3 — Stave: the design-doc half CHR.1 withheld ✅ (2026-08-14)
 ### Increment CHR.2 — Stave look spike: geometry passes, stem colour fails ✅ (2026-08-14)
@@ -3837,7 +3784,7 @@ replaying production.
 **Not certified.** FTR.5 remains Matt's call.
 
 **FTR.23 — retune the continuous glide; FTR.22 shipped 3.5× too slow.** ✅ code-complete,
-**pending live M7** (2026-08-17, merged in [#101](https://github.com/hoaxpoet/phosphene/pull/101))
+**pending live M7** (2026-08-17, merged in [#101](https://github.com/hoaxpoet/uzume/pull/101))
 Matt on the FTR.22 build (`2026-08-17T12-47-58Z`, *Carry The Zero*): *"Now it barely moves AND the
 tree still grows and shrinks with no clear connection to the music."*
 

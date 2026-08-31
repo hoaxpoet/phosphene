@@ -2,7 +2,7 @@
 // content-keyed stem cache (D-130).
 //
 // Each test owns a fresh temp directory. The cache layer never reads
-// the user's real `~/Library/Application Support/Phosphene/StemCache/`
+// the user's real `~/Library/Application Support/Uzume/StemCache/`
 // during testing.
 
 import Foundation

@@ -192,7 +192,7 @@ final class StemFFTTests: XCTestCase {
         expectation.expectedFulfillmentCount = 4
 
         let queue = DispatchQueue(
-            label: "com.phosphene.test.stemfft",
+            label: "io.uzume.test.stemfft",
             attributes: .concurrent
         )
 

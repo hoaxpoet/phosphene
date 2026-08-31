@@ -12,7 +12,7 @@ import Accelerate
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.audio", category: "FFTProcessor")
+private let logger = Logger(subsystem: "io.uzume.audio", category: "FFTProcessor")
 
 // MARK: - FFTProcessor
 

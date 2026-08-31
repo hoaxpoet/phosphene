@@ -2,12 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Display identity. CFBundleName drives the menu bar; CFBundleDisplayName
+	     drives Finder and permission dialogs. Both live here rather than in
+	     INFOPLIST_KEY_* build settings: this target sets an explicit
+	     INFOPLIST_FILE, and the file wins over the generated keys — setting them
+	     in the pbxproj silently left CFBundleName as $(PRODUCT_NAME). The bundle
+	     on disk stays PhospheneApp.app until RN.2 renames the target. -->
+	<key>CFBundleName</key>
+	<string>Uzume</string>
+	<key>CFBundleDisplayName</key>
+	<string>Uzume</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>Phosphene captures system audio to generate real-time music visualizations. No video is recorded.</string>
+	<string>Uzume captures system audio to generate real-time music visualizations. No video is recorded.</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Phosphene reads track info from music apps (Apple Music, Spotify) to display what's currently playing.</string>
+	<string>Uzume reads track info from music apps (Apple Music, Spotify) to display what's currently playing.</string>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>Phosphene searches the Apple Music catalog to look up track details like BPM and genre for the currently playing song.</string>
+	<string>Uzume searches the Apple Music catalog to look up track details like BPM and genre for the currently playing song.</string>
 	<key>SpotifyClientID</key>
 	<string>$(SPOTIFY_CLIENT_ID)</string>
 	<key>LSMultipleInstancesProhibited</key>
@@ -16,10 +26,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.phosphene.spotify-oauth</string>
+			<string>io.uzume.spotify-oauth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>phosphene</string>
+				<string>uzume</string>
 			</array>
 		</dict>
 	</array>

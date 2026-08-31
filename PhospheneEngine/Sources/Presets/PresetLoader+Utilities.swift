@@ -6,7 +6,7 @@
 import Foundation
 import os.log
 
-private let utilitiesLogger = Logger(subsystem: "com.phosphene.presets", category: "Utilities")
+private let utilitiesLogger = Logger(subsystem: "io.uzume.presets", category: "Utilities")
 
 // MARK: - Utility File Loading
 

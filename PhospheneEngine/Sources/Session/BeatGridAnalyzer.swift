@@ -11,7 +11,7 @@ import ML
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene", category: "BeatGridAnalyzer")
+private let logger = Logger(subsystem: "io.uzume", category: "BeatGridAnalyzer")
 
 // MARK: - BeatGridAnalyzing
 

@@ -115,4 +115,4 @@ extension SessionPreparer {
     }
 }
 
-private let wiringLogsLogger = Logger(subsystem: "com.phosphene", category: "SessionPreparer.WiringLogs")
+private let wiringLogsLogger = Logger(subsystem: "io.uzume", category: "SessionPreparer.WiringLogs")

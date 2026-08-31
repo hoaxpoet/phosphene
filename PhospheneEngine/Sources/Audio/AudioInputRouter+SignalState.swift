@@ -2,7 +2,7 @@ import Foundation
 import Shared
 import os.log
 
-private let signalStateLogger = Logger(subsystem: "com.phosphene.audio", category: "AudioInputRouter")
+private let signalStateLogger = Logger(subsystem: "io.uzume.audio", category: "AudioInputRouter")
 
 @available(macOS 14.2, *)
 extension AudioInputRouter {

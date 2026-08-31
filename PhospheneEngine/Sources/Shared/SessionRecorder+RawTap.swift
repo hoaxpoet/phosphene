@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let rawTapLogger = Logger(subsystem: "com.phosphene", category: "SessionRecorder")
+private let rawTapLogger = Logger(subsystem: "io.uzume", category: "SessionRecorder")
 
 extension SessionRecorder {
 

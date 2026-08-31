@@ -408,7 +408,7 @@ The instrumentation lives in 8 files; this audit's read of every probe call site
 Per `KNOWN_ISSUES.md` (unchanged by this audit):
 
 ```
-log show --predicate 'subsystem == "com.phosphene" AND category == "bug012"' \
+log show --predicate 'subsystem == "io.uzume" AND category == "bug012"' \
          --info --last 30m | grep '[BUG-012]'
 ```
 

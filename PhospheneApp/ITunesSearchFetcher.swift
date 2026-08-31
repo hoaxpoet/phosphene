@@ -8,7 +8,7 @@ import Session
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "iTunes")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "iTunes")
 
 // MARK: - ITunesSearchFetcher
 

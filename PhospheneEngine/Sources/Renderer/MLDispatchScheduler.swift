@@ -16,7 +16,7 @@ import Foundation
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "MLDispatchScheduler")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "MLDispatchScheduler")
 
 // MARK: - FrameTimingProviding
 

@@ -19,7 +19,7 @@
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "IBLManager")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "IBLManager")
 
 // MARK: - IBLManager
 

@@ -15,7 +15,7 @@ import Metal
 import Shared
 import os.log
 
-private let sandLogger = Logger(subsystem: "com.phosphene.renderer", category: "CymaticSand")
+private let sandLogger = Logger(subsystem: "io.uzume.renderer", category: "CymaticSand")
 
 // MARK: - SandConfig (mirror of MSL `SandConfig`, 56 bytes: 4×uint + 10×float)
 

@@ -9,7 +9,7 @@
 - Screen capture permission for live audio capture
 - Swift 6.0 language mode (Xcode 26.5 toolchain ships Swift 6.3.x), Metal 3.1+
 
-> **Security posture & local threat model:** [`SECURITY_POSTURE.md`](SECURITY_POSTURE.md) — why the app is un-sandboxed, the system-audio tap scope + consent gate, hardened-runtime/notarization status (filed CLEAN.2.5 for distribution), the `phosphene://` OAuth callback, the local-file parsing surface, and the no-telemetry posture. Read it before changing any signing/entitlement/tap setting.
+> **Security posture & local threat model:** [`SECURITY_POSTURE.md`](SECURITY_POSTURE.md) — why the app is un-sandboxed, the system-audio tap scope + consent gate, hardened-runtime/notarization status (filed CLEAN.2.5 for distribution), the `uzume://` OAuth callback, the local-file parsing surface, and the no-telemetry posture. Read it before changing any signing/entitlement/tap setting.
 
 ## Spotify connector setup (U.11 — OAuth PKCE)
 
@@ -18,7 +18,7 @@ Phosphene uses Spotify's Authorization Code + PKCE flow (user-level OAuth). The 
 **One-time developer setup:**
 
 1. Go to [https://developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and log in.
-2. Click **Create app**. Name it "Phosphene". Add redirect URI: **`phosphene://spotify-callback`** (exact, required). Check **Web API**. Accept terms.
+2. Click **Create app**. Name it "Uzume". Add redirect URI: **`uzume://spotify-callback`** (exact, required). Check **Web API**. Accept terms.
 3. Copy the **Client ID** from the app dashboard. (No client secret is needed for PKCE.)
 4. Create `PhospheneApp/Phosphene.local.xcconfig` (gitignored) with:
    ```
@@ -35,11 +35,11 @@ The app reads `SpotifyClientID` at runtime via `Bundle.main.infoDictionary`. An 
 1. Paste a Spotify playlist URL in the connector view.
 2. Phosphene shows "Log in with Spotify" if not yet authenticated.
 3. Tap "Log in with Spotify" → system browser opens `accounts.spotify.com/authorize`.
-4. User approves → browser redirects to `phosphene://spotify-callback?code=…`.
+4. User approves → browser redirects to `uzume://spotify-callback?code=…`.
 5. Phosphene exchanges the code for tokens; refresh token stored in Keychain.
 6. Future sessions skip the login step (silent token refresh).
 
-**Logout:** Not yet exposed in the Settings UI. Developer workaround: delete the Keychain item via Keychain Access.app → search "com.phosphene.spotify".
+**Logout:** Not yet exposed in the Settings UI. Developer workaround: delete the Keychain item via Keychain Access.app → search "io.uzume.spotify".
 
 
 ### Spotify connector gotchas — relocated from CLAUDE.md §Failed Approaches (DOC.3b, 2026-05-13)
@@ -70,13 +70,67 @@ swiftlint lint --strict --config .swiftlint.yml
 
 **The app scheme's test action runs only `PhospheneAppTests` (BUG-048).** From U.1 until 2026-06-11 it also ran the engine test bundle, which fails under xcodebuild's test-runner context on environment, not code: ffmpeg subprocess spawning and repo-relative file reads are denied ("Operation not permitted"), audio-device tests die instantly, and only ~440 of the engine suite's 1439 tests even load. The engine suite's canonical runner is `swift test --package-path PhospheneEngine`, where all of those pass. `SchemeTestActionRegressionTests` (engine suite) fails loudly if the engine bundle is re-added to the scheme's test action.
 
-**Quit PhospheneApp before running the app test suite (BUG-072).** The test *host* is `PhospheneApp.app` itself, and `Info.plist` sets `LSMultipleInstancesProhibited` (U.11, for OAuth callback routing) — so while any `com.phosphene.app` process is running, LaunchServices refuses the host launch and the whole run fails at exit 65 with "Could not launch “PhospheneAppTests”", zero tests executed. It survives every build-side remedy (clean, `lsregister`, bundle delete, a different worktree or DerivedData path) because the blocker is a *running process*, not a build product. Fix:
+**Quit Uzume before running the app test suite (BUG-072).** The test *host* is `Uzume.app` itself, and `Info.plist` sets `LSMultipleInstancesProhibited` (U.11, for OAuth callback routing) — so while any `io.uzume.mac` process is running, LaunchServices refuses the host launch and the whole run fails at exit 65 with "Could not launch “PhospheneAppTests”", zero tests executed. It survives every build-side remedy (clean, `lsregister`, bundle delete, a different worktree or DerivedData path) because the blocker is a *running process*, not a build product. Fix:
 
 ```bash
-osascript -e 'tell application "PhospheneApp" to quit'; pkill -x PhospheneApp
+osascript -e 'tell application id "io.uzume.mac" to quit'; pkill -x Uzume
 ```
 
+Address it **by bundle id**. At RN.1 the product became `Uzume.app` with executable
+`Uzume`, so the pre-rename incantations (`tell application "PhospheneApp"`,
+`pkill -x PhospheneApp`) silently match nothing and leave the blocker running — the
+next test run then fails for a reason the command you just ran appeared to rule out.
+If a wedged instance ignores `quit` outright, `kill -9 <pid>` from
+`pgrep -f 'Uzume.app/Contents/MacOS'` is the escape hatch.
+
 `Scripts/closeout_evidence.sh` annotates the evidence block when it sees this signature, so it is never mistaken for a real app-test regression.
+
+### After the Uzume rename (RN.1) — one-time, per machine
+
+The bundle identifier changed from `com.phosphene.app` to `io.uzume.mac`. macOS keys
+several things to that identifier, so a machine that ran the pre-rename build needs
+three one-time steps. Everything else migrates itself on first launch.
+
+**1. Re-grant Screen Recording.** TCC grants belong to the old identifier and cannot be
+transferred — the old grant is orphaned, which is expected, not a bug. Without this the
+tap installs and delivers silent zeros with no error (the §"App captures silence" trap).
+Reset both identifiers so no stale row shadows the new one, then relaunch and grant when
+prompted:
+
+```bash
+tccutil reset ScreenCapture com.phosphene.app; tccutil reset ScreenCapture io.uzume.mac
+```
+
+Confirm `Signal: Active` in the debug overlay within 1.5 s of audio starting. Apple
+Events and Apple Music prompts re-appear on first use for the same reason.
+
+**2. Reconnect Spotify.** The OAuth refresh token stays in the login keychain under
+`com.phosphene.spotify`, and the new code identity has no ACL on it. Adopting it was
+tried and reverted: reading another identity's item raises a modal `SecurityAgent`
+prompt, and because the store is built from a stored-property initializer that
+**blocks app launch** — the app wedges before `init()` runs and the XCTest runner never
+connects. One OAuth click is the cheaper trade. Reconnect in Settings → Connectors.
+
+If a stale `io.uzume.spotify` item exists from an earlier experiment, delete it or every
+launch will hang on that dialog:
+
+```bash
+security delete-generic-password -s io.uzume.spotify ~/Library/Keychains/login.keychain-db
+```
+
+**3. Update the Spotify redirect URI — on Spotify's side.** This one is not in the repo and
+no sweep can fix it. The app now sends `uzume://spotify-callback`, but an app registration
+created before the rename still whitelists `phosphene://spotify-callback`, and Spotify rejects
+the login with **"redirect_uri: Not matching configuration"** *after* the user has already typed
+their password — so it reads like a credentials failure rather than a config one. On
+developer.spotify.com/dashboard → your app → Settings → Redirect URIs, add
+`uzume://spotify-callback`. Leaving the old entry alongside it is harmless and keeps a
+pre-rename build working.
+
+**4. Nothing to do for settings or the stem cache.** `IdentityMigrator` runs at launch and
+carries the UserDefaults domain plus `~/Library/Application Support/Phosphene` →
+`.../Uzume` (the stem cache — hundreds of MB, each entry an ML separation pass). It is
+idempotent and never overwrites a value already set under the new identity.
 
 **Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `PhospheneApp/Phosphene.xcconfig`.
 
@@ -157,7 +211,7 @@ Vorbis / MP4-atom `LocalFileMetadata` + optional artwork bytes) to disk
 under
 
 ```
-~/Library/Application Support/Phosphene/StemCache/sha256/<aa>/<full-hash>/
+~/Library/Application Support/Uzume/StemCache/sha256/<aa>/<full-hash>/
 ```
 
 where `<aa>` is the first two hex chars of the file's SHA-256 (filesystem
@@ -181,23 +235,23 @@ LRU eviction runs after every cache write — the default 500 MB cap
 
 ```sh
 # Inspect contents
-find "$HOME/Library/Application Support/Phosphene/StemCache" -type f
+find "$HOME/Library/Application Support/Uzume/StemCache" -type f
 
 # Size
-du -sh "$HOME/Library/Application Support/Phosphene/StemCache"
+du -sh "$HOME/Library/Application Support/Uzume/StemCache"
 
 # Wipe all cached entries (or use Phosphene → Clear Local-File Cache)
-rm -rf "$HOME/Library/Application Support/Phosphene/StemCache"
+rm -rf "$HOME/Library/Application Support/Uzume/StemCache"
 
 # Wipe one entry by file hash
 shasum -a 256 path/to/file.m4a   # → c1685f07d559...
-rm -rf "$HOME/Library/Application Support/Phosphene/StemCache/sha256/c1/c1685f07d559..."
+rm -rf "$HOME/Library/Application Support/Uzume/StemCache/sha256/c1/c1685f07d559..."
 
 # Override the default 500 MB eviction cap (1 GB example)
-defaults write com.phosphene.app phosphene.cache.localFile.maxBytes -int 1073741824
+defaults write io.uzume.mac phosphene.cache.localFile.maxBytes -int 1073741824
 
 # Read the current cap (LF.4)
-defaults read com.phosphene.app phosphene.cache.localFile.maxBytes
+defaults read io.uzume.mac phosphene.cache.localFile.maxBytes
 ```
 
 **When to clear the cache.**
@@ -235,10 +289,10 @@ the `phosphene.lf.recents` UserDefaults key as a JSON-encoded list.
 
 ```sh
 # Inspect (the value is JSON inside a `<data>` blob — base64-decode if needed)
-defaults read com.phosphene.app phosphene.lf.recents
+defaults read io.uzume.mac phosphene.lf.recents
 
 # Reset (use the menu's "Clear Recents" item, or wipe via defaults)
-defaults delete com.phosphene.app phosphene.lf.recents
+defaults delete io.uzume.mac phosphene.lf.recents
 ```
 
 Stale entries (file no longer at the recorded path) render disabled with a
@@ -333,7 +387,7 @@ Checks:
 - **Apple Music**: Settings → Playback → toggle **"Sound Check"** OFF.
 - **Streaming quality**: pin to **Very High** / **Lossless**, disable any "auto-adjust quality" toggle. Lower bitrates compress dynamic range and flatten transients.
 - **Audio MIDI Setup**: if a Multi-Output Device is the system output, all member devices should be at the same sample rate (48 kHz preferred — Phosphene's stem pipeline assumes 44.1/48 kHz internally; 96 kHz forces resampling). Set the *physical* device (e.g., built-in speakers) as Primary and enable Drift Correction on virtual subdevices, not the other way around.
-- **External USB/Thunderbolt interfaces (e.g., Apogee Duet 3 — current canonical playback chain)**: same 48 kHz rule. Open Audio MIDI Setup → select the interface → Format → **48,000.0 Hz, 2 ch 32-bit Float** on both Input and Output tabs. Make the interface the system default output (System Settings → Sound → Output). **Switching the default output device invalidates Phosphene's Screen Recording permission** — the process tap continues to install successfully and deliver silent zeros, with no UI signal that the chain is broken. Re-grant via System Settings → Privacy & Security → Screen Recording → toggle Phosphene off then on, relaunch, and confirm `Signal: Active` in the debug overlay within 1.5 s of audio starting. Same trap fires on any default-output change (built-in → interface, interface A → interface B, headphone unplug if the system rebinds defaults).
+- **External USB/Thunderbolt interfaces (e.g., Apogee Duet 3 — current canonical playback chain)**: same 48 kHz rule. Open Audio MIDI Setup → select the interface → Format → **48,000.0 Hz, 2 ch 32-bit Float** on both Input and Output tabs. Make the interface the system default output (System Settings → Sound → Output). **Switching the default output device invalidates Uzume's Screen Recording permission** — the process tap continues to install successfully and deliver silent zeros, with no UI signal that the chain is broken. Re-grant via System Settings → Privacy & Security → Screen Recording → toggle Uzume off then on, relaunch, and confirm `Signal: Active` in the debug overlay within 1.5 s of audio starting. Same trap fires on any default-output change (built-in → interface, interface A → interface B, headphone unplug if the system rebinds defaults).
 - **Verification**: `raw_tap.wav` (30s Stage-4 capture in each session dir) peak should land at −3 to −9 dBFS for properly mastered tracks with normalization off. Peaks below −15 dBFS point to source-app normalization or routing attenuation. **Do not interpret post-stem-separation WAV spectra as the raw chain** — the stem separator isolates per-instrument content, so a "drums.wav with narrow spectrum" on a drum-sparse track tells you nothing about the chain. Only `raw_tap.wav` reflects what macOS actually delivers to Phosphene.
 
 ### Diagnosing signal-chain degradation (proper methodology)
@@ -396,7 +450,7 @@ Checks:
 - Fix: follow §Spotify connector setup above (creating the file is all that is needed). Build again after editing the xcconfig.
 
 **Redirect URI mismatch** (browser shows Spotify error page after login):
-- Cause: the redirect URI registered in Spotify's developer dashboard does not exactly match `phosphene://spotify-callback`.
+- Cause: the redirect URI registered in Spotify's developer dashboard does not exactly match `uzume://spotify-callback`.
 - Fix: re-open the app on developer.spotify.com, edit the redirect URI, and save.
 
 **Authorization denied by user** (`authFailure` state):
@@ -422,14 +476,14 @@ Checks:
   was not checked when creating the app, the access token is issued without playlist permissions,
   and all `/v1/playlists/{id}/tracks` requests return `{"error":{"status":403,"message":"Forbidden"}}`.
   This happens even for public playlists with a valid OAuth token.
-  - Diagnosis: Check `Console.app` → filter for "Spotify 403 body" in the `com.phosphene.app` process.
+  - Diagnosis: Check `Console.app` → filter for "Spotify 403 body" in the `io.uzume.mac` process.
     If body is exactly `{"error":{"status":403,"message":"Forbidden"}}`, it's Cause B.
   - Fix:
     1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), open your app.
     2. Click **Edit** → under "Which API/SDKs are you planning to use?", tick **Web API**.
-    3. Add or re-confirm redirect URI: `phosphene://spotify-callback`.
+    3. Add or re-confirm redirect URI: `uzume://spotify-callback`.
     4. Click **Save**.
-    5. Delete the stored refresh token: open Keychain Access → search "com.phosphene.spotify" → delete it.
+    5. Delete the stored refresh token: open Keychain Access → search "io.uzume.spotify" → delete it.
     6. Relaunch Phosphene and log in again. The new token will carry playlist permissions.
 
 **Empty playlist / 0 tracks prepared (reactive fallback despite successful login):**

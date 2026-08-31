@@ -11,7 +11,7 @@
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene", category: "SpectralHistory")
+private let logger = Logger(subsystem: "io.uzume", category: "SpectralHistory")
 
 // MARK: - SpectralHistoryBuffer
 

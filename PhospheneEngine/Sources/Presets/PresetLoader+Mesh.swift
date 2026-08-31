@@ -6,7 +6,7 @@
 import Metal
 import os.log
 
-private let meshLogger = Logger(subsystem: "com.phosphene.presets", category: "PresetLoader")
+private let meshLogger = Logger(subsystem: "io.uzume.presets", category: "PresetLoader")
 
 extension PresetLoader {
 

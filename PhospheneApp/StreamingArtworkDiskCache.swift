@@ -3,7 +3,7 @@
 //
 // Layout on disk: `<directoryURL>/<sha256(sourceURL)>.bin`.
 //
-// Location (default): `~/Library/Caches/com.phosphene.app/streaming-artwork/`.
+// Location (default): `~/Library/Caches/io.uzume.mac/streaming-artwork/`.
 // macOS may purge `Caches/` under disk pressure; we accept that — re-fetch
 // costs one HTTP round-trip. Matches Spotify's own client behaviour.
 //
@@ -34,7 +34,7 @@ actor StreamingArtworkDiskCache {
     /// (~80 KB JPEG). Picked at LF.6.streaming Pre-Flight Audit (Decision 2).
     static let defaultMaxBytes: Int = 100 * 1024 * 1024
 
-    /// Default cache root: `~/Library/Caches/com.phosphene.app/streaming-artwork/`.
+    /// Default cache root: `~/Library/Caches/io.uzume.mac/streaming-artwork/`.
     /// Falls back to a `Library/Caches`-relative path under `$HOME` if the
     /// FileManager lookup ever fails (treated as best-effort).
     static func defaultDirectoryURL() -> URL {
@@ -51,7 +51,7 @@ actor StreamingArtworkDiskCache {
                 .appendingPathComponent("Library/Caches", isDirectory: true)
         }
         return caches
-            .appendingPathComponent("com.phosphene.app", isDirectory: true)
+            .appendingPathComponent("io.uzume.mac", isDirectory: true)
             .appendingPathComponent("streaming-artwork", isDirectory: true)
     }
 
@@ -60,7 +60,7 @@ actor StreamingArtworkDiskCache {
     private let directoryURL: URL
     private let maxBytes: Int
     private let logger = Logger(
-        subsystem: "com.phosphene.app",
+        subsystem: "io.uzume.mac",
         category: "StreamingArtworkDiskCache"
     )
 

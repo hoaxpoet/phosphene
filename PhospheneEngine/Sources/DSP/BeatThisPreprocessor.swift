@@ -42,7 +42,7 @@ import Accelerate
 @preconcurrency import AVFoundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.dsp", category: "BeatThisPreprocessor")
+private let logger = Logger(subsystem: "io.uzume.dsp", category: "BeatThisPreprocessor")
 
 // MARK: - BeatThisPreprocessor
 

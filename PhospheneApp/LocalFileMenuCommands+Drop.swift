@@ -22,7 +22,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import os.log
 
-private let dropLogger = Logger(subsystem: "com.phosphene.app", category: "LocalFileMenuCommands+Drop")
+private let dropLogger = Logger(subsystem: "io.uzume.mac", category: "LocalFileMenuCommands+Drop")
 
 // MARK: - Drop entry point
 

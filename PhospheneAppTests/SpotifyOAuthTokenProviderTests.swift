@@ -253,7 +253,7 @@ struct SpotifyOAuthTokenProviderTests {
         let authComps = URLComponents(url: try #require(openedURL), resolvingAgainstBaseURL: false)
         let state = try #require(authComps?.queryItems?.first(where: { $0.name == "state" })?.value)
         let callbackURL = try #require(
-            URL(string: "phosphene://spotify-callback?code=auth_code_xyz&state=\(state)")
+            URL(string: "uzume://spotify-callback?code=auth_code_xyz&state=\(state)")
         )
         await provider.handleCallback(url: callbackURL)
 
@@ -290,7 +290,7 @@ struct SpotifyOAuthTokenProviderTests {
         let authComps = URLComponents(url: try #require(firstAuthorizeURL), resolvingAgainstBaseURL: false)
         let state = try #require(authComps?.queryItems?.first(where: { $0.name == "state" })?.value)
         let callbackURL = try #require(
-            URL(string: "phosphene://spotify-callback?code=auth_code_xyz&state=\(state)")
+            URL(string: "uzume://spotify-callback?code=auth_code_xyz&state=\(state)")
         )
         await provider.handleCallback(url: callbackURL)
 
@@ -328,7 +328,7 @@ struct SpotifyOAuthTokenProviderTests {
 
         // Forged / mismatched state — must be rejected even though code is valid.
         let callbackURL = try #require(
-            URL(string: "phosphene://spotify-callback?code=auth_code_xyz&state=WRONG_STATE")
+            URL(string: "uzume://spotify-callback?code=auth_code_xyz&state=WRONG_STATE")
         )
         await provider.handleCallback(url: callbackURL)
 
@@ -348,7 +348,7 @@ struct SpotifyOAuthTokenProviderTests {
         let loginTask = Task { try await provider.login() }
         try await Task.sleep(for: .milliseconds(30))
 
-        let callbackURL = try #require(URL(string: "phosphene://spotify-callback?error=access_denied"))
+        let callbackURL = try #require(URL(string: "uzume://spotify-callback?error=access_denied"))
         await provider.handleCallback(url: callbackURL)
 
         do {

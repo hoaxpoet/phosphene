@@ -19,7 +19,7 @@ import Audio
 import Renderer
 import Shared
 
-let logger = Logger(subsystem: "com.phosphene.diagnostics", category: "SoakTestHarness")
+let logger = Logger(subsystem: "io.uzume.diagnostics", category: "SoakTestHarness")
 
 // MARK: - SoakTestHarness
 

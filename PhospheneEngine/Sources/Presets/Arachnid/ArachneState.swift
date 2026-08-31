@@ -36,7 +36,7 @@ import Shared
 import simd
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.presets", category: "Arachne")
+private let logger = Logger(subsystem: "io.uzume.presets", category: "Arachne")
 
 // MARK: - WebStage
 

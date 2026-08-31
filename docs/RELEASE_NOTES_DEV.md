@@ -10,6 +10,43 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-31-133921] RN.1 — the app is Uzume everywhere macOS looks
+
+The external rename landed. Bundle ID `com.phosphene.app` → **`io.uzume.mac`**, product
+`PhospheneApp.app` → **`Uzume.app`**, URL scheme `uzume://`, Keychain `io.uzume.spotify`,
+loggers `io.uzume.*`, Application Support `Uzume/`, repo `hoaxpoet/uzume`. The app finally has
+an icon — there was no asset catalog in the project at all before this. Internal module,
+target and scheme names are untouched; that is RN.2. Full mapping and rationale in D-225.
+
+**The menu bar needed the product rename, not just a plist key.** `CFBundleName` drives the
+macOS app menu and is injected from `PRODUCT_NAME` — setting it in `Info.plist` or via
+`INFOPLIST_KEY_CFBundleName` was verified to do nothing. `PRODUCT_NAME = Uzume` fixes it and
+also renames the Swift module, which broke every `@testable import PhospheneApp`;
+`PRODUCT_MODULE_NAME` pins the module so the visible rename lands without dragging the module
+rename in early.
+
+**A Keychain migration froze app launch, and cost most of the session.** Adopting the
+pre-rename Spotify token looked obviously right — the user should not have to reconnect. But
+reading an item written by a different code identity makes securityd raise a modal
+`SecurityAgent` prompt, and `SecItemCopyMatching` blocks on it. The store is built from a
+stored-property initializer, which runs before `init()`'s body, so the app wedged before doing
+anything and `xcodebuild test` failed with "The test runner hung before establishing
+connection" — a symptom that looks nothing like its cause. Reverted; the user reconnects once.
+
+The diagnosis is the reusable part. Four theories died first (the state migrator, LaunchServices
+registration, stale DerivedData, TCC), each disproved rather than argued: running the base
+commit in the same worktree proved the fault was ours, a bundle-ID bisect narrowed it to one
+commit, and `sample` on the wedged process named the blocking frame outright. **Sampling the
+hung process should have been step one, not step five.**
+
+`IdentityMigrator` carries the settings domain and the Application Support tree across the
+identity change — idempotent, existing values win, failures logged and swallowed. Verified on
+real data: 263 MB of stem cache relocated correctly.
+
+Also: BUG-072's runbook remedy was itself stale and silently matched nothing after the rename
+(`pkill -x PhospheneApp` against a process now named `Uzume`), which wasted a diagnostic round.
+Now addressed by bundle id.
+
 ### [dev-2026-08-27-153500] PERF.17 — the frame-budget harness was timing the roster at the AGC mean
 
 BUG-110's follow-up asked for "a note or a mechanism for state-gated layers" in the frame-budget

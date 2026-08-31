@@ -1,7 +1,7 @@
 // BUG012ConcurrencyTest — Regression coverage for the suspected race in
 // BUG-012 (MPSGraph EXC_BAD_ACCESS in `StemFFTEngine.runForwardGraph`).
 //
-// The crash fired on `Thread 71 — com.phosphene.stemSeparator queue` after
+// The crash fired on `Thread 71 — io.uzume.stemSeparator queue` after
 // repeated `ML: force-dispatch after 2100ms` messages. The suspected failure
 // class is `concurrency`: a force-dispatch from the scheduler races with an
 // in-flight separation, producing a nil-pointer access at MPSGraph.run.

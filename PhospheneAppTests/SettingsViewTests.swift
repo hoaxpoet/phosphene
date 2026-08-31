@@ -13,7 +13,7 @@ import Testing
 struct SettingsViewTests {
 
     private func makeVM() -> SettingsViewModel {
-        guard let suite = UserDefaults(suiteName: "com.phosphene.test.settingsview.\(UUID().uuidString)") else {
+        guard let suite = UserDefaults(suiteName: "io.uzume.test.settingsview.\(UUID().uuidString)") else {
             fatalError("test suite init failed")
         }
         let store = SettingsStore(defaults: suite)
@@ -50,7 +50,7 @@ struct SettingsViewTests {
     }
 
     @Test func resetOnboarding_callsViewModel() {
-        guard let suite = UserDefaults(suiteName: "com.phosphene.test.sv.reset.\(UUID().uuidString)") else {
+        guard let suite = UserDefaults(suiteName: "io.uzume.test.sv.reset.\(UUID().uuidString)") else {
             fatalError("test suite init failed")
         }
         suite.set(true, forKey: "phosphene.onboarding.photosensitivityAcknowledged")

@@ -27,7 +27,7 @@ import Shared
 import Audio
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.ml", category: "StemSeparator")
+private let logger = Logger(subsystem: "io.uzume.ml", category: "StemSeparator")
 
 // MARK: - StemSeparator
 

@@ -34,7 +34,7 @@ import os.log
 import Shared
 import simd
 
-private let spiderLogger = Logger(subsystem: "com.phosphene.presets", category: "ArachneSpider")
+private let spiderLogger = Logger(subsystem: "io.uzume.presets", category: "ArachneSpider")
 
 // MARK: - ArachneSpiderGPU
 

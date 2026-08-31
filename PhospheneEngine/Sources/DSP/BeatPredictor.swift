@@ -35,7 +35,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.dsp", category: "BeatPredictor")
+private let logger = Logger(subsystem: "io.uzume.dsp", category: "BeatPredictor")
 
 // MARK: - BeatPredictor
 

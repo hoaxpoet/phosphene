@@ -160,7 +160,7 @@ struct LocalizedCopyTests {
     @Test("screen capture permission copy is verbatim from UX_SPEC §9.1")
     func test_screenCapture_exactCopy() {
         let copy = LocalizedCopy.string(for: .screenCapturePermissionDenied)
-        #expect(copy == "Phosphene needs permission to hear music playing on your Mac.")
+        #expect(copy == "Uzume needs permission to hear music playing on your Mac.")
     }
 
     @Test("silence extended copy is verbatim from UX_SPEC §9.4")

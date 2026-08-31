@@ -29,7 +29,7 @@ import Metal
 import Shared
 import os.log
 
-private let meniscusLogger = Logger(subsystem: "com.phosphene.renderer", category: "Meniscus")
+private let meniscusLogger = Logger(subsystem: "io.uzume.renderer", category: "Meniscus")
 
 // MARK: - MeniscusSurface
 

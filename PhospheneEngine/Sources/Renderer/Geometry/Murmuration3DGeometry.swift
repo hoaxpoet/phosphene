@@ -11,7 +11,7 @@ import Metal
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "Murmuration3D")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "Murmuration3D")
 
 // MARK: - M3DParticle (mirror of MSL `M3DParticle`, 64 bytes)
 

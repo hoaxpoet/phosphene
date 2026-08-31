@@ -23,7 +23,7 @@ import Foundation
 import os.log
 
 private let recentsLogger = Logger(
-    subsystem: "com.phosphene.app",
+    subsystem: "io.uzume.mac",
     category: "LocalFileRecentsStore"
 )
 

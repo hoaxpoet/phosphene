@@ -194,9 +194,9 @@ Services/ (23):
 - `SessionRecorderRetentionPolicy.swift` — Session-folder pruning. `SessionRetentionPolicy` enum: `.keepAll / .lastN10 / .lastN25 / .oneDay / .oneWeek`. 60 s active-session guard prevents deletion of in-progress folders. `defaultSessionsDir` returns `~/Documents/phosphene_sessions/`.
 - `SettingsMigrator.swift` — One-shot UserDefaults key migration on app launch. One mapping today: `"phosphene.showLiveAdaptationToasts"` → `"phosphene.settings.visuals.showLiveAdaptationToasts"`.
 - `SettingsStore.swift` — `@MainActor final class SettingsStore: ObservableObject`. **One app-wide instance** per D-091 / Failed Approach #55 (`SettingsStoreEnvironmentRegressionTests` is the regression gate). 9 `@Published` fields covering device-tier override, quality ceiling, Milkdrop inclusion, reduced motion, excluded preset categories, show-live-adaptation-toasts, show-uncertified-presets, session-recorder-enabled, session-retention.
-- `SpotifyKeychainStore.swift` — `SpotifyKeychainStoring` protocol + concrete `SpotifyKeychainStore` using `SecItem*` APIs. Default service `"com.phosphene.spotify"`, default account `"refresh_token"`. U.11.
+- `SpotifyKeychainStore.swift` — `SpotifyKeychainStoring` protocol + concrete `SpotifyKeychainStore` using `SecItem*` APIs. Default service `"io.uzume.spotify"`, default account `"refresh_token"`. U.11.
 - `SpotifyOAuthPlaylistConnector.swift` — `PlaylistConnecting` wrapper that remaps `spotifyLoginRequired` to `spotifyPlaylistInaccessible` when the user is authenticated. U.11.
-- `SpotifyOAuthTokenProvider.swift` — `public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLoginProviding`. PKCE auth-code OAuth flow. `expiryMarginSeconds: 300`, `loginTimeoutSeconds: 300`, redirect URI `"phosphene://spotify-callback"`. U.11 / D-069.
+- `SpotifyOAuthTokenProvider.swift` — `public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLoginProviding`. PKCE auth-code OAuth flow. `expiryMarginSeconds: 300`, `loginTimeoutSeconds: 300`, redirect URI `"uzume://spotify-callback"`. U.11 / D-069.
 
 Models/ (2):
 - `PhospheneToast.swift` — Toast value type. `Severity` enum (`.info / .warning / .degradation`). `Source` enum (`.signalState / .liveAdaptationAck / .displayChange / .degradation / .generic`). `ToastAction { label: String, handler: @MainActor @Sendable () -> Void }`. Default duration `4 s`; `TimeInterval.infinity` for manual-dismiss-only.
@@ -427,7 +427,7 @@ BUG-006.1 instrumentation. Dual-write pattern: each helper logs once to `session
 
 ### PhospheneApp.swift (104 lines) — `production-active`
 
-`@main` App entry. **One** `SettingsStore` instance per D-091 / Failed Approach #55. Constructs `engine`, `permissionMonitor`, `accessibilityState` as `@StateObject`; constructs `spotifyOAuth = SpotifyOAuthTokenProvider.makeLive()` as `let`. Wires `SettingsStore.reducedMotion` → `AccessibilityState.applyPreference` via `.task` Combine subscription; wires `accessibilityState.reduceMotion` → `engine.applyAccessibility` via `.onChange`. Routes `phosphene://spotify-callback` to OAuth actor via `.onOpenURL`. `init()` runs `SettingsMigrator.migrate()`, `SessionRecorderRetentionPolicy.apply(policy:)`, and `DashboardFontLoader.resolveFonts(in:)`.
+`@main` App entry. **One** `SettingsStore` instance per D-091 / Failed Approach #55. Constructs `engine`, `permissionMonitor`, `accessibilityState` as `@StateObject`; constructs `spotifyOAuth = SpotifyOAuthTokenProvider.makeLive()` as `let`. Wires `SettingsStore.reducedMotion` → `AccessibilityState.applyPreference` via `.task` Combine subscription; wires `accessibilityState.reduceMotion` → `engine.applyAccessibility` via `.onChange`. Routes `uzume://spotify-callback` to OAuth actor via `.onOpenURL`. `init()` runs `SettingsMigrator.migrate()`, `SessionRecorderRetentionPolicy.apply(policy:)`, and `DashboardFontLoader.resolveFonts(in:)`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -563,7 +563,7 @@ Rolling EMA over per-stage durations (resolving / downloading / stemSeparation /
 
 #### SpotifyOAuthTokenProvider.swift (393 lines) — `production-active`
 
-U.11. `public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLoginProviding`. PKCE auth-code OAuth flow. `expiryMarginSeconds: 300`, `loginTimeoutSeconds: 300`, redirect URI `phosphene://spotify-callback`. Scopes `playlist-read-private playlist-read-collaborative`. `makeLive(urlSession:)` factory used by `PhospheneApp`.
+U.11. `public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLoginProviding`. PKCE auth-code OAuth flow. `expiryMarginSeconds: 300`, `loginTimeoutSeconds: 300`, redirect URI `uzume://spotify-callback`. Scopes `playlist-read-private playlist-read-collaborative`. `makeLive(urlSession:)` factory used by `PhospheneApp`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -581,7 +581,7 @@ Wraps a `PlaylistConnector` and remaps 403 (`spotifyLoginRequired`) to `spotifyP
 
 #### SpotifyKeychainStore.swift (117 lines) — `production-active`
 
-`SpotifyKeychainStoring: Sendable` protocol + concrete `SpotifyKeychainStore: @unchecked Sendable`. SecItem-backed refresh-token persistence. Default service `"com.phosphene.spotify"`, default account `"refresh_token"`. U.11.
+`SpotifyKeychainStoring: Sendable` protocol + concrete `SpotifyKeychainStore: @unchecked Sendable`. SecItem-backed refresh-token persistence. Default service `"io.uzume.spotify"`, default account `"refresh_token"`. U.11.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -871,7 +871,7 @@ No edits to CLAUDE.md applied in this increment. The `What NOT To Do` rules refe
 - The "Do not match plan entries against the live track via lowercased title+artist string" rule — verified BUG-006.2 fix is in place at `+Capture.swift:166` via `canonicalTrackIdentity(matching:)`; `currentTrackIndex` is published via the plan walker (`indexInLivePlan(matching:)`).
 - The "Do not assume the test fixture render path exercises the same GPU dispatch path the live app uses" rule (Failed Approach #66) — verified the live Ferrofluid Ocean path is reset on every applyPreset (`+Presets.swift:72 — setMeshGBufferEncoder(nil)`) so the SDF path is the live path post-round-57.
 - The "Do not write the literal `44100`" rule (D-079) — App-layer reads `tapSampleRate` via the NSLock-guarded property at `VisualizerEngine.swift:253–255`; the only literals in `VisualizerEngine+Stems.swift` (`StemSeparator.modelSampleRate` at line 214) and `VisualizerEngine.swift:233` (`StemSampleBuffer(sampleRate: Double(StemSeparator.modelSampleRate), ...)`) reference the model constant, not the tap.
-- The "App-layer services use `Logger(subsystem:category:)` directly, not `Logging.session`" rule (U.11) — verified across all audited files. Every App-layer file uses `private let logger = Logger(subsystem: "com.phosphene.app", category: "...")`.
+- The "App-layer services use `Logger(subsystem:category:)` directly, not `Logging.session`" rule (U.11) — verified across all audited files. Every App-layer file uses `private let logger = Logger(subsystem: "io.uzume.mac", category: "...")`.
 - The "URLProtocol stub tests require `@Suite(.serialized)`" rule (U.10) — verified the only URLProtocol-stub-using App test (`SpotifyOAuthTokenProviderTests.swift:98`) has the annotation.
 
 ### Updates needed in ARCHITECTURE.md

@@ -20,7 +20,7 @@ import Foundation
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.presets", category: "FidelityRubric")
+private let logger = Logger(subsystem: "io.uzume.presets", category: "FidelityRubric")
 
 // MARK: - DefaultFidelityRubric
 

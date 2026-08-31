@@ -2,7 +2,7 @@
 // crash filed as BUG-012 (see docs/QUALITY/KNOWN_ISSUES.md).
 //
 // The crash fired once on 2026-05-15 at `StemFFTEngine.runForwardGraph` on
-// `Thread 71 — com.phosphene.stemSeparator queue` after repeated
+// `Thread 71 — io.uzume.stemSeparator queue` after repeated
 // `ML: force-dispatch after 2100ms` messages. Address 0x8 indicates a nil
 // member access; suspected race between the ML dispatch scheduler's
 // force-dispatch path and a stem separator with an in-flight buffer / graph.

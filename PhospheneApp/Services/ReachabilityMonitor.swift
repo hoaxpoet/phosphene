@@ -10,7 +10,7 @@ import Foundation
 import Network
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "ReachabilityMonitor")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "ReachabilityMonitor")
 
 // MARK: - ReachabilityPublishing
 
@@ -38,7 +38,7 @@ final class ReachabilityMonitor: ObservableObject, ReachabilityPublishing {
     // MARK: - Private
 
     private let monitor = NWPathMonitor()
-    private let monitorQueue = DispatchQueue(label: "com.phosphene.reachability")
+    private let monitorQueue = DispatchQueue(label: "io.uzume.reachability")
     private var debounceTask: Task<Void, Never>?
 
     // MARK: - Init / Deinit

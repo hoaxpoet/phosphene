@@ -251,7 +251,7 @@ final class StemModelTests: XCTestCase {
         expectation.expectedFulfillmentCount = 4
 
         let queue = DispatchQueue(
-            label: "com.phosphene.test.stemmodel",
+            label: "io.uzume.test.stemmodel",
             attributes: .concurrent
         )
 

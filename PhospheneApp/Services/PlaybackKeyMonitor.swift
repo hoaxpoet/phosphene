@@ -8,7 +8,7 @@ import AppKit
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "PlaybackKeyMonitor")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "PlaybackKeyMonitor")
 
 // MARK: - PlaybackKeyMonitor
 

@@ -107,7 +107,7 @@ Two ways forward:
 
   Record the exact prior state first, because the web UI will not restore it for you:
   ```bash
-  gh api repos/hoaxpoet/phosphene/branches/main/protection > ~/phosphene-branch-protection-before.json
+  gh api repos/hoaxpoet/uzume/branches/main/protection > ~/phosphene-branch-protection-before.json
   ```
   On 2026-08-03 the restore was done from memory and **silently dropped the required `fast-gate` check** — *"Require status checks"* went back on with an empty check list, which gates nothing. Verify with the same command afterwards and diff it, rather than trusting the checkboxes to look right.
 - **(b) Leave protection on and accept `main` is not rewritten.** Pointless: `main` still references every old object, so nothing becomes orphaned and the Support request has nothing to purge.
@@ -168,9 +168,9 @@ git ls-remote origin refs/heads/main
 
    *Remove data from a repository I own or control* → *Remove other data* → product **Repositories** (**not** *Billing and payments* — that desk handles invoices and refunds and cannot run a GC; the billing drop is the consequence, not the ask) → **Remove LFS objects**, which exists as a literal radio option on the final form.
 
-   Give the repository as `hoaxpoet/phosphene`, not a bare name. The form asks **"Are you able to delete and recreate the repository?"** — answer **No**, and it is true rather than tactical: deleting destroys the `ml-weights-v1` Release asset that `Scripts/fetch_weights.sh` pulls on every fresh clone, along with the PR and issue history. Answering Yes routes you to the self-service article.
+   Give the repository as `hoaxpoet/uzume`, not a bare name. The form asks **"Are you able to delete and recreate the repository?"** — answer **No**, and it is true rather than tactical: deleting destroys the `ml-weights-v1` Release asset that `Scripts/fetch_weights.sh` pulls on every fresh clone, along with the PR and issue history. Answering Yes routes you to the self-service article.
 
-   > Repository `hoaxpoet/phosphene`. We have rewritten history to remove unused Git-LFS objects. Please garbage-collect unreferenced LFS objects for this repository.
+   > Repository `hoaxpoet/uzume`. We have rewritten history to remove unused Git-LFS objects. Please garbage-collect unreferenced LFS objects for this repository.
    >
    > To be clear, this is a garbage-collection request for objects already made unreferenced by our own history rewrite — not a request to remove sensitive or leaked data, and not a request to delete or recreate the repository.
 

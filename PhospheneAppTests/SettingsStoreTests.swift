@@ -7,7 +7,7 @@ import Testing
 // MARK: - Helpers
 
 private func makeSuite() -> UserDefaults {
-    let name = "com.phosphene.test.settings.\(UUID().uuidString)"
+    let name = "io.uzume.test.settings.\(UUID().uuidString)"
     guard let suite = UserDefaults(suiteName: name) else { fatalError("test suite init failed") }
     return suite
 }

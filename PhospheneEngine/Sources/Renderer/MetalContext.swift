@@ -5,7 +5,7 @@ import Metal
 import MetalKit
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "MetalContext")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "MetalContext")
 
 // MARK: - MetalContext
 

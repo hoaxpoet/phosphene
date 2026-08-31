@@ -18,7 +18,7 @@ import Accelerate
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene", category: "dsp")
+private let logger = Logger(subsystem: "io.uzume", category: "dsp")
 
 // MARK: - Protocol
 

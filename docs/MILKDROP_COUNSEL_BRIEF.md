@@ -13,7 +13,7 @@ review; counsel's response is not to be committed to this repository
 ## 1. Subject
 
 Phosphene is a macOS music-visualization application (MIT-licensed,
-public repository at `github.com/hoaxpoet/phosphene`). The project
+public repository at `github.com/hoaxpoet/uzume`). The project
 plans to ingest derivative works from a curated, third-party
 collection of Milkdrop visualizer presets and ship them as
 Phosphene-native presets under Phosphene's MIT licence. This brief
@@ -123,7 +123,7 @@ This posture mirrors the attribution pattern Phosphene already uses
 for the **Open-Unmix HQ** and **Beat This!** machine-learning model
 weights — both vendored under permissive licences with provenance
 recorded in `CREDITS.md`. See
-`https://github.com/hoaxpoet/phosphene/blob/main/docs/CREDITS.md`
+`https://github.com/hoaxpoet/uzume/blob/main/docs/CREDITS.md`
 for the existing pattern.
 
 ## 6. Alternatives considered
@@ -189,7 +189,7 @@ for the existing pattern.
 
 ## 8. Source documents counsel may want
 
-All in the Phosphene repository (`github.com/hoaxpoet/phosphene`):
+All in the Phosphene repository (`github.com/hoaxpoet/uzume`):
 
 * `docs/MILKDROP_STRATEGY.md` — the full Phase MD strategy
   document, including the decision context for the licensing

@@ -29,7 +29,7 @@ import ML
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene", category: "SessionPreparer")
+private let logger = Logger(subsystem: "io.uzume", category: "SessionPreparer")
 
 // MARK: - SessionPreparationResult
 

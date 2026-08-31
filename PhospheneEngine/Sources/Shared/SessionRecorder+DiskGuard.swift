@@ -11,7 +11,7 @@
 import Foundation
 import os.log
 
-private let diskGuardLogger = Logger(subsystem: "com.phosphene", category: "SessionRecorder")
+private let diskGuardLogger = Logger(subsystem: "io.uzume", category: "SessionRecorder")
 
 extension SessionRecorder {
 
