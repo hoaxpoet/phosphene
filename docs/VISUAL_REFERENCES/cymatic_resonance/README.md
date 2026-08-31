@@ -26,7 +26,7 @@ None of these is a pixel-target. Each is read only for the trait its annotation 
 
 - **Geometry = the sound's pitch.** Spectral centroid (brightness) selects one dominant plate eigenmode (crossfading up a fixed low→high complexity ladder); a bass drop snaps to a low simple figure. The figure IS the live pitch made solid — reading `01` at low brightness, `02` at high.
 - **Plus basis, 4-fold symmetry.** `cos(mξ)cos(nη) + cos(nξ)cos(mη)`. Every figure is axis- and diagonal-symmetric with concentric central cells (per `01`). No spurious dominant diagonal (the minus basis is forbidden — it railroads every figure onto ξ=η).
-- **Jewel-emissive on deep black.** Ridges are the light source; derived-normal GGX relief gives the depth cue; thin-film iridescence + HDR bloom on crests. Real sand is white; we stylize to the Phosphene jewel signature (Matt's call, 2026-07-22). Pale-tone ≤ 30 %.
+- **Jewel-emissive on deep black.** Ridges are the light source; derived-normal GGX relief gives the depth cue; thin-film iridescence + HDR bloom on crests. Real sand is white; we stylize to the Uzume jewel signature (Matt's call, 2026-07-22). Pale-tone ≤ 30 %.
 - **Strong oblique tilt**, camera held. No `mv_warp` (would smear the crisp nodal lines).
 
 ## Anti-references

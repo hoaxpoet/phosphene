@@ -104,7 +104,7 @@ gFFTSetup = setup
 vDSP_hann_window(&gWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
 
 print("╔═══════════════════════════════════════════════════╗")
-print("║  Phosphene Audio Tap Test (Core Audio Taps)      ║")
+print("║  Uzume Audio Tap Test (Core Audio Taps)      ║")
 print("║  Capturing \(Int(captureDuration))s of system audio via process tap   ║")
 print("║  Play music in any app before running this.      ║")
 print("╚═══════════════════════════════════════════════════╝")
@@ -119,7 +119,7 @@ print("macOS \(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.pat
 // (stereoMixdownOfProcesses: [] means "mix zero processes" = silence)
 var tapDesc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
 tapDesc.uuid = UUID()
-tapDesc.name = "PhospheneAudioTap"
+tapDesc.name = "UzumeAudioTap"
 
 var tapID: AudioObjectID = 0
 var status = AudioHardwareCreateProcessTap(tapDesc, &tapID)
@@ -156,7 +156,7 @@ if status == noErr {
 
 // Step 3: Create an aggregate device containing the tap.
 let aggDesc: [String: Any] = [
-    kAudioAggregateDeviceNameKey as String: "PhospheneAggregate",
+    kAudioAggregateDeviceNameKey as String: "UzumeAggregate",
     kAudioAggregateDeviceUIDKey as String: "io.uzume.aggregate.\(UUID().uuidString)",
     kAudioAggregateDeviceIsPrivateKey as String: true,
     kAudioAggregateDeviceTapListKey as String: [[

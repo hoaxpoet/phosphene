@@ -1,0 +1,174 @@
+// PreparationErrorViewModelTests — Unit tests for PreparationErrorViewModel.
+//
+// Tests:
+//   1. Initial state is .normal.
+//   2. Going offline (after downloads start) → .fullScreen(.networkOffline).
+//   3. Coming back online clears offline state.
+//   4. All tracks failing → .fullScreen(.allTracksFailedToPrepare).
+//   5. Rate-limit signal → .banner(.previewRateLimited).
+//   6. Going offline while all queued does not show error.
+//   7. Offline takes priority over an in-progress download.
+
+import Combine
+import Foundation
+import Session
+import Shared
+import Testing
+@testable import UzumeApp
+
+// MARK: - Suite
+
+@MainActor
+@Suite("PreparationErrorViewModel")
+struct PreparationErrorViewModelTests {
+
+    // MARK: - Helpers
+
+    private func makeTrack(_ title: String) -> TrackIdentity {
+        TrackIdentity(title: title, artist: "Test Artist")
+    }
+
+    private typealias StatusSubject = CurrentValueSubject<[TrackIdentity: TrackPreparationStatus], Never>
+
+    private struct SUTBundle {
+        let sut: PreparationErrorViewModel
+        let subject: StatusSubject
+        let reachability: StubReachabilityMonitor
+    }
+
+    private func makeSUT(
+        statuses: [TrackIdentity: TrackPreparationStatus] = [:],
+        totalTrackCount: Int = 2,
+        isOnline: Bool = true
+    ) -> SUTBundle {
+        let subject = StatusSubject(statuses)
+        let reachability = StubReachabilityMonitor(initialValue: isOnline)
+        let sut = PreparationErrorViewModel(
+            statusPublisher: subject.eraseToAnyPublisher(),
+            reachability: reachability,
+            totalTrackCount: totalTrackCount
+        )
+        return SUTBundle(sut: sut, subject: subject, reachability: reachability)
+    }
+
+    // MARK: - Tests
+
+    @Test("initial state is .normal")
+    func test_initialState_isNormal() {
+        let bundle = makeSUT()
+        #expect(bundle.sut.presentationState == .normal)
+    }
+
+    @Test("going offline after downloads start → fullScreen networkOffline")
+    func test_offlineAfterStart_showsFullScreen() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(statuses: [track: .downloading(progress: 0.3)], totalTrackCount: 1)
+        bundle.subject.send([track: .downloading(progress: 0.3)])
+        await Task.yield()
+
+        bundle.reachability.isOnline = false
+        await Task.yield()
+
+        #expect(bundle.sut.presentationState == .fullScreen(.networkOffline))
+    }
+
+    @Test("going offline while all tracks queued does not show error")
+    func test_offlineWhileQueued_noError() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(statuses: [track: .queued], totalTrackCount: 1)
+        bundle.reachability.isOnline = false
+        await Task.yield()
+        // All tracks still queued — no download started, so no offline error.
+        #expect(bundle.sut.presentationState == .normal)
+    }
+
+    // PUB.5 regression (ultra-review): Rule 5 (the 120 s total-timeout escape
+    // offering reactive mode) was unreachable dead code — Rule 4 (>90 s slow
+    // banner) shares the same firstTrackReadyDate == nil condition and
+    // returned first for every elapsed > 120. The severe timeout must win.
+    @Test("elapsed >120s without a ready track → totalTimeout banner, not the slow banner")
+    func test_totalTimeout_winsOverSlowBanner() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(statuses: [track: .queued], totalTrackCount: 1)
+        bundle.sut.preparationStartDate = Date().addingTimeInterval(-125)
+        bundle.subject.send([track: .downloading(progress: 0.1)])
+        await Task.yield()
+        #expect(bundle.sut.presentationState == .banner(.preparationTotalTimeout))
+    }
+
+    @Test("elapsed 90–120s without a ready track → the slow banner still fires")
+    func test_slowBanner_between90And120() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(statuses: [track: .queued], totalTrackCount: 1)
+        bundle.sut.preparationStartDate = Date().addingTimeInterval(-95)
+        bundle.subject.send([track: .downloading(progress: 0.1)])
+        await Task.yield()
+        if case .banner(.preparationSlowOnFirstTrack) = bundle.sut.presentationState { } else {
+            Issue.record("Expected slow-first-track banner, got \(bundle.sut.presentationState)")
+        }
+    }
+
+    @Test("coming back online clears fullScreen networkOffline")
+    func test_backOnline_clearsOfflineError() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(statuses: [track: .downloading(progress: 0.5)], totalTrackCount: 1)
+        bundle.subject.send([track: .downloading(progress: 0.5)])
+        await Task.yield()
+
+        bundle.reachability.isOnline = false
+        await Task.yield()
+        #expect(bundle.sut.presentationState == .fullScreen(.networkOffline))
+
+        bundle.reachability.isOnline = true
+        await Task.yield()
+        #expect(bundle.sut.presentationState == .normal)
+    }
+
+    @Test("all tracks failed → fullScreen allTracksFailedToPrepare")
+    func test_allTracksFailed_showsFullScreen() async {
+        let track1 = makeTrack("Track 1")
+        let track2 = makeTrack("Track 2")
+        let bundle = makeSUT(totalTrackCount: 2)
+        bundle.subject.send([
+            track1: .failed(reason: "Not found"),
+            track2: .failed(reason: "Not found")
+        ])
+        await Task.yield()
+        #expect(bundle.sut.presentationState == .fullScreen(.allTracksFailedToPrepare))
+    }
+
+    @Test("rate-limit signal → banner previewRateLimited")
+    func test_rateLimitSignal_showsBanner() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(totalTrackCount: 1)
+        bundle.subject.send([track: .partial(reason: "rate limit exceeded")])
+        await Task.yield()
+        #expect(bundle.sut.presentationState == .banner(.previewRateLimited))
+    }
+
+    @Test("offline takes priority over downloading in-progress")
+    func test_offlinePriority_overInProgress() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(statuses: [track: .downloading(progress: 0.2)], totalTrackCount: 1)
+        bundle.subject.send([track: .downloading(progress: 0.2)])
+        await Task.yield()
+
+        bundle.reachability.isOnline = false
+        await Task.yield()
+        #expect(bundle.sut.presentationState == .fullScreen(.networkOffline))
+    }
+
+    @Test("single ready track prevents allTracksFailedToPrepare")
+    func test_oneReadyTrack_notAllFailed() async {
+        let track1 = makeTrack("Track 1")
+        let track2 = makeTrack("Track 2")
+        let bundle = makeSUT(totalTrackCount: 2)
+        bundle.subject.send([
+            track1: .ready,
+            track2: .failed(reason: "Not found")
+        ])
+        await Task.yield()
+        // One track is ready — not all failed.
+        #expect(bundle.sut.presentationState == .normal)
+    }
+}

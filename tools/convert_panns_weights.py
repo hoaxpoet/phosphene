@@ -2,8 +2,8 @@
 """convert_panns_weights.py — IFC.2 weight converter for PANNs MobileNetV1.
 
 Ingests the PANNs MobileNetV1 checkpoint (Kong et al., 2020) and emits
-Phosphene's vendored .bin format under
-PhospheneEngine/Sources/ML/Weights/panns_mobilenetv1/, mirroring the Beat This!
+Uzume's vendored .bin format under
+UzumeEngine/Sources/ML/Weights/panns_mobilenetv1/, mirroring the Beat This!
 and Open-Unmix converters:
 
   * one .bin per float32 tensor (contiguous float32 little-endian, C order)
@@ -125,7 +125,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--checkpoint", type=Path,
                         default=Path.home() / "panns_data" / "MobileNetV1_mAP=0.389.pth")
     parser.add_argument("--out", type=Path,
-                        default=Path("PhospheneEngine/Sources/ML/Weights/panns_mobilenetv1"))
+                        default=Path("UzumeEngine/Sources/ML/Weights/panns_mobilenetv1"))
     args = parser.parse_args(argv)
     if not args.checkpoint.is_file():
         parser.error(f"checkpoint not found: {args.checkpoint}")

@@ -1,7 +1,7 @@
 # Filigree — Visual References
 
 **Status: INTERIM (bootstrap from sketch renders).** Matt's call (PHYS.1) — these
-targets are Phosphene's own Kintsugi sketch renders, used to unblock PHYS.2. They
+targets are Uzume's own Kintsugi sketch renders, used to unblock PHYS.2. They
 are honest targets for the *locked concept* (web-dominant, gold-on-black) but they
 are **not external fidelity references**. Before certification (PHYS.5), add the
 external set named under "To source" below and re-run the rubric against those.

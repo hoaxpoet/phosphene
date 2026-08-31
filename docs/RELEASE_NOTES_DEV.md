@@ -1,4 +1,4 @@
-# Phosphene — Developer Release Notes
+# Uzume — Developer Release Notes
 
 Internal release notes for the `main` branch. Audience: Matt and Claude Code. Each entry covers one session or a logical batch of increments. These notes complement `docs/ENGINEERING_PLAN.md` (authoritative for what's planned) and `docs/QUALITY/KNOWN_ISSUES.md` (authoritative for open defects).
 
@@ -7,6 +7,132 @@ User-visible release notes are not yet in scope (no public build).
 Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 **Entry ids are `[dev-YYYY-MM-DD-HHMMSS]`** (UTC time-of-day the entry is written — e.g. `date -u +%Y-%m-%d-%H%M%S`). They are unique by construction, so **never hand-assign sequential `-a`/`-b`/`-c` letters** — parallel sessions independently picking the next letter was a recurring merge-renumbering tax (DOC.8). Older `-a/-b/-c` entries are grandfathered; `rotate_docs.sh` / `DocIntegrityTests` key only on the `YYYY-MM-DD` date, so the suffix format is free. This file is also **`merge=union`** (`.gitattributes`): concurrent appends from two sessions auto-combine instead of conflicting — so keep it **prepend-only prose**, never edit an existing entry in place (union would duplicate it).
+
+---
+
+### [dev-2026-08-31-210000] RN.3 — the app repo and uzume-site stop contradicting each other
+
+Two repositories were both describing Uzume and neither said which one was
+authoritative. Each had drifted into asserting things the other could disprove.
+RN.3 draws the boundary on **verifiability**: `uzume-site` owns brand story,
+voice, palette, the First Opening design system, identity assets, naming
+research and public copy; this repo owns product behaviour, engineering
+decisions, contributor commands, and **whether a claim is true of the shipped
+build**. Written into both READMEs. `docs/planning/` here is now a frozen RN.0
+snapshot with a header naming the site's copies as live.
+
+**The icon is provably the approved one.** All ten PNGs in
+`UzumeApp/Assets.xcassets/AppIcon.appiconset/` are byte-identical (SHA-256) to
+`uzume-site`'s `brand/icon/Uzume.iconset/` — no re-export between the approved
+First Opening master and the shipped bundle. It just was not written down
+anywhere. Now in `docs/CREDITS.md` §App icon with the re-verification command,
+and in the site's `ARTIFACTS.md` with the digests.
+
+**Five claims were false; three were the site's, two were ours.**
+
+Site-ward: its planning docs still carried the **pre-2026-08-12 domain call** —
+uzume.app "available and canonical", and a bundle ID of `app.uzume.mac` —
+against registrar ground truth (uzume.app registered and parked, **uzume.io**
+canonical, shipped `io.uzume.mac`). "Certified presets are measured at **0
+flashes per second**" has no basis in this repo at all; the real gate is D-157
+steady luminance, a bounded max per-frame brightness change, and the figure had
+reached four separate published surfaces. And "free, open-source **public
+beta**" describes a repository that is not public, with no signed or notarized
+build (CLEAN.2.5b is blocked on a paid Apple Developer membership).
+
+App-ward, and the more interesting half: **the README explained the wrong
+word.** Its second paragraph read "The name references the phenomenon of
+perceiving light and patterns without external visual stimulus" — a correct
+gloss of *phosphene*, left attached to the name *Uzume* by RN.2's sweep. This is
+a **new variant** of D-227's dictionary-word hazard: the sentence contains no
+`Phosphene` token, so no lexical residual scan could ever find it. Only reading
+the prose for meaning catches a **semantic orphan** — a sentence whose subject
+was renamed out from under it. Replaced with the Ame-no-Uzume story as `BRAND.md`
+tells it. Second: the **"AI orchestrator"** framing, which the site retired as a
+product claim, survived in README and CLAUDE.md — the session planner is
+deterministic and rules-based (D-034); ML does stem separation, beat tracking and
+mood classification, none of which plan anything.
+
+**Two stale contributor instructions, both first-contact.** The README told new
+contributors to install `git-lfs` *before cloning* or receive stub files —
+untrue since D-211 (`git lfs ls-files` returns zero). `PUBLISHING.md` still said
+"LFS keeps reference media only."
+
+**Divergence, not staleness.** The duplicated planning docs had drifted in
+*opposite* directions: this repo held the corrected domain facts, the site held
+the newer retirement of the AI framing. Neither copy was wholly authoritative, so
+RN.3 merged them and then designated a single owner — rather than declaring a
+winner and losing half the corrections.
+
+**Not done, deliberately:** no website architecture was invented. There is no
+Astro app, no marketing pages, no OG/manifest surface, so none was created. The
+design system's "Download the beta" specimens stay — they are component
+placeholders, and `catalogue.js` already models the honest unavailable state ("A
+signed and notarized build has not been published yet"). Public wording for an
+unreleased app is Matt's call; the closeout lists the pending picks.
+
+**Evidence:** this repo — `Scripts/closeout_evidence.sh` ALL GREEN. `uzume-site`
+@ `03d5478` — JS syntax checks, catalogue-reference gate (7 pages), contrast gate
+(60 pairings), and the SwiftUI package suite all pass. Both branches are local
+and unpushed.
+
+---
+
+### [dev-2026-08-31-180000] RN.2 — the internal tree becomes Uzume
+
+RN.1 renamed what the user sees; RN.2 renames what a contributor sees. Directories, Xcode
+targets and scheme, Swift packages and products, the app's Swift module, the test host and
+bundle, env vars, scripts, CI, hooks, skills and every living doc now say Uzume.
+`PhospheneApp/`→`UzumeApp/`, `PhospheneEngine/`→`UzumeEngine/`, `PhospheneTools/`→`UzumeTools/`,
+`PhospheneAppTests/`→`UzumeAppTests/`, `PhospheneApp.xcodeproj`→`UzumeApp.xcodeproj`,
+`Phosphene.xcconfig`→`Uzume.xcconfig`, `PhospheneToast`→`UzumeToast`, `PHOSPHENE_*`→`UZUME_*`,
+`phosphene.view.*`→`uzume.*`. The generic modules (`Audio`, `DSP`, `ML`, `Renderer`, `Presets`,
+`Orchestrator`, `Session`, `Shared`, `Diagnostics`) were never branded and did not move.
+
+**`PRODUCT_MODULE_NAME` was repointed, not unpinned.** D-225 pinned it to `PhospheneApp` so RN.1
+could ship the visible rename alone. Deleting the pin would let the module follow `PRODUCT_NAME`,
+which is `Uzume` — giving a module named `Uzume` inside a target named `UzumeApp`. Setting it to
+`UzumeApp` keeps module, target and directory one name and leaves `PRODUCT_NAME = Uzume` and the
+shipped bundle untouched. Built products verified: `Uzume.app`, executable `Uzume`,
+`UzumeAppTests.xctest`, `UzumeApp.swiftmodule`.
+
+**Two user-visible strings RN.1 missed** turned up here and are fixed: the About-box version line
+read `Phosphene <version>`, and the multi-display toast offered to "Move Phosphene there".
+
+**Four surfaces deliberately still say `phosphene`,** each for a reason, not by oversight:
+persisted `UserDefaults` keys (renaming resets every user's settings — that is a `SettingsMigrator`
+job, not a structural rename); the on-disk output paths `~/Documents/phosphene_sessions/` and
+friends (renaming orphans every captured session and every documented diagnostic command against
+them — and it is user-visible, so it is Matt's call); `IdentityMigrator`'s legacy `com.phosphene.*`
+constants (they *are* the RN.1 migration); and `.metal` comments plus preset `.json` descriptions
+(excluded by RN.2's own "do not edit shaders or presets" constraint). All four are RN.3's named
+scope. Full reasoning in D-227.
+
+**The sweep introduced three defects; the suite caught one, a manual audit caught two — worth
+recording because each is reusable.** (1) The test-side persisted-key literals were renamed while
+production kept them, and three app tests went red. The *same* defect landed silently in the
+RUNBOOK as a `defaults write io.uzume.mac uzume.cache.localFile.maxBytes` that would have quietly
+done nothing — no test covers a documented shell command. (2) A blanket prose replace falsified
+history in three places: `docs/planning/` (RN.0's preserved naming evidence) became "the Uzume →
+Uzume rename", "another open-source macOS app named Uzume", "uzumes are all entoptic phenomena",
+and a rewritten **third-party** URL; five verbatim quotations were rewritten, two attributed to
+Matt by name; and D-225's own record of RN.1 stopped describing RN.1. (3) A RUNBOOK warning about
+stale pre-rename incantations **inverted its meaning** — the sweep renamed the very names it warns
+are dead. All reverted. The rule that falls out: a brand sweep may rewrite paths, commands and
+identifiers anywhere, but never the inside of a quotation, a third-party proper noun, or a sentence
+that narrates the rename — and "phosphene" is a dictionary word, so a scan for the common-noun
+sense is mandatory before trusting the result.
+
+**Evidence** (`Scripts/closeout_evidence.sh` @ `8c35740c`): engine 1873 tests / 291 suites, app 426
+tests / 74 suites, SwiftLint 0 violations in 518 files, doc gates 13/13, `check_user_strings.sh` and
+`check_sample_rate_literals.sh` pass — ALL GREEN. Separately, a clean `git archive` export of the
+tracked tree resolves both packages, builds both, and lists targets `UzumeApp`/`UzumeAppTests` with
+schemes `UzumeApp`/`UzumeEngine`; every `PBXFileReference` path resolves.
+
+**One-time cost on every existing checkout:** `UzumeEngine/.build` and `UzumeTools/.build` carry
+absolute paths from the old directory name and must be deleted; DerivedData re-hashes to a new
+`UzumeApp-*` directory; and `Scripts/link_fixtures.sh` cannot serve a worktree until `main` itself
+carries the rename. RUNBOOK §After the Uzume rename (RN.2) has the steps.
 
 ---
 

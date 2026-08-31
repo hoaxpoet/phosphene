@@ -5,7 +5,7 @@
 # (RUNBOOK.md §Build and Test: engine SPM tests, app xcodebuild tests,
 # swiftlint --strict, plus the DOC.6 doc gates via DocIntegrityTests) and
 # emits ONE fenced markdown evidence block to stdout.
-# A byte-identical copy is written to ~/.phosphene/last_closeout_evidence.md
+# A byte-identical copy is written to ~/.uzume/last_closeout_evidence.md
 # so a pasted closeout block can be diffed against what was actually generated.
 #
 # Honesty contract (REVIEW.3 — eliminating the false-green closeout class):
@@ -32,7 +32,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-EVIDENCE_DIR="${HOME}/.phosphene"
+EVIDENCE_DIR="${HOME}/.uzume"
 EVIDENCE_FILE="${EVIDENCE_DIR}/last_closeout_evidence.md"
 mkdir -p "$EVIDENCE_DIR"
 
@@ -165,7 +165,7 @@ UNTRACKED_N="$(printf '%s\n' "$PORCELAIN" | grep -c '^??' || true)"
 TOTAL_N="$(printf '%s\n' "$PORCELAIN" | grep -c . || true)"
 
 emit '```'
-emit "================ PHOSPHENE CLOSEOUT EVIDENCE ================"
+emit "================ UZUME CLOSEOUT EVIDENCE ================"
 emit "Generated : ${TIMESTAMP}"
 emit "Host      : ${HOST}"
 emit "Commit    : ${HEAD_SHORT} (branch: ${BRANCH})"
@@ -184,30 +184,30 @@ emit ""
 
 # --- Step 1: Engine tests (SPM) -----------------------------------------------------
 ENGINE_LOG="$TMP_DIR/engine_tests.log"
-ENGINE_CMD_STR="swift test --package-path PhospheneEngine"
+ENGINE_CMD_STR="swift test --package-path UzumeEngine"
 t0=$SECONDS
-ENGINE_EXIT="$(run_step "$ENGINE_LOG" swift test --package-path PhospheneEngine)"
+ENGINE_EXIT="$(run_step "$ENGINE_LOG" swift test --package-path UzumeEngine)"
 ENGINE_WALL=$((SECONDS - t0))
-render_test_step "Step 1: Engine tests (PhospheneEngine SPM)" "$ENGINE_CMD_STR" "$ENGINE_LOG" "$ENGINE_EXIT" "$ENGINE_WALL"
+render_test_step "Step 1: Engine tests (UzumeEngine SPM)" "$ENGINE_CMD_STR" "$ENGINE_LOG" "$ENGINE_EXIT" "$ENGINE_WALL"
 ENGINE_PARSE_OK=$STEP_PARSE_OK
 ENGINE_FAILS=$STEP_FAILURES_PRESENT
 
 # --- Step 2: App tests (xcodebuild) ---------------------------------------------------
 APP_LOG="$TMP_DIR/app_tests.log"
-APP_CMD_STR="xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test"
+APP_CMD_STR="xcodebuild -scheme UzumeApp -destination 'platform=macOS' test"
 t0=$SECONDS
-APP_EXIT="$(run_step "$APP_LOG" xcodebuild -scheme PhospheneApp -destination platform=macOS test)"
+APP_EXIT="$(run_step "$APP_LOG" xcodebuild -scheme UzumeApp -destination platform=macOS test)"
 APP_WALL=$((SECONDS - t0))
-render_test_step "Step 2: App tests (PhospheneApp xcodebuild)" "$APP_CMD_STR" "$APP_LOG" "$APP_EXIT" "$APP_WALL"
+render_test_step "Step 2: App tests (UzumeApp xcodebuild)" "$APP_CMD_STR" "$APP_LOG" "$APP_EXIT" "$APP_WALL"
 # BUG-072: Info.plist sets LSMultipleInstancesProhibited (U.11, needed for OAuth
 # callback routing), so LaunchServices refuses to launch the XCTest host while a
-# PhospheneApp instance is running — exit 65, zero tests, "Could not launch". Name
+# UzumeApp instance is running — exit 65, zero tests, "Could not launch". Name
 # it so a stray app is never mistaken for a test regression.
-if [ "$APP_EXIT" != "0" ] && grep -q 'Could not launch .PhospheneAppTests' "$APP_LOG" 2> /dev/null; then
-  if pgrep -x PhospheneApp > /dev/null 2>&1; then
-    emit "> **BUG-072 — not a test regression.** PhospheneApp is running; quit it and re-run."
+if [ "$APP_EXIT" != "0" ] && grep -q 'Could not launch .UzumeAppTests' "$APP_LOG" 2> /dev/null; then
+  if pgrep -x UzumeApp > /dev/null 2>&1; then
+    emit "> **BUG-072 — not a test regression.** UzumeApp is running; quit it and re-run."
   else
-    emit "> **Runner launch failed with no PhospheneApp running** — unlike BUG-072. Investigate."
+    emit "> **Runner launch failed with no UzumeApp running** — unlike BUG-072. Investigate."
   fi
   emit ""
 fi
@@ -253,9 +253,9 @@ emit ""
 
 # --- Step 4: Doc gates (DocIntegrityTests — rotation / budget / index, DOC.6) --------
 DOC_LOG="$TMP_DIR/doc_gates.log"
-DOC_CMD_STR="swift test --package-path PhospheneEngine --filter DocIntegrityTests"
+DOC_CMD_STR="swift test --package-path UzumeEngine --filter DocIntegrityTests"
 t0=$SECONDS
-DOC_EXIT="$(run_step "$DOC_LOG" swift test --package-path PhospheneEngine --filter DocIntegrityTests)"
+DOC_EXIT="$(run_step "$DOC_LOG" swift test --package-path UzumeEngine --filter DocIntegrityTests)"
 DOC_WALL=$((SECONDS - t0))
 render_test_step "Step 4: Doc gates (DocIntegrityTests)" "$DOC_CMD_STR" "$DOC_LOG" "$DOC_EXIT" "$DOC_WALL"
 DOC_PARSE_OK=$STEP_PARSE_OK
@@ -320,9 +320,9 @@ emit ""
 # (GPU-golden, hardware-specific; a preset increment reads this step directly).
 emit "--- Step 6: Paradigm harness templates (HARNESS_TEMPLATES=1) ---"
 HARNESS_LOG="$TMP_DIR/harness_templates.log"
-HARNESS_CMD_STR="HARNESS_TEMPLATES=1 swift test --package-path PhospheneEngine --filter HarnessTemplate"
+HARNESS_CMD_STR="HARNESS_TEMPLATES=1 swift test --package-path UzumeEngine --filter HarnessTemplate"
 t0=$SECONDS
-HARNESS_EXIT="$(HARNESS_TEMPLATES=1 run_step "$HARNESS_LOG" swift test --package-path PhospheneEngine --filter HarnessTemplate)"
+HARNESS_EXIT="$(HARNESS_TEMPLATES=1 run_step "$HARNESS_LOG" swift test --package-path UzumeEngine --filter HarnessTemplate)"
 HARNESS_WALL=$((SECONDS - t0))
 render_test_step "Step 6: Paradigm harness templates" "$HARNESS_CMD_STR" "$HARNESS_LOG" "$HARNESS_EXIT" "$HARNESS_WALL"
 
@@ -330,14 +330,14 @@ render_test_step "Step 6: Paradigm harness templates" "$HARNESS_CMD_STR" "$HARNE
 # The audio-visual coupling baseline is a REPORT with a WARNING-tier review flag, not a
 # cert gate (D-192/D-193): surfaced for preset increments and read alongside the M7 seat,
 # never a pass/fail. A REVIEW flag means "coupling not measured as present," not "bad".
-# The real multi-pass sweep is expensive (PHOSPHENE_COUPLING=1, ~130 s), so this step
+# The real multi-pass sweep is expensive (UZUME_COUPLING=1, ~130 s), so this step
 # points at the standing baseline + the VERDICT regeneration command; it never runs the
 # sweep and never affects this evidence block's verdict.
 emit "--- Step 7: Coupling report (QG.3, report-only + QG.3.2 warning tier) ---"
 COUPLING_BASELINE="docs/diagnostics/QG3_COUPLING_BASELINE.md"
 if [ -f "$COUPLING_BASELINE" ]; then
   emit "Baseline  : ${COUPLING_BASELINE} (report-only, D-192/D-193 — warning tier, never a cert gate)"
-  emit "Verdict   : PHOSPHENE_COUPLING=1 swift test --package-path PhospheneEngine --filter CouplingReportTests"
+  emit "Verdict   : UZUME_COUPLING=1 swift test --package-path UzumeEngine --filter CouplingReportTests"
   emit "            (prints the per-preset VERDICT block: ok / REVIEW; informs, does not fail cert)"
 else
   emit "Baseline  : ${COUPLING_BASELINE} not found"

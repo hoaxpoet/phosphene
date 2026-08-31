@@ -1,6 +1,6 @@
 # Dragon Bloom — Visual References
 
-**Target:** a faithful Phosphene uplift of the Milkdrop preset `$$$ Royal - Mashup (220)`
+**Target:** a faithful Uzume uplift of the Milkdrop preset `$$$ Royal - Mashup (220)`
 (cream-of-crop `Dancer/Petals/`). Matt's name + "faithful" framing, 2026-06-01.
 
 ## Target read

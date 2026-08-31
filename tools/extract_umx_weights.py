@@ -7,7 +7,7 @@ parameters and buffers across 4 stems, and saves each tensor as a raw
 .bin file (float32, C-contiguous). Produces a manifest.json mapping
 tensor names to shapes, dtypes, filenames, and byte sizes.
 
-The output directory is intended to be bundled into PhospheneEngine as
+The output directory is intended to be bundled into UzumeEngine as
 a Swift Package Manager resource (.copy("Weights")).
 
 Usage:
@@ -59,7 +59,7 @@ STEM_NAMES = ["vocals", "drums", "bass", "other"]
 
 DEFAULT_OUTPUT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "PhospheneEngine", "Sources", "ML", "Weights",
+    "UzumeEngine", "Sources", "ML", "Weights",
 )
 
 

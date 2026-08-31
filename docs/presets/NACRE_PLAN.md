@@ -1,7 +1,7 @@
 # Nacre — Preset Plan
 
 **Status:** NACRE.1 ✅ + NACRE.2a ✅ + **NACRE.2b ✅ code-complete (faithful base, pending Matt's live M7)** — `[NACRE.2b]` commits. The faithful (431) jello-mirror character is ported onto a dedicated custom-warp+comp mv_warp branch; the 3 greenlit uplifts (stem routing / real iridescence+HDR / smooth-Voronoi) are deferred to NACRE.3+ (AFTER M7 confirms the base; FA #65). See **§10 NACRE.2b — what landed** below; D-171.
-**Target:** faithful Phosphene uplift of the Milkdrop preset `$$$ Royal - Mashup (431)` (butterchurn built-in; cream-of-the-crop legends).
+**Target:** faithful Uzume uplift of the Milkdrop preset `$$$ Royal - Mashup (431)` (butterchurn built-in; cream-of-the-crop legends).
 **Substrate:** `direct + mv_warp` (same family as the certified Dragon Bloom / Fata Morgana).
 **Scaffold:** Dragon Bloom (`DragonBloom.metal` / `.json` / `DragonBloomMVWarpAccumulationTest`). (Starburst → renamed Murmuration, no longer mv_warp.)
 **References:** `docs/VISUAL_REFERENCES/nacre/` — `source_preset.json`, `source_shaders.txt` (the literal port artifact), `target_animated.gif`, three annotated stills.
@@ -44,7 +44,7 @@
 
 Nacre's translucent refractive cell-field is the song's **harmonic body**: it **inflates and breathes with continuous mid-band energy** (cells swell on sustained chords/pads), **bass onsets jolt the whole field with a bounded displacement-kick** (a ripple crosses the lenses), **treble stipples the chromatic rims with sparkle**, and a **luminous central core pulses with the waveform** — so the viewer reads *sustained energy as swelling translucent volume* and *transients as ripples and sparkle across it*.
 
-This routing is **inherited from the source**, not invented — `(431)`'s own per-frame equations already drive zoom from mid energy and kick displacement from a bass threshold (see §4), which happens to align with Phosphene's Audio Data Hierarchy (continuous energy primary, beats as accents). That alignment is why this preset is low-risk.
+This routing is **inherited from the source**, not invented — `(431)`'s own per-frame equations already drive zoom from mid energy and kick displacement from a bass threshold (see §4), which happens to align with Uzume's Audio Data Hierarchy (continuous energy primary, beats as accents). That alignment is why this preset is low-risk.
 
 ## 2. Temporal contract (behaviour over time, not a still)
 
@@ -61,7 +61,7 @@ This routing is **inherited from the source**, not invented — `(431)`'s own pe
 
 1. **Iconic visual subject deliverable at fidelity — YES.** `mv_warp`/feedback is certified twice (Dragon Bloom, Fata Morgana). The signature look (§4: multi-layer radial-pulse zoom + luminance-gradient emboss rims + chromatic center-offset + domain-warped sine-cell noise) is standard fragment math — texture taps, dot, `sqrt`/`fract`/`sin`/`inversesqrt`, `max`, `mix` — all portable to MSL. **Lower** clipart risk than Dragon Bloom: no bilateral mirror (FA #48 doesn't apply).
 2. **Clear musical role — YES** (§1), and inherited from the source rather than bolted on.
-3. **Infrastructure-feasible — YES, one minor deferral.** The core look needs only the feedback texture (slot 0) + per-frame/comp math we can express. The **only** source op outside our contract is the warp-shader sharpen's **blur pyramid** (`sampler_blur1/2/3`) — Phosphene exposes no general blur mips (only Fata Morgana has a bespoke 1/4-res blur target). The sharpen is secondary polish, not the signature; **defer it** — approximate with a manual 3-tap, or add a Fata-Morgana-style custom blur target only if a render proves it's needed. **No new engine passes required.**
+3. **Infrastructure-feasible — YES, one minor deferral.** The core look needs only the feedback texture (slot 0) + per-frame/comp math we can express. The **only** source op outside our contract is the warp-shader sharpen's **blur pyramid** (`sampler_blur1/2/3`) — Uzume exposes no general blur mips (only Fata Morgana has a bespoke 1/4-res blur target). The sharpen is secondary polish, not the signature; **defer it** — approximate with a manual 3-tap, or add a Fata-Morgana-style custom blur target only if a render proves it's needed. **No new engine passes required.**
 
 ## 4. Source mechanic (from `source_shaders.txt` — the port reference)
 
@@ -78,9 +78,9 @@ This routing is **inherited from the source**, not invented — `(431)`'s own pe
 
 **Comp shader (the signature look):** **four radial-pulse layers** at `dist = 1 − fract(k/4 + t/18)` (k=0..3) → expanding rings every 18 s, quarter-phase offset; each weighted `inten = sqrt(dist)(1−dist)·4`. Layers alternate sample-center **(0.51,0.55)/(0.49,0.55)** → horizontal **chromatic offset** (the R/C/G rims). `dz` = **luminance Sobel gradient × inten** → **edge emboss** (the bright rims). `ret1 = max` of zoomed feedback across layers. Then a **domain-warped sine-cell field** (`sin(4·uv + dz + rand)` at 3 scales, `inversesqrt`) displaced **by the emboss gradient** → the veined cell micro-structure. Final: rand-weighted combine − slow color-roam (`slow_roam_sin·roam_cos`) + `ret*(1+ret)` contrast.
 
-> Butterchurn uniforms with no direct Phosphene equivalent — `rand_preset`/`rand_frame` (per-preset/per-frame randoms), `slow_roam_sin`/`roam_cos` (slow roam), `texsize_*`/`scale*`/`bias*` — get substituted with fixed seeds + `features.time`-driven roam + our texel sizes. Documented per-symbol at port time.
+> Butterchurn uniforms with no direct Uzume equivalent — `rand_preset`/`rand_frame` (per-preset/per-frame randoms), `slow_roam_sin`/`roam_cos` (slow roam), `texsize_*`/`scale*`/`bias*` — get substituted with fixed seeds + `features.time`-driven roam + our texel sizes. Documented per-symbol at port time.
 
-## 5. Port plan onto Phosphene mv_warp
+## 5. Port plan onto Uzume mv_warp
 
 Pass mapping (3-pass `warp → compose → blit/swap`, per the substrate map):
 - **Warp pass** (`nacre` per-vertex + decay): port `mv_x/y` advection as the per-vertex UV displacement (`mvWarpPerVertex`), `decay` from `mvWarpPerFrame`. The warp-shader sharpen/grain folds into the compose or a warp-stage fragment (grain = treble route).
@@ -122,7 +122,7 @@ No two visual layers share a primitive at the same timescale. ✓ (mids→volume
 - **Sidecar:** mirror `DragonBloom.json`. Tentative: `family: "hypnotic"` (revisit "fluid" — affects orchestrator grouping; Dragon Bloom is also "hypnotic", so confirm Nacre shouldn't differ to avoid over-grouping two feedback presets), `passes: ["direct","mv_warp"]`, `decay ≈ 0.95`, `stem_affinity` minimal (Nacre is band-energy-driven more than stem-driven — likely `{}` or a light vocals→core link), `rubric_profile: "lightweight"`, `certified: false` until NACRE.4.
 - **GPU contract:** direct-pass mv_warp fragment slots — buf 0 `FeatureVector`, buf 2 `waveformData`, buf 3 `StemFeatures`, tex 0 feedback, tex 4–11 noise. (`SceneUniforms` buf 4 is **not** bound in direct-pass — don't reach for it.)
 - **Test harness:** adapt `DragonBloomMVWarpAccumulationTest` → `NacreMVWarpAccumulationTest`, env-gate `NACRE_MVWARP_DIAG=1`, silence vs music, gate on no-white-out + mid→zoom coupling + bass→displacement.
-- **Visual harness:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` → `/tmp/phosphene_visual/<ISO>/` (silence/mid/beat). Required before first tuning commit.
+- **Visual harness:** `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview` → `/tmp/phosphene_visual/<ISO>/` (silence/mid/beat). Required before first tuning commit.
 - **Faithful oracle:** re-render `(431)` any time via `tools/milkdrop-render` (`royal_variants/$$$ Royal - Mashup (431).json` already extracted).
 
 ## 9. Risks / open decisions
@@ -157,7 +157,7 @@ comp buffer) was deleted (one mechanism, no dead code). Shared path stays byte-i
   faithful "core brightness ← volume" musical route. A *constant* bright core flooded the frame to
   opaque warm metal over ~16 s (anti-reference); gating fixes it AND keeps the silence ground dark.
 - **Bass kick via `bassDev`, not the source's `bass_thresh` absolute-threshold hysteresis** — driving
-  motion from an absolute threshold on AGC-normalized energy is FA #31; `bassDev` is the Phosphene-
+  motion from an absolute threshold on AGC-normalized energy is FA #31; `bassDev` is the Uzume-
   correct onset primitive and gives the same bounded decaying lurch.
 
 **Faithful-port tuning learnings (feedback-preset craft):**

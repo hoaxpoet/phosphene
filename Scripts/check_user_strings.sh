@@ -2,7 +2,7 @@
 # check_user_strings.sh
 #
 # Phase QR.4 / D-091 lint gate (scope widened in CLEAN.2.3.4). Bans hardcoded
-# user-facing string literals in `PhospheneApp/Views/`, `PhospheneApp/ViewModels/`,
+# user-facing string literals in `UzumeApp/Views/`, `UzumeApp/ViewModels/`,
 # and `ContentView.swift`. Every `Text("...")`, `.help("...")`,
 # `.accessibilityLabel("...")`, and connection-state `.error("...")` argument must
 # resolve through `Localizable.strings` via `String(localized:)` /
@@ -25,16 +25,16 @@
 set -euo pipefail
 
 ROOTS=(
-  "PhospheneApp/Views"
-  "PhospheneApp/ViewModels"
-  "PhospheneApp/ContentView.swift"
+  "UzumeApp/Views"
+  "UzumeApp/ViewModels"
+  "UzumeApp/ContentView.swift"
 )
 
 # Files whose hardcoded strings are intentional (developer-only surfaces).
 # Any new entry must come with a comment in the file explaining why and must
 # be visible only when showDebug is true (D shortcut).
 ALLOWLIST_FILES=(
-  "PhospheneApp/Views/DebugOverlayView.swift"
+  "UzumeApp/Views/DebugOverlayView.swift"
 )
 
 escape_for_regex() {
@@ -64,7 +64,7 @@ violations=$(
 )
 
 if [ -n "$violations" ]; then
-  echo "ERROR: hardcoded user-facing strings found in PhospheneApp/Views/:" >&2
+  echo "ERROR: hardcoded user-facing strings found in UzumeApp/Views/:" >&2
   echo "$violations" >&2
   echo >&2
   echo "QR.4 / D-091: every Text(...) / .help(...) / .accessibilityLabel(...)" >&2
@@ -72,7 +72,7 @@ if [ -n "$violations" ]; then
   echo "  String(localized: \"key\")" >&2
   echo "  NSLocalizedString(\"key\", comment: \"\")" >&2
   echo "  Text(verbatim: nonLocalizedString)   // for dynamic non-translatable values" >&2
-  echo "Add the key to PhospheneApp/en.lproj/Localizable.strings before" >&2
+  echo "Add the key to UzumeApp/en.lproj/Localizable.strings before" >&2
   echo "introducing the call site." >&2
   exit 1
 fi

@@ -2,7 +2,7 @@
 
 **Status:** Design set, authored 2026-07-20. Awaiting Matt sign-off on the slate, the phase ID, and the per-preset DECISION-NEEDED blocks.
 **Author seat:** design/prompt-authoring (not implementation). Every preset here is authored to design here first; Claude Code implements from the per-preset docs.
-**What this is:** five Phosphene-native "psychedelic geometry" presets — intricate nested geometry (shapes inside shapes; smaller shapes making larger shapes) whose *motion transforms the canvas*, each visually distinct and each exploring a **different way for music to drive it**. This overview is the map; each preset has its own combined design + session-prompt doc (`PG_1`…`PG_5`).
+**What this is:** five Uzume-native "psychedelic geometry" presets — intricate nested geometry (shapes inside shapes; smaller shapes making larger shapes) whose *motion transforms the canvas*, each visually distinct and each exploring a **different way for music to drive it**. This overview is the map; each preset has its own combined design + session-prompt doc (`PG_1`…`PG_5`).
 
 > **How to use this set with Claude Code.** Feed **one** per-preset doc into a fresh session. Each per-preset doc is self-contained: Part A is the committed design record; Part B is the runnable session prompt that references Part A. This overview is context Matt reads, and it is worth pasting the "Shared audio contract" and "Shared JSON/metadata conventions" sections below into any session as a preamble, but it is not required reading for Claude Code if the per-preset doc is followed.
 
@@ -39,7 +39,7 @@ None duplicates the existing catalog (verified against the module map: no kaleid
 
 These come straight from the project's authoring rules. Each per-preset doc restates the ones specific to it; this is the shared baseline.
 
-- **Concept-viability gate cleared before authoring (`SHADER_CRAFT.md §2.0`).** Each doc opens with the three gates: (1) a one-sentence **musical role** naming a specific musical feature *and* a specific paired visual behaviour; (2) **iconic subject deliverable at fidelity** (a comparable past preset or a cited published reference); (3) **infrastructure-feasible** (no render passes or GPU contracts Phosphene lacks). "Vibe with the music" is not a musical role.
+- **Concept-viability gate cleared before authoring (`SHADER_CRAFT.md §2.0`).** Each doc opens with the three gates: (1) a one-sentence **musical role** naming a specific musical feature *and* a specific paired visual behaviour; (2) **iconic subject deliverable at fidelity** (a comparable past preset or a cited published reference); (3) **infrastructure-feasible** (no render passes or GPU contracts Uzume lacks). "Vibe with the music" is not a musical role.
 - **Deviation primitives, never absolute thresholds (D-026 / FA #31).** Drive from `f.bass_rel`/`f.bass_dev`, `stems.*_energy_dev`, etc. Patterns like `smoothstep(0.22, 0.32, f.bass)` fail across tracks and sections. See §3.
 - **One primitive per visual layer at one timescale (FA #67).** Each doc carries a `(visual layer × audio primitive × timescale)` table and self-checks it. Routing the same beat-rate primitive into two layers reads as the visual "fighting itself."
 - **Signal liveness (`preset-session` skill §14.1).** Drive motion only from primitives that actually vary on real music. `f.bass_rel` (signed) is the best continuous driver; `f.spectral_flux` and the beat fields are reliably alive across genres; `f.mid`/`f.treble` *absolute* values are near-dead on bass-dominant music; `f.*_dev` works post-AGC2 but mid/treble `*_dev` carry smaller amplitude (use larger gain) and have a 1–2 s cold-start warmup; `vocals_pitch_confidence` must be gated (≥ 0.6) with a fallback.
@@ -96,7 +96,7 @@ Every preset ships a `<Name>.json` sidecar (schema: `SHADER_CRAFT.md §17`). Com
 ```jsonc
 {
   "name": "Mandala Engine",
-  "family": "geometric",                // Phosphene-native; NOT milkdrop_inspired (see below)
+  "family": "geometric",                // Uzume-native; NOT milkdrop_inspired (see below)
   "concept_tags": ["kaleidoscope", "hypnotic", "geometric"],  // D-120 controlled vocab
   "motion_paradigm": "mv_warp",         // D-120: one of the 8 paradigms
   "passes": ["mv_warp"],                // or ["ray_march","ssgi","post_process"] for PG.3
@@ -116,7 +116,7 @@ Every preset ships a `<Name>.json` sidecar (schema: `SHADER_CRAFT.md §17`). Com
 
 
 Notes:
-- **Provenance = Phosphene-native.** These are original designs, not ports, so **no `inspired_by` block** and the substantial-similarity discipline (D-116/D-121) does not apply. They contribute to the Phosphene-native side of the catalog (D-119 brand identity keeps a distinctive native minority; psychedelic geometry is squarely in that wheelhouse). If Matt would rather frame any of them as `milkdrop_inspired` (e.g. Droste ↔ EvilJim "Travelling backwards in a Tunnel of Light"), that flips `family`, adds `inspired_by`, and imposes the D-116/D-121 side-by-side divergence check — flagged per-preset where relevant.
+- **Provenance = Uzume-native.** These are original designs, not ports, so **no `inspired_by` block** and the substantial-similarity discipline (D-116/D-121) does not apply. They contribute to the Uzume-native side of the catalog (D-119 brand identity keeps a distinctive native minority; psychedelic geometry is squarely in that wheelhouse). If Matt would rather frame any of them as `milkdrop_inspired` (e.g. Droste ↔ EvilJim "Travelling backwards in a Tunnel of Light"), that flips `family`, adds `inspired_by`, and imposes the D-116/D-121 side-by-side divergence check — flagged per-preset where relevant.
 - **`concept_tags` / `motion_paradigm` (D-120).** Included on every sidecar so the orchestrator's concept-repeat and paradigm-repeat diversity scheduling works. Confirm the field is still live in the sidecar schema at implementation time (the taxonomy has moved between docs); if the schema has dropped it, omit and note it.
 - **`family`.** All four 2D presets can use `family: "geometric"`; Mandelbox Cathedral fits `geometric` too (or `fractal` if the catalog prefers). The `concept_tags` carry the finer distinction.
 
@@ -124,7 +124,7 @@ Notes:
 
 ## 5. Reference discipline for abstract geometry
 
-Phosphene's reference rule (D-064/D-065) assumes photographable subjects; these geometries are largely abstract, which is the wrinkle you flagged. The approach across this set (per your choice): **a per-preset shopping list of real-world photographic references where they genuinely exist, plus cited published shader/art references as porting anchors, plus an anti-reference.**
+Uzume's reference rule (D-064/D-065) assumes photographable subjects; these geometries are largely abstract, which is the wrinkle you flagged. The approach across this set (per your choice): **a per-preset shopping list of real-world photographic references where they genuinely exist, plus cited published shader/art references as porting anchors, plus an anti-reference.**
 
 - **Real photography exists for more of this than it seems:** actual kaleidoscope photographs (PG.1), Islamic/Moorish geometric tilework and rose windows (PG.1/PG.5), moiré in overlaid mesh/silk (PG.4), light-tunnel and infinity-mirror installations (PG.2), gothic fan-vaulting and fractal-like natural forms (PG.3). These anchor palette, contrast, and "does it read as a real thing."
 - **Published shader/fractal references are the fidelity anchor** and, per FA #73, the thing to *port* rather than re-derive. Each doc cites specific targets (Inigo Quilez articles, Syntopia/Knighty Mandelbox writeups, canonical Shadertoy kaleidoscope/KIFS/Truchet/hyperbolic examples, M.C. Escher's *Circle Limit* plates). Claude Code reads them before writing.
@@ -140,7 +140,7 @@ These apply to the whole set; per-preset docs carry their own additional DECISIO
 1. **Phase ID + engineering-plan rows.** This set is proposed as **Phase PG** (Psychedelic Geometry), increments PG.1–PG.5 (each preset may span sub-increments PG.N.1 scaffold → PG.N.k cert). `ENGINEERING_PLAN.md` must gain the phase and one row per increment before the first session runs (mandatory per `CLAUDE.md` Increment Completion Protocol). *Recommendation:* adopt "PG" unless you want them folded into an existing phase. *Default if silent:* proceed as Phase PG.
 2. **Rubric profile for the four 2D presets.** `lightweight` (detail-cascade/material-count waived, like Plasma/Nebula/SpectralCartograph) vs `full`. *Recommendation:* `lightweight` for PG.1/PG.2/PG.4/PG.5, `full` for PG.3 — but hold every one to the multi-octave / non-pale / nested-detail bar regardless. *Default if silent:* lightweight for the four, full for PG.3.
 3. **Build order.** ⚠ **PG.4 Truchet Loom was built first and RETIRED at first live M7 (D-194)** — the "lowest-risk, well-trodden 2D prior art" framing produced a mechanically-clean but craft-thin result Matt rejected ("not psychedelic geometry"), the second PG preset to die this way after Kinetic Sculpture. **Re-examine the phase's "simple 2D mechanic proves a routing strategy" premise before building the remaining four** — Matt's bar is complex/meticulous craft, not cheap-and-deliverable ([[feedback_craft_bar_depth_not_cheap]]). Remaining (unbuilt): PG.1 Mandala, PG.2 Droste, PG.5 Poincaré, PG.3 Mandelbox.
-4. **Provenance framing (per preset).** Keep all five Phosphene-native (recommended), or reframe Droste (and/or Mandala) as `milkdrop_inspired`. *Default if silent:* all Phosphene-native.
+4. **Provenance framing (per preset).** Keep all five Uzume-native (recommended), or reframe Droste (and/or Mandala) as `milkdrop_inspired`. *Default if silent:* all Uzume-native.
 5. **Names.** Working names throughout; the catalog favours evocative single-concept names (Arachne, Nimbus, Skein). Rename freely at sign-off.
 
 ---

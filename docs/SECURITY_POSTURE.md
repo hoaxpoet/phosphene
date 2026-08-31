@@ -1,4 +1,4 @@
-# Phosphene — Security Posture & Local Threat Model
+# Uzume — Security Posture & Local Threat Model
 
 > CLEAN.2.4 / audit GAP-10 (`docs/diagnostics/CODE_AUDIT_2026-06-13.md` Part B G10, Part C row).
 > Review + document increment — **no security build settings were flipped here**; fixes are filed, not applied blind (each needs a build + real run). Posture below verified against source 2026-06-15.
@@ -7,11 +7,11 @@
 
 ## What this is
 
-The security posture and a local threat model for Phosphene. It states, for each surface, the **verified current state**, the **threat/rationale**, and the **decision or filed follow-up**. It is the reference for "is surface X a problem, and what did we decide about it."
+The security posture and a local threat model for Uzume. It states, for each surface, the **verified current state**, the **threat/rationale**, and the **decision or filed follow-up**. It is the reference for "is surface X a problem, and what did we decide about it."
 
 ## Governing context (CLAUDE.md §Development Constraints)
 
-Phosphene is **macOS-only**, single-user, **on-device only — no cloud, no telemetry**, MIT-licensed. The Mac mini is the primary dev/deploy target. There is **no public build yet** (`RELEASE_NOTES_DEV.md` preamble).
+Uzume is **macOS-only**, single-user, **on-device only — no cloud, no telemetry**, MIT-licensed. The Mac mini is the primary dev/deploy target. There is **no public build yet** (`RELEASE_NOTES_DEV.md` preamble).
 
 **Distribution intent (Matt, 2026-06-15):** *eventual distribution is on the roadmap* (sharing a notarized build / a possible public release). This does not change what 2.4 does — it still only documents and files — but it makes hardened-runtime + notarization (§3) a **near-term filed follow-up (CLEAN.2.5)** rather than indefinitely deferred. The actual enablement is its own increment because it touches the signing pipeline and needs a real Gatekeeper + tap test.
 
@@ -33,13 +33,13 @@ Phosphene is **macOS-only**, single-user, **on-device only — no cloud, no tele
 
 ## 1. Global system-audio tap
 
-**Current posture (verified — `PhospheneEngine/Sources/Audio/SystemAudioCapture.swift` `buildTapDescription`).** Two modes:
+**Current posture (verified — `UzumeEngine/Sources/Audio/SystemAudioCapture.swift` `buildTapDescription`).** Two modes:
 - `.systemAudio` → `CATapDescription(stereoGlobalTapButExcludeProcesses: [])` — a **global tap that excludes nothing**, i.e. it captures the entire system audio mix (every app). (The empty-exclude variant is load-bearing — the seemingly-equivalent `stereoMixdownOfProcesses: []` delivers silence; see the code comment + Failed Approaches #21/#22 at the tap-install site / `docs/RUNBOOK.md`.)
 - `.application(bundleID)` → `CATapDescription(stereoMixdownOfProcesses: [pid])` — narrows to a **single process**. This case remains in the engine, but is **not currently user-selectable**: the Settings per-app picker and the `switchMode`/`availableApplications` plumbing were removed as inert (CLEAN.2.3.5/2.3.6), so production always uses `.systemAudio`.
 
 The tap is **TCC-gated**: macOS requires the user to grant screen-recording permission before `AudioHardwareCreateProcessTap` will install. That grant is the consent boundary.
 
-**`NSScreenCaptureUsageDescription` honesty (verified).** The string reads *"Phosphene captures system audio to generate real-time music visualizations. No video is recorded."* This is honest: the screen-recording permission is purely the OS gate for the **audio** tap — **no screen pixels are ever read**. `SessionRecorder` (`PhospheneEngine/Sources/Shared/SessionRecorder+Video.swift`) does write video, but it encodes the app's **own rendered Metal texture** (`appendVideoFrame(from tex: MTLTexture …)`) — Phosphene's generated visuals, not the user's screen — to local disk (`~/Documents/phosphene_sessions/<stamp>/`, `SessionRecorder.swift:210-238`). "No video is recorded" is true of *screen/user content*; the only video recorded is Phosphene's own output, on-device.
+**`NSScreenCaptureUsageDescription` honesty (verified).** The string reads *"Uzume captures system audio to generate real-time music visualizations. No video is recorded."* This is honest: the screen-recording permission is purely the OS gate for the **audio** tap — **no screen pixels are ever read**. `SessionRecorder` (`UzumeEngine/Sources/Shared/SessionRecorder+Video.swift`) does write video, but it encodes the app's **own rendered Metal texture** (`appendVideoFrame(from tex: MTLTexture …)`) — Uzume's generated visuals, not the user's screen — to local disk (`~/Documents/phosphene_sessions/<stamp>/`, `SessionRecorder.swift:210-238`). "No video is recorded" is true of *screen/user content*; the only video recorded is Uzume's own output, on-device.
 
 **Threat / rationale.** A global audio tap is a real privacy surface: while active it can observe audio from any app. Mitigations: (a) the OS consent gate (user must explicitly grant screen-recording); (b) **audio-only** — no screen content; (c) **no exfiltration** — tapped audio is analyzed on-device and never uploaded (see §7); (d) the engine retains an `.application` (single-PID) tap path in code, though it is not currently user-selectable (CLEAN.2.3.5).
 
@@ -47,9 +47,9 @@ The tap is **TCC-gated**: macOS requires the user to grant screen-recording perm
 
 ## 2. App sandbox = off
 
-**Current posture (verified — `PhospheneApp/PhospheneApp.entitlements`).** `com.apple.security.app-sandbox = false` is the **only** entitlement declared.
+**Current posture (verified — `UzumeApp/UzumeApp.entitlements`).** `com.apple.security.app-sandbox = false` is the **only** entitlement declared.
 
-**Threat / rationale.** An un-sandboxed app has the user's full file/IPC reach; a compromise (e.g. via a decoder bug, §6) is not contained by the sandbox. But the App Sandbox is **fundamentally incompatible** with Phosphene's three core mechanisms:
+**Threat / rationale.** An un-sandboxed app has the user's full file/IPC reach; a compromise (e.g. via a decoder bug, §6) is not contained by the sandbox. But the App Sandbox is **fundamentally incompatible** with Uzume's three core mechanisms:
 - the **global Core Audio process tap** needs to see all processes' audio — the sandbox cannot grant that;
 - **Apple Events** to arbitrary music apps (Apple Music / Spotify, for now-playing metadata) need per-target temporary-exception entitlements the sandbox discourages;
 - **arbitrary local-file open** (LF.4–LF.6: any `.m4a/.mp3/.flac/.m3u` the user picks) works today via direct paths; under the sandbox it would require user-selected-file scope + security-scoped bookmarks throughout.
@@ -60,25 +60,25 @@ The tap is **TCC-gated**: macOS requires the user to grant screen-recording perm
 
 ## 3. Hardened runtime + notarization
 
-**Current posture (CLEAN.2.5a, 2026-06-15 — `PhospheneApp.xcodeproj/project.pbxproj` + `PhospheneApp/PhospheneApp.entitlements`).** Hardened runtime is **ON for the app target's Release config** — `ENABLE_HARDENED_RUNTIME = YES` (verified: `codesign -dv` on the Release product shows `flags=0x10000(runtime)`, `Runtime Version` present). **The Debug config is deliberately left unhardened.** HR enables library validation, and a hardened *test host* refuses to `dlopen` the injected `PhospheneAppTests.xctest` bundle — `mapping process and mapped file (non-platform) have different Team IDs` — so HR-on-Debug breaks `xcodebuild test`. HR is a distribution/Release property; scoping it to Release keeps the test suite green and hardens the config that actually ships + notarizes. (Durable learning: the first attempt set HR in `Phosphene.xcconfig`, which applies to both configs, and the app-test bundle-load failure forced the Release-only scope.) The outbound-Apple-Events entitlement `com.apple.security.automation.apple-events` was added (entitlements apply to both configs) — the `StreamingMetadata` now-playing bridge (`NSAppleScript` → Apple Music / Spotify) needs it under HR. Signing is still `CODE_SIGN_IDENTITY = "Apple Development"` / `Automatic` / team `2LBTN9PB4Z` — **dev-signed, not yet Developer ID, not yet notarized** (the deferred CLEAN.2.5b half); the dev-signed Release build still carries `get-task-allow` (auto-injected for development certs — it drops out under Developer ID signing in 2.5b, which notarization requires). No `com.apple.security.cs.*` entitlement was added — the tap is TCC-gated and expected to survive HR; one is added only if a real run shows a break.
+**Current posture (CLEAN.2.5a, 2026-06-15 — `UzumeApp.xcodeproj/project.pbxproj` + `UzumeApp/UzumeApp.entitlements`).** Hardened runtime is **ON for the app target's Release config** — `ENABLE_HARDENED_RUNTIME = YES` (verified: `codesign -dv` on the Release product shows `flags=0x10000(runtime)`, `Runtime Version` present). **The Debug config is deliberately left unhardened.** HR enables library validation, and a hardened *test host* refuses to `dlopen` the injected `UzumeAppTests.xctest` bundle — `mapping process and mapped file (non-platform) have different Team IDs` — so HR-on-Debug breaks `xcodebuild test`. HR is a distribution/Release property; scoping it to Release keeps the test suite green and hardens the config that actually ships + notarizes. (Durable learning: the first attempt set HR in `Uzume.xcconfig`, which applies to both configs, and the app-test bundle-load failure forced the Release-only scope.) The outbound-Apple-Events entitlement `com.apple.security.automation.apple-events` was added (entitlements apply to both configs) — the `StreamingMetadata` now-playing bridge (`NSAppleScript` → Apple Music / Spotify) needs it under HR. Signing is still `CODE_SIGN_IDENTITY = "Apple Development"` / `Automatic` / team `2LBTN9PB4Z` — **dev-signed, not yet Developer ID, not yet notarized** (the deferred CLEAN.2.5b half); the dev-signed Release build still carries `get-task-allow` (auto-injected for development certs — it drops out under Developer ID signing in 2.5b, which notarization requires). No `com.apple.security.cs.*` entitlement was added — the tap is TCC-gated and expected to survive HR; one is added only if a real run shows a break.
 
 **Threat / rationale.** Without the hardened runtime + a Developer ID signature + notarization, a build cannot pass Gatekeeper cleanly on a machine other than the dev machine — it blocks the distribution Matt now has on the roadmap. Enabling the hardened runtime is **not** a one-line flip: it restricts code-injection/JIT/loading and **may break the audio tap or the Apple Events bridge**, so it needs a real run (tap still installs, music apps still reachable) plus a Gatekeeper test of a notarized artifact.
 
 **Decision — CLEAN.2.5 SPLIT (Matt, 2026-06-15).** Split because Developer ID signing + notarization require a **paid Apple Developer Program membership** the project does not currently have.
-- **CLEAN.2.5a (done + verified, this increment):** enable the hardened runtime (Release config) + add the Apple Events entitlement; Release build + sign verified green (`-o runtime`, entitlement present on the binary); Debug `xcodebuild test` suite stays green. **Manual runtime gates VERIFIED 2026-06-15** (Matt, Mac mini, hardened Release build, session `2026-06-15T22-45-34Z`): (i) launches under HR ✅; (ii) `.systemAudio` tap installs + delivers audio under HR ✅ — green @ **−6 dBFS**, 11,425 live-energy frames in `features.csv` (the brief startup "red/silent" is the documented pre-playback artifact, not a fault); (iii) Apple Events ✅ **accepted** — the now-playing AppleScript poller ran under HR without fault and the entitlement is verified on the binary, but this Spotify-prefetched session did not independently isolate it (displayed metadata came from the Spotify Web-API plan; per-poll AppleScript results aren't persisted), so it's accepted as satisfied-by-construction per Matt's call. Spotify connection also confirmed working on the primary-dir build (the worktree build had an empty `SPOTIFY_CLIENT_ID` — gitignored `Phosphene.local.xcconfig` absent in worktrees).
+- **CLEAN.2.5a (done + verified, this increment):** enable the hardened runtime (Release config) + add the Apple Events entitlement; Release build + sign verified green (`-o runtime`, entitlement present on the binary); Debug `xcodebuild test` suite stays green. **Manual runtime gates VERIFIED 2026-06-15** (Matt, Mac mini, hardened Release build, session `2026-06-15T22-45-34Z`): (i) launches under HR ✅; (ii) `.systemAudio` tap installs + delivers audio under HR ✅ — green @ **−6 dBFS**, 11,425 live-energy frames in `features.csv` (the brief startup "red/silent" is the documented pre-playback artifact, not a fault); (iii) Apple Events ✅ **accepted** — the now-playing AppleScript poller ran under HR without fault and the entitlement is verified on the binary, but this Spotify-prefetched session did not independently isolate it (displayed metadata came from the Spotify Web-API plan; per-poll AppleScript results aren't persisted), so it's accepted as satisfied-by-construction per Matt's call. Spotify connection also confirmed working on the primary-dir build (the worktree build had an empty `SPOTIFY_CLIENT_ID` — gitignored `Uzume.local.xcconfig` absent in worktrees).
 - **CLEAN.2.5b (deferred, blocked on paid membership):** switch `CODE_SIGN_IDENTITY` → `Developer ID Application`, notarize (`xcrun notarytool submit --wait` + `xcrun stapler staple`), and Gatekeeper-test on a clean machine/account (`spctl --assess` + a real first launch). Mechanical once the cert + notarization key exist. Keep library validation **on** (§4).
 
 ## 4. Library validation
 
-**Current posture (verified — entitlements + pbxproj).** No `com.apple.security.cs.disable-library-validation` declared. Phosphene links Apple frameworks (Metal, AVFoundation, Accelerate, MPSGraph, MusicKit, …) and SPM **static** libraries — it does **not** load third-party or unsigned dylibs at runtime.
+**Current posture (verified — entitlements + pbxproj).** No `com.apple.security.cs.disable-library-validation` declared. Uzume links Apple frameworks (Metal, AVFoundation, Accelerate, MPSGraph, MusicKit, …) and SPM **static** libraries — it does **not** load third-party or unsigned dylibs at runtime.
 
-**Threat / rationale.** `disable-library-validation` is only needed when an app loads code signed by a different team (plugins, unsigned dylibs); disabling it weakens the binary. Phosphene loads none, so it should never disable it.
+**Threat / rationale.** `disable-library-validation` is only needed when an app loads code signed by a different team (plugins, unsigned dylibs); disabling it weakens the binary. Uzume loads none, so it should never disable it.
 
 **Decision.** Document — **not required, no fix**. Verified under hardened runtime (CLEAN.2.5a): library validation is on by default and was **left on** — no `disable-library-validation` declared, confirmed on the signed binary (`codesign -d --entitlements`).
 
 ## 5. `uzume://` OAuth callback
 
-**Current posture (verified — `PhospheneApp/Services/SpotifyOAuthTokenProvider.swift` `handleCallback`, `PhospheneApp/PhospheneApp.swift:104` `.onOpenURL`).** The custom URL scheme `uzume://spotify-callback` is the OAuth redirect target. The callback is validated at two layers:
+**Current posture (verified — `UzumeApp/Services/SpotifyOAuthTokenProvider.swift` `handleCallback`, `UzumeApp/UzumeApp.swift:104` `.onOpenURL`).** The custom URL scheme `uzume://spotify-callback` is the OAuth redirect target. The callback is validated at two layers:
 - `.onOpenURL` dispatches only when `url.scheme == "uzume"` **and** `url.host == "spotify-callback"`;
 - `handleCallback` re-checks scheme + host, then enforces the **`state` CSRF/replay guard** — the returned `state` must equal the `pendingState` sent in the authorize URL; a nil `pendingState` (no login in flight) is rejected as possible CSRF/replay (CLEAN.2.2.3a). Missing-code / denied-auth paths fail closed.
 
@@ -88,7 +88,7 @@ The tap is **TCC-gated**: macOS requires the user to grant screen-recording perm
 
 ## 6. Local-file open path
 
-**Current posture (verified — `PhospheneEngine/Sources/Session/M3UParser.swift`, `PhospheneApp/PhospheneApp.swift:215` `dispatchFileURL`, `LocalFilePlaybackProvider`).** Opening a file (Finder double-click / `open -a` / drag / Recents) routes by extension to the local-file or m3u or folder entry point. The `.m3u`/`.m3u8` parser is **defensive**: maps the file (`mappedIfSafe`), strips a UTF-8 BOM, decodes UTF-8 or **throws** `malformedUTF8`, normalizes CRLF, skips comments, resolves each entry, **readability-checks** each (`isReadableFile`), silently skips unreadable entries, and **throws** `noEntriesResolved` if none resolve. Audio bytes are decoded by **AVFoundation** (`AVAudioFile`), Apple's framework decoders.
+**Current posture (verified — `UzumeEngine/Sources/Session/M3UParser.swift`, `UzumeApp/UzumeApp.swift:215` `dispatchFileURL`, `LocalFilePlaybackProvider`).** Opening a file (Finder double-click / `open -a` / drag / Recents) routes by extension to the local-file or m3u or folder entry point. The `.m3u`/`.m3u8` parser is **defensive**: maps the file (`mappedIfSafe`), strips a UTF-8 BOM, decodes UTF-8 or **throws** `malformedUTF8`, normalizes CRLF, skips comments, resolves each entry, **readability-checks** each (`isReadableFile`), silently skips unreadable entries, and **throws** `noEntriesResolved` if none resolve. Audio bytes are decoded by **AVFoundation** (`AVAudioFile`), Apple's framework decoders.
 
 **Threat / rationale.** Two surfaces: (a) **malformed media** fed to AVFoundation decoders (mp3/m4a/flac) — the standard audio-decoder attack surface, mitigated by Apple's hardened decoders and the fact that the file came from the user's own disk; (b) **arbitrary path resolution in `.m3u` entries** — a hostile playlist naming `/Users/you/.ssh/id_rsa` or `../../etc/passwd`.
 
@@ -98,14 +98,14 @@ The consequence of (b) was always bounded, which is why it was P3 not higher: th
 
 ## 7. Secrets at rest + no-telemetry
 
-**Current posture (verified — `PhospheneApp/Services/SpotifyOAuthTokenProvider.swift`, `PhospheneApp/Phosphene.xcconfig`, `PhospheneApp/Info.plist`).**
+**Current posture (verified — `UzumeApp/Services/SpotifyOAuthTokenProvider.swift`, `UzumeApp/Uzume.xcconfig`, `UzumeApp/Info.plist`).**
 - **OAuth tokens** (Spotify access + rotating refresh) live in the **Keychain** (CLEAN.2.1/2.2). Keychain save failures are logged, not swallowed (CLEAN.2.2.3c).
-- **No client secret anywhere** — PKCE uses only the public `SPOTIFY_CLIENT_ID`, injected from the **gitignored** `Phosphene.local.xcconfig`; the checked-in `Phosphene.xcconfig` holds an empty value and a comment forbidding a real one (CLEAN.2.1's whole point — do not regress).
+- **No client secret anywhere** — PKCE uses only the public `SPOTIFY_CLIENT_ID`, injected from the **gitignored** `Uzume.local.xcconfig`; the checked-in `Uzume.xcconfig` holds an empty value and a comment forbidding a real one (CLEAN.2.1's whole point — do not regress).
 - **No telemetry / no cloud.** On-device ML; the only outbound traffic is user-initiated metadata fetches (Spotify / Apple Music / iTunes lookup). Tapped audio and session recordings (`~/Documents/phosphene_sessions/`) are **never uploaded** — `SessionRecorder` has no `URLSession`/network path (verified).
 
 **Threat / rationale.** Token theft (Keychain is the right at-rest store, ACL-scoped to the app); secret leakage from a shipped binary (eliminated — none is embedded); and data exfiltration (structurally minimal — there is no telemetry channel for tap audio or recordings to escape through).
 
-**Decision.** Document — **posture strength, no fix**. The invariant to protect: never check a secret into `Phosphene.xcconfig`; never add a telemetry/upload path for tap audio or session recordings.
+**Decision.** Document — **posture strength, no fix**. The invariant to protect: never check a secret into `Uzume.xcconfig`; never add a telemetry/upload path for tap audio or session recordings.
 
 ---
 
@@ -121,10 +121,10 @@ No fix was filed for §2 (partial sandbox — not viable), §4 (library validati
 
 ## How each claim was verified (2026-06-15)
 
-- Sandbox / entitlements — read `PhospheneApp/PhospheneApp.entitlements` (only `app-sandbox = false`).
+- Sandbox / entitlements — read `UzumeApp/UzumeApp.entitlements` (only `app-sandbox = false`).
 - Hardened runtime / signing — `grep` for `ENABLE_HARDENED_RUNTIME` / `disable-library-validation` across pbxproj + entitlements + xcconfig (zero hits); read signing keys in `project.pbxproj`.
 - Tap scope — read `SystemAudioCapture.buildTapDescription`.
 - Recorder honesty — read `SessionRecorder+Video.swift` (`MTLTexture` source) + `SessionRecorder.swift` output dir; confirmed no network in `SessionRecorder*.swift`.
-- OAuth callback — read `SpotifyOAuthTokenProvider.handleCallback` + `PhospheneApp.swift` `.onOpenURL`.
+- OAuth callback — read `SpotifyOAuthTokenProvider.handleCallback` + `UzumeApp.swift` `.onOpenURL`.
 - Local-file path — read `M3UParser.swift` + `dispatchFileURL`.
-- Secrets — read `Phosphene.xcconfig` (empty client ID, no secret) + `Info.plist`.
+- Secrets — read `Uzume.xcconfig` (empty client ID, no secret) + `Info.plist`.

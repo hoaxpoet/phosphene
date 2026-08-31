@@ -75,7 +75,7 @@ Whitney's Music Box convention of `hue = 360·(i+1)/N` — a rainbow across the 
 **is not what this film does.** Importing it would produce something that looks like a modern
 generative-art demo rather than like Arabesque.
 
-**Consequence:** figure white, hue in the frame elements. This also solves a Phosphene problem
+**Consequence:** figure white, hue in the frame elements. This also solves a Uzume problem
 for free: a white-cored stroke with HDR bloom is the "one modern layer" Matt already chose
 (§11.1), and it is period-honest — the halation is what filming a vector CRT produces.
 
@@ -156,7 +156,7 @@ and made it a load-bearing design constraint. The relation is still arithmetical
 **the film does not operate in that regime**, because it does not use decaying feedback at all.
 
 For a line-figure preset the equivalent question is not "how long is the trail" but "how does the
-stroke glow." That is bloom on a bright-cored stroke, which Phosphene does natively
+stroke glow." That is bloom on a bright-cored stroke, which Uzume does natively
 (`rgba16Float` + `PostProcessChain`), with no accumulation buffer and none of the conflict.
 
 **§9.2 therefore demotes from a design constraint on the lead preset to a constraint on the dot

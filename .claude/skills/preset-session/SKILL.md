@@ -1,6 +1,6 @@
 ---
 name: preset-session
-description: Mandatory opener for any preset-related increment in Phosphene — authoring, uplift, tuning, or fix. Invoke BEFORE opening any .metal file or editing a preset JSON sidecar, and when planning audio-reactivity routing for a preset. Covers the session-start checklist, the audio data hierarchy, and preset-scoped failure rules.
+description: Mandatory opener for any preset-related increment in Uzume — authoring, uplift, tuning, or fix. Invoke BEFORE opening any .metal file or editing a preset JSON sidecar, and when planning audio-reactivity routing for a preset. Covers the session-start checklist, the audio data hierarchy, and preset-scoped failure rules.
 ---
 
 # Preset Session Opener

@@ -26,12 +26,12 @@ set -euo pipefail
 
 # Files whose `drumsBeat`/`drums_beat` use would violate §5.8 intensity routing.
 SCOPED_FILES=(
-  "PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift"
-  "PhospheneEngine/Sources/Shared/StageRigState.swift"
+  "UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift"
+  "UzumeEngine/Sources/Shared/StageRigState.swift"
 )
 
 # Stage-rig adjacent files in the presets directory (any future Sources/Presets/*StageRig*.swift).
-STAGE_RIG_GLOB="PhospheneEngine/Sources/Presets"
+STAGE_RIG_GLOB="UzumeEngine/Sources/Presets"
 
 # Match the symbol drumsBeat (camelCase, Swift) or drums_beat (snake_case, MSL),
 # with word boundaries so substrings like `drumsBeatX` would also catch.
@@ -90,7 +90,7 @@ fi
 #    Since we want the gate to fire specifically on matID == 2 use, the
 #    simplest robust rule is: any occurrence of `drumsBeat` / `drums_beat` in
 #    RayMarch.metal outside a `//`-comment or `(void)` cast is a violation.
-RAYMARCH_FILE="PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal"
+RAYMARCH_FILE="UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal"
 if [ -f "$RAYMARCH_FILE" ]; then
   raymarch_hits=$(grep -EnH "$PATTERN" "$RAYMARCH_FILE" 2>/dev/null || true)
   if [ -n "$raymarch_hits" ]; then

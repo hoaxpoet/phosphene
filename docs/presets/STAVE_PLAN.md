@@ -134,14 +134,14 @@ passes both **by construction**: the image is signal-plotting. Nothing is depict
 screen *are* the audio. There is no autonomous system to nudge and no scene to watch — if the
 music stops, the traces flatline, which is the correct behaviour, not a failure mode.
 
-**The Phosphene concept (one sentence, Gate 1 form):** Four luminous traces — one per stem —
+**The Uzume concept (one sentence, Gate 1 form):** Four luminous traces — one per stem —
 are drawn live across a beat-ruled dark field, each trace plotting its own instrument's energy
 deviation, so the listener sees drums, bass, vocals and the rest as four separate voices moving
 against the bar grid, converging and diverging as the arrangement does.
 
 **The divergence axis (D-121, named now, not at cert):** dominant motion model. The source's
 traces are decorative oscilloscope Lissajous figures — the same species of curve on any track,
-driven by one full-mix scalar. Phosphene's traces are **four per-stem signal plots on a
+driven by one full-mix scalar. Uzume's traces are **four per-stem signal plots on a
 beat-locked grid** — a capability Milkdrop structurally cannot have (no stems, no beat grid).
 Same register (dotted luminous traces, sparkle-grid dark field, echo smear); different and
 demonstrably music-derived motion. Trivially provable in the side-by-side: play two different
@@ -155,9 +155,9 @@ keep this; it is the source's own silence behaviour), 1 enabled custom wave (352
 4 shapes, warp 709 chars / comp 5126 chars (the comp shader is the sparkle-grid field).
 No `.milk` on disk; provenance per §13 (`source_form` = butterchurn built-in, sha256 of that JSON).
 
-**Capability fit (why this source, per Matt's "best adapted to Phosphene" criterion):**
+**Capability fit (why this source, per Matt's "best adapted to Uzume" criterion):**
 
-| Source fakes / lacks | Phosphene has, proven, today |
+| Source fakes / lacks | Uzume has, proven, today |
 |---|---|
 | One full-mix waveform | Four stems: per-stem energy / rel / dev / onset_rate / attack_ratio (StemFeatures floats 1–40, D-026/D-028) |
 | No tempo model — grid is decoration | `beat_times[16]`, `downbeat_times[8]`, bpm, lock_state — **already GPU-visible in buffer(5)** (SpectralHistoryBuffer) |
@@ -202,8 +202,8 @@ No `.metal`, no `.json`, no engine code.
 
 **Read first:** `MILKDROP_STRATEGY.md` §13 · `SHADER_CRAFT.md` §2.0 + §12.6 ·
 `docs/presets/WITCHLIGHT_DESIGN.md` (the structural template, esp. its §2 measurement section) ·
-EP §Phase MD MD.6 done-when · `PhospheneEngine/Sources/Shared/SpectralHistoryBuffer.swift`
-header · `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` StemFeatures block.
+EP §Phase MD MD.6 done-when · `UzumeEngine/Sources/Shared/SpectralHistoryBuffer.swift`
+header · `UzumeEngine/Sources/Presets/PresetLoader+Preamble.swift` StemFeatures block.
 
 **Tasks.**
 
@@ -256,8 +256,8 @@ header · `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` StemFeat
 **Do NOT:** open a `.metal` file · touch `Waveform.json` (see DECISION-NEEDED #2) · extend
 `SpectralHistoryBuffer` or any GPU contract · commit any butterchurn JSON (D-116 bullet 4).
 
-**Verify:** `swift test --package-path PhospheneEngine --filter DocIntegrityTests` ·
-`swift run --package-path PhospheneTools CheckVisualReferences` · `swiftlint lint --strict`.
+**Verify:** `swift test --package-path UzumeEngine --filter DocIntegrityTests` ·
+`swift run --package-path UzumeTools CheckVisualReferences` · `swiftlint lint --strict`.
 
 ---
 

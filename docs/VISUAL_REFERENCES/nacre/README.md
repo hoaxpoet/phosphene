@@ -5,7 +5,7 @@
 **Rubric:** lightweight — stylized 2D feedback (exempt from full detail-cascade + material-count requirements)
 **Last curated:** 2026-06-25 (rendered by Claude Code from the faithful butterchurn reference; target confirmed by Matt)
 
-**Target:** a faithful Phosphene uplift of the Milkdrop preset `$$$ Royal - Mashup (431)`
+**Target:** a faithful Uzume uplift of the Milkdrop preset `$$$ Royal - Mashup (431)`
 (projectM cream-of-the-crop legends set; butterchurn built-in). Sibling of `(220)` =
 the shipped **Dragon Bloom** and `(197)` = a neon-glowstick variant — Nacre is the
 **translucent refractive "jello-mirror"** member of the family, visually unrelated to

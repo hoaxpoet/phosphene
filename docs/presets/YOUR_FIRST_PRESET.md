@@ -7,13 +7,13 @@ runs — hot-reload compiles every save and swaps it in live. Jargon:
 [NEW_PRESET_CHECKLIST.md](NEW_PRESET_CHECKLIST.md).
 
 The two smallest shipped presets, `Plasma` and `Waveform`
-(`PhospheneEngine/Sources/Presets/Shaders/`, 55 and 101 lines), are real
+(`UzumeEngine/Sources/Presets/Shaders/`, 55 and 101 lines), are real
 worked examples of this exact shape; `Skein` and `Nacre` show the
 full-featured registers.
 
 ## Halo.metal
 
-Every direct-pass shader gets Phosphene's preamble prepended at compile time
+Every direct-pass shader gets Uzume's preamble prepended at compile time
 (`VertexOut`, `FeatureVector`, helpers — see ARCHITECTURE §GPU Contract
 Details). Your file is JUST the fragment:
 
@@ -73,7 +73,7 @@ fragment float4 preset_fragment(VertexOut in [[stage_in]],
 
 ## Run it
 
-1. Launch Phosphene → Settings → Visuals → **Show uncertified presets**.
+1. Launch Uzume → Settings → Visuals → **Show uncertified presets**.
 2. File → Open Local File (⌘O) — no streaming account needed.
 3. Cycle to *Halo* (arrow keys). Edit the `.metal`, save — it hot-swaps.
    A broken save toasts and keeps the last-good version

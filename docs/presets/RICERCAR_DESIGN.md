@@ -94,7 +94,7 @@ The 2026-06-29 pivot onto "Skein's marks engine" walked AWAY from these referenc
 3. **Soft, HDR, luminous** throughout — light, not pigment.
 
 **Grounded technique (FA #64/#73 — port the canonical prior art, don't guess):**
-- **Fluid dye sim → port [Pavel Dobryakov's WebGL Fluid Simulation](https://github.com/PavelDoGreat/WebGL-Fluid-Simulation)** (16k★, **MIT**, based on Jos Stam "Real-Time Fluid Dynamics for Games"). Passes (ping-pong, Metal compute): advect velocity → curl → **vorticity confinement** (the billowing) → divergence → **pressure Jacobi** (~20–40 iters, incompressible) → gradient-subtract; dye: advect + dissipate + **splat** family colour at section sources. Sim grid ~256²–512² (cheap at 60 fps on M2). This is NEW infra for Phosphene (no fluid sim exists — a genuine renderer paradigm, heavier than a preset tweak).
+- **Fluid dye sim → port [Pavel Dobryakov's WebGL Fluid Simulation](https://github.com/PavelDoGreat/WebGL-Fluid-Simulation)** (16k★, **MIT**, based on Jos Stam "Real-Time Fluid Dynamics for Games"). Passes (ping-pong, Metal compute): advect velocity → curl → **vorticity confinement** (the billowing) → divergence → **pressure Jacobi** (~20–40 iters, incompressible) → gradient-subtract; dye: advect + dissipate + **splat** family colour at section sources. Sim grid ~256²–512² (cheap at 60 fps on M2). This is NEW infra for Uzume (no fluid sim exists — a genuine renderer paradigm, heavier than a preset tweak).
 - **Glowing ribbons →** quadratic-Bezier / sine-path **SDF + additive glow** (colour fading with distance; IQ distance functions), overlaid additively + bloom.
 
 **Plan (my commitment — no more "code-complete, go test live"):**
@@ -155,7 +155,7 @@ Diagnosed from the live session `2026-07-09T02-11-28Z` (instrument-first, before
 Each stack is certified separately. Ricercar needs the agent layer to deposit into the mv_warp canvas so voice-trails join the flowing field. A pre-design audit (the analogue of the Skein.ENGINE.1 config audit, D-142) read the actual renderer and resolved this to **(B) a bounded engine touch — NOT pure config**:
 
 - Skein's mv_warp canvas (`MVWarpState` ping-pong) and Filigree's agent trail (`PhysarumGeometry`'s private `r16Float` pair) are **isolated texture memories**.
-- The render loop assumes particle-mode presets draw **straight to the drawable** and *skips feedback-texture allocation entirely* when `particles != nil` ([`RenderPipeline+Draw.swift`](../../PhospheneEngine/Sources/Renderer/RenderPipeline+Draw.swift) ~line 113, the CLEAN.4.4 comment). So agents cannot deposit into the warp canvas today — there is no shared texture.
+- The render loop assumes particle-mode presets draw **straight to the drawable** and *skips feedback-texture allocation entirely* when `particles != nil` ([`RenderPipeline+Draw.swift`](../../UzumeEngine/Sources/Renderer/RenderPipeline+Draw.swift) ~line 113, the CLEAN.4.4 comment). So agents cannot deposit into the warp canvas today — there is no shared texture.
 - Registry confirms: composing feedback canvas + agent deposit = **Missing** ([RENDER_CAPABILITY_REGISTRY.md](../ENGINE/RENDER_CAPABILITY_REGISTRY.md)).
 
 **The fix is small and named** (~60 lines, zero shader/kernel changes):
@@ -167,7 +167,7 @@ This lands as its own infra increment, **Ricercar.3.x**, surfaced to Matt before
 
 > **Correction note (vs the original pitch):** the pitch's "zero new engine surfaces for V1" / "one open question to confirm" is **falsified** — the integration is *confirmed needed*, not open. It is bounded and scoped, not an open-ended gamble. Everything downstream of the bridge is pure preset config.
 
-### The spine (against Phosphene's first principle)
+### The spine (against Uzume's first principle)
 
 > Continuous register energy raises and steers the voices (**primary**). Onsets announce entries and flick accents (**accent**).
 
@@ -177,7 +177,7 @@ Three axes: **who** is playing (register → orchestral section → colour ident
 
 ### The honest caveat (see §6)
 
-Phosphene cannot separate individual orchestral instruments — Open-Unmix yields only vocals/drums/bass/other, all of which collapse to "other" on an orchestral recording. Ricercar therefore **does not transcribe instruments**. It evokes counterpoint through register-banded voice-agents and onset-driven entries. On the target piece this reads true because register density and voice count move together. It is an evocation, not a transcription, and the design never claims otherwise.
+Uzume cannot separate individual orchestral instruments — Open-Unmix yields only vocals/drums/bass/other, all of which collapse to "other" on an orchestral recording. Ricercar therefore **does not transcribe instruments**. It evokes counterpoint through register-banded voice-agents and onset-driven entries. On the target piece this reads true because register density and voice count move together. It is an evocation, not a transcription, and the design never claims otherwise.
 
 ---
 
@@ -311,7 +311,7 @@ A single paradigm, precedented twice over. Per-frame, three stacked layers:
 2. **Voices (the counterpoint).** A small compute-agent set ported from Filigree's trail-agent loop: each lane owns 1–2 agents (cap ~6–8 total). An agent is awake when its lane's `*Dev` is positive; it moves (base wander + steering from its lane's deviation, vertical bias from the 6-band split) and deposits its lane-colour into the substrate canvas so its trail joins the flowing field. Filigree's sense-steer-deposit loop with (a) far fewer agents, (b) agent colour bound to lane, (c) wake/sleep gated by lane deviation. **Port the loop; do not re-derive (FA #73).** The deposit-into-mv_warp-canvas integration is the **Ricercar.3.x** bridge (§0).
 3. **Accents (marks-on-top).** Skein's marks-on-top overlay: per-lane onset → brief entry flare at that line's head; `beatComposite` → sparse splatter-sprays. Display-only flares can also live in the comp fragment (Skein's slot-6 preset-buffer adornment path) so they glint without baking into the canvas.
 
-### Draft JSON sidecar (`PhospheneEngine/Sources/Presets/Shaders/Ricercar.json` — values to be tuned)
+### Draft JSON sidecar (`UzumeEngine/Sources/Presets/Shaders/Ricercar.json` — values to be tuned)
 
 ```json
 {

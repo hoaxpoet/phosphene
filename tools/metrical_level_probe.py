@@ -28,7 +28,7 @@ to subtract (the failure that derailed DBN.2 twice and that FT.3 task 3 caught i
 probe's own rule).
 
 Usage:
-    ~/phosphene-ml-env/bin/python tools/metrical_level_probe.py \\
+    ~/uzume-ml-env/bin/python tools/metrical_level_probe.py \\
         --beats-dir /tmp/barprobe --fixtures ~/phosphene_beatbench_fixtures --synthetic
 """
 
@@ -51,7 +51,7 @@ def regrid(beats: list[float], factor: float) -> list[float]:
     """Put a KNOWN-GOOD grid deliberately at the wrong metrical level.
 
     Re-gridding, not resampling: the audio is untouched and only the grid moves, which is
-    exactly the real failure (Phosphene's grid at the wrong level over correct audio).
+    exactly the real failure (Uzume's grid at the wrong level over correct audio).
     Resampling would change the spectral content too and confound the measurement.
 
       factor 2.0 -> DOUBLE-time grid (insert midpoints)
@@ -305,7 +305,7 @@ def main() -> int:
     ap.add_argument("--fixtures", required=True)
     ap.add_argument("--synthetic", action="store_true")
     ap.add_argument("--groundtruth",
-                    default="PhospheneEngine/Tests/Fixtures/beatbench/groundtruth")
+                    default="UzumeEngine/Tests/Fixtures/beatbench/groundtruth")
     args = ap.parse_args()
     fixtures = os.path.expanduser(args.fixtures)
 

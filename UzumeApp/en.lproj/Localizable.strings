@@ -1,0 +1,523 @@
+/* Uzume — Localizable.strings (en)
+   Canonical source for all user-facing strings.
+   Keys follow the convention: <context>.<case_or_element>[.<sub_element>]
+   Never use jargon: no MPSGraph, FFT, tap, DRM, sandbox, NSURLError in values.
+   See UX_SPEC.md §9.5 for copy principles. */
+
+// MARK: - CTAs (shared across contexts)
+
+"cta.open_system_settings"      = "Open System Settings";
+"cta.open_apple_music"          = "Open Apple Music";
+"cta.use_spotify"               = "Use Spotify instead";
+"cta.use_apple_music"           = "Use Apple Music instead";
+"cta.paste_again"               = "Paste again";
+"cta.try_again"                 = "Try again";
+"cta.cancel"                    = "Cancel";
+"cta.close"                     = "Close";
+"cta.pick_different_playlist"   = "Pick another playlist";
+"cta.retry_when_online"         = "Retry when online";
+"cta.start_reactive_mode"       = "Start reactive mode";
+"cta.skip_to_spotify"           = "Skip to Spotify";
+
+// MARK: - §9.1 Permission errors
+
+"error.permission.screen_capture.headline" = "Uzume needs permission to hear music playing on your Mac.";
+"error.permission.screen_capture.body"     = "To follow along with your music, Uzume listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
+"error.permission.screen_capture.why_label" = "Why does this need screen recording permission?";
+"error.permission.screen_capture.why_body"  = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Uzume uses only the audio portion.";
+
+"error.permission.applescript.headline" = "Uzume needs permission to talk to Apple Music.";
+"error.permission.applescript.body"     = "You can grant this in System Settings \u2192 Privacy & Security \u2192 Automation.";
+
+// MARK: - §9.2 Connection errors
+
+"error.connection.apple_music_not_running.headline" = "Apple Music isn’t running.";
+"error.connection.apple_music_not_running.body"     = "Open it, start a playlist, then come back.";
+
+"error.connection.no_playlist"          = "Start playing a playlist in Apple Music, then come back.";
+"error.connection.no_playlist.status"   = "Checking every 2 seconds\u2026";
+
+"error.connection.spotify_url_malformed"    = "That doesn’t look like a Spotify playlist link.";
+"error.connection.spotify_url_is_track"     = "That’s a track, not a playlist. Uzume needs a playlist URL.";
+"error.connection.spotify_url_is_album"     = "That’s an album, not a playlist. Uzume needs a playlist URL.";
+"error.connection.spotify_url_is_artist"    = "That’s an artist page, not a playlist. Uzume needs a playlist URL.";
+"error.connection.spotify_url_unknown"      = "That link doesn’t look like a Spotify playlist.";
+
+/* Headline only. CA-Shared-FU-1: retry progress (e.g. "attempt 2 of 3") appended
+   automatically in LocalizedCopy.appendRetryStatus from UserFacingError.retryStatus. */
+"error.connection.spotify_rate_limited"     = "Spotify is being slow — still trying";
+
+"error.connection.spotify_unreachable.headline" = "Couldn’t reach Spotify.";
+"error.connection.spotify_unreachable.body"     = "Check your network or try a different source.";
+
+"error.connection.empty_playlist"   = "That playlist doesn’t have any tracks yet.";
+
+// MARK: - §9.3 Preparation errors
+
+"error.preparation.preview_not_found"  = "Skipped — preview unavailable";
+"error.preparation.rate_limited"        = "Preparing more slowly than usual";
+
+"error.preparation.network_offline.headline"    = "You’re offline.";
+"error.preparation.network_offline.body"        = "Uzume can’t fetch previews.";
+
+"error.preparation.stem_failure"    = "Skipped — couldn’t analyze";
+
+"error.preparation.all_failed.headline" = "Couldn’t prepare any of this playlist.";
+"error.preparation.all_failed.body"     = "Try a different one.";
+
+"error.preparation.slow_first_track.headline"   = "Still working on the first tracks.";
+"error.preparation.slow_first_track.body"       = "Slow network? You can start in reactive mode instead and we’ll pick up the planned session once it’s ready.";
+
+"error.preparation.total_timeout.headline"  = "This is taking longer than expected.";
+"error.preparation.total_timeout.body"      = "Try again or start in reactive mode.";
+
+// MARK: - §9.4 Playback errors
+
+"error.playback.silence_brief"          = "Listening\u2026";
+"error.playback.silence_extended"       = "Haven’t heard anything for a while. Is the music playing?";
+"error.playback.tap_reinstall_failed"   = "Couldn’t re-hear the audio. Try quitting and re-opening Uzume.";
+"error.playback.mpsgraph_failure"       = "Analyzer hiccup — using backup mode.";
+/* %d = sample rate in Hz, e.g. 96000 */
+"error.playback.sample_rate_mismatch"   = "Audio is at %d Hz. For best results set Audio MIDI Setup to 48 kHz.";
+"error.playback.audio_levels_low_spotify"   = "Audio levels are low. Check Spotify’s \u2018Normalize Volume’ setting — it should be off.";
+"error.playback.preset_compile_failed"      = "%@ didn't compile — the previous version is still running. Details are in the log.";
+"error.playback.local_file_failed"          = "Couldn't play \"%@\". The file may have moved or be unreadable. Skipping to the next track.";
+"error.playback.audio_levels_low_generic"   = "Audio levels are low. Check your music app’s volume normalization settings.";
+"error.playback.display_disconnected"   = "Output display disconnected. Moved to main display.";
+"error.playback.negative_nudge_twice"   = "Not quite hitting the mark? Try \u2318R to re-plan.";
+"error.playback.replan_succeeded"       = "Re-planned. Next transition will use the new plan.";
+
+// MARK: - Audio-stall overlay (silent-tap family — BUG-057/055/058)
+
+"playback.audioStall.headline"      = "Uzume isn’t hearing any audio";
+"playback.audioStall.body"          = "The visualizer is paused because no sound is reaching it. A few things to try:";
+"playback.audioStall.step1"         = "Restart the Mac’s audio engine — paste this into Terminal:";
+"playback.audioStall.step2"         = "If you just rebuilt Uzume, re-grant Screen & System Audio Recording in System Settings → Privacy & Security, then quit and reopen the app.";
+"playback.audioStall.step3"         = "Check that the right output device is selected in System Settings → Sound → Output.";
+"playback.audioStall.autoClearHint" = "This message clears itself as soon as audio comes back.";
+
+"a11y.audioStallCard.label"         = "Uzume is not receiving audio. On-screen steps explain how to restore it.";
+
+// MARK: - Onboarding
+
+"onboarding.permission.headline"        = "Uzume needs permission to hear music playing on your Mac.";
+"onboarding.permission.body"            = "To follow along with your music, Uzume listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
+"onboarding.permission.grant"           = "Allow Access";
+"onboarding.permission.open_settings"   = "Already allowed it? Open System Settings";
+"onboarding.permission.why_label"       = "Why does this need screen recording permission?";
+"onboarding.permission.why_body"        = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Uzume uses only the audio portion.";
+
+"onboarding.photosensitivity.headline"      = "Heads up";
+"onboarding.photosensitivity.body"          = "Uzume renders high-contrast, fast-changing visuals. If you’re sensitive to flashing lights or strobe patterns, enable Reduce motion in Settings before starting.";
+"onboarding.photosensitivity.enable_reduce" = "Enable Reduce motion";
+"onboarding.photosensitivity.acknowledge"   = "I understand";
+
+// MARK: - Idle
+
+/* GAP B Direction 1 (2026-05-28): primary CTA broadened from
+   "Connect a playlist" to cover all three sources the post-GAP A
+   ConnectorPickerView offers — Apple Music, Spotify, and Local files. */
+"idle.connect_button"   = "Choose music";
+"idle.adhoc_button"     = "Start listening now";
+
+// MARK: - Connector picker
+
+/* GAP B Direction 1 (2026-05-28): title shifted from the playlist-centric
+   "Connect a playlist" to "Choose a source" — accurate to the post-GAP A
+   reality where the picker offers Apple Music, Spotify, and Local files. */
+"connector.picker.title"                    = "Choose a source";
+"connector.picker.close_button"             = "Close";
+"connector.picker.apple_music_disabled"     = "Open Apple Music first";
+"connector.picker.open_apple_music_button"  = "Open Apple Music";
+"connector.picker.local_folder_disabled"    = "Coming later";
+"connector.picker.footer"                   = "Uzume reads what’s playing. It doesn’t control playback.";
+"connector.picker.local_placeholder"        = "Local Folder connector coming later.";
+
+// MARK: - Apple Music connection
+
+"connector.apple_music.title"               = "Apple Music";
+"connector.apple_music.connecting"          = "Talking to Apple Music\u2026";
+"connector.apple_music.no_playlist.headline" = "Start a playlist in Apple Music, then come back.";
+"connector.apple_music.no_playlist.status"  = "Checking every 2 seconds\u2026";
+"connector.apple_music.not_running.headline" = "Apple Music isn’t running.";
+"connector.apple_music.not_running.body"    = "Open it, start a playlist, then come back.";
+"connector.apple_music.open_button"         = "Open Apple Music";
+"connector.apple_music.permission.headline" = "Uzume needs permission to read Apple Music.";
+"connector.apple_music.permission.body"     = "Open System Settings \u2192 Privacy \u2192 Automation and enable Uzume.";
+"connector.apple_music.permission.button"   = "Open System Settings";
+"connector.apple_music.error.headline"      = "Something went wrong talking to Apple Music.";
+"connector.apple_music.try_again_button"    = "Try again";
+"connector.apple_music.use_spotify_button"  = "Use Spotify instead";
+
+// MARK: - Spotify connection
+
+"connector.spotify.title"               = "Spotify";
+"connector.spotify.paste_label"         = "Paste a Spotify playlist link.";
+"connector.spotify.checking"            = "Checking\u2026";
+"connector.spotify.recognized_headline" = "Spotify playlist recognized";
+"connector.spotify.continue_button"     = "Continue";
+"connector.spotify.connecting_button"   = "Connecting\u2026";
+"connector.spotify.not_found"           = "Uzume couldn’t find that playlist. It may be private or deleted.";
+"connector.spotify.private_playlist"    = "That playlist is private. Paste a link to a public playlist.";
+"connector.spotify.auth_failure"        = "Couldn’t connect to Spotify. Check your configuration and try again.";
+/* DEBUG-only developer-setup copy (see SpotifyConnectionViewModel.authFailureMessage).
+   Shipped builds show connector.spotify.auth_failure instead. */
+"connector.spotify.auth_failure.missing_client_id" = "No Spotify Client ID in this build. Create UzumeApp/Uzume.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again.";
+"connector.spotify.login_required_headline" = "Log in to Spotify";
+"connector.spotify.login_required_body"     = "Uzume needs your Spotify account to load this playlist. Your login is saved securely so you won’t need to do this again.";
+"connector.spotify.login_button"            = "Log in with Spotify";
+"connector.spotify.waiting_for_callback_headline" = "Waiting for Spotify…";
+"connector.spotify.waiting_for_callback_body"     = "Finish logging in on the page that just opened, then come back here.";
+"connector.spotify.error.headline"      = "Couldn’t reach Spotify.";
+"connector.spotify.try_again_button"    = "Try again";
+"connector.spotify.use_apple_music"     = "Use Apple Music instead";
+
+// MARK: - Preparation
+
+"preparation.header.title"              = "Preparing your session";
+"preparation.cancel.confirm_title"      = "Cancel preparation?";
+"preparation.cancel.confirm_button"     = "Cancel preparation";
+"preparation.cancel.keep_button"        = "Keep preparing";
+"preparation.cancel.confirm_message"    = "Some tracks are already prepared. Cancel anyway?";
+"preparation.empty_state"               = "Preparing\u2026";
+"preparation.cancel_button"             = "Cancel";
+"preparation.start_now_button"          = "Start now";
+"preparation.start_now_button_with_count" = "Start now with %d tracks ready — we'll keep preparing as you listen.";
+
+"preparation.track.queued"      = "Waiting";
+"preparation.track.resolving"   = "Finding preview";
+"preparation.track.downloading" = "Downloading";
+"preparation.track.analyzing"   = "Separating stems";
+"preparation.track.caching"     = "Caching";
+"preparation.track.ready"       = "Ready";
+
+// MARK: - Ready
+
+"ready.headline"            = "Ready.";
+/* %@ = source name e.g. "Apple Music" */
+"ready.press_play"          = "Press play in %@.";
+/* %1$d = track count, %2$@ = formatted duration e.g. "about 45 minutes" */
+"ready.plan_summary"        = "Planned %1$d tracks, %2$@.";
+"ready.preview_plan_button" = "Preview the plan";
+"ready.end_session_button"  = "End session";
+
+"ready.timeout.headline"    = "Haven’t heard anything yet.";
+/* %@ = source name */
+"ready.timeout.subtext"     = "Is the music playing in %@?";
+"ready.timeout.retry_button" = "Retry";
+
+// MARK: - Plan preview
+
+"plan_preview.title_empty"      = "Session plan";
+/* %d = track count */
+"plan_preview.title_tracks"     = "Session plan — %d tracks";
+"plan_preview.close_button"     = "Close";
+"plan_preview.regenerate_button" = "Regenerate Plan";
+"plan_preview.empty_state"      = "No plan available yet.";
+
+// MARK: - Playback
+
+"playback.still_preparing"              = "Still preparing";
+"playback.still_preparing.tooltip"      = "Still preparing tracks — we\u2019ll keep going as you listen.";
+"playback.shortcut_help.title"          = "Keyboard Shortcuts";
+"playback.shortcut_help.dismiss_hint"   = "Press any key to dismiss";
+
+// QR.4: chrome strings (sub-item 5)
+"playback.endSession.title"             = "End this session?";
+"playback.endSession.confirm"           = "End session";
+"playback.endSession.message"           = "The visualizer session will stop.";
+"playback.controls.settings.tooltip"    = "Settings";
+"playback.controls.endSession.tooltip"  = "End session (Esc)";
+"playback.listening"                    = "Listening…";
+"playback.progress.reactive"            = "Reactive";
+/* %1$lld = current 1-based index, %2$lld = total tracks */
+"playback.progress.position"            = "%1$lld of %2$lld";
+
+// MARK: - Common (QR.4)
+
+"common.cancel"                         = "Cancel";
+
+// MARK: - Idle (QR.4)
+
+"appName"                               = "Uzume";
+
+// MARK: - Plan preview empty / reactive states (QR.4)
+
+"plan_preview.empty"                    = "No plan available.";
+"plan_preview.reactive_mode"            = "Running in reactive mode — presets adapt in real time.";
+"plan_preview.modify_button"            = "Modify";
+"plan_preview.row.swap_preset"          = "Swap preset";
+"plan_preview.row.reset_lock"           = "Reset to planner pick";
+/* %1$lld = track number, %2$@ = title, %3$@ = artist, %4$@ = preset name, %5$@ = duration */
+"plan_preview.row.accessibility"        = "%1$lld. %2$@ by %3$@, %4$@, %5$@";
+
+// MARK: - Connecting (QR.4)
+
+"connecting.headline"             = "Connecting";
+"connecting.subtext"              = "Reading your playlist…";
+"connecting.appleMusic.subtext"   = "Reading your Apple Music playlist…";
+"connecting.spotify.subtext"      = "Reading your Spotify playlist…";
+"connecting.localFolder.subtext"  = "Reading the folder…";
+"connecting.cta.cancel"           = "Cancel";
+
+// MARK: - Ended
+
+"ended.headline"            = "Session complete";
+"ended.subtext"             = "Start a new session to continue";
+/* %lld = track count (Int) */
+"ended.summary.tracks"      = "%lld tracks";
+/* %@ = formatted duration string e.g. "12 min" or "—" */
+"ended.summary.duration"    = "%@";
+"ended.cta.newSession"      = "Start another session";
+"ended.cta.openFolder"      = "Open sessions folder";
+
+/* GAP H (2026-05-28): replay CTA for LF-ended sessions.
+   %@ = folder name, playlist filename, or single-file filename */
+"ended.cta.replay_named"    = "Play %@ again";
+/* %d = track count for a multi-file LF drop with no named source */
+"ended.cta.replay_count"    = "Play these %d tracks again";
+
+// MARK: - Full-screen error view (Part B)
+
+"fullscreen_error.default_headline" = "Something went wrong.";
+
+// MARK: - Preparation failure view (Part B)
+
+"preparation.failure.pick_playlist_button"  = "Pick another playlist";
+"preparation.failure.start_reactive_button" = "Start reactive mode";
+
+// MARK: - Settings (U.8)
+
+// Navigation groups
+"settings.group.visuals"     = "Visuals";
+"settings.group.diagnostics" = "Diagnostics";
+"settings.group.about"       = "About";
+"settings.done_button"       = "Done";
+
+// Visuals — device tier
+"settings.visuals.device_tier.label"  = "Device tier";
+"settings.visuals.device_tier.auto"   = "Auto";
+"settings.visuals.device_tier.tier1"  = "Tier 1 (M1/M2)";
+"settings.visuals.device_tier.tier2"  = "Tier 2 (M3/M4)";
+
+// Visuals — quality ceiling
+"settings.visuals.quality_ceiling.label"       = "Quality ceiling";
+"settings.visuals.quality_ceiling.auto"        = "Auto";
+"settings.visuals.quality_ceiling.performance" = "Performance";
+"settings.visuals.quality_ceiling.balanced"    = "Balanced";
+"settings.visuals.quality_ceiling.ultra"       = "Ultra";
+
+// Visuals — presets
+"settings.visuals.presets.title"             = "Presets";
+"settings.visuals.reduced_motion.label"       = "Reduced motion";
+"settings.visuals.reduced_motion.match_system" = "Match system";
+"settings.visuals.reduced_motion.always_on"   = "Always on";
+"settings.visuals.reduced_motion.always_off"  = "Always off";
+
+// Visuals — blocklist
+"settings.visuals.blocklist.title" = "Hidden preset families";
+
+// Visuals — toasts
+"settings.visuals.toasts.title"              = "Live adaptation";
+"settings.visuals.adaptation_toasts.label"   = "Show adaptation notifications";
+
+// Visuals — certification (V.6)
+"settings.visuals.certification.title"                    = "Preset quality";
+"settings.visuals.show_uncertified_presets.label"         = "Show uncertified presets";
+"settings.visuals.show_uncertified_presets.hint"          = "Off by default. Reveals presets that haven't passed quality review. Useful for testing work-in-progress presets.";
+"settings.visuals.show_uncertified_presets.accessibility" = "Show uncertified presets. Turn on to include presets pending quality review in sessions.";
+
+// Diagnostics — session recorder
+"settings.diagnostics.recorder.title"   = "Session recording";
+"settings.diagnostics.recorder.label"   = "Record sessions to disk";
+"settings.diagnostics.recorder.caption" = "Takes effect at the start of the next session.";
+
+// Diagnostics — retention
+"settings.diagnostics.retention.label"     = "Keep recordings";
+"settings.diagnostics.retention.last10"    = "Last 10 sessions";
+"settings.diagnostics.retention.last25"    = "Last 25 sessions";
+"settings.diagnostics.retention.keep_all"  = "Keep all";
+"settings.diagnostics.retention.one_day"   = "Last 24 hours";
+"settings.diagnostics.retention.one_week"  = "Last 7 days";
+
+// Diagnostics — performance: showPerformanceWarnings was deleted in QR.4 / D-091.
+// The dashboard PERF card surfaces frame-budget overruns; a separate toast was redundant.
+
+// Diagnostics — actions
+"settings.diagnostics.open_sessions_folder" = "Open sessions folder";
+"settings.diagnostics.reset_onboarding"     = "Reset onboarding";
+"settings.diagnostics.reset_onboarding.caption" = "Takes effect on next app launch.";
+
+// About
+"settings.about.version.label"  = "Version";
+"settings.about.macos.label"    = "macOS";
+"settings.about.gpu.label"      = "GPU";
+"settings.about.license.title"  = "License";
+"settings.about.license.body"   = "MIT License. © 2026 Uzume contributors.";
+"settings.about.copy_debug_info" = "Copy debug info";
+
+// MARK: - Accessibility (a11y) — VoiceOver labels and hints. (U.9)
+
+"a11y.connector.tile.hint.enabled"          = "Connect using this source";
+"a11y.connector.tile.hint.disabled"         = "Not available";
+
+"a11y.trackInfoCard.unknownTrack"           = "Unknown track";
+"a11y.trackInfoCard.hint"                   = "Now playing";
+
+"a11y.progressDots.label"                   = "Session progress";
+
+"a11y.listeningBadge.label"                 = "Waiting for audio";
+
+"a11y.toast.severity.info"                  = "Info";
+"a11y.toast.severity.warning"               = "Warning";
+"a11y.toast.severity.degradation"           = "Alert";
+"a11y.toast.dismiss.label"                  = "Dismiss notification";
+
+"a11y.preparation.topBanner.dismiss.label"  = "Dismiss warning";
+
+// MARK: - LF.4 Local-file playback
+
+"menu.file.open_local_file"             = "Open Local File…";
+
+"menu.app.clear_local_file_cache"       = "Clear Local-File Cache (%@)";
+
+"lf.cache.cleared.title"                = "Local-file cache cleared";
+"lf.cache.cleared.body"                 = "Freed %@ of disk space.";
+
+"lf.open.panel.title"                   = "Choose a local audio file";
+
+"lf.open.error.unsupported.title"           = "That file can’t be played";
+"lf.open.error.unsupported_format"          = "Uzume supports .m4a, .mp3, and .flac files.";
+"lf.open.error.multiple_files"              = "Drop one file at a time.";
+"lf.open.error.unreadable"                  = "Uzume couldn’t read that file. Try a different one.";
+
+"lf.toast.switched_to_local_file"           = "Now playing local file: %@";
+
+"lf.preparing.title"                        = "Reading the music";
+"lf.preparing.subtitle"                     = "%@";
+"lf.preparing.failure.headline"             = "Couldn’t read “%@”.";
+"lf.preparing.failure.body"                 = "Try a different file, or check that it isn’t damaged.";
+
+// MARK: - LF.5 Multi-file local playback
+
+"menu.file.open_local_folder"               = "Open Local Folder…";
+"menu.file.open_recent"                     = "Open Recent";
+"menu.file.open_recent.empty"               = "Nothing yet";
+"menu.file.open_recent.missing_suffix"      = " (missing)";
+"menu.file.open_recent.clear"               = "Clear Recents";
+
+"lf.open.folder.panel.title"                = "Choose a folder of audio files";
+
+"lf.open.error.empty_folder"                = "That folder doesn’t have any playable audio files.";
+"lf.open.error.m3u_parse_failed"            = "Uzume couldn’t read that playlist. Check the file and try again.";
+
+/* %1$d = files queued (capped at 200), %2$d = total files found */
+"lf.queue.truncation.title"                 = "Queued the first %1$d tracks";
+"lf.queue.truncation.body"                  = "Uzume queued the first %1$d of %2$d audio files. Open a smaller folder to listen to the whole batch in one session.";
+
+// MARK: - LF.5.fix D-LF5-3 — Local-file transport bar
+// Hover-revealed Stop / Prev / Play-Pause / Next at the bottom of PlaybackView
+// for local-file sessions. UX-2 carve-out: Uzume IS the player for LF.
+
+"playback.transport.stop.tooltip"           = "Stop and end session";
+"playback.transport.stop.a11y"              = "Stop playback and end session";
+"playback.transport.prev.tooltip"           = "Previous track";
+"playback.transport.prev.a11y"              = "Skip to previous track";
+"playback.transport.play.tooltip"           = "Play";
+"playback.transport.play.a11y"              = "Resume playback";
+"playback.transport.pause.tooltip"          = "Pause";
+"playback.transport.pause.a11y"             = "Pause playback";
+"playback.transport.next.tooltip"           = "Next track";
+"playback.transport.next.a11y"              = "Skip to next track";
+
+// MARK: - GAP A (2026-05-28) — LocalSourceConnectionView
+// Sub-picker reached from ConnectorPickerView's Local files tile. Three
+// action tiles (folder / single file / playlist) + a drag-and-drop teaching
+// hint. Replaces the LF.4-era "Coming later" placeholder.
+
+"lf_source.nav.title"                       = "Local files";
+"lf_source.headline"                        = "Open from your library";
+"lf_source.subhead"                         = "Pick what you'd like to play. Uzume cues it up from disk.";
+
+"lf_source.tile.folder.title"               = "Folder";
+"lf_source.tile.folder.subtitle"            = "Read every supported file in alphabetical order";
+"lf_source.tile.file.title"                 = "Single file";
+"lf_source.tile.file.subtitle"              = ".m4a, .mp3, or .flac";
+"lf_source.tile.playlist.title"             = "Playlist";
+"lf_source.tile.playlist.subtitle"          = ".m3u or .m3u8";
+
+"lf_source.drop_hint"                       = "You can also drop files, folders, or playlists anywhere on the window.";
+
+"lf.open.m3u.panel.title"                   = "Choose a .m3u or .m3u8 playlist";
+
+// MARK: - GAP D (2026-05-28) — Preparation header for LF sessions
+// Switches the generic "Preparing your session" headline for LF origins
+// to a contextual line that names what's being read. The streaming-path
+// header strings above (preparation.header.title etc.) are unchanged.
+
+/* %@ = filename of the single LF file being prepared */
+"preparation.header.lf_file"                = "Reading %@";
+/* %d = total track count for a multi-file LF queue */
+"preparation.header.lf_tracks"              = "Reading %d tracks";
+/* %@ = folder name OR playlist filename — subtitle for folder / playlist origins */
+"preparation.header.lf_from"                = "from %@";
+
+// MARK: - GAP G (2026-05-28) — Local Files settings section
+// New sidebar entry between Audio and Visuals. Surfaces the persistent
+// stem-cache size + Clear button, plus Recents count + Clear.
+
+"settings.group.local_files"                = "Local Files";
+
+"settings.lf.cache.title"                   = "Cache";
+"settings.lf.cache.size_label"              = "On disk";
+"settings.lf.cache.body"                    = "Uzume stores stem analysis for files it has played before so they start instantly the next time. Clearing the cache frees disk space but the next play of each file will take ~2 seconds to re-prepare.";
+"settings.lf.cache.clear_button"            = "Clear cache";
+"settings.lf.cache.confirm_title"           = "Clear local-file cache?";
+"settings.lf.cache.confirm_button"          = "Clear";
+"settings.lf.cache.confirm_message"         = "Every cached file will need to be re-analyzed the next time it plays.";
+
+"settings.lf.recents.title"                 = "Recents";
+"settings.lf.recents.count_label"           = "Remembered items";
+"settings.lf.recents.body"                  = "The last 10 files, folders, and playlists you opened are listed in File → Open Recent. Clear this list if you'd like to start fresh.";
+"settings.lf.recents.clear_button"          = "Clear recents";
+"settings.lf.recents.confirm_title"         = "Clear recently-opened list?";
+"settings.lf.recents.confirm_button"        = "Clear";
+"settings.lf.recents.confirm_message"       = "Every item in File → Open Recent will be removed. The files themselves stay on disk.";
+
+// ── CLEAN.2.3.4 — strings externalized from ViewModels / ContentView / indirection helpers ──
+
+// Connector type tiles (ConnectorType.swift)
+"connector.type.apple_music.title"          = "Apple Music";
+"connector.type.apple_music.subtitle"       = "Read your current Apple Music playlist";
+"connector.type.spotify.title"              = "Spotify";
+"connector.type.spotify.subtitle"           = "Connect with a Spotify playlist link";
+"connector.type.local_folder.title"         = "Local files";
+"connector.type.local_folder.subtitle"      = "Play a file, folder, or playlist from disk";
+
+// Connector error copy (SpotifyConnectionViewModel / AppleMusicConnectionViewModel)
+"connector.spotify.error.network"           = "Couldn’t reach Spotify. Check your network or try a different source.";
+"connector.spotify.error.unrecognized_url"  = "That doesn’t look like a Spotify playlist link.";
+"connector.apple_music.error.network"       = "Something went wrong talking to Apple Music. %@";
+"connector.apple_music.error.parse"         = "Something went wrong reading the Apple Music playlist.";
+
+// Ready view (ReadyViewModel)
+"ready.source.fallback"                     = "your music app";
+"ready.duration.hours_minutes"              = "about %d hr %d min";
+"ready.duration.minutes"                    = "about %d min";
+
+// Preparation fallback overlay (ContentView)
+"content.preparing_fallback.title"          = "Preparing";
+"content.preparing_fallback.subtitle"       = "Analyzing tracks…";
+
+// Preparation streaming subtitle — track count (PreparationProgressView)
+"preparation.subtitle.track_one"            = "%d track";
+"preparation.subtitle.track_other"          = "%d tracks";
+"preparation.subtitle.from"                 = "%@ from %@";
+
+// Plan-preview transition labels (PlanPreviewTransitionView)
+"plan_preview.transition.cut"               = "cut";
+"plan_preview.transition.cut_structural"    = "cut at structural boundary";
+"plan_preview.transition.crossfade"         = "crossfade";
+"plan_preview.transition.crossfade_duration" = "crossfade %.1fs";
+"plan_preview.transition.morph"             = "morph";
+"plan_preview.transition.morph_duration"    = "morph %.1fs";

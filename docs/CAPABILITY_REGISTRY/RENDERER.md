@@ -3,7 +3,7 @@
 **Audit increment:** CA.7a
 **Date:** 2026-05-21
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneEngine/Sources/Renderer/` *core pipeline subset* — 23 files / 5,413 Swift LoC. Excludes `Renderer/Dashboard/`, `Renderer/Geometry/`, `Renderer/RayTracing/` (deferred to CA.7b).
+**Scope:** `UzumeEngine/Sources/Renderer/` *core pipeline subset* — 23 files / 5,413 Swift LoC. Excludes `Renderer/Dashboard/`, `Renderer/Geometry/`, `Renderer/RayTracing/` (deferred to CA.7b).
 **Methodology:** Phase CA scoping document (CA.7 kickoff, 2026-05-21).
 **Reads relied on:** CLAUDE.md (full file), `docs/ARCHITECTURE.md` §Renderer, §Support Tiers, §ML Inference, §Dispatch Scheduling, §Session Recording, §Soak Test Infrastructure, §Long-Session Resilience, §Module Map Renderer/, §GPU Contract Details (entire section), `docs/QUALITY/KNOWN_ISSUES.md` (BUG-001, BUG-011, BUG-012, BUG-013, BUG-015, BUG-016), `docs/CAPABILITY_REGISTRY/APP.md` §App ↔ Renderer boundary entry, `docs/CAPABILITY_REGISTRY/APP_VIEWS.md` §DASH.7 (Renderer counterpart deferred to CA.7b), `docs/CAPABILITY_REGISTRY/ML.md` (MLDispatchScheduler boundary), `docs/CAPABILITY_REGISTRY/DSP_MIR.md` (FeatureVector / StemFeatures per-frame consumer cross-references), `docs/DECISIONS.md` (D-027, D-057, D-059, D-060, D-061, D-085, D-092, D-093, D-094, D-097, D-LM-buffer-slot-8). All cited line numbers verified at the time of audit.
 
@@ -80,16 +80,16 @@ The full CA.7a scope minus the 3 entries below. Every public/internal capability
 ### `dead` (1 cluster)
 
 **`RayMarchPipeline.depthDebugEnabled` / `runDepthDebugPass(...)` / `depthDebugPipeline`** — defined at:
-- `PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift:144` (`public var depthDebugEnabled: Bool = false`)
-- `PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift:147` (`let depthDebugPipeline: MTLRenderPipelineState`)
-- `PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift:304` (init: `self.depthDebugPipeline = bundle.depthDebug`)
-- `PhospheneEngine/Sources/Renderer/RayMarchPipeline+Passes.swift:283` (`func runDepthDebugPass(...)`)
+- `UzumeEngine/Sources/Renderer/RayMarchPipeline.swift:144` (`public var depthDebugEnabled: Bool = false`)
+- `UzumeEngine/Sources/Renderer/RayMarchPipeline.swift:147` (`let depthDebugPipeline: MTLRenderPipelineState`)
+- `UzumeEngine/Sources/Renderer/RayMarchPipeline.swift:304` (init: `self.depthDebugPipeline = bundle.depthDebug`)
+- `UzumeEngine/Sources/Renderer/RayMarchPipeline+Passes.swift:283` (`func runDepthDebugPass(...)`)
 
 **Evidence of dead status:**
 ```
 grep -rn "depthDebugEnabled\|runDepthDebugPass\|depthDebugPipeline" \
-  PhospheneApp PhospheneAppTests \
-  PhospheneEngine/Sources PhospheneEngine/Tests
+  UzumeApp UzumeAppTests \
+  UzumeEngine/Sources UzumeEngine/Tests
 ```
 Result: 7 hits — all 7 are file-internal (self-references inside `RayMarchPipeline.swift` and `RayMarchPipeline+Passes.swift`). No production setter for `depthDebugEnabled`. No test exercises any of the three symbols. `RayMarchPipeline.render(...)` (lines 426-505) branches on `debugGBufferMode` at line 476 but never checks `depthDebugEnabled`.
 
@@ -102,31 +102,31 @@ Result: 7 hits — all 7 are file-internal (self-references inside `RayMarchPipe
 **1) ICB infrastructure (boundary-noted at App ↔ Renderer).**
 
 The entire ICB stack lives in production code:
-- `PhospheneEngine/Sources/Renderer/RenderPipeline+ICB.swift` (338 LoC — `ICBConfiguration`, `IndirectCommandBufferState`, `ICBError`, `setICBState(_:)`, `drawWithICB(...)`)
-- `PhospheneEngine/Sources/Renderer/RenderPipeline.swift:107` (`var icbState: IndirectCommandBufferState?`)
-- `PhospheneEngine/Sources/Renderer/RenderPipeline+Draw.swift:183-193` (the `.icb` pass dispatch case in `renderFrame`)
-- `PhospheneEngine/Sources/Shared/RenderPass.swift:60` (`case icb`)
-- `PhospheneEngine/Sources/Renderer/Shaders/ICB.metal` (the `icb_populate_kernel`)
+- `UzumeEngine/Sources/Renderer/RenderPipeline+ICB.swift` (338 LoC — `ICBConfiguration`, `IndirectCommandBufferState`, `ICBError`, `setICBState(_:)`, `drawWithICB(...)`)
+- `UzumeEngine/Sources/Renderer/RenderPipeline.swift:107` (`var icbState: IndirectCommandBufferState?`)
+- `UzumeEngine/Sources/Renderer/RenderPipeline+Draw.swift:183-193` (the `.icb` pass dispatch case in `renderFrame`)
+- `UzumeEngine/Sources/Shared/RenderPass.swift:60` (`case icb`)
+- `UzumeEngine/Sources/Renderer/Shaders/ICB.metal` (the `icb_populate_kernel`)
 
 **Evidence of orphan status:**
 ```
-grep -rn "setICBState(" PhospheneApp PhospheneEngine 2>/dev/null | grep -v "\.build/"
+grep -rn "setICBState(" UzumeApp UzumeEngine 2>/dev/null | grep -v "\.build/"
 ```
-Result: 2 hits — `PhospheneEngine/Sources/Renderer/RenderPipeline+ICB.swift:207` (the public setter itself) and `PhospheneApp/VisualizerEngine+Presets.swift:305` (a *comment* — "ICB state must be set externally via pipeline.setICBState(_:).", not a call). No production code ever calls `setICBState(non-nil)`.
+Result: 2 hits — `UzumeEngine/Sources/Renderer/RenderPipeline+ICB.swift:207` (the public setter itself) and `UzumeApp/VisualizerEngine+Presets.swift:305` (a *comment* — "ICB state must be set externally via pipeline.setICBState(_:).", not a call). No production code ever calls `setICBState(non-nil)`.
 
 ```
-find PhospheneEngine/Sources/Presets -name "*.json" -exec grep -l "\"icb\"" {} \;
+find UzumeEngine/Sources/Presets -name "*.json" -exec grep -l "\"icb\"" {} \;
 ```
 Result: zero JSON sidecars declare the `"icb"` pass.
 
 ```
-grep -rn "case \.icb" PhospheneApp PhospheneEngine | grep -v "\.build/"
+grep -rn "case \.icb" UzumeApp UzumeEngine | grep -v "\.build/"
 ```
 Result: 2 hits — the App-side switch arm at VisualizerEngine+Presets.swift:303-306 (no-op + log: "ICB pass declared for '\(desc.name)' — ICB state must be set externally") and the engine-side renderFrame dispatch arm.
 
 Test-active via `RenderPipelineICBTests.swift` (5 GPU tests of `IndirectCommandBufferState` construction + slot-population + executeCommandsInBuffer round-trip).
 
-**Documented intent:** the comment at `PhospheneApp/VisualizerEngine+Presets.swift:304-306` says explicitly *"ICB preset switching deferred to the Orchestrator increment."* This is a deliberate deferral, not a defect. The renderer-side implementation is complete; the App-side wiring to attach an `IndirectCommandBufferState` to a preset that declares `"icb"` is the missing piece — and there is no preset that declares it. **Boundary-noted at App ↔ Renderer.**
+**Documented intent:** the comment at `UzumeApp/VisualizerEngine+Presets.swift:304-306` says explicitly *"ICB preset switching deferred to the Orchestrator increment."* This is a deliberate deferral, not a defect. The renderer-side implementation is complete; the App-side wiring to attach an `IndirectCommandBufferState` to a preset that declares `"icb"` is the missing piece — and there is no preset that declares it. **Boundary-noted at App ↔ Renderer.**
 
 **Action:** registered as CA.7-FU-3 (review whether ICB still belongs in the future plan or should be retired). The renderer-side code is well-tested and not actively decaying; no urgency to delete.
 
@@ -134,7 +134,7 @@ Test-active via `RenderPipelineICBTests.swift` (5 GPU tests of `IndirectCommandB
 
 The function is `public`. Production call sites:
 ```
-grep -rn "setRayMarchPresetComputeDispatch" PhospheneApp PhospheneEngine | grep -v "\.build/"
+grep -rn "setRayMarchPresetComputeDispatch" UzumeApp UzumeEngine | grep -v "\.build/"
 ```
 Result: 4 hits — 2 are the declaration + storage in Renderer; 2 are in App: VisualizerEngine+Presets.swift:71 (the preset-reset path, called with `nil`) and VisualizerEngine+Presets.swift:265 (a *comment* — "setRayMarchPresetComputeDispatch intentionally NOT set — particles are pinned (Phase 1 round 4), so the one-shot bake is sufficient.").
 
@@ -425,7 +425,7 @@ Confirmed at lines 117-128: every freshly-allocated texture (warp / compose / sc
 
 ### Test reachability — `AuroraVeilMVWarpAccumulationTest`
 
-The test file lives at `PhospheneEngine/Tests/PhospheneEngineTests/Presets/AuroraVeilMVWarpAccumulationTest.swift`. It exercises:
+The test file lives at `UzumeEngine/Tests/UzumeEngineTests/Presets/AuroraVeilMVWarpAccumulationTest.swift`. It exercises:
 - The same `MVWarpPipelineBundle` retrieved from `preset.mvWarpPipelines` (line 109);
 - The same 3 textures (scene / warp / compose) at the same size and pixel format (lines 175-183);
 - The same 3-pass loop (Pass A scene render → Pass B warp → Pass C compose) over 60 frames at silence;
@@ -461,7 +461,7 @@ The branch is taken when **both** `meshGBufferEncoder != nil` AND `presetHeightT
 
 `setMeshGBufferEncoder(_:)` is the only setter. Production grep:
 ```
-grep -rn "setMeshGBufferEncoder(" PhospheneApp PhospheneEngine | grep -v "\.build/"
+grep -rn "setMeshGBufferEncoder(" UzumeApp UzumeEngine | grep -v "\.build/"
 ```
 Result: 3 hits — the public setter at `RenderPipeline+PresetSwitching.swift:174`; the reset to nil at `VisualizerEngine+Presets.swift:70` (called on every applyPreset); the commented-out original wire-up at `VisualizerEngine+Presets.swift:260` ("Original mesh-encoder wire-up (preserved for reference but commented out)").
 

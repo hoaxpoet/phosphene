@@ -14,7 +14,7 @@ Check the license **before** reading the reference to port it. Portability is by
 | Source kind | Rule | Precedent |
 |---|---|---|
 | MIT / BSD code | Portable into the product with attribution (retain the copyright line; note the source in a code comment + the design doc). | Beat This! (MIT) port, D-077 |
-| AGPL code | **Never** ships in the product — incompatible with Phosphene's MIT license. Do not port, do not vendor. | TempoCNN rejected as AGPL (DECISIONS D-077) |
+| AGPL code | **Never** ships in the product — incompatible with Uzume's MIT license. Do not port, do not vendor. | TempoCNN rejected as AGPL (DECISIONS D-077) |
 | CC-NC / non-commercial model weights | **Never** ship. A permissively-licensed *port of an algorithm* is fine; shipping restricted *weights* is not. | madmom's CC-NC models never ship (DECISIONS D-077) |
 | Restricted tool, used offline only | Running a restricted tool (madmom DBNBeatTracker, a PyTorch reference) as an **offline annotation / cross-check tool** is fine — its output informs ground truth or validates a port, and nothing from it ships. | madmom + Beat This! reference as offline annotators (plan §GT.2, D-202) |
 

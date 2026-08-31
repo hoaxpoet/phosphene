@@ -3,7 +3,7 @@
 > **Status:** Gate 0 (intake) + Gate 1 (trait extraction) for the first **Volumetric**-family preset.
 > **Working name:** *Nimbus* — provisional. Rename the folder slug if it changes.
 > **Place at:** `docs/VISUAL_REFERENCES/nimbus/`, alongside the eleven numbered image files.
-> **Lint:** `swift run --package-path PhospheneTools CheckVisualReferences` (`jpg`|`png`, ≤ 500 KB, `NN_<scale>_<descriptor>` names).
+> **Lint:** `swift run --package-path UzumeTools CheckVisualReferences` (`jpg`|`png`, ≤ 500 KB, `NN_<scale>_<descriptor>` names).
 
 ## What we're building (the target — read first)
 

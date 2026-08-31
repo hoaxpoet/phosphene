@@ -1,6 +1,6 @@
 # Visual References — Curation Kickoff
 
-This directory holds the fidelity contract for every Phosphene preset. Each
+This directory holds the fidelity contract for every Uzume preset. Each
 folder is a curated set of reference images plus a README listing per-preset
 mandatory traits (rubric per `SHADER_CRAFT.md §12`). Sessions authoring or
 uplifting a preset cite these images by filename per `SHADER_CRAFT.md §2.3`.
@@ -21,7 +21,7 @@ uplifting a preset cite these images by filename per `SHADER_CRAFT.md §2.3`.
 5. Add 1–3 anti-reference entries (failure modes specific to this preset).
 6. Add audio-routing notes (which deviation primitives drive what).
 7. Update `Last curated:` at the top of the README.
-8. Run `swift run --package-path PhospheneTools CheckVisualReferences` —
+8. Run `swift run --package-path UzumeTools CheckVisualReferences` —
    it should pass with no warnings for this preset.
 
 ## Curation order (highest leverage first)
@@ -81,7 +81,7 @@ Full-rubric presets: 9. Lightweight presets: 4.
 ## Done when (increment-level)
 
 These criteria close out Increment V.5 entirely. Run
-`swift run --package-path PhospheneTools CheckVisualReferences --strict`
+`swift run --package-path UzumeTools CheckVisualReferences --strict`
 to verify.
 
 - [ ] All 9 full-rubric folders have 3–5 reference images force-added
@@ -90,7 +90,7 @@ to verify.
 - [ ] All 4 lightweight folders have 1–2 reference images, READMEs filled in.
 - [ ] Quality reel `docs/quality_reel.mp4` committed via Git LFS;
       `quality_reel_playlist.json` track placeholders replaced with actual choices.
-- [ ] `swift run --package-path PhospheneTools CheckVisualReferences --strict`
+- [ ] `swift run --package-path UzumeTools CheckVisualReferences --strict`
       passes with zero warnings.
 - [ ] Matt's approval round complete; `ENGINEERING_PLAN.md §Increment V.5`
       marked ✅ with landed-date.

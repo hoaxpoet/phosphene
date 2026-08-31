@@ -40,7 +40,7 @@ folds (VL is the first real consumer, in Session 2). No preset consumes it yet i
 ## Read-first
 1. `HG_SDF_VENDORING_SPEC.md` (repo root) — the authoritative spec: license call, MSL port
    gotchas, operator list, verification.
-2. `PhospheneEngine/Sources/Presets/Shaders/Utilities/` tree + the preamble injector
+2. `UzumeEngine/Sources/Presets/Shaders/Utilities/` tree + the preamble injector
    (`PresetLoader+Preamble.swift`) — where the header is concatenated.
 3. The hg_sdf source to port from (`hg_sdf.glsl`, MIT lines) — **must be present locally on the
    Mac**; the sandbox cannot fetch it (see pre-flight).
@@ -70,14 +70,14 @@ folds (VL is the first real consumer, in Session 2). No preset consumes it yet i
 ## Do-NOT
 - Do **not** refactor any preset to consume the operators this session (scope discipline; VL does
   that in Session 2).
-- Do **not** take the CC-BY-NC option — **MIT only** (Phosphene is MIT).
+- Do **not** take the CC-BY-NC option — **MIT only** (Uzume is MIT).
 - Do **not** push without Matt's explicit "yes, push".
 
 ## Verification
 ```
 swiftlint lint --strict --config .swiftlint.yml
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
-swift test --package-path PhospheneEngine 2>&1
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' build 2>&1
+swift test --package-path UzumeEngine 2>&1
 ```
 Plus: `HgSdfOperatorTests` green; existing ray-march `PresetRegressionTests` goldens byte-identical.
 
@@ -117,7 +117,7 @@ spectral-flux detail churn and full cert polish are explicitly **v2**.
    (see pre-flight; the old set is off-concept).
 3. `Utilities/Geometry/HgSdf.metal` (from SDF.1) + `Utilities/Noise/DomainWarp.metal` — the warp
    primitives.
-4. `PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` + `.json` — what's being
+4. `UzumeEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` + `.json` — what's being
    replaced (the v9.4 header carries the audio-liveness history worth preserving).
 5. The `RayMarchPathHarnessTemplate` (D-182, Lumen-Mosaic-based) — the multi-frame harness to
    copy-adapt.
@@ -171,8 +171,8 @@ spectral-flux detail churn and full cert polish are explicitly **v2**.
 ## Verification
 ```
 swiftlint lint --strict --config .swiftlint.yml
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
-swift test --package-path PhospheneEngine 2>&1
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' build 2>&1
+swift test --package-path UzumeEngine 2>&1
 ```
 Plus: `VolumetricLithographRenderTests`, `SilenceFallbackTests`, `PresetAcceptanceTests` green;
 `RENDER_VISUAL=1` contact sheets (silence + audio); VL rubric report printed.

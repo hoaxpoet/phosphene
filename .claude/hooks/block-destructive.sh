@@ -45,8 +45,8 @@
 # rm -rf allowlist (absolute paths only):
 #   /tmp[...]
 #   <project>/.build[...]
-#   <project>/PhospheneEngine/.build[...]
-#   <project>/PhospheneTools/.build[...]
+#   <project>/UzumeEngine/.build[...]
+#   <project>/UzumeTools/.build[...]
 #   <project>/DerivedData[...]
 # Relative-path rm -rf (rm -rf .build) is NOT blocked — limited blast radius
 # and routinely needed for build-cache wipes.
@@ -267,8 +267,8 @@ if printf '%s' "$scan" | grep -qE '(^|[^[:alnum:]_/])rm[[:space:]]+(-[a-zA-Z]*[r
                 case "$word" in
                     /tmp|/tmp/*) ;;
                     "$PROJECT_ROOT/.build"|"$PROJECT_ROOT/.build/"*) ;;
-                    "$PROJECT_ROOT/PhospheneEngine/.build"|"$PROJECT_ROOT/PhospheneEngine/.build/"*) ;;
-                    "$PROJECT_ROOT/PhospheneTools/.build"|"$PROJECT_ROOT/PhospheneTools/.build/"*) ;;
+                    "$PROJECT_ROOT/UzumeEngine/.build"|"$PROJECT_ROOT/UzumeEngine/.build/"*) ;;
+                    "$PROJECT_ROOT/UzumeTools/.build"|"$PROJECT_ROOT/UzumeTools/.build/"*) ;;
                     "$PROJECT_ROOT/DerivedData"|"$PROJECT_ROOT/DerivedData/"*) ;;
                     *)
                         block "rm -rf $word" 'absolute path outside build-cache allowlist'

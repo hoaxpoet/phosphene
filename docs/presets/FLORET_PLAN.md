@@ -1,7 +1,7 @@
 # Floret — Preset Plan
 
 **Status: ✅ CERTIFIED (FLORET.4, 2026-06-27 — Matt's M7 "looks good").** Faithful port of butterchurn `Sunflower Passion` (2b base, LOOK confirmed "beautiful") + a 5-round M7 motion arc (3a beat-lock/swell/spin + internal vortex swirl; 3b drum-sparkle tried+removed → bass-onset kick). `certified: true`, flash-safe (multi-pass harness 0.00 flashes/s), in the production rotation. The 2 originally-greenlit uplifts (thin-film iridescence rims, per-stem routing) were NOT needed — the energy/beat coupling + bass kick satisfied Matt; deferred indefinitely. See **§10–§12** for the build/M7 history.
-**Target:** a faithful Phosphene uplift of the Milkdrop preset `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression` (butterchurn built-in; cream-of-the-crop legends; pick #1 on `MILKDROP_UPLIFT_PICKS.md`).
+**Target:** a faithful Uzume uplift of the Milkdrop preset `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression` (butterchurn built-in; cream-of-the-crop legends; pick #1 on `MILKDROP_UPLIFT_PICKS.md`).
 **Substrate:** `direct + mv_warp` (same family as the certified Dragon Bloom / Fata Morgana / Nacre).
 **Scaffold:** Nacre (`RenderPipeline+Nacre.swift` dedicated-branch + `Nacre.metal`/`.json` + `NacreMVWarpAccumulationTest`) — Floret has the same custom-warp + custom-comp shape, including the comp-stage blur dependency (see §3).
 **References:** `docs/VISUAL_REFERENCES/floret/` — `source_preset.json`, `source_shaders.txt` (the literal port artifact), `target_animated.gif`, three annotated stills.
@@ -25,7 +25,7 @@
 
 Floret's 3-fold radial bloom is the song's **body**: it **inflates and brightens its rims with continuous mid/overall energy** (the filament-mandala swells outward toward the bubble-foam on sustained energy), **bass onsets spin and lurch the whole field** (the vortex spins up; a bounded rotation kick), and **treble stipples crystalline sparkle at the filament tips** — so the viewer reads *sustained energy as a swelling, breathing bloom* and *transients as spin and sparkle across it*.
 
-Loosely inherited from the source (energy⁶ accelerates the swirl accumulator `q8`; `bass` drives rotation) — re-cast onto Phosphene's Audio Data Hierarchy (continuous energy primary, beats as accents).
+Loosely inherited from the source (energy⁶ accelerates the swirl accumulator `q8`; `bass` drives rotation) — re-cast onto Uzume's Audio Data Hierarchy (continuous energy primary, beats as accents).
 
 ## 2. Temporal contract (behaviour over time, not a still)
 
@@ -41,7 +41,7 @@ Loosely inherited from the source (energy⁶ accelerates the swirl accumulator `
 
 1. **Iconic visual subject deliverable at fidelity — YES.** `mv_warp`/feedback is certified three times (Dragon Bloom, Fata Morgana, Nacre). The signature look (3-fold rotational radial-pulse high-pass kaleidoscope + `z²` conformal fold + 1/r² vortex + seed discs) is standard fragment/per-vertex math — texture taps, `fract`, complex-square, `sqrt`, `max`, rotation matrices — all portable to MSL. Lower clipart risk than Dragon Bloom (no bilateral mirror, no representational subject).
 2. **Clear musical role — YES** (§1), inherited from the source rather than bolted on.
-3. **Infrastructure-feasible — YES, one real decision.** The core look needs the feedback texture (slot 0) + per-frame/comp math we can express. The **one source op outside the plain mv_warp contract is the comp-stage unsharp high-pass** (`main − sampler_blur1` — this is what makes the bubble-foam rims). Phosphene exposes no general blur mips; **Fata Morgana's `blurState` (a bespoke ¼-res blur target on a dedicated render branch) is the precedent** — Nacre took this exact path for its warp-stage blur. Floret's high-pass is more central than Nacre's sharpen, so the blur quality matters: **decide by render** between (a) Fata-Morgana-style ¼-res blur target on a `RenderPipeline+Floret.swift` branch, or (b) an in-comp multi-tap blur approximation. No new *engine pass type* either way.
+3. **Infrastructure-feasible — YES, one real decision.** The core look needs the feedback texture (slot 0) + per-frame/comp math we can express. The **one source op outside the plain mv_warp contract is the comp-stage unsharp high-pass** (`main − sampler_blur1` — this is what makes the bubble-foam rims). Uzume exposes no general blur mips; **Fata Morgana's `blurState` (a bespoke ¼-res blur target on a dedicated render branch) is the precedent** — Nacre took this exact path for its warp-stage blur. Floret's high-pass is more central than Nacre's sharpen, so the blur quality matters: **decide by render** between (a) Fata-Morgana-style ¼-res blur target on a `RenderPipeline+Floret.swift` branch, or (b) an in-comp multi-tap blur approximation. No new *engine pass type* either way.
 
 ## 4. Source mechanic (from `source_shaders.txt` — the port reference)
 
@@ -57,9 +57,9 @@ Loosely inherited from the source (energy⁶ accelerates the swirl accumulator `
 
 **Comp shader (the signature look):** **4 layers** at `dist = 1 − fract(time/2 + k/3)` (k=0..3) → outward radial pulse, ~2 s period; each layer **rotated by ~120°** (rotation matrices in the source → 3-fold symmetry). Each: `neu = texture(main, fract(3·uv·dist + 0.5 + 0.025)) − (texture(blur1, +0.003)·scale1 + bias1)` (**unsharp high-pass** at 3× tiling → bubble-cell edges), `inten = sqrt(dist)·(1−dist)·8`, `ret1 = max(ret1, neu·inten)`. Final `ret = ret1·4` (the ×4 is the hard brightness swing → flash-safety target).
 
-> Butterchurn uniforms with no direct Phosphene equivalent — `scale1/bias1` (blur weight/offset), `aspect`, `q1/q2` (→0.5), `time` — substituted with our texel sizes, `features.time`, and fixed centers. Documented per-symbol at port time.
+> Butterchurn uniforms with no direct Uzume equivalent — `scale1/bias1` (blur weight/offset), `aspect`, `q1/q2` (→0.5), `time` — substituted with our texel sizes, `features.time`, and fixed centers. Documented per-symbol at port time.
 
-## 5. Port plan onto Phosphene mv_warp
+## 5. Port plan onto Uzume mv_warp
 
 Pass mapping (3-pass `warp → compose → blit/swap`):
 - **Warp pass** (`floret` per-vertex + warp fragment): port the vortex/rotation/bulge as `mvWarpPerVertex` UV displacement; the `z²` conformal fold + `0.95` decay as the warp fragment (`floret_warp_fragment`).
@@ -103,7 +103,7 @@ No two visual layers share a primitive at the same timescale. ✓
 - **Sidecar (`Floret.json`):** `family: "hypnotic"` (revisit — Dragon Bloom + Nacre are both hypnotic feedback; confirm Floret shouldn't differ to avoid over-grouping), `passes: ["direct","mv_warp"]`, `decay ≈ 0.95`, `feedbackFormat .rgba16Float`, `rubric_profile: "lightweight"`, `stem_affinity` set only once the routing lands (per NACRE.5 — `PresetScorer` reads only the keys; don't list stems the preset doesn't actually route), `certified: false` until FLORET.4.
 - **GPU contract:** direct-pass mv_warp fragment slots — buf 0 `FeatureVector`, buf 2 `waveformData`, buf 3 `StemFeatures`, tex 0 feedback, tex 4–11 noise. `SceneUniforms` (buf 4) is **not** bound in direct-pass.
 - **Test harness:** adapt `NacreMVWarpAccumulationTest` → `FloretMVWarpAccumulationTest`, env-gate `FLORET_MVWARP_DIAG=1`; gate on no-white-out + flash-safety (Δluma) + mid→bloom + bass→spin.
-- **Visual harness:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview`. Required before first tuning commit.
+- **Visual harness:** `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview`. Required before first tuning commit.
 - **Faithful oracle:** re-render the source any time via `tools/milkdrop-render` (key in `source_shaders.txt`; `music.wav` = same clip as Nacre).
 
 ## 9. Risks / open decisions

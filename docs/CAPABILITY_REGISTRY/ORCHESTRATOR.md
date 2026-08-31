@@ -3,7 +3,7 @@
 **Audit increment:** CA.4
 **Date:** 2026-05-20
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneEngine/Sources/Orchestrator/` — 14 Swift files, 2,954 LoC. Boundary annotations for Orchestrator ↔ Session, ↔ DSP / MIR, ↔ ML, ↔ Audio, ↔ Renderer, ↔ App.
+**Scope:** `UzumeEngine/Sources/Orchestrator/` — 14 Swift files, 2,954 LoC. Boundary annotations for Orchestrator ↔ Session, ↔ DSP / MIR, ↔ ML, ↔ Audio, ↔ Renderer, ↔ App.
 **Methodology:** [Phase CA Kickoff — CA.4 (Orchestrator)](../prompts/PHASE_CA_KICKOFF_CA4_ORCHESTRATOR_2026-05-20.md) — see commit `9fc1a6c9`.
 **Reads relied on:** `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/CAPABILITY_REGISTRY/DSP_MIR.md` (CA.1), `docs/CAPABILITY_REGISTRY/ML.md` (CA.2), `docs/CAPABILITY_REGISTRY/SESSION.md` (CA.3), `docs/DECISIONS.md` (D-014, D-017, D-030, D-032 through D-036, D-047, D-050, D-053, D-058, D-072, D-074, D-077, D-078, D-080, D-091, D-095, D-097, D-099, D-120, D-122, D-123), `docs/QUALITY/KNOWN_ISSUES.md` (BUG-001 + BUG-005 + BUG-011 + BUG-014 + BUG-R009), `docs/ENGINEERING_PLAN.md` (Phase 4 + Phase CA + recent BUG-011 entries).
 
@@ -23,12 +23,12 @@
 | `unverified-claim` | 1 | `PresetScorer.swift:86` — the inline doc comment cites `(D-030)` for the weight rationale. D-030 is `SpectralHistoryBuffer as unconditional GPU contract at buffer(5)` (`docs/DECISIONS.md:378`); the correct citation is **D-032** (`Preset scoring weights and penalty structure`, `docs/DECISIONS.md:433`). The four weights themselves are byte-correct. |
 | `stub` | 0 | — |
 | `dead` | 0 | — |
-| `boundary-noted` | 5 | Orchestrator ↔ Session (`TrackProfile`, `TrackIdentity`, the `PlannedSession.canonicalIdentity` consumer at `VisualizerEngine+Capture.swift:131` per BUG-006.2); Orchestrator ↔ DSP (`StructuralPrediction` as input parameter; not read from MIRPipeline directly); Orchestrator ↔ ML (`MoodClassifier.currentState` is the *prep-time* source of `TrackProfile.mood`; runtime mood injection goes through `RenderPipeline.setMood` — neither path is Orchestrator-internal); Orchestrator ↔ App (`PlaybackActionRouter` concrete in `PhospheneApp/Services/DefaultPlaybackActionRouter.swift`; consumer of `applyLiveUpdate` is `VisualizerEngine+Audio` per the doc comment — but the wire is missing, see BUG-015); Orchestrator ↔ Presets (`ArachneState` conformance to `PresetSignaling` at `ArachneStateSignaling.swift:28`; circular-dep avoidance per D-095). All boundary verdicts complete; no `boundary-deferred` items filed. |
+| `boundary-noted` | 5 | Orchestrator ↔ Session (`TrackProfile`, `TrackIdentity`, the `PlannedSession.canonicalIdentity` consumer at `VisualizerEngine+Capture.swift:131` per BUG-006.2); Orchestrator ↔ DSP (`StructuralPrediction` as input parameter; not read from MIRPipeline directly); Orchestrator ↔ ML (`MoodClassifier.currentState` is the *prep-time* source of `TrackProfile.mood`; runtime mood injection goes through `RenderPipeline.setMood` — neither path is Orchestrator-internal); Orchestrator ↔ App (`PlaybackActionRouter` concrete in `UzumeApp/Services/DefaultPlaybackActionRouter.swift`; consumer of `applyLiveUpdate` is `VisualizerEngine+Audio` per the doc comment — but the wire is missing, see BUG-015); Orchestrator ↔ Presets (`ArachneState` conformance to `PresetSignaling` at `ArachneStateSignaling.swift:28`; circular-dep avoidance per D-095). All boundary verdicts complete; no `boundary-deferred` items filed. |
 | `boundary-deferred` | 0 (new) | — |
 
 **Top findings, ranked.**
 
-1. **BUG-015 — `applyLiveUpdate(...)` has zero production call sites.** `grep -rn "applyLiveUpdate" PhospheneApp PhospheneEngine --include="*.swift"` returns the declaration site (`VisualizerEngine+Orchestrator.swift:166`), 4 doc-comment / commentary references in unrelated files, 1 test reference, and zero actual invocations. The `DefaultLiveAdapter` + `DefaultReactiveOrchestrator` machinery is fully implemented and unit-tested but never reaches running production. Filed as BUG-015 (next-available BUG number after BUG-014). Surfaces the kickoff's BUG-001 "Money 7/4 stays REACTIVE" question — BUG-001 refers to the SpectralCartograph mode label (DSP-side lock state), not the Orchestrator's reactive mode; the *Orchestrator* reactive mode is dead independently.
+1. **BUG-015 — `applyLiveUpdate(...)` has zero production call sites.** `grep -rn "applyLiveUpdate" UzumeApp UzumeEngine --include="*.swift"` returns the declaration site (`VisualizerEngine+Orchestrator.swift:166`), 4 doc-comment / commentary references in unrelated files, 1 test reference, and zero actual invocations. The `DefaultLiveAdapter` + `DefaultReactiveOrchestrator` machinery is fully implemented and unit-tested but never reaches running production. Filed as BUG-015 (next-available BUG number after BUG-014). Surfaces the kickoff's BUG-001 "Money 7/4 stays REACTIVE" question — BUG-001 refers to the SpectralCartograph mode label (DSP-side lock state), not the Orchestrator's reactive mode; the *Orchestrator* reactive mode is dead independently.
 
 2. **CA.1-FU-1 re-framing.** CA.1 surfaced the per-frame `StructuralAnalyzer` cluster as runtime `production-orphan` and identified the synthetic-`StructuralPrediction` construction at `SessionPlanner.swift:317` as the runtime-consumer counterpart. The audit's reading of the Orchestrator's runtime path resolves this: the synthetic at `:317` is the **planning-time** construction that fires `TransitionPolicy.structuralBoundary` at every track change (`confidence: 1.0`, both timestamps at clock) — it is NOT the source of runtime predictions. Runtime predictions would flow into `DefaultLiveAdapter.adapt(liveBoundary:)` / `DefaultReactiveOrchestrator.evaluate(liveBoundary:)` via the missing-wire BUG-015 path. **Until BUG-015 is fixed, no runtime consumer of `MIRPipeline.latestStructuralPrediction` exists at all.** CA.1-FU-1's option-(a) framing (gate the per-frame chain to prep time only) is the cleanest immediate fix; option (b) (wire MIRPipeline → orchestrator at runtime) only becomes meaningful once BUG-015 lands. See §Resolution below.
 
@@ -49,7 +49,7 @@
 8. **D-120 (`concept_tags` + `motion_paradigm`) revert is **CLEAN**.** Cited grep:
    ```
    $ grep -rn "concept_tags\|motion_paradigm\|conceptTags\|motionParadigm" \
-            PhospheneEngine PhospheneApp --include="*.swift" --include="*.json"
+            UzumeEngine UzumeApp --include="*.swift" --include="*.json"
    (no results)
    ```
    Zero residue in Swift sources, JSON sidecars, tests, or schema declarations. D-120's reversion (commit `0981ca4f`, 2026-05-13) was complete. No follow-up needed.
@@ -68,17 +68,17 @@
 
 **Evidence.**
 ```
-$ grep -rn "applyLiveUpdate" PhospheneApp PhospheneEngine --include="*.swift"
-PhospheneApp/VisualizerEngine+Presets.swift:562:    /// L lock only suppressed mood-override switching (in `applyLiveUpdate`);
-PhospheneApp/VisualizerEngine+Orchestrator.swift:8:// main thread (buildPlan) or the analysis queue (applyLiveUpdate). All access is
-PhospheneApp/VisualizerEngine+Orchestrator.swift:166:    func applyLiveUpdate(
-PhospheneApp/VisualizerEngine.swift:488:    /// Wall-clock timestamp of the first reactive `applyLiveUpdate()` call.
-PhospheneApp/Services/CaptureModeSwitchCoordinator.swift:16://   · VisualizerEngine.captureModeSwitchGraceWindowEndsAt is set so applyLiveUpdate
-PhospheneEngine/Tests/PhospheneEngineTests/Orchestrator/DiagnosticHoldTests.swift:3:// The app-layer VisualizerEngine.applyLiveUpdate() suppresses LiveAdapter presetOverride
-PhospheneEngine/Tests/PhospheneEngineTests/Orchestrator/DiagnosticHoldTests.swift:35:    /// Simulate the VisualizerEngine.applyLiveUpdate suppression filter.
+$ grep -rn "applyLiveUpdate" UzumeApp UzumeEngine --include="*.swift"
+UzumeApp/VisualizerEngine+Presets.swift:562:    /// L lock only suppressed mood-override switching (in `applyLiveUpdate`);
+UzumeApp/VisualizerEngine+Orchestrator.swift:8:// main thread (buildPlan) or the analysis queue (applyLiveUpdate). All access is
+UzumeApp/VisualizerEngine+Orchestrator.swift:166:    func applyLiveUpdate(
+UzumeApp/VisualizerEngine.swift:488:    /// Wall-clock timestamp of the first reactive `applyLiveUpdate()` call.
+UzumeApp/Services/CaptureModeSwitchCoordinator.swift:16://   · VisualizerEngine.captureModeSwitchGraceWindowEndsAt is set so applyLiveUpdate
+UzumeEngine/Tests/UzumeEngineTests/Orchestrator/DiagnosticHoldTests.swift:3:// The app-layer VisualizerEngine.applyLiveUpdate() suppresses LiveAdapter presetOverride
+UzumeEngine/Tests/UzumeEngineTests/Orchestrator/DiagnosticHoldTests.swift:35:    /// Simulate the VisualizerEngine.applyLiveUpdate suppression filter.
 ```
 
-Of the 7 hits: 1 declaration site, 4 doc-comment / commentary references, 2 test references. **Zero actual call sites.** The declaration is `internal func` (no `public` modifier), so callers must live in `PhospheneApp/` — they do not.
+Of the 7 hits: 1 declaration site, 4 doc-comment / commentary references, 2 test references. **Zero actual call sites.** The declaration is `internal func` (no `public` modifier), so callers must live in `UzumeApp/` — they do not.
 
 The body of `applyLiveUpdate(...)` at `VisualizerEngine+Orchestrator.swift:179` invokes `liveAdapter.adapt(...)` correctly; the body of `applyReactiveUpdate(...)` at `:275` invokes `reactiveOrchestrator.evaluate(...)` correctly. Both code paths are well-formed; they are not reached because nothing calls the outer entry.
 
@@ -86,9 +86,9 @@ The body of `applyLiveUpdate(...)` at `VisualizerEngine+Orchestrator.swift:179` 
 - Increment 4.5 Live Adaptation ✅ (line 641): *"`DefaultLiveAdapter` implementing `LiveAdapting` protocol with two adaptation paths (boundary reschedule > mood override). `PlannedSession.applying(_:at:)` extension for controlled plan mutation from the app layer. `VisualizerEngine+Orchestrator` holds `livePlan` (NSLock-guarded) and provides `buildPlan()`, `currentPreset(at:)`, `currentTransition(at:)`, `applyLiveUpdate(...)`."*
 - Increment 4.6 Ad-Hoc Reactive Mode ✅ (line 668): *"`VisualizerEngine+Orchestrator.swift` — `applyLiveUpdate()` routes to `applyReactiveUpdate()` when `livePlan == nil`."*
 
-**Actual runtime behaviour:** `applyLiveUpdate(...)` is never invoked from any source file in `PhospheneApp/` or `PhospheneEngine/Sources/`. The audio analysis queue path (`VisualizerEngine+Audio.swift`) does not call it. `liveAdapter.adapt(...)` and `reactiveOrchestrator.evaluate(...)` are exercised only by unit tests (`LiveAdapterTests`, `ReactiveOrchestratorTests`, `DiagnosticHoldTests` simulation). The QR.2 / D-080 mood-override cooldown, the QR.2 / D-080 reactive `liveStemFeatures` wiring, the boundary-reschedule path, and `D-091` `wait_for_completion_event` mood-override suppression are all unreachable at runtime.
+**Actual runtime behaviour:** `applyLiveUpdate(...)` is never invoked from any source file in `UzumeApp/` or `UzumeEngine/Sources/`. The audio analysis queue path (`VisualizerEngine+Audio.swift`) does not call it. `liveAdapter.adapt(...)` and `reactiveOrchestrator.evaluate(...)` are exercised only by unit tests (`LiveAdapterTests`, `ReactiveOrchestratorTests`, `DiagnosticHoldTests` simulation). The QR.2 / D-080 mood-override cooldown, the QR.2 / D-080 reactive `liveStemFeatures` wiring, the boundary-reschedule path, and `D-091` `wait_for_completion_event` mood-override suppression are all unreachable at runtime.
 
-**Suspected failure class:** `pipeline-wiring` (per `docs/QUALITY/DEFECT_TAXONOMY.md`). The Orchestrator-side surface is complete; the App-layer invocation site was never added (or was removed during a refactor — `git log -p PhospheneApp/VisualizerEngine+Audio.swift -- *applyLiveUpdate*` could narrow that).
+**Suspected failure class:** `pipeline-wiring` (per `docs/QUALITY/DEFECT_TAXONOMY.md`). The Orchestrator-side surface is complete; the App-layer invocation site was never added (or was removed during a refactor — `git log -p UzumeApp/VisualizerEngine+Audio.swift -- *applyLiveUpdate*` could narrow that).
 
 **Severity:** P1 (`session.orchestrator`). The product is "the AI Orchestrator has planned the entire visual session and adapts as the music unfolds" (CLAUDE.md, top); the adaptation half is dead. Planning works (the static plan is produced); live adaptation does not run. For session-mode playback this manifests as: planned transitions never reschedule against live structure; mood overrides never fire mid-track; the L diagnostic-hold suppression has no effect (because nothing was firing anyway); QR.2 / D-080 reactive stem-affinity scoring never executes against live `StemFeatures`.
 
@@ -119,10 +119,10 @@ D-030 is `SpectralHistoryBuffer as unconditional GPU contract at buffer(5)` (`do
 **1. `DefaultLiveAdapter.transitionPolicy` is constructor-injected and stored but never read.**
 
 ```
-$ grep -n "transitionPolicy" PhospheneEngine/Sources/Orchestrator/LiveAdapter*.swift
-PhospheneEngine/Sources/Orchestrator/LiveAdapter.swift:176:    private let transitionPolicy: any TransitionDeciding
-PhospheneEngine/Sources/Orchestrator/LiveAdapter.swift:188:        transitionPolicy: any TransitionDeciding = DefaultTransitionPolicy()
-PhospheneEngine/Sources/Orchestrator/LiveAdapter.swift:191:        self.transitionPolicy = transitionPolicy
+$ grep -n "transitionPolicy" UzumeEngine/Sources/Orchestrator/LiveAdapter*.swift
+UzumeEngine/Sources/Orchestrator/LiveAdapter.swift:176:    private let transitionPolicy: any TransitionDeciding
+UzumeEngine/Sources/Orchestrator/LiveAdapter.swift:188:        transitionPolicy: any TransitionDeciding = DefaultTransitionPolicy()
+UzumeEngine/Sources/Orchestrator/LiveAdapter.swift:191:        self.transitionPolicy = transitionPolicy
 ```
 
 Three references; all three are declaration / initialization. The body of `LiveAdapter.swift` (380 lines), `LiveAdapter+Patching.swift` (216 lines), and `LiveAdapter+MoodOverride.swift` (83 lines) never read `self.transitionPolicy`. The boundary-reschedule path constructs a `PlannedTransition` directly with the rescheduled `scheduledAt` (`LiveAdapter.swift:255-266`); the mood-override path likewise constructs `LiveAdaptation.PresetOverride` directly (`LiveAdapter+MoodOverride.swift:70-81`). Neither path goes through `TransitionDeciding.evaluate(...)`.
@@ -147,7 +147,7 @@ This is independent of BUG-015: even with the live-adaptation wire fixed, the `t
 - `LiveAdapter+Patching.swift` — `PlannedSession.applying(_:at:)` / `extendingCurrentPreset(by:at:)` / `applying(overrides:)` controlled-mutation API (D-035).
 - `LiveAdapter+MoodOverride.swift` — `applyOverrideIfBetter(...)` extracted from LiveAdapter.swift for file-length compliance.
 - `ReactiveOrchestrator.swift` — `DefaultReactiveOrchestrator`, `ReactiveOrchestrating` protocol, `ReactiveDecision`, `ReactiveAccumulationState` (D-036).
-- `PlaybackActionRouter.swift` — Protocol (App-layer concrete is `DefaultPlaybackActionRouter` in `PhospheneApp/Services/`, per D-050).
+- `PlaybackActionRouter.swift` — Protocol (App-layer concrete is `DefaultPlaybackActionRouter` in `UzumeApp/Services/`, per D-050).
 - `QualityCeiling.swift` — `.auto / .performance / .balanced / .ultra` enum with `complexityThresholdMs(for:)` (U.8).
 
 Doc-drift correction applied in this increment.
@@ -164,7 +164,7 @@ Doc-drift correction applied.
 
 The list cites four items as forthcoming:
 - Golden-session fixtures (4.4) — shipped 2026-04-20, regenerated multiple times since (`Tests/Orchestrator/GoldenSessionTests.swift`).
-- SessionManager app-layer wiring (4.5) — shipped (`PhospheneApp/VisualizerEngine+Orchestrator.buildPlan`).
+- SessionManager app-layer wiring (4.5) — shipped (`UzumeApp/VisualizerEngine+Orchestrator.buildPlan`).
 - Live adaptation (4.5) — shipped at the Orchestrator-side API; *runtime wiring is BUG-015*.
 - Ad-hoc reactive mode (4.6) — shipped at the Orchestrator-side API; *runtime wiring is BUG-015*.
 
@@ -188,7 +188,7 @@ But `ArachneState.swift:977` (`_presetCompletionEvent.send()` inside `advanceSta
 
 The audit produced no new `boundary-deferred` findings. The following Orchestrator-module boundary surfaces are noted (verdict complete; no future re-audit required):
 
-- **Orchestrator ↔ Session (`Sources/Session/`).** `TrackProfile` is consumed by `DefaultPresetScorer.moodSubScore` (mood field), `.tempoMotionSubScore` (bpm field), `.stemAffinitySubScore` (stemEnergyBalance field), `.sectionSuitabilitySubScore` (no field — section comes from PresetScoringContext.currentSection), and `DefaultSessionPlanner.plan(...)` (every track entry). `TrackIdentity` is consumed by `PlannedTrack.track`, `DefaultLiveAdapter.lastOverrideTimePerTrack` (the `[TrackIdentity: TimeInterval]` cooldown dict), and `PlannedSession.canonicalIdentity(matchingTitle:artist:)` (the load-bearing BUG-006.2 helper consumed at `PhospheneApp/VisualizerEngine+Capture.swift:131` + `VisualizerEngine+TrackIdentityResolution.swift:39`). `SessionPlan` (Session module's deliberately-minimal stub per D-017) is not directly used by Orchestrator types — the lift to `PlannedSession` happens entirely in `DefaultSessionPlanner.plan(...)`. CA.3's Session-side reads of these touchpoints are accurate.
+- **Orchestrator ↔ Session (`Sources/Session/`).** `TrackProfile` is consumed by `DefaultPresetScorer.moodSubScore` (mood field), `.tempoMotionSubScore` (bpm field), `.stemAffinitySubScore` (stemEnergyBalance field), `.sectionSuitabilitySubScore` (no field — section comes from PresetScoringContext.currentSection), and `DefaultSessionPlanner.plan(...)` (every track entry). `TrackIdentity` is consumed by `PlannedTrack.track`, `DefaultLiveAdapter.lastOverrideTimePerTrack` (the `[TrackIdentity: TimeInterval]` cooldown dict), and `PlannedSession.canonicalIdentity(matchingTitle:artist:)` (the load-bearing BUG-006.2 helper consumed at `UzumeApp/VisualizerEngine+Capture.swift:131` + `VisualizerEngine+TrackIdentityResolution.swift:39`). `SessionPlan` (Session module's deliberately-minimal stub per D-017) is not directly used by Orchestrator types — the lift to `PlannedSession` happens entirely in `DefaultSessionPlanner.plan(...)`. CA.3's Session-side reads of these touchpoints are accurate.
 
 - **Orchestrator ↔ DSP / MIR (`Sources/DSP/`).** `StructuralPrediction` is an *input parameter* to `DefaultTransitionPolicy.evaluate(context:)` (via `TransitionContext.prediction`), `DefaultLiveAdapter.adapt(liveBoundary:)`, and `DefaultReactiveOrchestrator.evaluate(liveBoundary:)`. None of these read `MIRPipeline.latestStructuralPrediction` directly — the caller passes whatever prediction they have. The synthetic-`StructuralPrediction` at `SessionPlanner.swift:317-322` (`confidence: 1.0`, both timestamps at clock) is the planning-time construction; the runtime construction site lives in `DSP/StructuralAnalyzer.swift:260, 300`. **The Orchestrator module is correctly designed at this boundary** — it consumes predictions, doesn't fetch them. CA.1-FU-1's runtime-path question is downstream of BUG-015; see §Resolution below.
 
@@ -200,7 +200,7 @@ The audit produced no new `boundary-deferred` findings. The following Orchestrat
 
 - **Orchestrator ↔ Renderer (`Sources/Renderer/`).** `QualityCeiling` is consumed by `MLDispatchScheduler` (Renderer) and by `PresetScoringContext.complexityThresholdMs(for:)` (Orchestrator). `FrameBudgetManager.recentMaxFrameMs` is Renderer-internal — not read by any Orchestrator type. The Orchestrator module does not import Renderer; the precompile closure pattern (`(@Sendable (PresetDescriptor) async throws -> Void)?` on `DefaultSessionPlanner.planAsync`) keeps the dependency one-way.
 
-- **Orchestrator ↔ App (`PhospheneApp/`).** `DefaultPresetScorer`, `DefaultSessionPlanner`, `DefaultLiveAdapter`, `DefaultReactiveOrchestrator` are all instantiated at `VisualizerEngine.swift:458, 461, 464`. `PlaybackActionRouter` protocol's concrete `DefaultPlaybackActionRouter` lives at `PhospheneApp/Services/DefaultPlaybackActionRouter.swift` (D-050). `PresetScoringContextProvider` (App layer) is the canonical builder of `PresetScoringContext` values consumed by the Orchestrator. The App layer is where the BUG-015 missing wire lives.
+- **Orchestrator ↔ App (`UzumeApp/`).** `DefaultPresetScorer`, `DefaultSessionPlanner`, `DefaultLiveAdapter`, `DefaultReactiveOrchestrator` are all instantiated at `VisualizerEngine.swift:458, 461, 464`. `PlaybackActionRouter` protocol's concrete `DefaultPlaybackActionRouter` lives at `UzumeApp/Services/DefaultPlaybackActionRouter.swift` (D-050). `PresetScoringContextProvider` (App layer) is the canonical builder of `PresetScoringContext` values consumed by the Orchestrator. The App layer is where the BUG-015 missing wire lives.
 
 - **Orchestrator ↔ Presets (`Sources/Presets/`).** `ArachneState: PresetSignaling` conformance lives in Orchestrator (`ArachneStateSignaling.swift`) instead of in Presets/Arachnid/ to avoid the circular dependency Presets→Orchestrator (per D-095, since Orchestrator already depends on Presets). The conformance is the only Orchestrator-side file that imports `Presets` for a per-preset purpose; the others import Presets generically for `PresetDescriptor` / `PresetCategory`.
 
@@ -219,13 +219,13 @@ The audit produced no new `boundary-deferred` findings. The following Orchestrat
 
 ## Per-file capability index
 
-Citations use `path:line` format. Inventory data from direct reads (Explore agents not used — file sizes were tractable; largest file is `LiveAdapter.swift` at 386 lines). Consumer counts from `grep -rn` of canonical type names across `PhospheneApp/`, `PhospheneEngine/Sources/`, and `PhospheneEngine/Tests/`. Visibility cross-checked against the source per the CA.3 visibility-verification rule.
+Citations use `path:line` format. Inventory data from direct reads (Explore agents not used — file sizes were tractable; largest file is `LiveAdapter.swift` at 386 lines). Consumer counts from `grep -rn` of canonical type names across `UzumeApp/`, `UzumeEngine/Sources/`, and `UzumeEngine/Tests/`. Visibility cross-checked against the source per the CA.3 visibility-verification rule.
 
 Consolidation: 12 of 14 files concentrate on `production-active`; the per-file index below mirrors CA.3's consolidated form. Non-`production-active` aspects (BUG-015 wire, transitionPolicy dead field, source-doc drift, D-030 citation) are visually marked at the relevant rows.
 
 ### `PresetScorer.swift` (355 lines) — `production-active` (with `unverified-claim` for D-030 citation)
 
-[`PresetScorer.swift:95`](../../PhospheneEngine/Sources/Orchestrator/PresetScorer.swift) — `DefaultPresetScorer: PresetScoring`. Stateless, deterministic 4-weight scorer + 2 multiplicative penalties + 5-level hard-exclusion gate. The 4 sub-scores match D-032 byte-for-byte; weight values `0.30 / 0.20 / 0.25 / 0.25` sum to 1.0 as documented.
+[`PresetScorer.swift:95`](../../UzumeEngine/Sources/Orchestrator/PresetScorer.swift) — `DefaultPresetScorer: PresetScoring`. Stateless, deterministic 4-weight scorer + 2 multiplicative penalties + 5-level hard-exclusion gate. The 4 sub-scores match D-032 byte-for-byte; weight values `0.30 / 0.20 / 0.25 / 0.25` sum to 1.0 as documented.
 
 | Capability | Verdict | Consumers (prod / test) | Doc-cited |
 |---|---|---|---|
@@ -249,7 +249,7 @@ The `PresetScoreBreakdown` struct has both `exclusionReason: String?` (human-rea
 
 ### `PresetScoringContext.swift` (156 lines) — `production-active`
 
-[`PresetScoringContext.swift:48`](../../PhospheneEngine/Sources/Orchestrator/PresetScoringContext.swift) — Immutable Sendable snapshot of session state. 11 fields including `deviceTier`, `frameBudgetMs`, `recentHistory`, `currentPreset`, `elapsedSessionTime`, `currentSection`, `excludedFamilies`, `qualityCeiling`, `familyBoosts`, `temporarilyExcludedFamilies`, `sessionExcludedPresets`, `includeUncertifiedPresets`. No mutable state; no `Date.now()`; deterministic.
+[`PresetScoringContext.swift:48`](../../UzumeEngine/Sources/Orchestrator/PresetScoringContext.swift) — Immutable Sendable snapshot of session state. 11 fields including `deviceTier`, `frameBudgetMs`, `recentHistory`, `currentPreset`, `elapsedSessionTime`, `currentSection`, `excludedFamilies`, `qualityCeiling`, `familyBoosts`, `temporarilyExcludedFamilies`, `sessionExcludedPresets`, `includeUncertifiedPresets`. No mutable state; no `Date.now()`; deterministic.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -262,7 +262,7 @@ Notable: `PresetHistoryEntry.family` is `PresetCategory?` — nilable since D-12
 
 ### `TransitionPolicy.swift` (246 lines) — `production-active`
 
-[`TransitionPolicy.swift:125`](../../PhospheneEngine/Sources/Orchestrator/TransitionPolicy.swift) — `DefaultTransitionPolicy: TransitionDeciding`. Structural-boundary trigger (`confidence ≥ 0.5`, 2.5 s window) → duration-expired fallback. Style negotiation via `transitionAffordances` + energy. Crossfade duration scales linearly `2.0 s → 0.5 s` with energy.
+[`TransitionPolicy.swift:125`](../../UzumeEngine/Sources/Orchestrator/TransitionPolicy.swift) — `DefaultTransitionPolicy: TransitionDeciding`. Structural-boundary trigger (`confidence ≥ 0.5`, 2.5 s window) → duration-expired fallback. Style negotiation via `transitionAffordances` + energy. Crossfade duration scales linearly `2.0 s → 0.5 s` with energy.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -280,7 +280,7 @@ The single-consumer-internal pattern: `TransitionContext` + `TransitionDecision`
 
 ### `SessionPlanner.swift` (364 lines) — `production-active`
 
-[`SessionPlanner.swift:62`](../../PhospheneEngine/Sources/Orchestrator/SessionPlanner.swift) — `DefaultSessionPlanner: SessionPlanning`. Greedy forward-walk per D-034. Synchronous `plan(...)` + async `planAsync(...)` with precompile closure (caller-injected so Orchestrator remains free of Renderer dependency). D-047 seeded variant for "Regenerate Plan".
+[`SessionPlanner.swift:62`](../../UzumeEngine/Sources/Orchestrator/SessionPlanner.swift) — `DefaultSessionPlanner: SessionPlanning`. Greedy forward-walk per D-034. Synchronous `plan(...)` + async `planAsync(...)` with precompile closure (caller-injected so Orchestrator remains free of Renderer dependency). D-047 seeded variant for "Regenerate Plan".
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -300,7 +300,7 @@ The synthetic `StructuralPrediction` at `:317-322` constructs `(sectionIndex: 0,
 
 ### `SessionPlanner+Segments.swift` (230 lines) — `production-active`
 
-[`SessionPlanner+Segments.swift:13`](../../PhospheneEngine/Sources/Orchestrator/SessionPlanner+Segments.swift) — Multi-segment walk per V.7.6.2. Section-list from `profile.estimatedSectionCount` (uniform partition); per-section `planOneSegment(...)` loop bounded by `min(remainingInSection, preset.maxDuration(forSection:))`.
+[`SessionPlanner+Segments.swift:13`](../../UzumeEngine/Sources/Orchestrator/SessionPlanner+Segments.swift) — Multi-segment walk per V.7.6.2. Section-list from `profile.estimatedSectionCount` (uniform partition); per-section `planOneSegment(...)` loop bounded by `min(remainingInSection, preset.maxDuration(forSection:))`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -314,7 +314,7 @@ The 50-entry history cap is faithful to D-080 rule 6 (`recentHistory` capped at 
 
 ### `PlannedSession.swift` (368 lines) — `production-active`
 
-[`PlannedSession.swift:268`](../../PhospheneEngine/Sources/Orchestrator/PlannedSession.swift) — `PlannedSession`, `PlannedTrack` (with V.7.6.2 multi-segment shape + backward-compat single-segment init), `PlannedPresetSegment`, `PlannedTransition`, `SegmentTerminationReason`, `PlanningWarning` (with custom Codable for the `partialPreparation(unplannedCount:)` associated-value case).
+[`PlannedSession.swift:268`](../../UzumeEngine/Sources/Orchestrator/PlannedSession.swift) — `PlannedSession`, `PlannedTrack` (with V.7.6.2 multi-segment shape + backward-compat single-segment init), `PlannedPresetSegment`, `PlannedTransition`, `SegmentTerminationReason`, `PlanningWarning` (with custom Codable for the `partialPreparation(unplannedCount:)` associated-value case).
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -332,7 +332,7 @@ The 50-entry history cap is faithful to D-080 rule 6 (`recentHistory` capped at 
 
 ### `LiveAdapter.swift` (386 lines) — `production-active` at the module surface; **runtime-unreachable per BUG-015**
 
-[`LiveAdapter.swift:150`](../../PhospheneEngine/Sources/Orchestrator/LiveAdapter.swift) — `DefaultLiveAdapter: LiveAdapting, @unchecked Sendable` (class since D-080, was struct). NSLock-guarded `lastOverrideTimePerTrack: [TrackIdentity: TimeInterval]` for per-track mood-override cooldown.
+[`LiveAdapter.swift:150`](../../UzumeEngine/Sources/Orchestrator/LiveAdapter.swift) — `DefaultLiveAdapter: LiveAdapting, @unchecked Sendable` (class since D-080, was struct). NSLock-guarded `lastOverrideTimePerTrack: [TrackIdentity: TimeInterval]` for per-track mood-override cooldown.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -357,7 +357,7 @@ The broken-ness is **at the App layer**: `VisualizerEngine.applyLiveUpdate(...)`
 
 ### `LiveAdapter+Patching.swift` (216 lines) — `production-active`
 
-[`LiveAdapter+Patching.swift:18`](../../PhospheneEngine/Sources/Orchestrator/LiveAdapter+Patching.swift) — Public extension on `PlannedSession` providing the controlled-mutation API. The only sanctioned external mutation path per D-034 + D-035.
+[`LiveAdapter+Patching.swift:18`](../../UzumeEngine/Sources/Orchestrator/LiveAdapter+Patching.swift) — Public extension on `PlannedSession` providing the controlled-mutation API. The only sanctioned external mutation path per D-034 + D-035.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -369,7 +369,7 @@ All three methods construct new `PlannedSession` values via the internal memberw
 
 ### `LiveAdapter+MoodOverride.swift` (83 lines) — `production-active` at the module surface; **runtime-unreachable per BUG-015**
 
-[`LiveAdapter+MoodOverride.swift:12`](../../PhospheneEngine/Sources/Orchestrator/LiveAdapter+MoodOverride.swift) — `applyOverrideIfBetter(...)` extracted from `LiveAdapter.swift` for file-length compliance.
+[`LiveAdapter+MoodOverride.swift:12`](../../UzumeEngine/Sources/Orchestrator/LiveAdapter+MoodOverride.swift) — `applyOverrideIfBetter(...)` extracted from `LiveAdapter.swift` for file-length compliance.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -379,7 +379,7 @@ Includes the V.7.6.D D-074 diagnostic-filter (`ranked.first(where: { !$0.0.isDia
 
 ### `ReactiveOrchestrator.swift` (352 lines) — `production-active` at the module surface; **runtime-unreachable per BUG-015**
 
-[`ReactiveOrchestrator.swift:124`](../../PhospheneEngine/Sources/Orchestrator/ReactiveOrchestrator.swift) — `DefaultReactiveOrchestrator: ReactiveOrchestrating`. Stateless per D-036. QR.2 / D-080 fixes for both Failed Approaches #54 (neutral 0.5 on empty stems) and Failed Approach #57's adversarial penalty are faithful.
+[`ReactiveOrchestrator.swift:124`](../../UzumeEngine/Sources/Orchestrator/ReactiveOrchestrator.swift) — `DefaultReactiveOrchestrator: ReactiveOrchestrating`. Stateless per D-036. QR.2 / D-080 fixes for both Failed Approaches #54 (neutral 0.5 on empty stems) and Failed Approach #57's adversarial penalty are faithful.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -400,7 +400,7 @@ QR.2 / D-080 implementation faithful at `:190-194` (`liveProfile.stemEnergyBalan
 
 ### `PresetSignaling.swift` (39 lines) — `production-active` (with source-doc drift)
 
-[`PresetSignaling.swift:22`](../../PhospheneEngine/Sources/Orchestrator/PresetSignaling.swift) — `PresetSignaling: AnyObject` protocol with `presetCompletionEvent: PassthroughSubject<Void, Never>` requirement. The cross-module wiring channel for completion-gated presets (Arachne).
+[`PresetSignaling.swift:22`](../../UzumeEngine/Sources/Orchestrator/PresetSignaling.swift) — `PresetSignaling: AnyObject` protocol with `presetCompletionEvent: PassthroughSubject<Void, Never>` requirement. The cross-module wiring channel for completion-gated presets (Arachne).
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -411,7 +411,7 @@ QR.2 / D-080 implementation faithful at `:190-194` (`liveProfile.stemEnergyBalan
 
 ### `ArachneStateSignaling.swift` (34 lines) — `production-active`
 
-[`ArachneStateSignaling.swift:28`](../../PhospheneEngine/Sources/Orchestrator/ArachneStateSignaling.swift) — `extension ArachneState: PresetSignaling`. Module-placement deviation from the V.7.7C.2 spec (which named `Sources/Presets/Arachnid/ArachneState+Signaling.swift`) — see D-095 + the file's top comment for the rationale (Presets→Orchestrator would create a circular module dependency). The implementation exposes `_presetCompletionEvent` via the public-named `presetCompletionEvent` computed property.
+[`ArachneStateSignaling.swift:28`](../../UzumeEngine/Sources/Orchestrator/ArachneStateSignaling.swift) — `extension ArachneState: PresetSignaling`. Module-placement deviation from the V.7.7C.2 spec (which named `Sources/Presets/Arachnid/ArachneState+Signaling.swift`) — see D-095 + the file's top comment for the rationale (Presets→Orchestrator would create a circular module dependency). The implementation exposes `_presetCompletionEvent` via the public-named `presetCompletionEvent` computed property.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -419,7 +419,7 @@ QR.2 / D-080 implementation faithful at `:190-194` (`liveProfile.stemEnergyBalan
 
 ### `PlaybackActionRouter.swift` (85 lines) — `production-active`
 
-[`PlaybackActionRouter.swift:32`](../../PhospheneEngine/Sources/Orchestrator/PlaybackActionRouter.swift) — Protocol contract per D-050; concrete `DefaultPlaybackActionRouter` lives in `PhospheneApp/Services/`.
+[`PlaybackActionRouter.swift:32`](../../UzumeEngine/Sources/Orchestrator/PlaybackActionRouter.swift) — Protocol contract per D-050; concrete `DefaultPlaybackActionRouter` lives in `UzumeApp/Services/`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -431,7 +431,7 @@ All seven methods are wired through to keyboard shortcuts via `PlaybackShortcutR
 
 ### `QualityCeiling.swift` (40 lines) — `production-active`
 
-[`QualityCeiling.swift:18`](../../PhospheneEngine/Sources/Orchestrator/QualityCeiling.swift) — `.auto / .performance / .balanced / .ultra` enum + `complexityThresholdMs(for:) -> Float?`.
+[`QualityCeiling.swift:18`](../../UzumeEngine/Sources/Orchestrator/QualityCeiling.swift) — `.auto / .performance / .balanced / .ultra` enum + `complexityThresholdMs(for:) -> Float?`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -489,7 +489,7 @@ Applied in this increment as doc-only corrections:
    - Line 211 `cutEnergyThreshold > 0.7` → `> 0.85` (D-080 amendment).
 2. **§Module Map Orchestrator/ (lines 548–553) extended.** All 14 source files listed with one-line behavioural descriptions:
    - The 5 already present (`PresetScorer`, `PresetScoringContext`, `TransitionPolicy`, `PlannedSession`, `SessionPlanner`) — refreshed to reflect D-080 + V.7.6.2 + D-095.
-   - The 9 added: `SessionPlanner+Segments` (V.7.6.2 multi-segment walk), `LiveAdapter` (DefaultLiveAdapter class + LiveAdapting protocol + LiveAdaptation/AdaptationEvent value types + per-track NSLock-guarded cooldown per D-080), `LiveAdapter+Patching` (PlannedSession.applying/extendingCurrentPreset/applying(overrides:) controlled-mutation API), `LiveAdapter+MoodOverride` (applyOverrideIfBetter extracted for file-length compliance), `ReactiveOrchestrator` (DefaultReactiveOrchestrator + ReactiveOrchestrating + ReactiveDecision + ReactiveAccumulationState; D-036 + D-080 reactive-mode liveStemFeatures wiring), `PresetSignaling` (V.7.6.2 protocol + minSegmentDuration default), `ArachneStateSignaling` (cross-module conformance to avoid Presets→Orchestrator cycle per D-095), `PlaybackActionRouter` (D-050 protocol; concrete in PhospheneApp/Services/), `QualityCeiling` (U.8 enum + complexityThresholdMs(for:) per D-053 / D-059d).
+   - The 9 added: `SessionPlanner+Segments` (V.7.6.2 multi-segment walk), `LiveAdapter` (DefaultLiveAdapter class + LiveAdapting protocol + LiveAdaptation/AdaptationEvent value types + per-track NSLock-guarded cooldown per D-080), `LiveAdapter+Patching` (PlannedSession.applying/extendingCurrentPreset/applying(overrides:) controlled-mutation API), `LiveAdapter+MoodOverride` (applyOverrideIfBetter extracted for file-length compliance), `ReactiveOrchestrator` (DefaultReactiveOrchestrator + ReactiveOrchestrating + ReactiveDecision + ReactiveAccumulationState; D-036 + D-080 reactive-mode liveStemFeatures wiring), `PresetSignaling` (V.7.6.2 protocol + minSegmentDuration default), `ArachneStateSignaling` (cross-module conformance to avoid Presets→Orchestrator cycle per D-095), `PlaybackActionRouter` (D-050 protocol; concrete in UzumeApp/Services/), `QualityCeiling` (U.8 enum + complexityThresholdMs(for:) per D-053 / D-059d).
 3. **§Module Map Tests/Orchestrator/ block added.** Lists all 16 test files: DiagnosticHoldTests, GoldenSessionTests, LiveAdapterTests, MaxDurationFrameworkTests, MultiSegmentSmokeTest, OrchestratorCertifiedFilterTests, OrchestratorDiagnosticExclusionTests, PartialPlanTests, PresetScorerAdaptationTests, PresetScorerTests, PresetScoringContextExtensionTests, PresetSignalingTests, ReactiveOrchestratorTests, SessionPlannerTests, StemAffinityScoringTests, TransitionPolicyTests.
 
 ### Updates needed in ENGINEERING_PLAN.md
@@ -557,7 +557,7 @@ Items are greppable as `CA\.4-FU-\d+`. The BUG-015 fix is treated as a top-prior
 
 **What didn't.**
 
-- **Tracing one App-layer wire (`applyLiveUpdate` call sites) bordered on scope creep.** The audit's hard rule says App-layer audit is CA.5+ — but I had to grep across `PhospheneApp/` to verify whether `applyLiveUpdate(...)` had any callers, because the Orchestrator-side surface alone can't answer that. The grep was tightly bounded (`grep -rn applyLiveUpdate PhospheneApp`) and the answer was unambiguous, but a less-clean question could have pulled the audit deep into App-layer code. For CA.5 (likely App), the audit format should explicitly call out which App files are in scope so the wire-tracing isn't ambiguous.
+- **Tracing one App-layer wire (`applyLiveUpdate` call sites) bordered on scope creep.** The audit's hard rule says App-layer audit is CA.5+ — but I had to grep across `UzumeApp/` to verify whether `applyLiveUpdate(...)` had any callers, because the Orchestrator-side surface alone can't answer that. The grep was tightly bounded (`grep -rn applyLiveUpdate UzumeApp`) and the answer was unambiguous, but a less-clean question could have pulled the audit deep into App-layer code. For CA.5 (likely App), the audit format should explicitly call out which App files are in scope so the wire-tracing isn't ambiguous.
 - **The "stop and report" rule fired on BUG-015** and I chose to file the BUG + complete the audit rather than stop. Reading the kickoff's exact wording — *"Found a broken-but-claimed finding that affects production behavior right now (file as BUG- entry; surface immediately)"* — the intent is to surface the BUG mid-audit so Matt sees it ASAP, not to halt the audit. I read it the second way and continued. If Matt wanted the first interpretation, future kickoffs should disambiguate.
 - **One trivial mis-step early in the audit:** I asserted in a draft summary that the §Module Map Orchestrator block was missing "10 of 14 files" and then recounted to find it's missing 9 of 14. Both pre-recount and post-recount drafts cite the same 9 files — the "10" was just a counting slip. The lesson is to verify counts before producing summary numbers; I corrected the count inline above.
 
@@ -565,8 +565,8 @@ Items are greppable as `CA\.4-FU-\d+`. The BUG-015 fix is treated as a top-prior
 
 1. **Default to direct reads at ≤ 5k LoC, and the visibility-verification grep stays mandatory.** Same as CA.3 + CA.4. The format works.
 2. **Cross-check the kickoff prompt against `KNOWN_ISSUES.md` as Pass 0.** CA.3 found one staleness; CA.4 found zero. Cheap insurance.
-3. **For audits that touch the App-layer boundary, declare which App files are read-only in scope** (e.g., `VisualizerEngine.swift` for instantiation sites, `VisualizerEngine+Orchestrator.swift` for App-side adapter methods) and which are explicitly off-limits (`PhospheneApp/Views/*`, `PhospheneApp/ViewModels/*`). CA.4 ended up reading several App files to verify call-site counts; the read was bounded but not pre-declared.
-4. **Recommended next subsystem for CA.5:** **App layer** (`PhospheneApp/`). The audit just surfaced one App-layer pipeline-wiring bug (BUG-015) plus a constellation of boundary-noted findings that an App audit closes cleanly (`PresetScoringContextProvider`, `DefaultPlaybackActionRouter`, `VisualizerEngine+Orchestrator`, `LiveAdaptationToastBridge`, `CaptureModeSwitchCoordinator`, the entire ViewModel + View tree). The App layer is the largest single unaudited surface and is where most of the runtime-wire-up work lives. **Alternative:** if BUG-015's diagnosis turns up surprises that motivate a different priority, defer the CA.5 scope until after BUG-015 lands.
+3. **For audits that touch the App-layer boundary, declare which App files are read-only in scope** (e.g., `VisualizerEngine.swift` for instantiation sites, `VisualizerEngine+Orchestrator.swift` for App-side adapter methods) and which are explicitly off-limits (`UzumeApp/Views/*`, `UzumeApp/ViewModels/*`). CA.4 ended up reading several App files to verify call-site counts; the read was bounded but not pre-declared.
+4. **Recommended next subsystem for CA.5:** **App layer** (`UzumeApp/`). The audit just surfaced one App-layer pipeline-wiring bug (BUG-015) plus a constellation of boundary-noted findings that an App audit closes cleanly (`PresetScoringContextProvider`, `DefaultPlaybackActionRouter`, `VisualizerEngine+Orchestrator`, `LiveAdaptationToastBridge`, `CaptureModeSwitchCoordinator`, the entire ViewModel + View tree). The App layer is the largest single unaudited surface and is where most of the runtime-wire-up work lives. **Alternative:** if BUG-015's diagnosis turns up surprises that motivate a different priority, defer the CA.5 scope until after BUG-015 lands.
 
 The audit format continues to produce actionable findings (1 P1 BUG, 1 field-level production-orphan, 1 unverified-claim, multiple doc-drift corrections, a CA.1 re-scoping). Recommend continuing into CA.5 with the methodology refinements above; minor consolidations as noted.
 

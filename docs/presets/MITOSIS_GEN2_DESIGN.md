@@ -157,7 +157,7 @@ cold-start beat phase reads as a slightly-mistimed split, not a wrong-beat firin
 - **Procedural techniques:** smooth-min metaball SDF (Inigo Quilez) for the dumbbell + furrow
   pinch; ridged fbm for the filament field; angular ring-sampled noise for the irregular
   aster fibres; alpha-composite for the occluding membrane. Public-domain math, own MSL.
-- The fluorescence grade + the audio coupling are Phosphene-original (MITOSIS.5 lineage).
+- The fluorescence grade + the audio coupling are Uzume-original (MITOSIS.5 lineage).
 
 ## 8. Reuse from gen-1 (do not destabilise the certified preset)
 

@@ -3,7 +3,7 @@
 **Audit increment:** CA.2
 **Date:** 2026-05-20
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneEngine/Sources/ML/` — 16 Swift files, 4,507 LoC. Boundary annotations for ML↔DSP, ML↔Session, ML↔Renderer, ML↔App.
+**Scope:** `UzumeEngine/Sources/ML/` — 16 Swift files, 4,507 LoC. Boundary annotations for ML↔DSP, ML↔Session, ML↔Renderer, ML↔App.
 **Methodology:** [`docs/prompts/PHASE_CA_KICKOFF_CA2_ML_2026-05-20.md`](../prompts/PHASE_CA_KICKOFF_CA2_ML_2026-05-20.md).
 **Reads relied on:** `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/CAPABILITY_REGISTRY/DSP_MIR.md` (CA.1), `docs/DECISIONS.md` (D-009, D-010, D-059, D-077, D-079, D-098, D-099), `docs/QUALITY/KNOWN_ISSUES.md` (BUG-012 + race-surface analysis, BUG-013, BUG-R001–R010), `docs/ENGINEERING_PLAN.md`, `docs/diagnostics/DSP.2-architecture.md`, `docs/diagnostics/DSP.2-beatnet-archive.md`.
 
@@ -54,7 +54,7 @@ The surviving hypothesis from the race-surface analysis (teardown race during Ma
 
 ### documented-but-missing
 
-1. **`ARCHITECTURE.md §Mood Classifier Inputs` — stale "AGC-normalized flux" claim.** [`docs/ARCHITECTURE.md:634-636`](../ARCHITECTURE.md): *"10 features: 6-band energy, centroid, flux, major/minor key correlations. … Spectral flux normalized via running-max AGC (0.999 decay). Centroid normalized by Nyquist (24000 Hz)."* But the production caller at [`PhospheneApp/VisualizerEngine+Audio.swift:240-249`](../../PhospheneApp/VisualizerEngine+Audio.swift) builds the 10-float vector as:
+1. **`ARCHITECTURE.md §Mood Classifier Inputs` — stale "AGC-normalized flux" claim.** [`docs/ARCHITECTURE.md:634-636`](../ARCHITECTURE.md): *"10 features: 6-band energy, centroid, flux, major/minor key correlations. … Spectral flux normalized via running-max AGC (0.999 decay). Centroid normalized by Nyquist (24000 Hz)."* But the production caller at [`UzumeApp/VisualizerEngine+Audio.swift:240-249`](../../UzumeApp/VisualizerEngine+Audio.swift) builds the 10-float vector as:
    ```swift
    let frameFeatures: [Float] = [
        fv.subBass, fv.lowBass, fv.lowMid,
@@ -64,7 +64,7 @@ The surviving hypothesis from the race-surface analysis (teardown race during Ma
        mir.latestMinorKeyCorrelation
    ]
    ```
-   `MIRPipeline.rawSmoothedFlux` ([`MIRPipeline.swift:66`](../../PhospheneEngine/Sources/DSP/MIRPipeline.swift)) is `ctx.spectral.smoothedFlux` written at line 230; `normalizedFlux` (line 161, written into FeatureVector at line 299) is a separate value the mood classifier never sees. `MoodClassifier.swift:14-19` documents this verbatim: *"[7]: spectralFlux (raw sum, NOT normalized)"*. The model was trained against raw smoothed flux per `tools/extract_mood_weights.py` (matching the docstring). **The training and the runtime path agree; the documentation is wrong.** Doc-drift correction applied in this increment. Centroid normalization claim matches code.
+   `MIRPipeline.rawSmoothedFlux` ([`MIRPipeline.swift:66`](../../UzumeEngine/Sources/DSP/MIRPipeline.swift)) is `ctx.spectral.smoothedFlux` written at line 230; `normalizedFlux` (line 161, written into FeatureVector at line 299) is a separate value the mood classifier never sees. `MoodClassifier.swift:14-19` documents this verbatim: *"[7]: spectralFlux (raw sum, NOT normalized)"*. The model was trained against raw smoothed flux per `tools/extract_mood_weights.py` (matching the docstring). **The training and the runtime path agree; the documentation is wrong.** Doc-drift correction applied in this increment. Centroid normalization claim matches code.
 
 ### unverified-claim
 
@@ -76,24 +76,24 @@ Production-orphan claims at the **file** level: zero. Every file in `Sources/ML/
 
 Production-orphan claims at the **field / type / method level**: four clusters. Each is backed by an exhaustive grep.
 
-1. **`StemFFTEngineProtocol`** ([`StemFFT.swift:45`](../../PhospheneEngine/Sources/ML/StemFFT.swift)) — declared `public protocol`. Sole conformer: `StemFFTEngine` itself (same file, line 84). No DI seam consumes the protocol abstraction.
+1. **`StemFFTEngineProtocol`** ([`StemFFT.swift:45`](../../UzumeEngine/Sources/ML/StemFFT.swift)) — declared `public protocol`. Sole conformer: `StemFFTEngine` itself (same file, line 84). No DI seam consumes the protocol abstraction.
 
    **Grep:**
    ```
    $ grep -rn ": StemFFTEngineProtocol\|any StemFFTEngineProtocol\|StemFFTEngineProtocol\." \
-            PhospheneApp PhospheneEngine --include="*.swift"
-   PhospheneEngine/Sources/ML/StemFFT.swift:84:public final class StemFFTEngine: StemFFTEngineProtocol, @unchecked Sendable {
+            UzumeApp UzumeEngine --include="*.swift"
+   UzumeEngine/Sources/ML/StemFFT.swift:84:public final class StemFFTEngine: StemFFTEngineProtocol, @unchecked Sendable {
    ```
    One hit — the declaration of the class itself. Zero consumers expecting the protocol type. `StemSeparator.fftEngine` is typed `private let fftEngine: StemFFTEngine` (concrete class, not protocol — `StemSeparator.swift:86`). Tests construct concrete `StemFFTEngine` directly (`BUG012ConcurrencyTest.swift:49`, `StemFFTTests.swift:46`, etc.).
 
    **Suggested next step (out of scope for CA.2):** either wire `StemFFTEngineProtocol` through `StemSeparator` so tests can inject a mock (closes the test-only-via-`fftEngine.forward` gap noted under §production-active below) or delete the protocol entirely. Registered as `CA.2-FU-1`.
 
-2. **`StemSeparator.stft(mono:)` + `.istft(magnitude:phase:nbFrames:originalLength:)`** ([`StemSeparator.swift:261, 281`](../../PhospheneEngine/Sources/ML/StemSeparator.swift)) — declared `public func`. Documented as the engine's externally-visible STFT pair. Both delegate to `fftEngine.forward(mono:)` / `fftEngine.inverse(...)`.
+2. **`StemSeparator.stft(mono:)` + `.istft(magnitude:phase:nbFrames:originalLength:)`** ([`StemSeparator.swift:261, 281`](../../UzumeEngine/Sources/ML/StemSeparator.swift)) — declared `public func`. Documented as the engine's externally-visible STFT pair. Both delegate to `fftEngine.forward(mono:)` / `fftEngine.inverse(...)`.
 
    **Grep:**
    ```
    $ grep -rn "separator\.stft\|separator\.istft\|stemSeparator\.stft\|stemSeparator\.istft" \
-            PhospheneApp PhospheneEngine --include="*.swift"
+            UzumeApp UzumeEngine --include="*.swift"
    (no results)
    ```
    Zero external consumers. The wrappers exist; nothing in App, Engine non-ML, or tests calls them. The tests that need an STFT (`StemModelTests.swift:113`, `:149`) construct their own `StemFFTEngine` and call `fftEngine.forward(...)` directly, bypassing the `StemSeparator.stft` wrapper.
@@ -105,7 +105,7 @@ Production-orphan claims at the **field / type / method level**: four clusters. 
    **Grep:**
    ```
    $ grep -rn "BeatThisModel\.numHeads\|BeatThisModel\.headDim\|BeatThisModel\.numBlocks\|BeatThisModel\.ffnDim\|BeatThisModel\.outputClasses" \
-            PhospheneApp PhospheneEngine --include="*.swift"
+            UzumeApp UzumeEngine --include="*.swift"
    (no results)
    ```
    Zero external consumers for the five remaining constants. They are exposed for documentation/symmetry — the model's hyperparameters being introspectable from outside is a reasonable design choice — but no live consumer reads them. Counterpart of CA.1's `MIRPipeline.spectralRolloff` finding.
@@ -117,25 +117,25 @@ Production-orphan claims at the **field / type / method level**: four clusters. 
    **Grep:**
    ```
    $ grep -rn "MoodClassifier\.featureCount\|MoodClassifier\.emaAlpha" \
-            PhospheneApp PhospheneEngine --include="*.swift"
+            UzumeApp UzumeEngine --include="*.swift"
    (no results)
    ```
    Zero external consumers. Internal-only access via `Self.featureCount` (MoodClassifier.swift:86). Same shape as the BeatThisModel-dimension finding; same recommendation (low-cost field-level orphan; not worth a dedicated increment).
 
-5. **Error types — `BeatThisModelError`, `StemFFTError`, `StemModelError`** ([`BeatThisModel.swift:5`](../../PhospheneEngine/Sources/ML/BeatThisModel.swift), [`StemFFT.swift:70`](../../PhospheneEngine/Sources/ML/StemFFT.swift), [`StemModel.swift:26`](../../PhospheneEngine/Sources/ML/StemModel.swift)) — declared `public enum: Error, Sendable`. Thrown internally; never caught externally with type-specific matching.
+5. **Error types — `BeatThisModelError`, `StemFFTError`, `StemModelError`** ([`BeatThisModel.swift:5`](../../UzumeEngine/Sources/ML/BeatThisModel.swift), [`StemFFT.swift:70`](../../UzumeEngine/Sources/ML/StemFFT.swift), [`StemModel.swift:26`](../../UzumeEngine/Sources/ML/StemModel.swift)) — declared `public enum: Error, Sendable`. Thrown internally; never caught externally with type-specific matching.
 
    **Grep:**
    ```
-   $ grep -rn "StemFFTError\." PhospheneApp PhospheneEngine --include="*.swift" \
-        | grep -v "PhospheneEngine/Sources/ML/StemFFT.swift"
+   $ grep -rn "StemFFTError\." UzumeApp UzumeEngine --include="*.swift" \
+        | grep -v "UzumeEngine/Sources/ML/StemFFT.swift"
    (no results)
 
-   $ grep -rn "StemModelError\." PhospheneApp PhospheneEngine --include="*.swift" \
-        | grep -v "PhospheneEngine/Sources/ML/StemModel.swift"
+   $ grep -rn "StemModelError\." UzumeApp UzumeEngine --include="*.swift" \
+        | grep -v "UzumeEngine/Sources/ML/StemModel.swift"
    (no results)
 
-   $ grep -rn "BeatThisModelError\." PhospheneApp PhospheneEngine --include="*.swift" \
-        | grep -v "PhospheneEngine/Sources/ML/BeatThisModel.swift"
+   $ grep -rn "BeatThisModelError\." UzumeApp UzumeEngine --include="*.swift" \
+        | grep -v "UzumeEngine/Sources/ML/BeatThisModel.swift"
    (no results)
    ```
    External callers catch the parent `Error` type (e.g. `BeatGridAnalyzer.swift:77` logs `error.localizedDescription`; `StemSeparator.swift:116` wraps `StemFFT` failures into `StemSeparationError.modelLoadFailed`). The detail enums add no signal to external callers. Not worth a follow-up; cited for completeness.
@@ -150,7 +150,7 @@ None. `ML.swift` (4 lines) is a module marker (`import Foundation`); not a stub.
 
 ### built-but-undocumented
 
-1. **The entire Beat This! transformer.** `BeatThisModel` (1,748 LoC across 5 files; D-077, 2026-05-04 → DSP.2 S9, 2026-05-05) is the second-largest ML capability in Phosphene by LoC and the load-bearing offline beat-detection path. `ARCHITECTURE.md §ML Inference` (lines 242–247) describes only:
+1. **The entire Beat This! transformer.** `BeatThisModel` (1,748 LoC across 5 files; D-077, 2026-05-04 → DSP.2 S9, 2026-05-05) is the second-largest ML capability in Uzume by LoC and the load-bearing offline beat-detection path. `ARCHITECTURE.md §ML Inference` (lines 242–247) describes only:
    - "Stem separator (MPSGraph): Open-Unmix HQ, Float32, 142 ms warm predict for 10 s."
    - "Mood classifier (Accelerate): 4-layer MLP (10→64→32→16→2), 3,346 hardcoded Float32 params."
 
@@ -183,7 +183,7 @@ None. `ML.swift` (4 lines) is a module marker (`import Foundation`); not a stub.
 
 4. **Open-Unmix HQ window-size constants.** `StemSeparator.modelFrameCount = 431`, `requiredMonoSamples = 440320`, `nFFT = 4096`, `hopLength = 1024` are the load-bearing window-shape constants for the model. `ARCHITECTURE.md §ML Inference` says "10 s audio" prose but does not state the numbers. The values appear in `ARCHITECTURE.md §Module Map` at line 441 in a different form (per the model-architecture line) but the canonical numeric values are in code only. Low-priority drift; folded into the `§ML Inference` doc-correction in this increment.
 
-5. **`MoodClassifier.scalerMeans` / `scalerStds`** ([`MoodClassifier.swift:49-58`](../../PhospheneEngine/Sources/ML/MoodClassifier.swift)) — 20 hardcoded z-score scaler constants. The file docstring says they "MUST match `tools/data/mood_scaler.json`" — but `ARCHITECTURE.md §Mood Classifier Inputs` describes the input set, not the scaler. Code is self-documenting on this; not worth its own doc entry.
+5. **`MoodClassifier.scalerMeans` / `scalerStds`** ([`MoodClassifier.swift:49-58`](../../UzumeEngine/Sources/ML/MoodClassifier.swift)) — 20 hardcoded z-score scaler constants. The file docstring says they "MUST match `tools/data/mood_scaler.json`" — but `ARCHITECTURE.md §Mood Classifier Inputs` describes the input set, not the scaler. Code is self-documenting on this; not worth its own doc entry.
 
 ### boundary-deferred
 
@@ -212,7 +212,7 @@ The default verdict. Aggregate counts (per-file detail in §Per-file index):
 
 ## Per-file capability index
 
-Citations use `path:line` format. Inventory data from per-file Explore-agent reads; consumer counts from `grep -rn` of canonical type names across `PhospheneApp/`, `PhospheneEngine/Sources/`, and `PhospheneEngine/Tests/`. The audit consolidates into the per-file index per CA.2 §Consolidation-allowed (14 of 16 files concentrate on `production-active`).
+Citations use `path:line` format. Inventory data from per-file Explore-agent reads; consumer counts from `grep -rn` of canonical type names across `UzumeApp/`, `UzumeEngine/Sources/`, and `UzumeEngine/Tests/`. The audit consolidates into the per-file index per CA.2 §Consolidation-allowed (14 of 16 files concentrate on `production-active`).
 
 ### `ML.swift` (4 lines) — `production-active`
 
@@ -222,7 +222,7 @@ Module entry-point marker. Just `import Foundation`. No public surface. Consumed
 
 #### `BeatThisModel.swift` (258 lines) — `production-active`
 
-[`BeatThisModel.swift:39`](../../PhospheneEngine/Sources/ML/BeatThisModel.swift) — Top-level model class. `public final class BeatThisModel: @unchecked Sendable`. Owns: MPSGraph build, `BeatThisWeights` load, NSLock-guarded inference. File-level docstring at lines 1–8: *"128-dim transformer, 4 heads, 6 blocks, 512 FFN. Input: log-mel spectrogram [T, 128]. Output: beat + downbeat probabilities [T]."*
+[`BeatThisModel.swift:39`](../../UzumeEngine/Sources/ML/BeatThisModel.swift) — Top-level model class. `public final class BeatThisModel: @unchecked Sendable`. Owns: MPSGraph build, `BeatThisWeights` load, NSLock-guarded inference. File-level docstring at lines 1–8: *"128-dim transformer, 4 heads, 6 blocks, 512 FFN. Input: log-mel spectrogram [T, 128]. Output: beat + downbeat probabilities [T]."*
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -267,7 +267,7 @@ Weight files themselves (`Sources/ML/Weights/beat_this/*.bin`) are out of scope 
 
 #### `StemSeparator.swift` (399 lines) — `production-active`
 
-[`StemSeparator.swift:43`](../../PhospheneEngine/Sources/ML/StemSeparator.swift) — Top-level orchestration: resample → deinterleave → STFT → MPSGraph → iSTFT → mono-average → write to UMA `stemBuffers`. `public final class StemSeparator: StemSeparating, @unchecked Sendable`. Conforms to the `StemSeparating` protocol in `Sources/Audio/Protocols.swift:105`.
+[`StemSeparator.swift:43`](../../UzumeEngine/Sources/ML/StemSeparator.swift) — Top-level orchestration: resample → deinterleave → STFT → MPSGraph → iSTFT → mono-average → write to UMA `stemBuffers`. `public final class StemSeparator: StemSeparating, @unchecked Sendable`. Conforms to the `StemSeparating` protocol in `Sources/Audio/Protocols.swift:105`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -288,7 +288,7 @@ Internal extension: `reconstructStemWaveforms(allStemMagL:allStemMagR:phaseL:pha
 
 #### `StemModel.swift` (246 lines) — `production-active`
 
-[`StemModel.swift:45`](../../PhospheneEngine/Sources/ML/StemModel.swift) — MPSGraph inference engine for Open-Unmix HQ. `public final class StemModelEngine: @unchecked Sendable`. Loads 172 tensors (43/stem × 4) totalling ~136 MB at init; pre-allocated UMA I/O buffers; single MPSGraph hosts all 4 stems.
+[`StemModel.swift:45`](../../UzumeEngine/Sources/ML/StemModel.swift) — MPSGraph inference engine for Open-Unmix HQ. `public final class StemModelEngine: @unchecked Sendable`. Loads 172 tensors (43/stem × 4) totalling ~136 MB at init; pre-allocated UMA I/O buffers; single MPSGraph hosts all 4 stems.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -315,7 +315,7 @@ Weight manifest parser + raw `.bin` loader + BN fusion + bidirectional-LSTM weig
 
 #### `StemFFT.swift` (386 lines) — `production-active`
 
-[`StemFFT.swift:84`](../../PhospheneEngine/Sources/ML/StemFFT.swift) — MPSGraph-backed STFT/iSTFT engine. `public final class StemFFTEngine: StemFFTEngineProtocol, @unchecked Sendable`. CPU vDSP fallback (`+CPU.swift`) preserved behind `forceCPUFallback` for cross-validation.
+[`StemFFT.swift:84`](../../UzumeEngine/Sources/ML/StemFFT.swift) — MPSGraph-backed STFT/iSTFT engine. `public final class StemFFTEngine: StemFFTEngineProtocol, @unchecked Sendable`. CPU vDSP fallback (`+CPU.swift`) preserved behind `forceCPUFallback` for cross-validation.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -343,7 +343,7 @@ vDSP-vs-MPSGraph amplitude convention narrative at lines 124–132 (verbatim): *
 
 #### `MoodClassifier.swift` (150 lines) — `production-active`
 
-[`MoodClassifier.swift:36`](../../PhospheneEngine/Sources/ML/MoodClassifier.swift) — `public final class MoodClassifier: MoodClassifying, @unchecked Sendable`. 4-layer MLP (10 → 64 → 32 → 16 → 2) via `vDSP_mmul` + `vDSP_vadd` + `vDSP_vmax` + `vvtanhf`. EMA smoothing (`α = 0.1`, ~0.7 s time constant at 94 Hz). Z-score scaler hardcoded.
+[`MoodClassifier.swift:36`](../../UzumeEngine/Sources/ML/MoodClassifier.swift) — `public final class MoodClassifier: MoodClassifying, @unchecked Sendable`. 4-layer MLP (10 → 64 → 32 → 16 → 2) via `vDSP_mmul` + `vDSP_vadd` + `vDSP_vmax` + `vvtanhf`. EMA smoothing (`α = 0.1`, ~0.7 s time constant at 94 Hz). Z-score scaler hardcoded.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -401,7 +401,7 @@ The instrumentation lives in 8 files; this audit's read of every probe call site
 
 ### App probes (out of scope file-locations, in scope conceptually)
 
-`PhospheneApp/VisualizerEngine.swift` (init/deinit lifecycle), `PhospheneApp/VisualizerEngine+Stems.swift` (`runStemSeparation` timer-fire, MainActor `self?` resolution, scheduler decision, queued `performStemSeparation`, weak-self resolution log lines including the explicit `self == nil` branch), `Renderer/MLDispatchScheduler.swift` (`decide(...)` decision log). Documented in `KNOWN_ISSUES.md §BUG-012 → Instrumentation installed`.
+`UzumeApp/VisualizerEngine.swift` (init/deinit lifecycle), `UzumeApp/VisualizerEngine+Stems.swift` (`runStemSeparation` timer-fire, MainActor `self?` resolution, scheduler decision, queued `performStemSeparation`, weak-self resolution log lines including the explicit `self == nil` branch), `Renderer/MLDispatchScheduler.swift` (`decide(...)` decision log). Documented in `KNOWN_ISSUES.md §BUG-012 → Instrumentation installed`.
 
 ### How the next reproduction should read
 

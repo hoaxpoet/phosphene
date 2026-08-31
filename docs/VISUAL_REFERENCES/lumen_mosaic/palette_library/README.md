@@ -2,7 +2,7 @@
 
 The 18 palettes that Lumen Mosaic samples from at LM.4.7 onward. Authored 2026-05-17 in the palette exploration conversation; decisions filed at D-LM-palette-library + D-LM-cream-rescission (2026-05-18). Per-song selection per D-LM-palette-library amendment (2026-05-18).
 
-These HTML files are the **authoritative design intent** for the palette library — named hex anchors, role groupings (ground / light / anchor), panel-preview character. The Swift implementation in `PhospheneEngine/Sources/Presets/LumenMosaicPaletteLibrary.swift` (lands at LM.4.7) is the source of truth for the colour values that ship; if the Swift and the HTML disagree on a hex value, the implementer should reconcile against this directory before merging.
+These HTML files are the **authoritative design intent** for the palette library — named hex anchors, role groupings (ground / light / anchor), panel-preview character. The Swift implementation in `UzumeEngine/Sources/Presets/LumenMosaicPaletteLibrary.swift` (lands at LM.4.7) is the source of truth for the colour values that ship; if the Swift and the HTML disagree on a hex value, the implementer should reconcile against this directory before merging.
 
 ## Plate index
 

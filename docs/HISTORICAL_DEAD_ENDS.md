@@ -25,15 +25,15 @@ For entries describing **tech that may have evolved since the original observati
 
 ### #5 — BlackHole virtual audio driver
 
-**Original entry:** BlackHole was broken on macOS Sequoia (macOS 15). Phosphene's needs were met without it via Core Audio taps (D-002).
+**Original entry:** BlackHole was broken on macOS Sequoia (macOS 15). Uzume's needs were met without it via Core Audio taps (D-002).
 
-> Moved to graveyard 2026-05-13 (DOC.3a). Last verified pre-macOS 26 / pre-BlackHole 0.6.x. Not actively blocking — D-002 Core Audio taps is the chosen architecture. Re-test against current platform if a future need to revisit virtual audio devices arises (e.g. browser-based Phosphene preview).
+> Moved to graveyard 2026-05-13 (DOC.3a). Last verified pre-macOS 26 / pre-BlackHole 0.6.x. Not actively blocking — D-002 Core Audio taps is the chosen architecture. Re-test against current platform if a future need to revisit virtual audio devices arises (e.g. browser-based Uzume preview).
 
 ### #6 — Web Audio API AnalyserNode
 
 **Original entry:** Web Audio API AnalyserNode broken for virtual audio devices on macOS.
 
-> Moved to graveyard 2026-05-13 (DOC.3a). Phosphene is a native macOS app (D-001); Web Audio API is irrelevant to the current architecture. If a future browser-based companion target is scoped, re-test against then-current macOS + browser combinations.
+> Moved to graveyard 2026-05-13 (DOC.3a). Uzume is a native macOS app (D-001); Web Audio API is irrelevant to the current architecture. If a future browser-based companion target is scoped, re-test against then-current macOS + browser combinations.
 
 ### #7 — ScreenCaptureKit for audio-only capture
 
@@ -65,7 +65,7 @@ For entries describing **tech that may have evolved since the original observati
 
 **Original entry:** `GET /v1/audio-features/{id}` deprecated November 2024; returns HTTP 403.
 
-> Moved to graveyard 2026-05-13 (DOC.3a). Factual API deprecation; Spotify enforces 403. Phosphene's audio analysis is now self-computed via MIRPipeline + Beat This! (D-013, D-077). No re-test expected — Spotify will not restore the endpoint.
+> Moved to graveyard 2026-05-13 (DOC.3a). Factual API deprecation; Spotify enforces 403. Uzume's audio analysis is now self-computed via MIRPipeline + Beat This! (D-013, D-077). No re-test expected — Spotify will not restore the endpoint.
 
 ---
 
@@ -75,7 +75,7 @@ For entries describing **tech that may have evolved since the original observati
 
 **Original entry:** Complex tensor ops in HTDemucs block CoreML conversion.
 
-> Moved to graveyard 2026-05-13 (DOC.3a). Last verified pre-CoreML 7.x. CoreML has matured significantly since the original observation (Apple shipped expanded complex-tensor support in iOS 17 / macOS 14, and MLX in 2024+). Not actively blocking — Phosphene uses Open-Unmix HQ via MPSGraph (D-009, D-010). Re-test if a future session has reason to revisit HTDemucs or other Demucs-family models for stem separation.
+> Moved to graveyard 2026-05-13 (DOC.3a). Last verified pre-CoreML 7.x. CoreML has matured significantly since the original observation (Apple shipped expanded complex-tensor support in iOS 17 / macOS 14, and MLX in 2024+). Not actively blocking — Uzume uses Open-Unmix HQ via MPSGraph (D-009, D-010). Re-test if a future session has reason to revisit HTDemucs or other Demucs-family models for stem separation.
 
 ### #13 — End-to-end CoreML audio separation models
 
@@ -95,7 +95,7 @@ For entries describing **tech that may have evolved since the original observati
 
 **Original entry:** Raw `MLMultiArray.dataPointer` with ANE Float16 outputs — padded strides cause SIGSEGV.
 
-> Moved to graveyard 2026-06-11 (DOC.4). A CoreML-API gotcha for an API Phosphene does not use: D-009 chose MPSGraph over CoreML for all ML inference, and no source file imports CoreML (verified at move time). Companion of #12/#13 above. Re-instate as an active Failed Approach only if a future session revisits CoreML.
+> Moved to graveyard 2026-06-11 (DOC.4). A CoreML-API gotcha for an API Uzume does not use: D-009 chose MPSGraph over CoreML for all ML inference, and no source file imports CoreML (verified at move time). Companion of #12/#13 above. Re-instate as an active Failed Approach only if a future session revisits CoreML.
 
 ### #20 — CoreML ANE outputs with bindMemory(to: Float.self)
 

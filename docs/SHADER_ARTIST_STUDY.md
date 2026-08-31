@@ -1,10 +1,10 @@
 # Shader Artists to Study — Preset Inspiration Reference
 
-**Purpose:** A curated, source-backed study list of 3D / GPU shader artists for Matt + Claude Code to raise Phosphene's preset visual quality. Scoped per Matt's direction: a *balanced* survey across raymarching/SDF, particles/flow-fields, and feedback/demoscene; *includes* node-based real-time (TouchDesigner/Notch/vvvv/Max) alongside portable GLSL; *balances* pure visual-craft masters with audio-reactive specialists.
+**Purpose:** A curated, source-backed study list of 3D / GPU shader artists for Matt + Claude Code to raise Uzume's preset visual quality. Scoped per Matt's direction: a *balanced* survey across raymarching/SDF, particles/flow-fields, and feedback/demoscene; *includes* node-based real-time (TouchDesigner/Notch/vvvv/Max) alongside portable GLSL; *balances* pure visual-craft masters with audio-reactive specialists.
 
 **Method:** Five parallel web-research passes (one per domain), then adversarial verification of the load-bearing claims (licenses, handles, technique attributions). Confirmed vs. flagged items are noted in [§Verification](#verification--confidence). The four references already studied in-house — Inigo Quilez, Robert Leitl, Robert Hodgin/Flight404, Rama Hoetzlein — are deliberately *not* re-recommended as headline finds; everything below is net-new, with their key resources noted only where another artist builds on them.
 
-> **Read [§Licensing reality](#licensing-reality--read-before-vendoring) first.** Several of the best resources are non-commercial or copyleft. Phosphene is MIT-licensed (per `CLAUDE.md`), so *what you can paste* vs. *what you must re-implement* differs by source, and it matters.
+> **Read [§Licensing reality](#licensing-reality--read-before-vendoring) first.** Several of the best resources are non-commercial or copyleft. Uzume is MIT-licensed (per `CLAUDE.md`), so *what you can paste* vs. *what you must re-implement* differs by source, and it matters.
 
 ---
 
@@ -14,7 +14,7 @@
 |---|---|---|---|---|
 | 1 | **Mercury (`hg_sdf`)** | Raymarch/SDF | Domain-fold + chamfer/column/stair boolean operators = a huge free expansion of geometry/material vocabulary | ✅ MIT option |
 | 2 | **Sage Jenson "mxsage" + Étienne Jacob "Bleuje"** | Feedback/agent | Physarum "36 Points" agent-deposit loop — a genuinely *new* texture substrate (feedback-on-agents, not feedback-on-noise) | ⚠️ CC-BY-NC-SA (re-implement) |
-| 3 | **Keijiro Takahashi** | Particles | The whole "audio band-bank → smoothed envelope → attribute-map → instanced draw" architecture — closest existing code to what Phosphene builds | ✅ MIT/Unlicense |
+| 3 | **Keijiro Takahashi** | Particles | The whole "audio band-bank → smoothed envelope → attribute-map → instanced draw" architecture — closest existing code to what Uzume builds | ✅ MIT/Unlicense |
 | 4 | **Xor (GM Shaders)** | Feedback/raymarch | Layered-rotated-sine "turbulence" as a drop-in domain-warp for feedback-UV lookups — Milkdrop trails with no fluid pass | ✅ tutorials, re-implement |
 | 5 | **nimitz (`@stormoid`)** | Raymarch/fluid | Few-evaluations-per-step volumetric integration + blue-noise temporal reuse; "Chimera's Breath" curl-in-alpha fluid | ⚠️ Shadertoy (re-implement) |
 | 6 | **Ryan Geiss (Milkdrop)** | Audio/feedback | The `per_frame`/`per_pixel` 32×24 grid-warp model — proven, most-deployed music-visual hierarchy ever shipped | ✅ docs/source |
@@ -27,7 +27,7 @@ If a single sentence summarizes the whole report: **vendor `hg_sdf` now; prototy
 
 ## Licensing reality — read before vendoring
 
-Phosphene ships under MIT and the team vendors references (FA #73 "port the reference"). Two distinct things are governed differently:
+Uzume ships under MIT and the team vendors references (FA #73 "port the reference"). Two distinct things are governed differently:
 
 - **Algorithms/techniques are not copyrightable.** You can always *re-implement* a technique (Gray-Scott + advection, 36-Points parameter mapping, curl-noise) in your own Metal code regardless of the reference's license. This is the default path for anything below marked "re-implement."
 - **Specific code expression is copyrightable.** Pasting someone's GLSL/MSL verbatim is bound by their license.
@@ -55,7 +55,7 @@ Where "visual quality" concentrates: lighting, materials, fog, soft shadows, geo
 - **Steal (port verbatim — plain GLSL → MSL is trivial):**
   - **Domain operators** for near-free repetition: `pMod1/2/3` (mirror grids), `pModPolar` (radial), `pModInterval1` (bounded), `pModMirror2`. Cheapest route to visual density.
   - **Boolean operators beyond min/max:** `fOpUnionRound` (the smooth-min you already use) *plus* `fOpUnionChamfer / Columns / Stairs`, `fOpPipe / Groove / Engrave / Tongue` — each a different **bevel/seam aesthetic** at the join. A large, free material vocabulary expansion.
-  - **The Lipschitz discipline** ("never multiply a distance to fix gradients; keep gradient ≤ 1") — directly relevant to Phosphene's normal-flip / dot-pattern artifact class (FA #64).
+  - **The Lipschitz discipline** ("never multiply a distance to fix gradients; keep gradient ≤ 1") — directly relevant to Uzume's normal-flip / dot-pattern artifact class (FA #64).
 - **Where:** <https://mercury.sexy/hg_sdf/> · GLSL: <https://mercury.sexy/hg_sdf/hg_sdf.glsl> · NVScene 2015 talk: youtube `s8nFqwOho-s`
 - **License:** dual **MIT OR CC-BY-NC-4.0** since 2021-07-28 — take the MIT option and vendor as a Metal SDF header. *(Verified on the page.)*
 
@@ -82,12 +82,12 @@ Where "visual quality" concentrates: lighting, materials, fog, soft shadows, geo
 
 ### Sebastian Aaltonen — production SDF rendering (Claybook)
 - **Who:** Senior graphics engineer (ex-Ubisoft/Unity). GDC 2018 talk on Claybook's GPU SDF sim + raytracing — the authoritative source for making SDF rendering *robust*.
-- **Steal:** **Improved SDF soft-shadow penumbra** — estimate the closest point between the current and previous march samples (triangulate the two) to compute the penumbra term, killing the banding the classic iq `rmshadows` term shows at sharp corners. Direct upgrade to Phosphene's soft-shadow pass. ("Sharp at contact, soft at distance"; ran on Switch.)
+- **Steal:** **Improved SDF soft-shadow penumbra** — estimate the closest point between the current and previous march samples (triangulate the two) to compute the penumbra term, killing the banding the classic iq `rmshadows` term shows at sharp corners. Direct upgrade to Uzume's soft-shadow pass. ("Sharp at contact, soft at distance"; ran on Switch.)
 - **Where:** slides <https://ubm-twvideo01.s3.amazonaws.com/o1/vault/gdc2018/presentations/Aaltonen_Sebastian_GPU_Based_Clay.pdf> · X @SebAaltonen
 
 ### Also in this domain (confirmed, narrower)
 - **Mikael Hvidtfeldt Christensen — Syntopia / Fragmentarium:** the definitive **distance-estimated fractal** reference (mandelbulb/mandelbox/KIFS) with full DE derivations + a Preetham atmospheric sky. 8-part series from <https://blog.hvidtfeldts.net/index.php/2011/06/distance-estimated-3d-fractals-part-i/>. Port the DE + folding + sky for fractal/atmospheric presets.
-- **Dave Hoskins — "Hash without Sine":** sine-free, **precision-portable** GPU hashes (sine-hashes break across GPU generations) — adopt as Phosphene's canonical Metal noise seed across Apple GPUs. <https://www.shadertoy.com/view/4djSRW>
+- **Dave Hoskins — "Hash without Sine":** sine-free, **precision-portable** GPU hashes (sine-hashes break across GPU generations) — adopt as Uzume's canonical Metal noise seed across Apple GPUs. <https://www.shadertoy.com/view/4djSRW>
 - **mrange — `glsl-snippets` (CC0):** apollonian/truchet/kaleidoscope psychedelia — *exactly* the audio-visualizer aesthetic, and CC0 so paste-able. <https://github.com/mrange/glsl-snippets>
 - **Alexander Alekseev (TDM) — "Seascape":** the reference procedural-ocean heightfield-march (octave noise + Fresnel spec). <https://www.shadertoy.com/view/Ms2SD1> (⚠️ CC-BY-NC-SA — re-implement for shipping).
 - **Fabrice Neyret — "Shadertoy Unofficial" blog:** deepest catalog of branchless/cheap GLSL reformulations and AA tricks; mine when a preset is over frame budget. <https://shadertoyunofficial.wordpress.com/>
@@ -103,9 +103,9 @@ GPU sims, curl-noise advection, flocking, fluids. (Hodgin/Hoetzlein are in-house
 
 ### Keijiro Takahashi — **top grab for audio-reactive GPU VFX**
 - **Who:** Tokyo graphics toolmaker; the single most prolific publisher of audio-reactive GPU-VFX *source* (MIT/Unlicense, `github.com/keijiro`). Unity/HLSL, but compute + signal-processing patterns translate almost line-for-line to Metal.
-- **Signature:** Crisp, restrained, "instrumented" point-cloud/particle work driven by tightly-filtered audio bands, not raw onsets — matches Phosphene's "continuous energy is primary" doctrine.
+- **Signature:** Crisp, restrained, "instrumented" point-cloud/particle work driven by tightly-filtered audio bands, not raw onsets — matches Uzume's "continuous energy is primary" doctrine.
 - **Steal:**
-  - **LASP / LaspVfx** — low-latency filter-bank → smoothed band envelopes → VFX. Exactly the Layer-1 continuous-energy routing Phosphene favors; read its smoothing/peak-follow design. <https://github.com/keijiro/LaspVfx>
+  - **LASP / LaspVfx** — low-latency filter-bank → smoothed band envelopes → VFX. Exactly the Layer-1 continuous-energy routing Uzume favors; read its smoothing/peak-follow design. <https://github.com/keijiro/LaspVfx>
   - **Smrvfx** — bake an animating mesh into position+velocity **attribute maps** each frame, then emit/advect particles from the surface. Port: render geometry to a position texture, sample it in the particle kernel → emit particles off any SDF/mesh surface. <https://github.com/keijiro/Smrvfx>
   - **Pcx / Rsvfx** — point-stream → position/color map → instanced-mesh source: the canonical instanced-point pattern at scale. <https://github.com/keijiro/Rsvfx>
 - **Take:** the entire "audio band-bank → smoothed envelope → attribute-map → instanced draw" architecture.
@@ -126,11 +126,11 @@ GPU sims, curl-noise advection, flocking, fluids. (Hodgin/Hoetzlein are in-house
 - **Where:** <https://github.com/dli/fluid> · <https://github.com/dli/waves> · <https://david.li/>
 
 ### Also in this domain (confirmed)
-- **Memo Akten — `ofxMSAFluid` (MIT):** the cleanest readable *minimal* stable-fluids loop (Jos-Stam), and the **velocity-field-as-shared-resource** pattern — one fluid sim drives both a dye texture and a particle advection kernel. Directly defuses Phosphene's "two layers fighting" failure (FA #67): one velocity field, many consumers. <https://github.com/memoakten/ofxMSAFluid>
+- **Memo Akten — `ofxMSAFluid` (MIT):** the cleanest readable *minimal* stable-fluids loop (Jos-Stam), and the **velocity-field-as-shared-resource** pattern — one fluid sim drives both a dye texture and a particle advection kernel. Directly defuses Uzume's "two layers fighting" failure (FA #67): one velocity field, many consumers. <https://github.com/memoakten/ofxMSAFluid>
 - **Matthias Müller / *Ten Minute Physics* (MIT):** **Position-Based Fluids** (stable, large-timestep SPH) for cohesive droplets/splashes, plus a GPU-friendly **spatial-hash neighbor grid** reusable across SPH *and* flocking. <https://matthias-research.github.io/pages/tenMinutePhysics/>
 - **Cornusammonis — Shadertoy fluid/RD virtuoso:** **multiscale MIP-pyramid fluid** (propagate pressure across mip levels instead of many Jacobi iterations) and **reaction-diffusion coupled with advection**. <https://www.shadertoy.com/user/cornusammonis> (also Domain 3).
 - **three.js GPGPU birds:** the canonical compact ping-pong flocking-on-textures example; a clean cross-check against the in-house Flock2 work. <https://github.com/mrdoob/three.js/blob/master/examples/webgl_gpgpu_birds.html>
-- **Foundational papers to keep on hand:** Bridson, *Curl-Noise for Procedural Fluid Flow* (SIGGRAPH 2007) — the exact divergence-free curl-noise Phosphene already uses; and GPU Gems Ch.38.
+- **Foundational papers to keep on hand:** Bridson, *Curl-Noise for Procedural Fluid Flow* (SIGGRAPH 2007) — the exact divergence-free curl-noise Uzume already uses; and GPU Gems Ch.38.
 
 ---
 
@@ -146,7 +146,7 @@ The Milkdrop lineage: multi-pass buffer feedback, organic growth, procedural tex
   - **"36 Points" parameterization:** make the four classic params **functions of the locally-sensed trail value `x`**: `sensorDistance = p1 + p2·x^p3` (same shape for angle/rotation/move) → 12 tunable params (20 total) from one kernel. *This* is the move that turns "a slime sim" into a tunable family — perfect for audio-driven per-section variation (map `bassDev`/energy → deposit amount, rotation angle, or the `x`-exponents to make the network bloom/tighten on the beat).
   - **Bleuje's 4-shader structure** (verified): reset counters → particle move + `atomicAdd` → deposit `sqrt(count)·f` + colorize → diffusion+decay; two-channel (trail + delayed-trail) **color-by-rate-of-change**; an inertia/velocity variant. Runs **5.8M particles @ 60fps on an RTX 2060** — comfortably within Apple-Silicon reach at preset resolutions.
 - **Where:** Sage <https://www.sagejenson.com/36points/> · process write-up <https://n-e-r-v-o-u-s.com/blog/?p=9137> · **Bleuje (the copy-ready reference)** <https://bleuje.com/physarum-explanation/> · repo <https://github.com/Bleuje/physarum-36p>
-- **⚠️ License:** Sage's code + Bleuje's article are **CC-BY-NC-SA 3.0** — re-implement the algorithm in your own Metal kernels (the technique is free); don't paste their GLSL into MIT Phosphene.
+- **⚠️ License:** Sage's code + Bleuje's article are **CC-BY-NC-SA 3.0** — re-implement the algorithm in your own Metal kernels (the technique is free); don't paste their GLSL into MIT Uzume.
 
 ### Xor — GM Shaders — **top grab for cheap feedback craft**
 - **Who:** Author of *GM Shaders Mini* — short, rigorous, copy-pasteable tutorials aimed at "look great cheaply in real time."
@@ -159,10 +159,10 @@ The Milkdrop lineage: multi-pass buffer feedback, organic growth, procedural tex
 - **Where:** <https://www.shadertoy.com/user/cornusammonis>
 
 ### Demoscene craft + tooling
-- **NuSan — live-coded multipass:** value is the **live-coding corpus** — how a complete look (incl. multipass feedback "zoomers" + particles) is assembled from a blank fragment shader in minutes. A model for keeping each Phosphene preset *tight* rather than 2000-line monoliths. <https://nusan.fr/demoscene/livecoding/>
-- **ctrl-alt-test (Laurent "LLB" Le Brun, "Zavie") — 64k texture synthesis:** the **"Texturing a 64kB intro"** / *Immersion* making-of series is a masterclass in procedural-material layering — the exact "≥4 noise octaves, ≥3 materials" discipline Phosphene's `SHADER_CRAFT` floor demands. Also **Shader Minifier** (open source). <https://www.ctrl-alt-test.fr/category/techniques/>
+- **NuSan — live-coded multipass:** value is the **live-coding corpus** — how a complete look (incl. multipass feedback "zoomers" + particles) is assembled from a blank fragment shader in minutes. A model for keeping each Uzume preset *tight* rather than 2000-line monoliths. <https://nusan.fr/demoscene/livecoding/>
+- **ctrl-alt-test (Laurent "LLB" Le Brun, "Zavie") — 64k texture synthesis:** the **"Texturing a 64kB intro"** / *Immersion* making-of series is a masterclass in procedural-material layering — the exact "≥4 noise octaves, ≥3 materials" discipline Uzume's `SHADER_CRAFT` floor demands. Also **Shader Minifier** (open source). <https://www.ctrl-alt-test.fr/category/techniques/>
 - **Flopine (Cookie Collective) — live shader craft:** compact distortion/palette/repetition idioms and a teaching-grade view of size-limited shader craft; good source for "preset-author rules." <https://www.shadertoy.com/user/Flopine>
-- **Fabrice Neyret — the multipass reference backbone:** the definitive write-ups on **how to use buffers correctly** — precompute at `iFrame==0`, ping-pong patterns, the gotchas. Read before finalizing Phosphene's Buffer-A→B slot conventions. <https://shadertoyunofficial.wordpress.com/>
+- **Fabrice Neyret — the multipass reference backbone:** the definitive write-ups on **how to use buffers correctly** — precompute at `iFrame==0`, ping-pong patterns, the gotchas. Read before finalizing Uzume's Buffer-A→B slot conventions. <https://shadertoyunofficial.wordpress.com/>
 - **Sebastian Lague — "Coding Adventure: Ant and Slime":** the most beginner-readable Physarum (Unity compute, clean source) if Bleuje's is too dense. <https://github.com/SebLague/Slime-Simulation>
 
 ---
@@ -179,7 +179,7 @@ Great aesthetics + teaching; techniques re-derived into Metal. All net-new vs. t
 
 ### The Interactive & Immersive HQ — Matthew Ragan + Elburz Sorkhabi (TD)
 - **Who:** The most systematic TD education operation (Elburz authored the first TouchDesigner book; Matthew Ragan, 100+ tutorials).
-- **Steal:** **optical-flow-driven particle advection** — particles ride a per-pixel motion field derived from incoming video (motion vectors → velocity field → particle update in a Metal compute kernel). This is the clearest *net-new* technique not obviously in Phosphene's stack. Their open GitHub also documents **Shadertoy→node porting conventions** (uniform/coordinate mapping) useful for sanity-checking your re-derivations.
+- **Steal:** **optical-flow-driven particle advection** — particles ride a per-pixel motion field derived from incoming video (motion vectors → velocity field → particle update in a Metal compute kernel). This is the clearest *net-new* technique not obviously in Uzume's stack. Their open GitHub also documents **Shadertoy→node porting conventions** (uniform/coordinate mapping) useful for sanity-checking your re-derivations.
 - **Where:** <https://interactiveimmersive.io/blog/touchdesigner-lessons/touchdesigner-gpu-particles/> · GitHub <https://github.com/interactiveimmersivehq/Introduction-to-touchdesigner>
 
 ### RayTK — Tommy Etkin / "t3kt" (TD, open source) — **FA #73 port candidate**
@@ -189,7 +189,7 @@ Great aesthetics + teaching; techniques re-derived into Metal. All net-new vs. t
 
 ### Also in this domain (confirmed)
 - **Simon Alexander-Adams "polyhop" (TD):** **seamless looping-noise phase trick** (perfect loops for idle/transition states) and a **CHOP-data → per-instance attribute buffer** pattern that maps to Metal instanced draws. <https://www.simonaa.media/tutorials-articles>
-- **Kevin Zhu (Notch):** **"FFT-as-texture, sampled by many consumers"** routing (mirrors Phosphene's Layer-2 spectrum-as-buffer rule) + **velocity-magnitude attribute shading** for particles (trivial in Metal, big payoff). Free `.dfx` project files. <https://kevzhu.com/tutorials>
+- **Kevin Zhu (Notch):** **"FFT-as-texture, sampled by many consumers"** routing (mirrors Uzume's Layer-2 spectrum-as-buffer rule) + **velocity-magnitude attribute shading** for particles (trivial in Metal, big payoff). Free `.dfx` project files. <https://kevzhu.com/tutorials>
 - **Paketa12 (TD, GLSL):** texture-encoded particle state (pos/vel in textures) advected by a sampled flow field — ports ~1:1 to Metal ping-pong. <https://alltd.org/uploader/paketa12/>
 - **Federico Foderaro "Amazing Max Stuff" (Max/Jitter):** 270+ tutorials; the GEN breakdowns show an effect as per-sample math *before* you write the kernel, and `jit.catch~` reinforces the audio→matrix→texture pattern. <https://www.federicofoderaro.com/max-msp-jitter-tutorials.html>
 - **Torin Blankensmith — Shader Park (TD + WebGL):** a high-level procedural-SDF authoring API (JS→GLSL) — a second readable SDF reference alongside RayTK. <https://shaderpark.com>
@@ -204,7 +204,7 @@ How top artists map audio→visual so it feels "locked."
 ### Olivia Jack — Hydra — **top audio pick (the contract to mirror)**
 - **Who:** Creator of Hydra, a livecoded browser video-synth on WebGL framebuffers; one of the most-used open AV systems in the livecoding scene.
 - **Steal (the API *is* a battle-tested audio→param spec):**
-  - **Binned FFT as the primary interface:** `a.setBins(n)` → `a.fft[i]` returns a **normalized 0–1 per band** — exactly Phosphene's "continuous energy bands as default driver," shipped as the idiomatic path (not raw onsets).
+  - **Binned FFT as the primary interface:** `a.setBins(n)` → `a.fft[i]` returns a **normalized 0–1 per band** — exactly Uzume's "continuous energy bands as default driver," shipped as the idiomatic path (not raw onsets).
   - **Per-band temporal smoothing** `a.setSmooth(0.8)` (0 = jumpy, 1 = frozen) — your attack/decay envelope primitive.
   - **Calibration:** `a.setCutoff()` (noise-gate floor) + `a.setScale()` (range) — a hand-rolled AGC-lite worth comparing against your deviation-primitive approach.
   - Analysis delegated to **Meyda** (RMS, centroid, rolloff, flux, MFCC, chroma) — a good checklist for your Layer-3 features.
@@ -213,17 +213,17 @@ How top artists map audio→visual so it feels "locked."
 
 ### Ryan Geiss — Milkdrop
 - **Who:** Author of Milkdrop (the foundational visualizer projectM reimplements). The team knows the lineage; the *specific* mechanics are worth porting precisely.
-- **Steal:** the **two-stage model** — `per_frame` (once/frame: set global warp/zoom/rot/decay from FFT bass/mid/treble + beat) and `per_pixel` (on a **32×24 grid**, warp per vertex with **bilinear interpolation**) → cheap, smooth, beat-locked deformation. Maps onto (per-frame uniforms) + (vertex-grid warp in a Metal mesh/compute pass). His page is a proven default palette (zoom, rot, warp, cx/cy, decay) to seed presets — and independent validation of Phosphene's continuous-energy-primary + beat-as-accent hierarchy in the most-deployed visualizer ever.
+- **Steal:** the **two-stage model** — `per_frame` (once/frame: set global warp/zoom/rot/decay from FFT bass/mid/treble + beat) and `per_pixel` (on a **32×24 grid**, warp per vertex with **bilinear interpolation**) → cheap, smooth, beat-locked deformation. Maps onto (per-frame uniforms) + (vertex-grid warp in a Metal mesh/compute pass). His page is a proven default palette (zoom, rot, warp, cx/cy, decay) to seed presets — and independent validation of Uzume's continuous-energy-primary + beat-as-accent hierarchy in the most-deployed visualizer ever.
 - **Where:** <https://www.geisswerks.com/milkdrop/milkdrop.html>
 
 ### Robert Henke (Monolake) — Lumière — **the principle behind "locked"**
 - **Who:** Co-creator of Ableton Live; as Monolake, a foundational precise-AV figure with unusually detailed public technical write-ups.
-- **Steal (concept):** **shared control signal for sound and image** — Henke derives laser motion from the *same* control voltages as the audio, so sync is *structural, not after-the-fact*. The Phosphene translation: architect **"audiovisual events"** as first-class objects where a single envelope/phase (e.g., your cached `BeatGrid` phase) feeds *both* an audio-aligned accent and its visual mark in the same frame. This is the principled version of your Layer-4 "build beat-locked motion on the cached grid, not live onsets" rule.
+- **Steal (concept):** **shared control signal for sound and image** — Henke derives laser motion from the *same* control voltages as the audio, so sync is *structural, not after-the-fact*. The Uzume translation: architect **"audiovisual events"** as first-class objects where a single envelope/phase (e.g., your cached `BeatGrid` phase) feeds *both* an audio-aligned accent and its visual mark in the same frame. This is the principled version of your Layer-4 "build beat-locked motion on the cached grid, not live onsets" rule.
 - **Where:** <https://roberthenke.com/> · Ableton interview <https://www.ableton.com/en/blog/robert-henke-lumiere-lasers-interview/>
 
 ### Also in this domain (confirmed)
-- **Memo Akten — continuous-control thesis:** his PhD argues meaningful control of a generative system needs *continuous, smooth* mapping rather than discrete triggers — independent corroboration of Phosphene's "continuous energy beats raw onsets" from the ML side. Plus `ofxMSAFluid` force-injection (route `bassDev`/`drumsEnergyDev` → impulse, centroid → dye color). <https://www.memo.tv/>
-- **Martijn Steinrucken — the audio-texture convention:** Shadertoy's **512×2 audio texture (row 0 = FFT, row 1 = waveform)**. Adopt the row layout as Phosphene's GPU audio-texture convention and the entire Shadertoy audio-shader corpus drops in near-verbatim.
+- **Memo Akten — continuous-control thesis:** his PhD argues meaningful control of a generative system needs *continuous, smooth* mapping rather than discrete triggers — independent corroboration of Uzume's "continuous energy beats raw onsets" from the ML side. Plus `ofxMSAFluid` force-injection (route `bassDev`/`drumsEnergyDev` → impulse, centroid → dye color). <https://www.memo.tv/>
+- **Martijn Steinrucken — the audio-texture convention:** Shadertoy's **512×2 audio texture (row 0 = FFT, row 1 = waveform)**. Adopt the row layout as Uzume's GPU audio-texture convention and the entire Shadertoy audio-shader corpus drops in near-verbatim.
 - **Tarik Barri — Versum:** object = audiovisual atom; **distance-to-virtual-mic → gain**. Inverted, this is a **visual-salience model driven by audio** — place/scale scene elements by which stems are loudest, so the visible composition tracks the arrangement (relevant to the Orchestrator's emotional arc). Paper: <https://www.icad.org/Proceedings/2009/Barri2009.pdf>
 - **Char Stiles — minimal audio-reactive shaders:** her `.bands` workshop `.frag` files are a corpus of "the smallest thing that feels locked" — good preset-author reference + test fixtures. <https://github.com/CODAME/Shaders-Workshop>
 - **Andrew Benson — Jitter Recipes:** each "recipe" is a discrete (audio-feature → GPU-effect) mapping; good for feedback-slab techniques driven by audio. <https://cycling74.com/articles/artist-focus-andrew-benson>
@@ -235,9 +235,9 @@ How top artists map audio→visual so it feels "locked."
 
 These recur across multiple domains — strong signal they're worth standardizing:
 
-1. **One shared velocity field, many consumers.** Run one fluid/curl-noise sim into a velocity texture; advect dye *and* particles by sampling it (Akten, Cornusammonis). This is the architectural fix for Phosphene's "two layers fighting" failure (FA #67) — and it appears independently in three artists.
+1. **One shared velocity field, many consumers.** Run one fluid/curl-noise sim into a velocity texture; advect dye *and* particles by sampling it (Akten, Cornusammonis). This is the architectural fix for Uzume's "two layers fighting" failure (FA #67) — and it appears independently in three artists.
 2. **State-in-textures + fixed-dt sim / variable-dt render** (Nop) — the robust GPGPU particle backbone.
-3. **"Audio spectrum as a texture, sampled by many consumers."** Appears independently in Notch (Kev Zhu FFT-texture), Jitter (Foderaro `jit.catch~`), and Hydra — cross-validates Phosphene's existing Layer-2 spectrum-as-buffer rule. Standardize the **512×2 FFT/waveform layout** (Steinrucken/Shadertoy) so community shaders are reusable.
+3. **"Audio spectrum as a texture, sampled by many consumers."** Appears independently in Notch (Kev Zhu FFT-texture), Jitter (Foderaro `jit.catch~`), and Hydra — cross-validates Uzume's existing Layer-2 spectrum-as-buffer rule. Standardize the **512×2 FFT/waveform layout** (Steinrucken/Shadertoy) so community shaders are reusable.
 4. **Binned normalized energy + per-band smoothing + cutoff/scale** as the canonical audio→param contract (Hydra). Compare against your deviation primitives.
 5. **Grid-warp + bilinear-interpolation feedback** (Milkdrop 32×24) for cheap, smooth, beat-locked deformation; and **rotated-sine turbulence domain-warp** (Xor) on the feedback-UV lookup for Milkdrop trails with no fluid pass.
 6. **Spatial-hash neighbor grid** (Müller) — one data structure reusable across SPH fluid *and* flocking.
@@ -296,4 +296,4 @@ These recur across multiple domains — strong signal they're worth standardizin
 
 ---
 
-*Compiled June 26, 2026. Net-new finds beyond the in-house four (Quilez, Leitl, Hodgin, Hoetzlein). Techniques are free to re-implement; check the per-source license before pasting code into MIT-licensed Phosphene.*
+*Compiled June 26, 2026. Net-new finds beyond the in-house four (Quilez, Leitl, Hodgin, Hoetzlein). Techniques are free to re-implement; check the per-source license before pasting code into MIT-licensed Uzume.*

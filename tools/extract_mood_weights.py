@@ -24,7 +24,7 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
 MLPACKAGE_DIR = os.path.join(
     PROJECT_ROOT,
-    "PhospheneEngine", "Sources", "ML", "Models", "MoodClassifier.mlpackage",
+    "UzumeEngine", "Sources", "ML", "Models", "MoodClassifier.mlpackage",
     "Data", "com.apple.CoreML",
 )
 WEIGHT_BIN = os.path.join(MLPACKAGE_DIR, "weights", "weight.bin")

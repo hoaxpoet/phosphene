@@ -24,7 +24,7 @@
 
 That is two specific features (sustained bass envelope; the downbeat/bar boundary) each paired with a specific, nameable visual behaviour (radial breathing; a ring blooming). It passes.
 
-**Gate 2 — Iconic subject deliverable at fidelity:** Yes. The radial-mandala/kaleidoscope register is (a) demonstrably reachable — Lumen Mosaic already ships a certified vivid backlit pattern-glass panel (proving Phosphene can hold crisp saturated symmetric geometry at fidelity), and (b) a *solved* register in shader literature (polar mirror-fold kaleidoscopes are a canonical Shadertoy form). Fidelity risk is low; this is a good first preset in the phase. We build within the achievable bar: crisp vector-clean symmetry + jewel palette + feedback depth, not photoreal materials.
+**Gate 2 — Iconic subject deliverable at fidelity:** Yes. The radial-mandala/kaleidoscope register is (a) demonstrably reachable — Lumen Mosaic already ships a certified vivid backlit pattern-glass panel (proving Uzume can hold crisp saturated symmetric geometry at fidelity), and (b) a *solved* register in shader literature (polar mirror-fold kaleidoscopes are a canonical Shadertoy form). Fidelity risk is low; this is a good first preset in the phase. We build within the achievable bar: crisp vector-clean symmetry + jewel palette + feedback depth, not photoreal materials.
 
 **Gate 3 — Infrastructure-feasible:** Yes. `mv_warp` is a shipped pass with two production references (Volumetric Lithograph, Gossamer). The per-preset state buffer for bloom rings uses the existing slot-6 mechanism (`setDirectPresetFragmentBuffer`, as NimbusState/GossamerState do). No new passes, no new contract.
 
@@ -120,7 +120,7 @@ Populate `docs/VISUAL_REFERENCES/mandala_engine/` per `docs/VISUAL_REFERENCES/_N
 
 ## Increment PG.1.1 — Mandala Engine scaffold + core motion + hero audio (preset increment)
 
-**Objective:** After this session, Phosphene has a new `mv_warp` preset "Mandala Engine" that renders a centered, N-fold, two-level recursively-folded mandala; breathes radially with the bass envelope and rotates slowly; blooms a concentric ring on each downbeat via cached-BeatGrid `bar_phase01`; renders a non-black idling mandala at silence; and is registered, compiling, loading, and covered by a multi-frame harness test. `certified` stays `false`. This is the reviewable v1 of the PG.1 arc in `PG_1_MANDALA_ENGINE.md §A9`.
+**Objective:** After this session, Uzume has a new `mv_warp` preset "Mandala Engine" that renders a centered, N-fold, two-level recursively-folded mandala; breathes radially with the bass envelope and rotates slowly; blooms a concentric ring on each downbeat via cached-BeatGrid `bar_phase01`; renders a non-black idling mandala at silence; and is registered, compiling, loading, and covered by a multi-frame harness test. `certified` stays `false`. This is the reviewable v1 of the PG.1 arc in `PG_1_MANDALA_ENGINE.md §A9`.
 
 ## 1. Skills to invoke (in order)
 - **`preset-session`** — before opening any `.metal` file or JSON sidecar (mandatory opener).
@@ -132,12 +132,12 @@ Populate `docs/VISUAL_REFERENCES/mandala_engine/` per `docs/VISUAL_REFERENCES/_N
 2. `docs/VISUAL_REFERENCES/mandala_engine/README.md` and every image in that folder.
 3. `docs/ARCHITECTURE.md §GPU Contract Details` (buffer/texture slots; the corrected fragment binding) and `§Presets` (the `mv_warp` three-pass description).
 4. `docs/SHADER_CRAFT.md §2.2` (coarse-to-fine order), `§3` (noise recipes), `§14` (authoring cheat sheet + §14.1 signal liveness).
-5. `PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` — the reference `mv_warp` preset (how `mvWarpPerFrame`/`mvWarpPerVertex` are written).
-6. `PhospheneEngine/Sources/Presets/Gossamer/GossamerState.swift` and `Nimbus/NimbusState.swift` — reference per-preset slot-6 state buffers (for the bloom-ring state).
-7. `PhospheneEngine/Sources/Presets/PresetLoader+WarpPreamble.swift` — the injected `mvWarp_*` fragments and the `mvWarpPerFrame`/`mvWarpPerVertex` forward declarations you must satisfy.
+5. `UzumeEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` — the reference `mv_warp` preset (how `mvWarpPerFrame`/`mvWarpPerVertex` are written).
+6. `UzumeEngine/Sources/Presets/Gossamer/GossamerState.swift` and `Nimbus/NimbusState.swift` — reference per-preset slot-6 state buffers (for the bloom-ring state).
+7. `UzumeEngine/Sources/Presets/PresetLoader+WarpPreamble.swift` — the injected `mvWarp_*` fragments and the `mvWarpPerFrame`/`mvWarpPerVertex` forward declarations you must satisfy.
 
 ## 3. Pre-flight invariants (a failed check stops the session)
-- `git status` clean on `main`; `swift test --package-path PhospheneEngine` green before any change (regression baseline).
+- `git status` clean on `main`; `swift test --package-path UzumeEngine` green before any change (regression baseline).
 - `docs/VISUAL_REFERENCES/mandala_engine/` is populated per `PG_1 §A7` and its `README.md` is written (mandatory-traits + anti-references). **If not, curate first (Matt-owned) or stop and report** — do not author blind (D-064 / FA #40).
 - `docs/ENGINEERING_PLAN.md` has a Phase PG section with a PG.1.1 row (add it in this session's docs task if absent — do not proceed to shader work without the plan row).
 - Confirm the current production preset count for `PresetLoaderCompileFailureTest` so you can bump it by exactly 1.
@@ -165,10 +165,10 @@ Populate `docs/VISUAL_REFERENCES/mandala_engine/` per `docs/VISUAL_REFERENCES/_N
 ## 6. Verification commands
 ```
 swiftlint lint --strict --config .swiftlint.yml
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
-swift test --package-path PhospheneEngine 2>&1
-swift test --package-path PhospheneEngine --filter "PresetLoaderCompileFailureTest|MandalaEngine|PresetRegressionTests"
-RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview 2>&1   # contact sheet
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' build 2>&1
+swift test --package-path UzumeEngine 2>&1
+swift test --package-path UzumeEngine --filter "PresetLoaderCompileFailureTest|MandalaEngine|PresetRegressionTests"
+RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview 2>&1   # contact sheet
 ```
 
 ## 7. Commit message templates (small commits; local `main` only; push only on Matt's "yes, push")

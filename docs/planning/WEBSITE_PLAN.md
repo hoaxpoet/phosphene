@@ -2,6 +2,12 @@
 
 *2026-08-09 · Public-beta website: promotion + education for users and contributors*
 
+> **Frozen RN.0 snapshot — not maintained here.** The live version of this document is owned by the
+> brand repository [`hoaxpoet/uzume-site`](https://github.com/hoaxpoet/uzume-site) (`docs/planning/`).
+> This copy exists as the rename's preserved evidence (RN.0) and is deliberately left as written.
+> RN.3 reconciled the two: the site's copies now carry this copy's registrar-corrected domain facts,
+> and this copy is not updated again. Read the site's version for anything current. (D-228)
+
 > The name is decided: **Uzume** (see NAMING_REPORT.md §Final Decision). References to "Phosphene" below mean the current app repo, pre-rename.
 
 ## 1. Decisions locked

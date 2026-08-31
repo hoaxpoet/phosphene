@@ -4,7 +4,7 @@
 Loads love_rehab.m4a via ffmpeg, runs Beat This!'s LogMelSpect, and writes the first 10
 frames (10 × 128 floats) as JSON to:
 
-    PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/beat_this_reference/
+    UzumeEngine/Tests/UzumeEngineTests/Fixtures/beat_this_reference/
         love_rehab_spect_reference.json
 
 Parameters match Beat This! defaults exactly:
@@ -31,9 +31,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "vendor" / "beat_this_repo
 
 from beat_this.preprocessing import LogMelSpect
 
-AUDIO_PATH = Path("PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a")
+AUDIO_PATH = Path("UzumeEngine/Tests/Fixtures/tempo/love_rehab.m4a")
 OUT_PATH = Path(
-    "PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/"
+    "UzumeEngine/Tests/UzumeEngineTests/Fixtures/"
     "beat_this_reference/love_rehab_spect_reference.json"
 )
 

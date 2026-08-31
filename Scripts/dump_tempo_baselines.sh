@@ -19,7 +19,7 @@ set -euo pipefail
 
 PHASE="${1:-baseline}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ENGINE="$ROOT/PhospheneEngine"
+ENGINE="$ROOT/UzumeEngine"
 FIXTURE_DIR="$ENGINE/Tests/Fixtures/tempo"
 DIAG_DIR="$ROOT/docs/diagnostics"
 RUNNER="$ENGINE/.build/release/TempoDumpRunner"

@@ -9,7 +9,7 @@
 
 ## 1. What this does, and what it does not
 
-Phosphene is billed for Git-LFS **storage** (and historically bandwidth — CLEAN.5.8, where CI checkouts burned 5.5× the 10 GB/mo quota in three days). Two separate things drive the bill, and they need separate fixes:
+Uzume is billed for Git-LFS **storage** (and historically bandwidth — CLEAN.5.8, where CI checkouts burned 5.5× the 10 GB/mo quota in three days). Two separate things drive the bill, and they need separate fixes:
 
 | | Fix | Status |
 |---|---|---|
@@ -31,16 +31,16 @@ Do **not** run this twice. Every rewrite orphans every clone, so batching is not
 | Target | Objects | In `IMG_REGEX` today? |
 |---|---|---|
 | `docs/VISUAL_REFERENCES/**` + `docs/diagnostics/**` rasters | 287 | yes |
-| `PhospheneEngine/Sources/ML/Weights/**/*.bin` | **468** | **yes — scope decided 2026-08-02** |
+| `UzumeEngine/Sources/ML/Weights/**/*.bin` | **468** | **yes — scope decided 2026-08-02** |
 | `docs/quality_reel.mp4` | 1 | no (still legitimately LFS) |
-| `PhospheneEngine/Sources/ML/Models/**/*.mlpackage` blobs | 11 | no — live, must survive |
+| `UzumeEngine/Sources/ML/Models/**/*.mlpackage` blobs | 11 | no — live, must survive |
 
 Counts are unique LFS objects referenced by history (`git lfs ls-files --all`), measured 2026-08-02. Earlier drafts said 479 weights; that is the file count on disk, which dedupes to 468 objects. 767 total today, 755 of them targeted.
 
 The weights are the larger object count and almost certainly the larger share of the bill. They are already out of the working tree (PUB.2) and ship as the `ml-weights-v1` Release asset, so **nothing depends on them remaining in history.** This is now applied — `IMG_REGEX` in `Scripts/reclaim-lfs-visual-refs.sh` reads:
 
 ```
-'(docs/(VISUAL_REFERENCES|diagnostics)/.*\.(jpg|jpeg|png|gif)|PhospheneEngine/Sources/ML/Weights/.*\.bin)$'
+'(docs/(VISUAL_REFERENCES|diagnostics)/.*\.(jpg|jpeg|png|gif)|UzumeEngine/Sources/ML/Weights/.*\.bin)$'
 ```
 
 Verify the new regex against a dry run and confirm `SHA256SUMS` survives — it is the manifest `fetch_weights.sh` verifies against, and losing it breaks every clone's ability to fetch weights. The script now asserts this directly, and aborts if either canary is missing.
@@ -67,7 +67,7 @@ Nothing below is optional. Item 4 is the one that saved the 2026-07-31 incident.
    ```
    Anything listed is local-only regardless of what its config says. Rescue it as patches *before* the rewrite — do not simply push it, because pushing old history re-references the very LFS objects you are trying to orphan:
    ```bash
-   git format-patch <merge-base>..<branch> -o ~/phosphene-<branch>-rescue
+   git format-patch <merge-base>..<branch> -o ~/uzume-<branch>-rescue
    ```
 
 2. **No open PRs you intend to merge.** PR head refs are rewritten; `refs/pull/*` are not (GitHub refuses). Merge or close first.
@@ -76,7 +76,7 @@ Nothing below is optional. Item 4 is the one that saved the 2026-07-31 incident.
 
 4. **Capture every current ref SHA — this is your undo.**
    ```bash
-   git ls-remote origin | tee ~/phosphene-refs-before-$(date -u +%Y%m%dT%H%M%SZ).txt
+   git ls-remote origin | tee ~/uzume-refs-before-$(date -u +%Y%m%dT%H%M%SZ).txt
    ```
    Keep it outside the repo. Also confirm the objects exist locally, because that is what recovery actually depends on:
    ```bash
@@ -107,7 +107,7 @@ Two ways forward:
 
   Record the exact prior state first, because the web UI will not restore it for you:
   ```bash
-  gh api repos/hoaxpoet/uzume/branches/main/protection > ~/phosphene-branch-protection-before.json
+  gh api repos/hoaxpoet/uzume/branches/main/protection > ~/uzume-branch-protection-before.json
   ```
   On 2026-08-03 the restore was done from memory and **silently dropped the required `fast-gate` check** — *"Require status checks"* went back on with an empty check list, which gates nothing. Verify with the same command afterwards and diff it, rather than trusting the checkboxes to look right.
 - **(b) Leave protection on and accept `main` is not rewritten.** Pointless: `main` still references every old object, so nothing becomes orphaned and the Support request has nothing to purge.
@@ -132,10 +132,10 @@ Confirm in the log, and do not proceed without all four:
 - `OK: CODE_AUDIT_2026-06-13.md still in tree` — the canary that text records survived;
 - the remaining-LFS list contains only what §2 said it should.
 
-The rewritten mirror is left in `$TMPDIR/phosphene-lfs-purge`. Inspect it directly before trusting it:
+The rewritten mirror is left in `$TMPDIR/uzume-lfs-purge`. Inspect it directly before trusting it:
 
 ```bash
-W=$TMPDIR/phosphene-lfs-purge
+W=$TMPDIR/uzume-lfs-purge
 git -C "$W" lfs ls-files --all | grep -cE 'VISUAL_REFERENCES|diagnostics'   # expect 0
 git -C "$W" cat-file -e HEAD:docs/VISUAL_REFERENCES/README.md && echo "READMEs survived"
 du -sh "$W"
@@ -190,14 +190,14 @@ This is a *restore*, not a merge. You are setting each ref back to the SHA it ha
    ```
 3. **Confirm the old commits are recoverable** — this is the whole ballgame. From a clone that has them:
    ```bash
-   awk '{print $1}' ~/phosphene-refs-before-*.txt | while read s; do
+   awk '{print $1}' ~/uzume-refs-before-*.txt | while read s; do
      git cat-file -e "$s^{commit}" 2>/dev/null || echo "MISSING $s"
    done
    ```
    Anything reported MISSING is gone once GitHub GCs it. If the pre-flight §3.4 capture was skipped, the force-push output itself lists every `old...new` pair — the left-hand side is what you need.
 4. **Restore in one push**, building the refspec from the captured file:
    ```bash
-   REFS=$(awk '{printf "+%s:%s ", $1, $2}' ~/phosphene-refs-before-*.txt)
+   REFS=$(awk '{printf "+%s:%s ", $1, $2}' ~/uzume-refs-before-*.txt)
    git push origin $REFS
    ```
 5. **Verify every ref**, not just a sample:
@@ -205,7 +205,7 @@ This is a *restore*, not a merge. You are setting each ref back to the SHA it ha
    while read -r sha ref; do
      actual=$(git ls-remote origin "$ref" | cut -c1-8)
      [ "$actual" = "${sha:0:8}" ] || echo "MISMATCH $ref: want ${sha:0:8} got $actual"
-   done < ~/phosphene-refs-before-*.txt
+   done < ~/uzume-refs-before-*.txt
    ```
 6. **Verify coherence, not just SHAs.** Matching SHAs can still leave a broken graph. The real check is that branches share ancestry with `main` again:
    ```bash
@@ -258,7 +258,7 @@ Ran clean. `main` moved, every ref applied, ancestry coherent.
 
 - The §3.1 local-only check misses a branch with a **dangling upstream**. See §3.1 — this nearly destroyed the same 4 ft3 commits for the second time in three days, and they were rescued as patches with minutes to spare.
 - **Required status checks block direct pushes**, not just merges, and the restore afterwards silently dropped `fast-gate`. See §4.
-- A **time-based doc gate** can fail CI on a tree nobody touched: `Scripts/rotate_docs.sh` reads local time while CI reads UTC, so on a boundary day it reports "nothing to move" while `fast-gate` fails. `PHOSPHENE_TODAY=YYYY-MM-DD` forces it. Budget for an unrelated CI failure mid-operation.
+- A **time-based doc gate** can fail CI on a tree nobody touched: `Scripts/rotate_docs.sh` reads local time while CI reads UTC, so on a boundary day it reports "nothing to move" while `fast-gate` fails. `UZUME_TODAY=YYYY-MM-DD` forces it. Budget for an unrelated CI failure mid-operation.
 
 **Not reclaimed, deliberately:** a 67.9 MB `StemSeparator.mlpackage/.../weight.bin` from the abandoned CoreML dependency still sits in history under `ML/Models/`. It was never an LFS object, so it costs clone size but nothing on the LFS bill. Removing it would mean a second rewrite, and §2 exists to say: not worth the disruption.
 

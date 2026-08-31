@@ -33,7 +33,7 @@ import os
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BB = os.path.join(REPO, "PhospheneEngine", "Tests", "Fixtures", "beatbench")
+BB = os.path.join(REPO, "UzumeEngine", "Tests", "Fixtures", "beatbench")
 TAPS, REF, OUT = (os.path.join(BB, d) for d in ("taps", "reference", "groundtruth"))
 ARBITRATIONS = os.path.join(BB, "arbitrations.json")
 
@@ -41,16 +41,16 @@ TOLERANCE_S = 0.070          # the ±70 ms window the whole program scores again
 CONFIRM_F = 0.80             # F at/above this = taps corroborated
 METRICAL_RATIOS = {2.0: "double", 0.5: "half", 3.0: "triple", 1.5: "3:2", 0.667: "2:3"}
 
-# Phosphene's own grid, for CONTEXT in the reconciliation report only — never an input
+# Uzume's own grid, for CONTEXT in the reconciliation report only — never an input
 # to ground truth (that would be circular).
 #
 # Values below are the full-track `BeatBench --mode offline-grid` reading, re-measured
 # 2026-08-27 at BUG102.1. They REPLACE a 2026-07-27 preview-clip snapshot that had gone
 # badly stale and was actively misleading: it recorded bleed at 174.6 and money at 123.2,
 # where the live analyzer reads 115.00 and 116.19. Anyone reading bleed's 174.6 out of a
-# groundtruth JSON would have concluded Phosphene sat at a THIRD metrical level, which is
+# groundtruth JSON would have concluded Uzume sat at a THIRD metrical level, which is
 # part of what made BUG-102 hard to see. Re-measure with BeatBench when the analyzer changes.
-PHOSPHENE_GRID = {
+UZUME_GRID = {
     # re-measured 2026-08-27 (BeatBench offline-grid, full track)
     "billie_jean": 116.88, "take_five": 169.24, "solsbury_hill": 102.68, "yyz": 233.61,
     "bohemian_rhapsody": 78.18, "bleed": 115.00, "clair_de_lune": 128.63,
@@ -255,7 +255,7 @@ def reconcile_track(track_id, suite):
         "beats_quality": beats_quality,
         "downbeats_quality": downs_quality,
         "downbeats_rejected": downs_rejected,
-        "phosphene_grid_bpm": PHOSPHENE_GRID.get(track_id),
+        "phosphene_grid_bpm": UZUME_GRID.get(track_id),
         "backends": backends,
         "extended_by": extended_by,
         "beats_s": beats_out, "downbeats_s": downbeats_out,

@@ -273,7 +273,7 @@ def main():
         "--weights-dir", "-w",
         default=os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "PhospheneEngine", "Sources", "ML", "Weights",
+            "UzumeEngine", "Sources", "ML", "Weights",
         ),
         help="Directory containing .bin files and manifest.json",
     )

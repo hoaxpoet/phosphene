@@ -30,14 +30,14 @@ Ten concrete traits, each with a verdict.
 | # | Trait in the source | Verdict | Rationale |
 |---|---|---|---|
 | 1 | **Beaded luminous ribbon** — a thin line plus a run of alpha-graded round sprites, so the stroke reads as beads on a thread rather than a drawn curve | **TAKE** | This is the register, and it is what the light-painting references (`01`, `02`) show real burning trails actually doing. It is also what makes the trail's age legible at a glance. |
-| 2 | **Neighbour-averaging relaxation over the point buffer** | **TAKE (structurally)** | The one mechanism worth taking as a *mechanism*, because it is what separates `01` from `10`. Re-expressed against Phosphene primitives per D-116 bullets 1–2; see §3 (design gated on §2 sign-off). |
+| 2 | **Neighbour-averaging relaxation over the point buffer** | **TAKE (structurally)** | The one mechanism worth taking as a *mechanism*, because it is what separates `01` from `10`. Re-expressed against Uzume primitives per D-116 bullets 1–2; see §3 (design gated on §2 sign-off). |
 | 3 | **Deep-space ground: near-black field with sparse parallax stars in three depth layers** | **TAKE** | Register. Our version reads star density and true-black level from `07` rather than from the source. |
 | 4 | **Soft violet nebular bloom, offset from centre** | **TAKE** | Register, and it is what keeps the frame from being a black rectangle with a squiggle in it. Hue family and spatial frequency read from `06`. |
 | 5 | **A bright point at the head of the stroke** | **TAKE, transform the bounds** | A burning trail must have a visible source; `03` is what one actually looks like at scale. What we do *not* take is its magnitude — see #9. |
 | 6 | **Stars dimmed behind the ribbon** | **TAKE** | A cheap, correct depth cue: it reads as the ribbon occluding the field. Costs nothing and prevents the stroke from looking pasted on. |
 | 7 | **Small-in-frame composition, figure tumbling in deep space** | **TAKE** | It is what makes the ribbon read as *hanging in the dark* rather than as a graphic. Composition is explicitly not our divergence axis (see §1.3), so we keep it. |
 | 8 | **The path — three damped oscillators re-seeded from random numbers on beats** | **LEAVE** | The source's actual weakness, and the D-121 divergence axis. Replaced wholesale in §3 by a path driven from the track's harmonic and spectral state. |
-| 9 | **Head flare — six-spoke lens flare, mid-band above a fixed threshold, unbounded magnitude, re-fires every hit** | **LEAVE the drive and the magnitude; TRANSFORM the form** | Three separate faults: (a) the flare saturates to near-full-frame white and erases the subject (`12`) — a fidelity failure before it is a safety one; (b) it re-fires on every hit with no refractory period, which is a photosensitivity failure Phosphene's gates will not pass; (c) it is driven by an *absolute threshold on an AGC-normalized band*, which is FA #31 / D-026 — the same kick reads differently across tracks. Witchlight keeps a bounded head burst (§5) driven from a deviation primitive. |
+| 9 | **Head flare — six-spoke lens flare, mid-band above a fixed threshold, unbounded magnitude, re-fires every hit** | **LEAVE the drive and the magnitude; TRANSFORM the form** | Three separate faults: (a) the flare saturates to near-full-frame white and erases the subject (`12`) — a fidelity failure before it is a safety one; (b) it re-fires on every hit with no refractory period, which is a photosensitivity failure Uzume's gates will not pass; (c) it is driven by an *absolute threshold on an AGC-normalized band*, which is FA #31 / D-026 — the same kick reads differently across tracks. Witchlight keeps a bounded head burst (§5) driven from a deviation primitive. |
 | 10 | **Per-segment hue from an arbitrary random unit vector** | **LEAVE** | The banding is pretty and carries nothing. Consequential half of the divergence axis: a bead's hue records the harmonic position at the moment it was laid down, so the ribbon's colour banding *is* the track's colour history. |
 
 Two things the source does that are worth naming as **explicitly not ours**, because they are the shape a careless WL.2 would drift into:
@@ -209,7 +209,7 @@ Specific musical feature: the harmonic position on the circle of fifths and its 
 
 Three mechanisms, in order.
 
-**(a) Heading — the harmonic steer, via a circular EMA.** `tonal_phase_fifths` is a ±π circular quantity and is far too noisy raw (median per-frame step 0.31–1.04 rad, §2.1). It is smoothed by the CR.1.2 / D-198 mechanism, which is already shipped and M7-validated in Phosphene: EMA the `sin` and `cos` separately at τ = 1.5 s and recombine with `atan2` — **never** EMA the raw sawtooth. Call the result φ̄.
+**(a) Heading — the harmonic steer, via a circular EMA.** `tonal_phase_fifths` is a ±π circular quantity and is far too noisy raw (median per-frame step 0.31–1.04 rad, §2.1). It is smoothed by the CR.1.2 / D-198 mechanism, which is already shipped and M7-validated in Uzume: EMA the `sin` and `cos` separately at τ = 1.5 s and recombine with `atan2` — **never** EMA the raw sawtooth. Call the result φ̄.
 
 **(b) Advance — bounded-curvature kinematics.** This is the rate-governance mechanism §2.3 item 3 demands, and it is the reason the same code cannot draw `01` on one track and `10` on the next.
 
@@ -404,7 +404,7 @@ The original spec said the opposite: *"the pen continues to advance at `v₀` wi
 Answered explicitly, with evidence, per `PRESET_SESSION_CHECKLIST.md` Part 2.
 
 **1. Iconic visual subject deliverable at fidelity — PASS, with evidence.**
-The subject is a beaded luminous stroke on a dark ground with a procedural star field. Evidence it is deliverable: (a) the inspiration source delivers exactly this register today and Matt's own render (`00`) is the proof — the gap between `00` and a Phosphene-quality version is a shading and composition problem, not a feasibility one; (b) Phosphene ships four certified presets built on the same shape — a CPU-side simulation feeding sprite/line geometry over a dark composite ground: **Filigree** (physarum trail), **Mitosis** / **Cytokinesis** (reaction–diffusion colonies), **Cymatic Resonance** (vibrating sand). None of them required a new render paradigm. Matt has flagged no fidelity gap on any of the four. This is **not** a representational-3D concept, so the standing "3D for physical metaphors, environments rendered not implied" bar (D-029) does not bite.
+The subject is a beaded luminous stroke on a dark ground with a procedural star field. Evidence it is deliverable: (a) the inspiration source delivers exactly this register today and Matt's own render (`00`) is the proof — the gap between `00` and a Uzume-quality version is a shading and composition problem, not a feasibility one; (b) Uzume ships four certified presets built on the same shape — a CPU-side simulation feeding sprite/line geometry over a dark composite ground: **Filigree** (physarum trail), **Mitosis** / **Cytokinesis** (reaction–diffusion colonies), **Cymatic Resonance** (vibrating sand). None of them required a new render paradigm. Matt has flagged no fidelity gap on any of the four. This is **not** a representational-3D concept, so the standing "3D for physical metaphors, environments rendered not implied" bar (D-029) does not bite.
 
 **2. Clear musical role — PASS, and it is the reason this concept exists.**
 The sentence is §3.0 and it names a specific musical feature (harmonic position on the circle of fifths and its rate of change; the bar downbeat) and a specific visual behaviour (the stroke turns where the harmony turns; a bead is set on each downbeat). It is falsifiable by a listener in two moves: replay the same track — the figure should be the same; play a different track — it should be a different *kind* of figure. The source fails both. The gate that killed Drift Motes (D-102) and Glass Brutalist (D-186) is the one this concept is strongest on.
@@ -417,7 +417,7 @@ The sentence is §3.0 and it names a specific musical feature (harmonic position
 
 ## 5. Flash-safety budget
 
-Designed up front, not tuned down later. Anti-reference `12` is what this section exists to prevent: in Matt's render roughly a fifth of sampled frames show the source's head flare saturating most of the frame to white, erasing the subject. That is a fidelity failure before it is a safety one, and Phosphene's gates would reject it.
+Designed up front, not tuned down later. Anti-reference `12` is what this section exists to prevent: in Matt's render roughly a fifth of sampled frames show the source's head flare saturating most of the frame to white, erasing the subject. That is a fidelity failure before it is a safety one, and Uzume's gates would reject it.
 
 **Standard.** WCAG 2.3.1 general flash, as implemented in `Renderer/FlashAnalyzer.swift`: a flash is a pair of opposing full-frame-mean relative-luminance changes of ≥ 0.10 where the darker state is < 0.80; content is unsafe above 3 flashes in any 1-second window. The gate harness drives a worst-case beat train at `FlashHarnessSupport.accentHz` = 4.5 Hz, 60 fps, 3 s.
 
@@ -455,7 +455,7 @@ Per `PRESET_SESSION_CHECKLIST.md` Part 2: level 1 = working code reference in a 
 | Mechanism | Level | Grounding |
 |---|---|---|
 | Beaded ribbon from a CPU point ring buffer drawn as alpha-graded sprites + a thin line | **1** | The inspiration source does exactly this and Matt's render (`00`) is the working proof. In-tree: `Filigree` (PhysarumGeometry), `Murmuration`, `Mitosis`, `CymaticResonance` all ship CPU-sim→sprite geometry through `ParticleGeometry`. |
-| Circular EMA on a ±π phase (EMA sin/cos → `atan2`) | **1** | Shipped and M7-validated in Phosphene at CR.1.2 / D-198, driving Cymatic Resonance's hue off this exact primitive. |
+| Circular EMA on a ±π phase (EMA sin/cos → `atan2`) | **1** | Shipped and M7-validated in Uzume at CR.1.2 / D-198, driving Cymatic Resonance's hue off this exact primitive. |
 | Hue on the circle of fifths | **1** | D-178 + the CR.1.2 shipped route. |
 | Procedural parallax star layers + soft nebular bloom in a composite fragment | **1** | The source; and standard demoscene practice. In-tree analogue: `Murmuration`'s `murmuration_sky_fragment`. |
 | Age-weighted neighbour-averaging relaxation on a polyline | **2** | Discrete Laplacian curve smoothing — same family as Taubin's λ\|μ non-shrinking mesh smoothing (SIGGRAPH 1995). The *unweighted* form is demonstrated by the source; **the age weighting is our derivation**, so the combination of smoothing-plus-freezing is level 2, not level 1. |
@@ -488,13 +488,13 @@ Per `PRESET_SESSION_CHECKLIST.md` Part 2: level 1 = working code reference in a 
 
 ### 7.2 Closest structural template
 
-**Filigree** (`PhospheneEngine/Sources/Presets/Shaders/Filigree.metal` + `Filigree.json`, `PhysarumGeometry`). Why: same `["feedback", "particles"]` pass list; same shape of CPU-side agent simulation feeding `ParticleGeometry`; same "luminous trail on a dark composite ground" register; same `rubric_profile: "lightweight"`; and it is certified and in `multiPassMeasured`, so its flash-harness entry is the one to copy-adapt. Copy its wiring, not its physics.
+**Filigree** (`UzumeEngine/Sources/Presets/Shaders/Filigree.metal` + `Filigree.json`, `PhysarumGeometry`). Why: same `["feedback", "particles"]` pass list; same shape of CPU-side agent simulation feeding `ParticleGeometry`; same "luminous trail on a dark composite ground" register; same `rubric_profile: "lightweight"`; and it is certified and in `multiPassMeasured`, so its flash-harness entry is the one to copy-adapt. Copy its wiring, not its physics.
 
 Secondary reference: **Cymatic Resonance** (`CymaticSandGeometry`) for the most recently-built example of the registration path end to end, and **Murmuration** for `murmuration_sky_fragment` as a composite-backdrop model.
 
 ### 7.3 CPU-side state
 
-`WitchlightStroke` (new file, `PhospheneEngine/Sources/Renderer/Geometry/`), a `final class ... @unchecked Sendable` conforming to `ParticleGeometry`:
+`WitchlightStroke` (new file, `UzumeEngine/Sources/Renderer/Geometry/`), a `final class ... @unchecked Sendable` conforming to `ParticleGeometry`:
 
 - ring buffer of ~1024 beads, each carrying position (3), colour (3), radius (1), age (1), and a promoted flag;
 - pen state: heading θ, smoothed phase φ̄ (as separate `sin`/`cos` accumulators — never the raw sawtooth), plane orientation, previous `barPhase01` for wrap detection, previous `sectionIndex`;
@@ -510,8 +510,8 @@ Every item in [`NEW_PRESET_CHECKLIST.md`](NEW_PRESET_CHECKLIST.md), listed or ma
 **§1 Develop** — hot-reload from `~/Library/Application Support/Uzume/Presets/` during authoring, or in-repo from the start (`Sources/Presets/Shaders/` is auto-discovered; no pbxproj edit).
 
 **§2 Land in-repo**
-- [ ] `PhospheneEngine/Sources/Presets/Shaders/Witchlight.metal`
-- [ ] `PhospheneEngine/Sources/Presets/Shaders/Witchlight.json` — `certified: false` initially; `family: "particles"`; `passes: ["feedback","particles"]`; `fragment_function: "witchlight_sky_fragment"`; `rubric_profile: "lightweight"`; `duration: 45`; non-empty `audio_routes` (see below); **`inspired_by` block** per the D-111 amendment schema — `milkdrop_filename`, `original_artist`, `source_form`, `pack`, **plus the source file's SHA-256**. The source file itself is never committed (D-116 bullet 4).
+- [ ] `UzumeEngine/Sources/Presets/Shaders/Witchlight.metal`
+- [ ] `UzumeEngine/Sources/Presets/Shaders/Witchlight.json` — `certified: false` initially; `family: "particles"`; `passes: ["feedback","particles"]`; `fragment_function: "witchlight_sky_fragment"`; `rubric_profile: "lightweight"`; `duration: 45`; non-empty `audio_routes` (see below); **`inspired_by` block** per the D-111 amendment schema — `milkdrop_filename`, `original_artist`, `source_form`, `pack`, **plus the source file's SHA-256**. The source file itself is never committed (D-116 bullet 4).
 - [x] `docs/VISUAL_REFERENCES/witchlight/` — **done at WL.1**, 13 images + README, zero `CheckVisualReferences` warnings.
 - [ ] A row in `docs/CREDITS.md` §"Milkdrop-inspired preset attribution", plus the CC BY / CC BY-SA attribution rows for the reference images (`docs/VISUAL_REFERENCES/witchlight/README.md` §Provenance).
 

@@ -1,16 +1,16 @@
-# Phosphene — Product Specification
+# Uzume — Product Specification
 
-## What Phosphene Is
+## What Uzume Is
 
-Phosphene is a native macOS music visualization app for Apple Silicon. It connects to playlists from streaming services, prepares a visual session in advance, and renders high-quality visuals that respond to the music in real time.
+Uzume is a native macOS music visualization app for Apple Silicon. It connects to playlists from streaming services, prepares a visual session in advance, and renders high-quality visuals that respond to the music in real time.
 
-Phosphene does not control playback. The user plays music in their streaming app of choice while Phosphene listens, analyzes, and performs the visual accompaniment.
+Uzume does not control playback. The user plays music in their streaming app of choice while Uzume listens, analyzes, and performs the visual accompaniment.
 
 The name references the visual phenomenon of perceiving light and patterns without external visual stimulus — exactly what this software does with sound.
 
 ## Product Promise
 
-Phosphene should feel less like a reactive screensaver and more like an intelligent VJ:
+Uzume should feel less like a reactive screensaver and more like an intelligent VJ:
 
 - It prepares for a known playlist when possible.
 - It adapts during playback.
@@ -19,13 +19,13 @@ Phosphene should feel less like a reactive screensaver and more like an intellig
 
 ## Primary Use Cases
 
-**Curated playlist session.** The user connects a playlist, waits briefly for preparation, then starts playback. From the first beat, stems are cached, the visualizer is chosen, and transitions are pre-planned across the entire session. This is how Phosphene is designed to be used.
+**Curated playlist session.** The user connects a playlist, waits briefly for preparation, then starts playback. From the first beat, stems are cached, the visualizer is chosen, and transitions are pre-planned across the entire session. This is how Uzume is designed to be used.
 
-**Listening party backdrop.** Friends gather, each brings a mix. One person connects the playlist, Phosphene prepares the show, and the group watches synchronized visuals on a TV or projector while listening together.
+**Listening party backdrop.** Friends gather, each brings a mix. One person connects the playlist, Uzume prepares the show, and the group watches synchronized visuals on a TV or projector while listening together.
 
 **Ambient accompaniment.** Solo listening — reading, working, unwinding — with visuals on a secondary display or in a window.
 
-**Reactive fallback.** If no playlist is connected, Phosphene still works as a live reactive visualizer using real-time audio analysis only, without pre-planned sequencing.
+**Reactive fallback.** If no playlist is connected, Uzume still works as a live reactive visualizer using real-time audio analysis only, without pre-planned sequencing.
 
 ## Target Platform
 
@@ -52,7 +52,7 @@ Phosphene should feel less like a reactive screensaver and more like an intellig
 
 ## Success Criteria
 
-Phosphene succeeds when:
+Uzume succeeds when:
 
 - Users can get from launch to signal detection without confusion.
 - Visuals feel synchronized and musically appropriate.

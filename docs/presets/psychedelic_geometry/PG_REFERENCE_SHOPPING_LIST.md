@@ -5,7 +5,7 @@ Everything Matt needs to source to unblock the five session prompts. Each sessio
 ## Rules (from `docs/VISUAL_REFERENCES/_NAMING_CONVENTION.md`)
 
 - **Filename:** `NN_<scale>_<descriptor>.<ext>` — `NN` = 01–99 (lower = higher priority), `<scale>` ∈ {`macro`, `meso`, `micro`, `specular`, `atmosphere`, `lighting`, `palette`, `anti`}, `<descriptor>` = 2–4 words `lowercase_underscored`, `<ext>` = `jpg` for photos / `png` for renders & line-art.
-- **Lint** (`swift run --package-path PhospheneTools CheckVisualReferences`) enforces `^[0-9]{2}_(macro|meso|micro|specular|atmosphere|lighting|palette|anti)_[a-z0-9_]+\.(jpg|png)$`.
+- **Lint** (`swift run --package-path UzumeTools CheckVisualReferences`) enforces `^[0-9]{2}_(macro|meso|micro|specular|atmosphere|lighting|palette|anti)_[a-z0-9_]+\.(jpg|png)$`.
 - **Size:** ≤ 500 KB each. A 960×540 or full-frame 1080p JPEG q85 is fine. No uncompressed PNGs.
 - **⚠️ `_AIGEN` gotcha:** `SHADER_CRAFT.md §2.3` suggests an `_AIGEN` suffix for AI-generated anti-refs, but that uppercase would **fail the lowercase lint regex**. So: keep the filename lowercase (e.g. `05_anti_flat_clipart.jpg`) and record the AI provenance + planned v1-capture replacement in the README's **Provenance** section (per D-065). Only the `05_anti_*` slot may be AI-generated; every other slot must be **real photography** (or a public-domain diagram / in-engine render as noted).
 - **Two kinds of reference:** *IMAGES TO SOURCE* (commit these to the folder) vs *REFERENCES TO READ* (Shadertoy/paper/art the author reads and ports per FA #73 — **not** committed, just cited in the shader header). Both are listed per preset.

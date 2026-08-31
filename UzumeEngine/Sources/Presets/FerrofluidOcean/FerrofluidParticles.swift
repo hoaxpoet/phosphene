@@ -1,0 +1,527 @@
+// swiftlint:disable file_length
+// FerrofluidParticles — Phase 1 scaffolding for V.9 Session 4.5b particle motion.
+//
+// Owns the GPU-side resources that feed a baked height texture into the
+// FerrofluidOcean ray-march scene SDF. Phase 1 is **scaffolding only**:
+// particle positions are computed once at init time at the same XZ
+// coordinates a `voronoi_smooth` cell-center pass would emit (rectangular
+// scaled-space integer cells + per-cell `voronoi_cell_offset` hash), and a
+// one-shot compute dispatch bakes the height field. The substrate visual
+// reading is therefore structurally equivalent to Phase A's inline
+// `voronoi_smooth`-based `fo_ferrofluid_field` — the geometric source has
+// moved from "inline math in sceneSDF" to "texture sample in sceneSDF", but
+// the shape is the same hex-pack pyramid field with organic non-uniformity.
+//
+// Phase 2 will add an SPH-lite particle update compute pass + audio forces
+// that move the particles per frame; Phase 3 tunes against the
+// `docs/VISUAL_REFERENCES/ferrofluid_ocean/` reference set. See the V.9
+// Session 4.5b prompt for the phase contract.
+//
+// Bound at fragment texture slot 10 of the ray-march G-buffer pass via
+// `RenderPipeline.setRayMarchPresetHeightTexture`. Non-Ferrofluid ray-march
+// presets receive the zero-filled `RayMarchPipeline.ferrofluidHeightPlaceholderTexture`
+// so the preamble's `[[texture(10)]]` declaration is always satisfied.
+//
+// **Scope discipline (Failed Approach #58 / #62):** every constant below
+// has a *load-bearing* role in producing the Phase A-equivalent surface.
+// No decoration, no premature flexibility. Phase 2 may grow new constants
+// for motion physics; Phase 1 does not.
+
+import Foundation
+import Metal
+import simd
+import Shared
+import os.log
+
+private let particleLogger = Logger(subsystem: "io.uzume.presets", category: "FerrofluidParticles")
+
+// MARK: - FerrofluidParticles
+
+/// Owns the particle buffer + height texture + bake compute pipeline for
+/// Ferrofluid Ocean V.9 Session 4.5b. Construct once per preset apply;
+/// `bakeHeightField(commandQueue:)` runs a one-shot compute dispatch that
+/// blocks the caller until the texture is populated.
+///
+/// Thread-safety: this class is constructed and `bake` is invoked from
+/// `@MainActor` on the preset-apply path. The exposed `heightTexture` /
+/// `particleBuffer` are read by GPU command encoders thereafter and not
+/// mutated again at Phase 1 (particles are static).
+public final class FerrofluidParticles: @unchecked Sendable {
+
+    // MARK: - Locked parameters (Phase 1)
+
+    /// Particle count: original spec was 2048 ("medium density"); **density
+    /// pass 2026-05-14 bumped to 6000** after Matt's review of the tuned
+    /// contact sheet flagged the static spikes as still too sparse vs the
+    /// Phase A `voronoi_smooth` reference. The earlier "medium ~2000"
+    /// framing was a forecast before the Phase A render was available; in
+    /// practice, 2048 particles in the 20-world-unit patch produce ~0.44 wu
+    /// spacing, leaving ~0.13 wu gaps between peak bases at the tuned 0.15
+    /// peak radius. Phase A's `voronoi_smooth(scale = 4)` places cells at
+    /// 0.25 wu spacing → peaks overlap base-to-base. Matching that density
+    /// over the 20×20 patch needs 80 × 75 = 6000 cells (X spacing 0.25 wu
+    /// matches Phase A exactly; Z spacing 0.267 wu adds a ~7 % anisotropy
+    /// that's invisible at the camera tilt). Phase 2 per-frame bake cost
+    /// scales linearly: ~0.6 ms per bake on Apple Silicon at 6000 particles
+    /// × 1024² texels, well within the 60 fps frame budget.
+    ///
+    /// **Density pass 2026-05-15 (V.9 Session 4.5c Phase 1 round 17)**:
+    /// `1520 → 3025` (55 × 55 grid). Matt's review of the
+    /// `2026-05-15T14-31-24Z` capture flagged "too few spikes, lots of
+    /// empty space between spikes" vs the reference set's dense lattice
+    /// (`01_macro_*` shows ~35-40 spike-rows visible across the patch;
+    /// the 1520-particle render showed ~20). Coordinated with
+    /// `spikeBaseRadius` 0.12 → 0.17 (round 17 same commit) — new
+    /// X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just slightly
+    /// over radius 0.17 → bases nearly touch with a thin substrate
+    /// channel between, matching the reference packing density.
+    /// **Round 52 (2026-05-16)**: 1521 → 3025 (55 × 55 grid). Round 50
+    /// reduced to 1521 on the misread theory that references show
+    /// "well-spaced cones with visible substrate gaps"; Matt's
+    /// 2026-05-16T23-xx-xxZ review with the lotus-flower-pattern brief
+    /// + close-up Rosensweig reference confirmed the opposite: spikes
+    /// should be packed tight.
+    ///
+    /// **Round 52b (2026-05-16)**: 3025 → 3600 (60 × 60 grid). Matt's
+    /// follow-up review showed visible bald gaps in the round-52 frames
+    /// — the slight bump tightens hash-offset spacing so the lattice
+    /// fully covers the patch.
+    ///
+    /// **Round 55 (2026-05-17)**: 3600 → 2500 (50 × 50 grid). At round-52b
+    /// density (0.333 wu spacing, radius 0.17 wu) ~6-8 particles fell inside
+    /// each pixel's smooth-min blend zone — the poly-smin's per-iteration
+    /// "lift" accumulated across that many particles → height inflation
+    /// and ridge-merge distortion (Matt's 2026-05-17 live-app review:
+    /// "spikes merging together due to bad math"). Round-55 density of
+    /// 2500 puts spacing at 0.4 wu, half-spacing 0.2 wu (> radius 0.17 wu
+    /// → cone bases nearly touch with ~0.03 wu substrate channel between);
+    /// per-pixel blend-zone particle count drops to 3-4, accumulated lift
+    /// becomes small enough that cone shapes render cleanly. An earlier
+    /// 40 × 40 = 1600 attempt produced clean cones but with too much
+    /// visible substrate between bases (Matt's "1600 is probably too few,
+    /// recommend 2500"); 2500 lands at the dense regime he asked for.
+    /// Coordinated with the round-55 lotus-envelope removal — uniform
+    /// spike height across the patch.
+    public static let particleCount: Int = 2500
+
+    /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
+    /// fullscreen/4K product addendum) → 2048² (smoothness pass
+    /// 2026-05-14) → **4096² (texel-grid pass 2026-05-14)**. Matt's
+    /// zoomed-in beat-heavy screenshot confirmed visible texel-grid
+    /// staircasing in the bilinear-sampled height field. At 2048² the
+    /// ratio was 1.6 screen pixels per texel at 1080p — texel grid
+    /// dominated screen sampling. At 4096² the ratio drops to 0.78
+    /// screen pixels per texel; multiple texels are bilinear-averaged
+    /// per screen pixel and the staircase falls below the rendered-pixel
+    /// scale. Texture memory: 4096² × 2 B = 32 MB. Phase 1 bake cost
+    /// (one-shot) ~10 ms — still fine. Phase 2 per-frame bake would be
+    /// ~10 ms — significant fraction of the 16.67 ms 60 fps budget;
+    /// revisit at Phase 2 perf gate (likely needs spatial-hash binning
+    /// to keep per-frame cost bounded, which Leitl's actual recipe
+    /// already uses).
+    public static let heightTextureSize: Int = 4096
+
+    /// World-XZ rectangle the texture covers. Generous around the camera's
+    /// visible patch (camera at (0, 4, -2.5) looking at (0, 0, 2.0)) so the
+    /// texture's clamp-to-zero edge sits well outside the rendered frame.
+    public static let worldOriginX: Float = -10.0
+    public static let worldOriginZ: Float = -8.0
+    public static let worldSpan: Float = 20.0
+
+    /// Quilez polynomial smooth-min weight. Original spec was Leitl's
+    /// `w = 0.1` default; **tuning pass 2026-05-14 dropped to 0.02**, then
+    /// **Phase 1 round 4 dropped to 0.005** after Matt's `2026-05-14T22-37-26Z`
+    /// review flagged "no spikes like the reference images." With particles
+    /// pinned at canonical voronoi positions there's no motion concern
+    /// (smooth-min only needs to provide C¹ continuity for the bake's
+    /// distance interpolation; tighter `w` produces sharper valley
+    /// transitions between adjacent particles, pulling midpoint heights
+    /// closer to the raw `min()` of cone-base-radius distance fields).
+    /// At particle spacing 0.25 wu / spike radius 0.15 wu, midpoint
+    /// distance moves from ~0.120 (w=0.02) to ~0.124 (w=0.005) — close
+    /// to the raw min of 0.125 — which combined with the squared height
+    /// profile (`fo_ferrofluid_field_sampled`'s `height² ` curve, also
+    /// added in round 4) drives valley heights to ~3% of peak. Phase 2
+    /// motion is currently off; if motion returns, this may need to bump
+    /// back up to avoid pop-in artifacts.
+    public static let smoothMinW: Float = 0.005
+
+    /// Spike base radius in world units. The bake produces a tent-shaped
+    /// peak at each particle that falls to zero at `spikeBaseRadius`.
+    /// History: 0.25 → 0.15 → **0.06 (V.9 Session 4.5c Phase 1 round 5,
+    /// 2026-05-14)**. Matt's `2026-05-14T22:47Z` review showed the rendered
+    /// substrate as a continuous bumpy fabric, not the discrete tall
+    /// needles `01_macro_ferrofluid_at_swell_scale.jpg` anchors. Three
+    /// shape failures the prior radius produced:
+    ///
+    ///   1. Spike bases overlapped (radius 0.15 > half-spacing 0.125 →
+    ///      adjacent cones bleed into each other before reaching the
+    ///      ground plane → continuous fabric, not isolated peaks).
+    ///   2. Aspect ratio at baseline was 2:1 (height 0.30 wu / radius
+    ///      0.15 wu) — short stubby cones. References show 3-5:1 tall
+    ///      narrow needles.
+    ///   3. Apex slope at res=0 was `-2/R = -13.3` — not pointed enough
+    ///      for the references' razor-sharp tips.
+    ///
+    /// At 0.06: radius 0.06 << half-spacing 0.125 → 0.065 wu of dark
+    /// substrate between adjacent peak bases. Baseline aspect ratio
+    /// becomes 0.30/0.06 = 5:1. Apex slope at res=0 doubles to `-33`
+    /// (sharper point).
+    ///
+    /// Round 11 (2026-05-15): bumped 0.06 → 0.12 in coordination with
+    /// particle count 6000 → 1500 (4× fewer). New spacing ≈ 0.50 wu
+    /// (X) / 0.53 wu (Z); half-spacing 0.25 > radius 0.12 → spikes still
+    /// clearly isolated with 0.13 wu of dark substrate between bases.
+    /// Per-spike screen coverage ≈ 4× larger so individual pyramids
+    /// register as distinct objects in the frame, not tiny orbs blending
+    /// into a continuous texture. Trade-off: aspect ratio at baseline
+    /// drops 5:1 → 2.5:1 (height 0.30 wu / radius 0.12 wu) — stockier
+    /// pyramids. Acceptable to start; if too short, follow up with a
+    /// height_multiplier increase rather than narrowing radius back down.
+    ///
+    /// **Round 17 (2026-05-15)**: 0.12 → 0.17 wu, coordinated with
+    /// `particleCount` 1520 → 3025 (55 × 55 grid). New X/Z spacing
+    /// 0.364 wu, half-spacing 0.182 wu → radius 0.17 is just under
+    /// half-spacing → bases nearly touch with ~0.012 wu substrate
+    /// channel between adjacent peaks.
+    ///
+    /// **Round 44 (2026-05-15)**: 0.17 → 0.10. (Subsequently reverted in
+    /// round 45 — see below.)
+    ///
+    /// **Round 45 (2026-05-15)**: 0.10 → 0.17 (revert). Matt's
+    /// `2026-05-15T22:30Z` observation: every reference photo shows spikes
+    /// as RADIAL CLUSTERS with bases touching within each cluster —
+    /// concentric rings of spikes radiating from a central focal point
+    /// (the physics of the Rosensweig instability under a magnetic field).
+    /// Round 44's narrowing was correcting a symptom (round-42's dome
+    /// reading at bases-touching) of the wrong problem; the actual issue
+    /// was the missing radial displacement architecture. Round 45 reverts
+    /// the radius (bases-touching is correct, just within clusters) and
+    /// adds radial cluster displacement in the mesh shader so each spike
+    /// leans outward from its nearest cluster's focal point below the
+    /// substrate. The "ocean" is now interpreted as a magnetically-charged
+    /// surface with multiple distributed cluster centers (see
+    /// `kClusterSpacing`/`kClusterFocalDepth` in the mesh shader — that file
+    /// was deleted at RECON.15; see git history for the constants).
+    ///
+    /// **Round 50 (2026-05-16) — constant-field premise**: radius stays
+    /// at 0.17 wu but the HEIGHT scale increases 4× alongside (see
+    /// `fo_ferrofluid_field_sampled` height multiplier). The session
+    /// 2026-05-16T21-10-39Z capture reads as a field of rounded purple
+    /// beads, not Rosensweig needles. Diagnosis (with Matt): aspect
+    /// ratio at the old config was 0.14 wu height / 0.17 wu radius =
+    /// 0.8:1 — wider than tall = dome reading. Reference photographs
+    /// (Matt's 2026-05-16 attachments) show 3-4× taller than wide cones.
+    /// Fix is to preserve the radius (keeps individual spikes at
+    /// rendered-visible scale for the camera at y=4.6) while increasing
+    /// the height multiplier so aspect lands at ~3.7:1 = reference-
+    /// faithful needle character. Combined with `fo_spike_strength`
+    /// being switched to a constant 1.0 (see that function's docstring
+    /// for the constant-field premise), the spike lattice is now a
+    /// constant geometric property of the ocean rather than an
+    /// audio-coupled response.
+    public static let spikeBaseRadius: Float = 0.17
+
+    /// Apex-rounding parameter for `almostIdentity` smoothing on the
+    /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**
+    /// to keep peak tips razor-sharp per `04_specular_razor_highlights.jpg`.
+    /// Leitl's 0.1 reads as ferrofluid peaks on his demo scale; at
+    /// Uzume's larger world patch the same 0.1 rounded apexes that
+    /// should be near-conical for sharp specular catches.
+    public static let apexSmoothK: Float = 0.03
+
+    // MARK: - Spatial-hash grid (Phase 2a)
+
+    /// Uniform-grid side length over the world patch. 64 × 64 = 4096 cells.
+    /// Cell size in world units = `worldSpan / cellGridSide` = 0.3125 wu
+    /// (about 2× `spikeBaseRadius`). Each cell holds 1-2 particles in
+    /// equilibrium at Phase 1 density; motion headroom is the per-cell
+    /// slot count below.
+    public static let cellGridSide: Int = 64
+
+    /// Maximum particles per cell. Phase 1 static density sees 1-2/cell;
+    /// 16 slots gives 8-16× headroom for Phase 2 motion (particle clusters
+    /// from SPH pressure under bass impulses). Overflow is silently dropped
+    /// at the bin kernel level — guard rails added per CLAUDE.md
+    /// "no allocation in the IO callback" spirit applied to the GPU path.
+    public static let cellSlotCapacity: Int = 16
+
+    // MARK: - Particle state (Phase 2b)
+
+    /// Per-particle state mirrored byte-for-byte on the GPU side. Position
+    /// is world-XZ; velocity is world-XZ per second. Padded to 16 bytes so
+    /// SIMD loads / `device float4` reads stay 16-byte aligned.
+    public struct Particle: Equatable {
+        public var positionX: Float
+        public var positionZ: Float
+        public var velocityX: Float
+        public var velocityZ: Float
+
+        public init(positionX: Float, positionZ: Float, velocityX: Float = 0, velocityZ: Float = 0) {
+            self.positionX = positionX
+            self.positionZ = positionZ
+            self.velocityX = velocityX
+            self.velocityZ = velocityZ
+        }
+
+        public var position: SIMD2<Float> { SIMD2(positionX, positionZ) }
+        public var velocity: SIMD2<Float> { SIMD2(velocityX, velocityZ) }
+    }
+
+    // MARK: - GPU resources
+
+    /// UMA buffer of 6000 `Particle` structs (position + velocity in world
+    /// XZ). 16 bytes per particle × 6000 = 96 KiB. Phase 2b: written once
+    /// at init, then per frame by the SPH-lite update pass.
+    public let particleBuffer: MTLBuffer
+
+    /// UMA buffer of per-cell occupancy counts (`atomic_uint`, one per
+    /// cell). Reset every bake; bin kernel atomically increments. Sized
+    /// `cellGridSide² × sizeof(UInt32)` = 16 KB. (Phase 2a.)
+    public let cellCountBuffer: MTLBuffer
+
+    /// UMA buffer of per-cell particle index slots (`uint`, capacity ×
+    /// per-cell). Bin kernel writes the particle index at the
+    /// pre-increment count's slot. Sized
+    /// `cellGridSide² × cellSlotCapacity × sizeof(UInt32)` = 256 KB.
+    /// (Phase 2a.)
+    public let cellSlotBuffer: MTLBuffer
+
+    /// UMA r16Float 512×512 texture carrying the baked height field.
+    /// Sampled at fragment texture slot 10 of the ray-march G-buffer pass.
+    /// Linear filter + clamp-to-zero (`access::sample` in the .metal side).
+    public let heightTexture: MTLTexture
+
+    // MARK: - Internal
+
+    private let bakePipeline: MTLComputePipelineState
+    private let resetCellsPipeline: MTLComputePipelineState
+    private let binParticlesPipeline: MTLComputePipelineState
+    private let device: MTLDevice
+
+    /// Bake parameters mirrored on the GPU side via a 32-byte struct.
+    /// (Phase 2a extended with grid metadata.)
+    private struct BakeUniforms {
+        var worldOriginXZ: SIMD2<Float>     // (worldOriginX, worldOriginZ)
+        var worldSpan: Float                // worldSpan
+        var smoothMinW: Float               // smoothMinW
+        var spikeBaseRadius: Float          // spikeBaseRadius
+        var apexSmoothK: Float              // apexSmoothK
+        var particleCount: UInt32           // particleCount
+        var cellGridSide: UInt32            // cellGridSide
+        var cellSlotCapacity: UInt32        // cellSlotCapacity
+        var pad0: UInt32                    // 16-byte align
+        var pad1: UInt32                    // 16-byte align
+    }
+
+    // MARK: - Init
+
+    /// Construct the particles + height texture for Ferrofluid Ocean.
+    ///
+    /// - Parameters:
+    ///   - device: Metal device for buffer / texture / pipeline creation.
+    ///   - library: Compiled engine `Renderer` library containing the
+    ///     `ferrofluid_height_bake` kernel.
+    /// - Returns: `nil` if any GPU allocation fails. The caller logs and
+    ///   falls back to the placeholder height texture (substrate renders
+    ///   without spikes — Gerstner swell only).
+    public init?(device: MTLDevice, library: MTLLibrary) {
+        self.device = device
+
+        // Particle buffer: 6000 × 16 bytes = 96 KiB. UMA shared storage so
+        // the kernel reads from CPU-written memory without a blit.
+        let particleStride = MemoryLayout<Particle>.stride
+        let bufferLength = Self.particleCount * particleStride
+        guard let buf = device.makeBuffer(length: bufferLength,
+                                          options: .storageModeShared) else {
+            particleLogger.error("FerrofluidParticles: particle buffer allocation failed")
+            return nil
+        }
+        self.particleBuffer = buf
+
+        // Spatial-hash buffers (Phase 2a). Count buffer: one UInt32 per
+        // cell, atomically incremented by the bin kernel. Slot buffer:
+        // capacity UInt32s per cell, holding particle indices. Both UMA
+        // shared so the bin kernel atomically writes and the bake kernel
+        // reads in the same dispatch.
+        let cellCount = Self.cellGridSide * Self.cellGridSide
+        let cellCountBytes = cellCount * MemoryLayout<UInt32>.stride
+        guard let countBuf = device.makeBuffer(length: cellCountBytes,
+                                               options: .storageModeShared) else {
+            particleLogger.error("FerrofluidParticles: cell count buffer allocation failed")
+            return nil
+        }
+        self.cellCountBuffer = countBuf
+
+        let slotBytes = cellCount * Self.cellSlotCapacity * MemoryLayout<UInt32>.stride
+        guard let slotBuf = device.makeBuffer(length: slotBytes,
+                                              options: .storageModeShared) else {
+            particleLogger.error("FerrofluidParticles: cell slot buffer allocation failed")
+            return nil
+        }
+        self.cellSlotBuffer = slotBuf
+
+        // Height texture: r16Float, NxN, UMA shared, read-write so the
+        // compute kernel can write and the G-buffer fragment can sample.
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .r16Float,
+            width: Self.heightTextureSize,
+            height: Self.heightTextureSize,
+            mipmapped: false)
+        texDesc.storageMode = .shared
+        texDesc.usage = [.shaderRead, .shaderWrite]
+        guard let tex = device.makeTexture(descriptor: texDesc) else {
+            particleLogger.error("FerrofluidParticles: height texture allocation failed")
+            return nil
+        }
+        self.heightTexture = tex
+
+        // Compute pipelines from the engine library. All three kernels
+        // live in `Renderer/Shaders/FerrofluidParticles.metal`.
+        guard let bakeFn = library.makeFunction(name: "ferrofluid_height_bake") else {
+            particleLogger.error("FerrofluidParticles: ferrofluid_height_bake function not found")
+            return nil
+        }
+        guard let resetFn = library.makeFunction(name: "ferrofluid_reset_cell_counts") else {
+            particleLogger.error("FerrofluidParticles: ferrofluid_reset_cell_counts function not found")
+            return nil
+        }
+        guard let binFn = library.makeFunction(name: "ferrofluid_bin_particles") else {
+            particleLogger.error("FerrofluidParticles: ferrofluid_bin_particles function not found")
+            return nil
+        }
+        do {
+            self.bakePipeline = try device.makeComputePipelineState(function: bakeFn)
+            self.resetCellsPipeline = try device.makeComputePipelineState(function: resetFn)
+            self.binParticlesPipeline = try device.makeComputePipelineState(function: binFn)
+        } catch {
+            particleLogger.error("FerrofluidParticles: pipeline creation failed: \(error)")
+            return nil
+        }
+
+        // Populate initial particle positions at voronoi-equivalent XZ.
+        writeInitialParticlePositions()
+    }
+
+    // MARK: - Public API
+
+    /// Run the one-shot bake compute dispatch and block until the texture is
+    /// populated. Synchronous: the caller (preset-apply on `@MainActor`)
+    /// expects the texture to be ready before the next frame draws. The
+    /// dispatch is ~1 ms on Apple Silicon at 512×512 × 2048 particles, so
+    /// blocking is acceptable on the preset-switch path.
+    ///
+    /// Idempotent: calling more than once re-bakes from the current particle
+    /// buffer contents. Phase 1's particles never change, so the second
+    /// invocation produces a byte-identical texture; useful only for tests.
+    public func bakeHeightField(commandQueue: MTLCommandQueue) {
+        guard let cmdBuf = commandQueue.makeCommandBuffer() else {
+            particleLogger.error("FerrofluidParticles.bakeHeightField: makeCommandBuffer returned nil")
+            return
+        }
+        encodeBake(into: cmdBuf)
+        cmdBuf.commit()
+        cmdBuf.waitUntilCompleted()
+        if let err = cmdBuf.error {
+            particleLogger.error("FerrofluidParticles.bakeHeightField: command buffer error: \(err)")
+        }
+    }
+
+    /// Encode the bake compute dispatch chain into the caller's command buffer
+    /// without committing. Three kernels run in sequence inside one encoder:
+    ///   1. `ferrofluid_reset_cell_counts` — zero out the per-cell occupancy
+    ///      counters before the next bin pass.
+    ///   2. `ferrofluid_bin_particles` — each particle thread atomically
+    ///      writes its index to its spatial-hash cell's slot list.
+    ///   3. `ferrofluid_height_bake` — each texel thread looks up the 3×3
+    ///      cells around its world XZ, soft-mins distances to the bounded
+    ///      neighbour particles, applies the linear cone, writes height.
+    ///
+    /// All three kernels share one `BakeUniforms` constant; the encoder is
+    /// torn down at the end. Used by the test harness to bundle the bake
+    /// with the subsequent render dispatch in a single command buffer.
+    public func encodeBake(into commandBuffer: MTLCommandBuffer) {
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            particleLogger.error("FerrofluidParticles.encodeBake: makeComputeCommandEncoder returned nil")
+            return
+        }
+        var uniforms = BakeUniforms(
+            worldOriginXZ: SIMD2(Self.worldOriginX, Self.worldOriginZ),
+            worldSpan: Self.worldSpan,
+            smoothMinW: Self.smoothMinW,
+            spikeBaseRadius: Self.spikeBaseRadius,
+            apexSmoothK: Self.apexSmoothK,
+            particleCount: UInt32(Self.particleCount),
+            cellGridSide: UInt32(Self.cellGridSide),
+            cellSlotCapacity: UInt32(Self.cellSlotCapacity),
+            pad0: 0,
+            pad1: 0)
+
+        // Pass 1: reset cell counts to zero. One thread per cell.
+        encoder.setComputePipelineState(resetCellsPipeline)
+        encoder.setBuffer(cellCountBuffer, offset: 0, index: 0)
+        encoder.setBytes(&uniforms,
+                         length: MemoryLayout<BakeUniforms>.stride,
+                         index: 1)
+        let cellCount = Self.cellGridSide * Self.cellGridSide
+        let resetTPG = MTLSize(width: 64, height: 1, depth: 1)
+        let resetGroups = MTLSize(width: (cellCount + 63) / 64, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(resetGroups, threadsPerThreadgroup: resetTPG)
+
+        // Metal's `MTLComputeCommandEncoder` does NOT serialize consecutive
+        // dispatches by default — they may execute concurrently. The bin
+        // kernel writes cell counts that the bake kernel reads, so without
+        // explicit barriers the bake races against bin and reads stale /
+        // mid-write counts. Insert `memoryBarrier(scope: .buffers)` between
+        // each dependent dispatch pair.
+        encoder.memoryBarrier(scope: .buffers)
+
+        // Pass 2: bin each particle into its cell via atomic fetch-add.
+        encoder.setComputePipelineState(binParticlesPipeline)
+        encoder.setBuffer(particleBuffer, offset: 0, index: 0)
+        encoder.setBytes(&uniforms,
+                         length: MemoryLayout<BakeUniforms>.stride,
+                         index: 1)
+        encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
+        encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
+        let binTPG = MTLSize(width: 64, height: 1, depth: 1)
+        let binGroups = MTLSize(width: (Self.particleCount + 63) / 64, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(binGroups, threadsPerThreadgroup: binTPG)
+
+        encoder.memoryBarrier(scope: .buffers)
+
+        // Pass 3: per-texel bake reads 3×3 cells around its XZ.
+        encoder.setComputePipelineState(bakePipeline)
+        encoder.setBuffer(particleBuffer, offset: 0, index: 0)
+        encoder.setBytes(&uniforms,
+                         length: MemoryLayout<BakeUniforms>.stride,
+                         index: 1)
+        encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
+        encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
+        encoder.setTexture(heightTexture, index: 0)
+        let bakeTPG = MTLSize(width: 16, height: 16, depth: 1)
+        let bakeGroups = MTLSize(
+            width: (Self.heightTextureSize + 15) / 16,
+            height: (Self.heightTextureSize + 15) / 16,
+            depth: 1)
+        encoder.dispatchThreadgroups(bakeGroups, threadsPerThreadgroup: bakeTPG)
+
+        encoder.endEncoding()
+    }
+
+    // MARK: - Test seam
+
+    /// Snapshot the particle positions. Public for unit tests; not part of
+    /// the GPU contract.
+    public func snapshotParticlePositions() -> [SIMD2<Float>] {
+        let ptr = particleBuffer.contents().bindMemory(
+            to: Particle.self, capacity: Self.particleCount)
+        return Array(UnsafeBufferPointer(start: ptr, count: Self.particleCount)).map { $0.position }
+    }
+
+    // Note: `canonicalInitialPosition(forIndex:)`, the canonical grid
+    // layout, and the CPU `voronoi_cell_offset` hash port live in
+    // `FerrofluidParticles+InitialPositions.swift` (extracted to satisfy
+    // SwiftLint's 400-line file cap after the Phase 2a spatial-hash
+    // additions). The split is mechanical; semantics are unchanged.
+}

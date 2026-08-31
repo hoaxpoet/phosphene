@@ -71,9 +71,9 @@ def series(header, rows, name):
 
 
 def sidecar(preset):
-    hits = glob.glob(f"PhospheneEngine/Sources/Presets/Shaders/{preset}.json")
+    hits = glob.glob(f"UzumeEngine/Sources/Presets/Shaders/{preset}.json")
     if not hits:
-        hits = [p for p in glob.glob("PhospheneEngine/Sources/Presets/Shaders/*.json")
+        hits = [p for p in glob.glob("UzumeEngine/Sources/Presets/Shaders/*.json")
                 if os.path.basename(p)[:-5].lower() == preset.lower()]
     if not hits:
         sys.exit(f"no sidecar for '{preset}'")

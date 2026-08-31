@@ -4,7 +4,7 @@
 Runs Beat This! inference on each of the six DSP.2 fixtures and writes one JSON
 file per fixture under:
 
-    PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/beat_this_reference/
+    UzumeEngine/Tests/UzumeEngineTests/Fixtures/beat_this_reference/
 
 Each JSON contains:
   - model_variant, fixture metadata
@@ -52,8 +52,8 @@ from beat_this.model.postprocessor import Postprocessor
 from beat_this.preprocessing import LogMelSpect
 
 
-FIXTURE_DIR = Path("PhospheneEngine/Tests/Fixtures/tempo")
-OUT_DIR = Path("PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/beat_this_reference")
+FIXTURE_DIR = Path("UzumeEngine/Tests/Fixtures/tempo")
+OUT_DIR = Path("UzumeEngine/Tests/UzumeEngineTests/Fixtures/beat_this_reference")
 
 FIXTURES = [
     ("love_rehab",          "love_rehab.m4a",          "Chaim",        "electronic ~125 BPM, 4/4"),

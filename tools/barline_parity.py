@@ -22,7 +22,7 @@ Everything else — the features, the contrast statistic, the `sum_margin` combi
 chosen in FT.3 task 3 — is unchanged from `barline_combine.py`.
 
 Usage:
-    ~/phosphene-ml-env/bin/python tools/barline_parity.py \\
+    ~/uzume-ml-env/bin/python tools/barline_parity.py \\
         --beats-dir /tmp/barprobe --fixtures ~/phosphene_beatbench_fixtures \\
         --out /tmp/barprobe/parity.json
 """
@@ -136,7 +136,7 @@ DECLINE_THRESHOLD = 1.24
 def f_measure(reference: list[float], estimate: list[float], tol: float = 0.070) -> float:
     """Greedy one-to-one F-measure at +/-70 ms.
 
-    Ported from `Metrics.fMeasure` in `PhospheneEngine/Sources/BeatBench/Metrics.swift`
+    Ported from `Metrics.fMeasure` in `UzumeEngine/Sources/BeatBench/Metrics.swift`
     (that target is an executable, so the test bundle cannot import it). One-to-one
     matters: without it a downbeat stream firing twice per reference bar would score full
     recall on both."""
@@ -337,7 +337,7 @@ def main() -> int:
     ap.add_argument("--ab", action="store_true",
                     help="task 5 + task 6: margin distribution and the A/B vs the incumbent")
     ap.add_argument("--groundtruth",
-                    default="PhospheneEngine/Tests/Fixtures/beatbench/groundtruth")
+                    default="UzumeEngine/Tests/Fixtures/beatbench/groundtruth")
     ap.add_argument("--seed-jitter", type=int, default=0,
                     help="also run the ORIGINAL stochastic null this many times per track, "
                          "to show why a deterministic null was needed for the 1e-3 gate")

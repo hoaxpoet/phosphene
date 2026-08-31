@@ -1,7 +1,7 @@
 # Fata Morgana — live Milkdrop reference (butterchurn)
 
 Stands up the **actual** `martin [shadow harlequins shape code] - fata morgana` Milkdrop preset running
-in [butterchurn](https://github.com/jberg/butterchurn) so the Phosphene port can be compared
+in [butterchurn](https://github.com/jberg/butterchurn) so the Uzume port can be compared
 **frame-by-frame against the true reference**. Direct successor to `tools/dragon_bloom_reference/`
 (D-137/D-138); the faithful-port discipline is **CLAUDE.md FA #70**.
 
@@ -41,5 +41,5 @@ Then serve and open in the preview browser. A `.claude/launch.json` config named
 - **Boost the audio ~6×** (`?boost=` URL param, default 6.0). The recorded tap is ~−18 dB; the shapes'
   `rad *= {bass,mid,treb}_att` collapse to ~0 on quiet input otherwise (D-138 finding; butterchurn feeds
   6×-boosted audio).
-- 640×480 (4:3) — Milkdrop's projection assumes it. Phosphene renders 16:9; the oracle is the comparison
+- 640×480 (4:3) — Milkdrop's projection assumes it. Uzume renders 16:9; the oracle is the comparison
   reference, not a hard aspect lock (see the plan's aspect note).

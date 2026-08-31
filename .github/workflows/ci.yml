@@ -1,4 +1,4 @@
-# Phosphene CI — fast gate (CLEAN.5.1 / 5.3).
+# Uzume CI — fast gate (CLEAN.5.1 / 5.3).
 #
 # Scope (decided 2026-06-15): build + lint + doc/string/sample-rate gates +
 # a GPU/fixture-free LOGIC-TEST subset, required-green on `main`. The heavy
@@ -49,8 +49,8 @@ jobs:
       - name: Cache ML weights
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: PhospheneEngine/Sources/ML/Weights
-          key: ml-weights-${{ hashFiles('PhospheneEngine/Sources/ML/Weights/SHA256SUMS') }}
+          path: UzumeEngine/Sources/ML/Weights
+          key: ml-weights-${{ hashFiles('UzumeEngine/Sources/ML/Weights/SHA256SUMS') }}
 
       # Fetch + verify the weights from the Release asset. No-op on a cache hit
       # (fetch_weights.sh verifies the present files against SHA256SUMS and returns
@@ -84,14 +84,14 @@ jobs:
       # disabled — there's no Developer cert in CI and we ship no artifact here.
       # Build from the committed Package.resolved files (CLEAN.5.4c) — fail on
       # dep-graph drift instead of silently floating transitive SPM deps. The app
-      # build reads PhospheneApp.xcodeproj/…/swiftpm/Package.resolved; the engine
-      # build reads PhospheneEngine/Package.resolved. Both pin the same 4 deps.
+      # build reads UzumeApp.xcodeproj/…/swiftpm/Package.resolved; the engine
+      # build reads UzumeEngine/Package.resolved. Both pin the same 4 deps.
       - name: Build (app + engine, signing disabled, deps pinned)
         run: |
-          xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
+          xcodebuild -scheme UzumeApp -destination 'platform=macOS' \
             -disableAutomaticPackageResolution \
             CODE_SIGNING_ALLOWED=NO build
-          swift build --package-path PhospheneEngine \
+          swift build --package-path UzumeEngine \
             --only-use-versions-from-resolved-file
 
       # Pinned to the dev version (CLEAN.5.4b) — NOT `brew install` latest, which
@@ -109,7 +109,7 @@ jobs:
           /tmp/swiftlint/swiftlint lint --strict --config .swiftlint.yml
 
       - name: Doc gates (DocIntegrityTests)
-        run: swift test --package-path PhospheneEngine --filter DocIntegrityTests
+        run: swift test --package-path UzumeEngine --filter DocIntegrityTests
 
       # Option A lean allow-list (CLEAN.5.1). Suites with NO GPU/Metal, NO
       # licensed fixtures, and NO external-app runtime (headless runner has no
@@ -124,7 +124,7 @@ jobs:
       # follow-up (prove the macos-26 runner has a working Metal device first).
       - name: Logic tests (GPU/fixture/external-app-free subset)
         run: |
-          swift test --package-path PhospheneEngine \
+          swift test --package-path UzumeEngine \
             --filter ConcurrencyAuditProbeTests \
             --filter SpotifyTokenProvider \
             --filter SpotifyWebAPIConnector \

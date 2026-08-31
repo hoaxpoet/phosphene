@@ -3,7 +3,7 @@
 **Audit increment:** CA.1
 **Date:** 2026-05-20
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneEngine/Sources/DSP/` (20 files, 5,837 LoC) + 2 DSP-adjacent files in `PhospheneEngine/Sources/Session/` (`GridOnsetCalibrator.swift`, `BeatGridAnalyzer.swift`).
+**Scope:** `UzumeEngine/Sources/DSP/` (20 files, 5,837 LoC) + 2 DSP-adjacent files in `UzumeEngine/Sources/Session/` (`GridOnsetCalibrator.swift`, `BeatGridAnalyzer.swift`).
 **Methodology:** [`docs/prompts/PHASE_CA_KICKOFF_CA1_DSP_MIR_2026-05-20.md`](../prompts/PHASE_CA_KICKOFF_CA1_DSP_MIR_2026-05-20.md).
 **Reads relied on:** `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (D-026, D-027, D-058, D-059, D-075–D-080), `docs/QUALITY/KNOWN_ISSUES.md` (BUG-007.x cluster, BUG-008, BUG-009, BUG-R001–R008), `docs/ENGINEERING_PLAN.md`, `docs/diagnostics/capability-audit-pre-2026-05-12.md`.
 
@@ -15,13 +15,13 @@
 
 | Verdict | Count | Notes |
 |---|---|---|
-| `production-active` | 18 files | Default verdict; consumers verified by grep across `PhospheneApp/`, `PhospheneEngine/Sources/`, and `PhospheneEngine/Tests/`. |
+| `production-active` | 18 files | Default verdict; consumers verified by grep across `UzumeApp/`, `UzumeEngine/Sources/`, and `UzumeEngine/Tests/`. |
 | `production-orphan` (runtime path) | 1 cluster | `SelfSimilarityMatrix` + `NoveltyDetector` + `StructuralAnalyzer` run every frame inside `MIRPipeline.process` but their per-frame output (`MIRPipeline.latestStructuralPrediction`) is read by exactly one consumer at *preparation* time only. The runtime per-frame work has no live reader. |
 | `production-orphan` (field-level) | 1 field | `MIRPipeline.spectralRolloff` is public; zero non-DSP consumers. The underlying rolloff value IS consumed internally by `StructuralAnalyzer` (which is itself in the orphan cluster above), but the public exposure is dead. |
 | `boundary-deferred` | 2 files | `GridOnsetCalibrator.swift` and `BeatGridAnalyzer.swift` live in `Sources/Session/`, not `Sources/DSP/`, despite functioning as DSP capabilities. File-location call deferred to a CA-future increment that audits Session. |
 | `built-but-undocumented` | 1 file | `MIRPipeline+Recording.swift` writes a parallel `~/phosphene_features.csv` (wired to the `R` keyboard shortcut) that is distinct from `SessionRecorder`'s `features.csv`. The duplication is real and works; only the documentation surface omits the distinction. |
 | `documented-but-missing` | 1 reference | `docs/CAPABILITY_GAP_AUDIT.md` is cited as a live file at [`docs/ENGINEERING_PLAN.md:446`](../ENGINEERING_PLAN.md) but does not exist on disk. The kickoff anticipated this finding; it is already acknowledged in `docs/ENGINEERING_PLAN.md:3724`. |
-| `unverified-claim` | 0 | No new instances. PT.1 (the canonical case cited in the kickoff) is now `production-active` after the 2026-05-19 ring-buffer fix landed; verified at [`PitchTracker.swift:137-139`](../../PhospheneEngine/Sources/DSP/PitchTracker.swift) and `:178-212`. |
+| `unverified-claim` | 0 | No new instances. PT.1 (the canonical case cited in the kickoff) is now `production-active` after the 2026-05-19 ring-buffer fix landed; verified at [`PitchTracker.swift:137-139`](../../UzumeEngine/Sources/DSP/PitchTracker.swift) and `:178-212`. |
 | `dead` | 0 | — |
 | `stub` | 0 | `DSP.swift` is a 5-line module marker (just `import Accelerate / Shared / os.log`); not a stub. |
 
@@ -32,7 +32,7 @@
 **Doc-drift findings of note:**
 
 1. The `DSP/` module-map block at [`docs/ARCHITECTURE.md:415-428`](../ARCHITECTURE.md) lists 13 files but the directory contains 20. Six load-bearing files are absent from the canonical module map, including `LiveBeatDriftTracker.swift` (the BUG-007.x focal point and the largest DSP file at 808 LoC). This is the same drift the kickoff prompt was authored to surface.
-2. PT.1 (`PitchTracker` ring-buffer fix, 2026-05-19) has no `Resolved` entry in `docs/QUALITY/KNOWN_ISSUES.md` despite affecting production behaviour for ~5 months. The fix is documented in code comments at [`PitchTracker.swift:8-21`](../../PhospheneEngine/Sources/DSP/PitchTracker.swift) and in the AV.2 closeout narrative at [`ENGINEERING_PLAN.md:3858`](../ENGINEERING_PLAN.md), but the Defect Handling Protocol requires a `BUG-<id>` entry. Flagged for `KNOWN_ISSUES.md` sweep; not a new BUG.
+2. PT.1 (`PitchTracker` ring-buffer fix, 2026-05-19) has no `Resolved` entry in `docs/QUALITY/KNOWN_ISSUES.md` despite affecting production behaviour for ~5 months. The fix is documented in code comments at [`PitchTracker.swift:8-21`](../../UzumeEngine/Sources/DSP/PitchTracker.swift) and in the AV.2 closeout narrative at [`ENGINEERING_PLAN.md:3858`](../ENGINEERING_PLAN.md), but the Defect Handling Protocol requires a `BUG-<id>` entry. Flagged for `KNOWN_ISSUES.md` sweep; not a new BUG.
 
 ---
 
@@ -40,7 +40,7 @@
 
 ### broken-but-claimed (BUG entries filed)
 
-**None.** Every public capability that docs claim to work was verified against either tests, code-level evidence, or recent session-log narrative (BUG-007.9 manual validation, AV.2 PT.1 closeout, BUG-009 fast-rock validation). The PT.1 pattern the kickoff explicitly invoked is now closed (ring-buffer fix at [`PitchTracker.swift:178-212`](../../PhospheneEngine/Sources/DSP/PitchTracker.swift); confidence > 0 was verified in production sessions per [`ENGINEERING_PLAN.md:3858`](../ENGINEERING_PLAN.md) "Route 1 vocals melody → hue ... 23.28 % (was 0 % pre-PT.1)").
+**None.** Every public capability that docs claim to work was verified against either tests, code-level evidence, or recent session-log narrative (BUG-007.9 manual validation, AV.2 PT.1 closeout, BUG-009 fast-rock validation). The PT.1 pattern the kickoff explicitly invoked is now closed (ring-buffer fix at [`PitchTracker.swift:178-212`](../../UzumeEngine/Sources/DSP/PitchTracker.swift); confidence > 0 was verified in production sessions per [`ENGINEERING_PLAN.md:3858`](../ENGINEERING_PLAN.md) "Route 1 vocals melody → hue ... 23.28 % (was 0 % pre-PT.1)").
 
 ### documented-but-missing
 
@@ -52,14 +52,14 @@ None this increment. The PT.1 pattern the kickoff prompt highlighted is now clos
 
 ### production-orphan
 
-1. **Per-frame `StructuralAnalyzer` cluster** — runs every frame in `MIRPipeline.process` ([`MIRPipeline.swift:249`](../../PhospheneEngine/Sources/DSP/MIRPipeline.swift)) and writes `latestStructuralPrediction` ([`MIRPipeline.swift:80`](../../PhospheneEngine/Sources/DSP/MIRPipeline.swift)). Full grep of consumers (`grep -rn "latestStructuralPrediction" PhospheneEngine/Sources PhospheneApp`) returns four hits: the declaration, the per-frame writer, the `reset()` clear, and one reader at `SessionPreparer+Analysis.swift:289`. The reader is at preparation time only — it derives `sectionCount` for `TrackProfile`. The orchestrator's runtime `StructuralPrediction` consumption (`TransitionPolicy.swift:165` / `LiveAdapter.swift:250` / `ReactiveOrchestrator.swift:316`) is fed from `SessionPlanner.swift:317` which constructs a synthetic `StructuralPrediction(sectionIndex: 0, sectionStartTime: clock, predictedNextBoundary: clock, …)`. **No code path reads MIRPipeline's per-frame structural output at runtime.** The cluster is:
-   - [`SelfSimilarityMatrix.swift`](../../PhospheneEngine/Sources/DSP/SelfSimilarityMatrix.swift) (229 LoC) — 600-frame ring buffer + cosine similarity queries.
-   - [`NoveltyDetector.swift`](../../PhospheneEngine/Sources/DSP/NoveltyDetector.swift) (287 LoC) — checkerboard kernel, peak picking with adaptive threshold + minimum distance gate.
-   - [`StructuralAnalyzer.swift`](../../PhospheneEngine/Sources/DSP/StructuralAnalyzer.swift) (345 LoC) — coordinator; runs novelty detection every 30 frames; predicts next boundary from duration consistency + repetition heuristic.
+1. **Per-frame `StructuralAnalyzer` cluster** — runs every frame in `MIRPipeline.process` ([`MIRPipeline.swift:249`](../../UzumeEngine/Sources/DSP/MIRPipeline.swift)) and writes `latestStructuralPrediction` ([`MIRPipeline.swift:80`](../../UzumeEngine/Sources/DSP/MIRPipeline.swift)). Full grep of consumers (`grep -rn "latestStructuralPrediction" UzumeEngine/Sources UzumeApp`) returns four hits: the declaration, the per-frame writer, the `reset()` clear, and one reader at `SessionPreparer+Analysis.swift:289`. The reader is at preparation time only — it derives `sectionCount` for `TrackProfile`. The orchestrator's runtime `StructuralPrediction` consumption (`TransitionPolicy.swift:165` / `LiveAdapter.swift:250` / `ReactiveOrchestrator.swift:316`) is fed from `SessionPlanner.swift:317` which constructs a synthetic `StructuralPrediction(sectionIndex: 0, sectionStartTime: clock, predictedNextBoundary: clock, …)`. **No code path reads MIRPipeline's per-frame structural output at runtime.** The cluster is:
+   - [`SelfSimilarityMatrix.swift`](../../UzumeEngine/Sources/DSP/SelfSimilarityMatrix.swift) (229 LoC) — 600-frame ring buffer + cosine similarity queries.
+   - [`NoveltyDetector.swift`](../../UzumeEngine/Sources/DSP/NoveltyDetector.swift) (287 LoC) — checkerboard kernel, peak picking with adaptive threshold + minimum distance gate.
+   - [`StructuralAnalyzer.swift`](../../UzumeEngine/Sources/DSP/StructuralAnalyzer.swift) (345 LoC) — coordinator; runs novelty detection every 30 frames; predicts next boundary from duration consistency + repetition heuristic.
 
    **Suggested next step (out of scope for CA.1):** either (a) gate the runtime call so the chain runs at prep time only — `SessionPreparer` already drives MIRPipeline over the preview clip, and that's where the consumer lives — or (b) wire `MIRPipeline.latestStructuralPrediction` into `VisualizerEngine` → orchestrator at runtime so the orchestrator's TransitionPolicy reads real predictions instead of synthetic ones. Option (b) is the higher-leverage fix (real structural boundaries would fire `TransitionPolicy.structuralBoundary` triggers per the documented behaviour at `ARCHITECTURE.md:200`). Either way, the per-frame audio-callback CPU cost of running the cluster with no live consumer is wasted.
 
-2. **`MIRPipeline.spectralRolloff` (field-level orphan)** — declared public at [`MIRPipeline.swift:48`](../../PhospheneEngine/Sources/DSP/MIRPipeline.swift); zero non-DSP consumers (`grep -rn "spectralRolloff" PhospheneEngine/Sources PhospheneApp | grep -v "Sources/DSP"` returns empty). The underlying value IS computed and used: `SpectralAnalyzer.Result.rolloff` flows into `StructuralAnalyzer.SpectralSummary.rolloff` (at [`MIRPipeline.swift`](../../PhospheneEngine/Sources/DSP/MIRPipeline.swift) per `buildFeatureVector` plumbing). The orphan is only the public exposure on MIRPipeline. **Suggested next step (out of scope):** demote to `private(set) internal` or delete entirely if the StructuralAnalyzer cluster is also pruned per the previous finding. Low priority.
+2. **`MIRPipeline.spectralRolloff` (field-level orphan)** — declared public at [`MIRPipeline.swift:48`](../../UzumeEngine/Sources/DSP/MIRPipeline.swift); zero non-DSP consumers (`grep -rn "spectralRolloff" UzumeEngine/Sources UzumeApp | grep -v "Sources/DSP"` returns empty). The underlying value IS computed and used: `SpectralAnalyzer.Result.rolloff` flows into `StructuralAnalyzer.SpectralSummary.rolloff` (at [`MIRPipeline.swift`](../../UzumeEngine/Sources/DSP/MIRPipeline.swift) per `buildFeatureVector` plumbing). The orphan is only the public exposure on MIRPipeline. **Suggested next step (out of scope):** demote to `private(set) internal` or delete entirely if the StructuralAnalyzer cluster is also pruned per the previous finding. Low priority.
 
 ### dead
 
@@ -93,7 +93,7 @@ None. `DSP.swift` (5 lines, just imports) is a module marker, not a stub functio
 
 ## Per-file capability index
 
-Citations use `path:line` format. Inventory data sourced from per-file Explore-agent reads; consumer counts sourced from `grep -rn` of canonical type names across `PhospheneApp/`, `PhospheneEngine/Sources/`, and `PhospheneEngine/Tests/`.
+Citations use `path:line` format. Inventory data sourced from per-file Explore-agent reads; consumer counts sourced from `grep -rn` of canonical type names across `UzumeApp/`, `UzumeEngine/Sources/`, and `UzumeEngine/Tests/`.
 
 ### `DSP.swift` (5 lines) — `production-active`
 
@@ -101,7 +101,7 @@ Module entry-point marker. Declares imports (`Accelerate`, `Shared`, `os.log`). 
 
 ### `BandEnergyProcessor.swift` (280 lines) — `production-active`
 
-[`BandEnergyProcessor.swift:13`](../../PhospheneEngine/Sources/DSP/BandEnergyProcessor.swift) — 3-band + 6-band energy extractor with Milkdrop-style average-tracking AGC (output = `raw / runningAverage × 0.5`, centered at 0.5). Two-phase warmup (fast 60 frames @ 0.95, then moderate 180 frames @ 0.992). FPS-independent smoothing via `Smoother`.
+[`BandEnergyProcessor.swift:13`](../../UzumeEngine/Sources/DSP/BandEnergyProcessor.swift) — 3-band + 6-band energy extractor with Milkdrop-style average-tracking AGC (output = `raw / runningAverage × 0.5`, centered at 0.5). Two-phase warmup (fast 60 frames @ 0.95, then moderate 180 frames @ 0.992). FPS-independent smoothing via `Smoother`.
 
 | Capability | Verdict | Consumers (prod / test) | Doc-cited |
 |---|---|---|---|
@@ -113,7 +113,7 @@ Tuning constants confirmed against `ARCHITECTURE.md §AGC` / `§Smoothing` (no d
 
 ### `SpectralAnalyzer.swift` (251 lines) — `production-active` (with field-level orphan)
 
-[`SpectralAnalyzer.swift:13`](../../PhospheneEngine/Sources/DSP/SpectralAnalyzer.swift) — Spectral centroid (energy-weighted mean frequency), rolloff (85th percentile cumulative energy), and flux (half-wave-rectified frame-to-frame magnitude difference) via vDSP. EMA-smoothed variants per feature (`centroidAlpha = 0.12`, `rolloffAlpha = 0.12`, `fluxAlpha = 0.25`).
+[`SpectralAnalyzer.swift:13`](../../UzumeEngine/Sources/DSP/SpectralAnalyzer.swift) — Spectral centroid (energy-weighted mean frequency), rolloff (85th percentile cumulative energy), and flux (half-wave-rectified frame-to-frame magnitude difference) via vDSP. EMA-smoothed variants per feature (`centroidAlpha = 0.12`, `rolloffAlpha = 0.12`, `fluxAlpha = 0.25`).
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -125,7 +125,7 @@ Tuning constants confirmed against `ARCHITECTURE.md §AGC` / `§Smoothing` (no d
 
 ### `ChromaExtractor.swift` (378 lines) — `production-active`
 
-[`ChromaExtractor.swift:13`](../../PhospheneEngine/Sources/DSP/ChromaExtractor.swift) — 12-bin chroma vector with bin-count normalization, additive accumulation (decay `0.9995/frame ≈ 23 s half-life`), Krumhansl-Schmuckler key estimation (24 profiles: 12 major + 12 minor), and 8-second key hysteresis.
+[`ChromaExtractor.swift:13`](../../UzumeEngine/Sources/DSP/ChromaExtractor.swift) — 12-bin chroma vector with bin-count normalization, additive accumulation (decay `0.9995/frame ≈ 23 s half-life`), Krumhansl-Schmuckler key estimation (24 profiles: 12 major + 12 minor), and 8-second key hysteresis.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -138,7 +138,7 @@ Tuning constants confirmed: `minFrequency = 500.0` Hz (matches `ARCHITECTURE.md:
 
 ### `BeatDetector.swift` (400 lines) — `production-active`
 
-[`BeatDetector.swift:17`](../../PhospheneEngine/Sources/DSP/BeatDetector.swift) — 6-band onset detection with adaptive median-thresholds, per-band cooldowns (`[0.4, 0.4, 0.2, 0.2, 0.15, 0.15]` s), grouped beat pulses (`beatBass`/`beatMid`/`beatTreble`/`beatComposite`), and tempo estimation via IOI (sub_bass only, D-075) + autocorrelation. Zero-alloc per-frame in `process(magnitudes:fps:deltaTime:)`.
+[`BeatDetector.swift:17`](../../UzumeEngine/Sources/DSP/BeatDetector.swift) — 6-band onset detection with adaptive median-thresholds, per-band cooldowns (`[0.4, 0.4, 0.2, 0.2, 0.15, 0.15]` s), grouped beat pulses (`beatBass`/`beatMid`/`beatTreble`/`beatComposite`), and tempo estimation via IOI (sub_bass only, D-075) + autocorrelation. Zero-alloc per-frame in `process(magnitudes:fps:deltaTime:)`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -153,22 +153,22 @@ Tuning constants confirmed against `ARCHITECTURE.md:597-599` (no drift): `bandCo
 
 ### `BeatDetector+Tempo.swift` (395 lines) — `production-active`
 
-[`BeatDetector+Tempo.swift:59`](../../PhospheneEngine/Sources/DSP/BeatDetector+Tempo.swift) — `computeStableTempo()` (1 Hz, trimmed-mean IOI per D-075) and `estimateTempo()` (autocorrelation fallback). Halving-only octave correction at BPM > 175 (BUG-009: threshold raised from 160 to 175 for fast rock; sub-80 doubling explicitly removed per D-079).
+[`BeatDetector+Tempo.swift:59`](../../UzumeEngine/Sources/DSP/BeatDetector+Tempo.swift) — `computeStableTempo()` (1 Hz, trimmed-mean IOI per D-075) and `estimateTempo()` (autocorrelation fallback). Halving-only octave correction at BPM > 175 (BUG-009: threshold raised from 160 to 175 for fast rock; sub-80 doubling explicitly removed per D-079).
 
 Verified rule alignment:
-- [`BeatDetector+Tempo.swift:196-198`](../../PhospheneEngine/Sources/DSP/BeatDetector+Tempo.swift) comment: "Halving-only octave correction. Sub-80 doubling was deleted in QR.1 (D-079) — Pyramid Song genuinely runs at ~68 BPM."
+- [`BeatDetector+Tempo.swift:196-198`](../../UzumeEngine/Sources/DSP/BeatDetector+Tempo.swift) comment: "Halving-only octave correction. Sub-80 doubling was deleted in QR.1 (D-079) — Pyramid Song genuinely runs at ~68 BPM."
 - Cross-checked against D-079 rule 4: matches.
 - Cross-checked against `BeatGrid.halvingOctaveCorrected` threshold (175 in `BeatGrid.swift:186` per BUG-009): matches across the tempo path. Three-site consistency verified (`BeatDetector+Tempo.computeRobustBPM`, `BeatDetector+Tempo.estimateTempo`, `BeatGrid.halvingOctaveCorrected`).
 
 ### `BeatDetector+TempoDiagnostics.swift` (87 lines) — `production-active` (env-gated)
 
-[`BeatDetector+TempoDiagnostics.swift:23`](../../PhospheneEngine/Sources/DSP/BeatDetector+TempoDiagnostics.swift) — DSP.1 baseline-capture instrumentation gated behind `BEATDETECTOR_DUMP_HIST=1` env var; optional file output via `BEATDETECTOR_DUMP_FILE=<path>`. `dumpHistogram`, `dumpEarly`, `dumpTempoTimestamp` methods. Silent in production.
+[`BeatDetector+TempoDiagnostics.swift:23`](../../UzumeEngine/Sources/DSP/BeatDetector+TempoDiagnostics.swift) — DSP.1 baseline-capture instrumentation gated behind `BEATDETECTOR_DUMP_HIST=1` env var; optional file output via `BEATDETECTOR_DUMP_FILE=<path>`. `dumpHistogram`, `dumpEarly`, `dumpTempoTimestamp` methods. Silent in production.
 
 Consumer: `TempoDumpRunner` CLI (per `ARCHITECTURE.md:539`) + `Scripts/dump_tempo_baselines.sh`. Confirmed as permanent regression infrastructure for DSP.1/DSP.2 per D-075.
 
 ### `BeatPredictor.swift` (188 lines) — `production-active` (reactive-mode fallback)
 
-[`BeatPredictor.swift:51`](../../PhospheneEngine/Sources/DSP/BeatPredictor.swift) — IIR period smoother on rising-edge onsets; writes `beatPhase01` and `beatsUntilNext` to FeatureVector floats 35–36 in reactive mode (no offline grid installed). Bootstrap from metadata BPM via `setBootstrapBPM(_:)`.
+[`BeatPredictor.swift:51`](../../UzumeEngine/Sources/DSP/BeatPredictor.swift) — IIR period smoother on rising-edge onsets; writes `beatPhase01` and `beatsUntilNext` to FeatureVector floats 35–36 in reactive mode (no offline grid installed). Bootstrap from metadata BPM via `setBootstrapBPM(_:)`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -180,7 +180,7 @@ File-level docstring at `BeatPredictor.swift:1-33` correctly marks this as depre
 
 ### `BeatGrid.swift` (349 lines) — `production-active`
 
-[`BeatGrid.swift:19`](../../PhospheneEngine/Sources/DSP/BeatGrid.swift) — Offline `Codable`/`Hashable`/`Sendable` value type representing the Beat This!-resolved grid. Methods:
+[`BeatGrid.swift:19`](../../UzumeEngine/Sources/DSP/BeatGrid.swift) — Offline `Codable`/`Hashable`/`Sendable` value type representing the Beat This!-resolved grid. Methods:
 - `offsetBy(_:horizon:)` — shifts grid times for live-analysis-window offsets; forward-extrapolates to a horizon to keep grid valid across long playback windows.
 - `halvingOctaveCorrected()` — halving-only @ 175 BPM threshold (BUG-009, D-079).
 - `localTiming(at:)` — returns (period, beatsSinceDownbeat) for arbitrary playback times.
@@ -191,19 +191,19 @@ Widely consumed (App=6, Engine non-DSP=13, Tests=16). The most-used DSP type by 
 
 ### `BeatGridResolver.swift` (181 lines) — `production-active`
 
-[`BeatGridResolver.swift:30`](../../PhospheneEngine/Sources/DSP/BeatGridResolver.swift) — Stateless transformer: Beat This! per-frame beat/downbeat probability arrays → `BeatGrid`. Algorithm matches the Python postprocessor reference (7-frame max-pool + threshold 0.5 + adjacent-peak dedup + ±2-frame downbeat-to-beat snap + trimmed-mean IOI BPM + median-downbeat-IOI meter detection).
+[`BeatGridResolver.swift:30`](../../UzumeEngine/Sources/DSP/BeatGridResolver.swift) — Stateless transformer: Beat This! per-frame beat/downbeat probability arrays → `BeatGrid`. Algorithm matches the Python postprocessor reference (7-frame max-pool + threshold 0.5 + adjacent-peak dedup + ±2-frame downbeat-to-beat snap + trimmed-mean IOI BPM + median-downbeat-IOI meter detection).
 
 Single production consumer (`BeatGridAnalyzer.swift`) + 3 test files. Doc-aligned with D-073/D-075/D-077.
 
 ### `BeatThisPreprocessor.swift` (413 lines) — `production-active`
 
-[`BeatThisPreprocessor.swift:55`](../../PhospheneEngine/Sources/DSP/BeatThisPreprocessor.swift) — Beat This! log-mel spectrogram preprocessor (sr=22050, nFFT=1024, hop=441, nMels=128, fMin=30, fMax=11000, Slaney mel scale, `normalized="frame_length"`, `power=1`, log multiplier 1000). Zero-alloc hot path post-init; NSLock-guarded.
+[`BeatThisPreprocessor.swift:55`](../../UzumeEngine/Sources/DSP/BeatThisPreprocessor.swift) — Beat This! log-mel spectrogram preprocessor (sr=22050, nFFT=1024, hop=441, nMels=128, fMin=30, fMax=11000, Slaney mel scale, `normalized="frame_length"`, `power=1`, log multiplier 1000). Zero-alloc hot path post-init; NSLock-guarded.
 
 Consumed by `BeatGridAnalyzer` (Session module). Test surface includes `BeatThisPreprocessorTests` + `BeatThisLayerMatchTests` + `BeatThisBugRegressionTests` + `BeatThisStemReshapeTests` + `BeatThisRoPEPairingTests` + `BeatThisModelTests` + `BeatThisFixturePresenceGate`. The Python golden-test gate at every pipeline boundary is referenced in D-077 (spec-drift discipline).
 
 ### `LiveBeatDriftTracker.swift` (808 lines) — `production-active` (the BUG-007.x focal point)
 
-[`LiveBeatDriftTracker.swift:63`](../../PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift) — Aligns live `beatPhase01` to a cached offline `BeatGrid` via onset-matched drift tracking. Algorithm: match sub_bass onsets to cached beats within ±50 ms, EMA-update drift toward measured offset (`onsetAlpha = 0.4`), emit phase/lock state per frame. Reactive fallback (zero phase / `.unlocked`) when no grid installed.
+[`LiveBeatDriftTracker.swift:63`](../../UzumeEngine/Sources/DSP/LiveBeatDriftTracker.swift) — Aligns live `beatPhase01` to a cached offline `BeatGrid` via onset-matched drift tracking. Algorithm: match sub_bass onsets to cached beats within ±50 ms, EMA-update drift toward measured offset (`onsetAlpha = 0.4`), emit phase/lock state per frame. Reactive fallback (zero phase / `.unlocked`) when no grid installed.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -221,7 +221,7 @@ The 808-line file represents months of incremental BUG-007 work and is **absent 
 
 ### `MIRPipeline.swift` (399 lines) — `production-active` (coordinator)
 
-[`MIRPipeline.swift:14`](../../PhospheneEngine/Sources/DSP/MIRPipeline.swift) — Owns all eight sub-analyzers (`SpectralAnalyzer`, `BandEnergyProcessor`, `ChromaExtractor`, `BeatDetector`, `StructuralAnalyzer`, `BeatPredictor`, `LiveBeatDriftTracker`). Per-frame `process(magnitudes:fps:time:deltaTime:)` runs all analyzers, normalizes spectral features via running-max AGC (`fluxMaxDecay = 0.999`), derives MV-1 deviation primitives, picks grid-vs-predictor for beat-phase, and returns a populated `FeatureVector` for GPU upload.
+[`MIRPipeline.swift:14`](../../UzumeEngine/Sources/DSP/MIRPipeline.swift) — Owns all eight sub-analyzers (`SpectralAnalyzer`, `BandEnergyProcessor`, `ChromaExtractor`, `BeatDetector`, `StructuralAnalyzer`, `BeatPredictor`, `LiveBeatDriftTracker`). Per-frame `process(magnitudes:fps:time:deltaTime:)` runs all analyzers, normalizes spectral features via running-max AGC (`fluxMaxDecay = 0.999`), derives MV-1 deviation primitives, picks grid-vs-predictor for beat-phase, and returns a populated `FeatureVector` for GPU upload.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -244,37 +244,37 @@ The 808-line file represents months of incremental BUG-007 work and is **absent 
 
 ### `MIRPipeline+Recording.swift` (69 lines) — `production-active` (built-but-undocumented)
 
-[`MIRPipeline+Recording.swift:10-30`](../../PhospheneEngine/Sources/DSP/MIRPipeline+Recording.swift) — `startRecording()` / `stopRecording()` write a 1 Hz throttled CSV to `~/phosphene_features.csv`. Bound to the `R` keyboard shortcut via `VisualizerEngine+Capture.swift:18`. The CSV schema is `timestamp, track, artist, subBass, lowBass, lowMid, midHigh, highMid, high, centroid, flux, majorCorr, minorCorr, stableKey, stableBPM, valence, arousal` (17 columns).
+[`MIRPipeline+Recording.swift:10-30`](../../UzumeEngine/Sources/DSP/MIRPipeline+Recording.swift) — `startRecording()` / `stopRecording()` write a 1 Hz throttled CSV to `~/phosphene_features.csv`. Bound to the `R` keyboard shortcut via `VisualizerEngine+Capture.swift:18`. The CSV schema is `timestamp, track, artist, subBass, lowBass, lowMid, midHigh, highMid, high, centroid, flux, majorCorr, minorCorr, stableKey, stableBPM, valence, arousal` (17 columns).
 
 Coexists with `SessionRecorder` which auto-writes `~/Documents/phosphene_sessions/<ts>/features.csv` (22 columns, per-frame, per `ARCHITECTURE.md:273`). The two paths have different schemas, different output paths, and different cadences. The fact that **both exist** and **what each is for** is not documented anywhere outside the `R` shortcut listing. **Doc-drift correction applied below.**
 
 ### `NoveltyDetector.swift` (287 lines) — `production-orphan` (runtime), `production-active` (prep)
 
-[`NoveltyDetector.swift:30`](../../PhospheneEngine/Sources/DSP/NoveltyDetector.swift) — Section-boundary detector using checkerboard-kernel convolution on a self-similarity matrix. Adaptive threshold (`mean + 1.5 × stddev`), minimum-peak-distance gate (`minPeakDistance = 120` frames, ~2 s @ 60 fps). Per-frame consumer is `StructuralAnalyzer`; consumed at prep time per the top-level orphan finding.
+[`NoveltyDetector.swift:30`](../../UzumeEngine/Sources/DSP/NoveltyDetector.swift) — Section-boundary detector using checkerboard-kernel convolution on a self-similarity matrix. Adaptive threshold (`mean + 1.5 × stddev`), minimum-peak-distance gate (`minPeakDistance = 120` frames, ~2 s @ 60 fps). Per-frame consumer is `StructuralAnalyzer`; consumed at prep time per the top-level orphan finding.
 
 ### `SelfSimilarityMatrix.swift` (229 lines) — `production-orphan` (runtime), `production-active` (prep)
 
-[`SelfSimilarityMatrix.swift:13`](../../PhospheneEngine/Sources/DSP/SelfSimilarityMatrix.swift) — 600-frame × 16-feature ring buffer with vDSP cosine similarity queries. Consumed only by `StructuralAnalyzer`; downstream story matches the cluster finding above.
+[`SelfSimilarityMatrix.swift:13`](../../UzumeEngine/Sources/DSP/SelfSimilarityMatrix.swift) — 600-frame × 16-feature ring buffer with vDSP cosine similarity queries. Consumed only by `StructuralAnalyzer`; downstream story matches the cluster finding above.
 
 ### `StructuralAnalyzer.swift` (345 lines) — `production-orphan` (runtime), `production-active` (prep)
 
-[`StructuralAnalyzer.swift:13`](../../PhospheneEngine/Sources/DSP/StructuralAnalyzer.swift) — Coordinator: feeds per-frame (12-chroma + 4-spectral) features into the SSM, runs novelty detection every 30 frames, predicts next boundary using duration consistency (70 %) + repetition similarity (30 %). Returns `StructuralPrediction`. Public `boundaryCount` / `boundaryTimestamps` getters; both consumed only by the prep-time `sectionCount` derivation.
+[`StructuralAnalyzer.swift:13`](../../UzumeEngine/Sources/DSP/StructuralAnalyzer.swift) — Coordinator: feeds per-frame (12-chroma + 4-spectral) features into the SSM, runs novelty detection every 30 frames, predicts next boundary using duration consistency (70 %) + repetition similarity (30 %). Returns `StructuralPrediction`. Public `boundaryCount` / `boundaryTimestamps` getters; both consumed only by the prep-time `sectionCount` derivation.
 
 ### `PitchTracker.swift` (282 lines) — `production-active` (post-PT.1 fix)
 
-[`PitchTracker.swift:43`](../../PhospheneEngine/Sources/DSP/PitchTracker.swift) — YIN-based pitch detector for separated vocals stem. **PT.1 fix (2026-05-19) confirmed landed:**
-- Ring-buffer fill guard at [`PitchTracker.swift:137-139`](../../PhospheneEngine/Sources/DSP/PitchTracker.swift): `guard samplesAccumulated >= windowSize else { return (hz: 0, confidence: 0) }`.
-- `appendToRingBuffer()` at [`PitchTracker.swift:178-212`](../../PhospheneEngine/Sources/DSP/PitchTracker.swift) — incremental accumulation with shift-left semantics for sub-window inputs.
+[`PitchTracker.swift:43`](../../UzumeEngine/Sources/DSP/PitchTracker.swift) — YIN-based pitch detector for separated vocals stem. **PT.1 fix (2026-05-19) confirmed landed:**
+- Ring-buffer fill guard at [`PitchTracker.swift:137-139`](../../UzumeEngine/Sources/DSP/PitchTracker.swift): `guard samplesAccumulated >= windowSize else { return (hz: 0, confidence: 0) }`.
+- `appendToRingBuffer()` at [`PitchTracker.swift:178-212`](../../UzumeEngine/Sources/DSP/PitchTracker.swift) — incremental accumulation with shift-left semantics for sub-window inputs.
 - File-level fix narrative at lines 8-21 quotes verbatim: "before the fix, the live caller passed 1024-sample windows directly to YIN — `fillWindow()` zero-padded the first half of the internal buffer, making the cross-correlation in the difference function structurally zero ... so `findMinimum` always returned -1 → `(hz: 0, confidence: 0)` every frame."
 - The kickoff cited PT.1 as the canonical `unverified-claim → broken` transition; this audit confirms the transition has been closed.
 
 **Test-surface gap (not a verdict change):** `PitchTrackerTests.swift:47-87` exercises the post-2048-sample-accumulated state via full-window inputs; the production-mode incremental 1024-sample append path is not directly exercised. Live-route firing is verified empirically in real sessions (per `ENGINEERING_PLAN.md:3858`: "23.28 % (was 0 % pre-PT.1)") rather than synthetically in unit tests. Surfaced for `KNOWN_ISSUES.md` sweep below.
 
-Tuning constants confirmed: `windowSize = 2048`, `yinThreshold = 0.15`, `confidenceThreshold = 0.6`, `emaDecay = 0.8`. Implementation note in D-028 (the "advance to local minimum before parabolic interpolation" fix) verified at [`PitchTracker.swift:259-266`](../../PhospheneEngine/Sources/DSP/PitchTracker.swift).
+Tuning constants confirmed: `windowSize = 2048`, `yinThreshold = 0.15`, `confidenceThreshold = 0.6`, `emaDecay = 0.8`. Implementation note in D-028 (the "advance to local minimum before parabolic interpolation" fix) verified at [`PitchTracker.swift:259-266`](../../UzumeEngine/Sources/DSP/PitchTracker.swift).
 
 ### `StemAnalyzer.swift` (322 lines) — `production-active`
 
-[`StemAnalyzer.swift:46`](../../PhospheneEngine/Sources/DSP/StemAnalyzer.swift) — Per-stem analyzer. Owns four `BandEnergyProcessor` (one per stem), one `BeatDetector` on drums, one `PitchTracker` on vocals. Runs a lightweight vDSP FFT to convert mono waveforms to magnitudes (1024-point, 512 bins). Per-stem EMA rate `stemEMADecay = 0.9989` (~10 s time constant @ 94 Hz; relaxed from 0.995 after the 2026-04-17 Slint diagnosis quoted at lines 94-104).
+[`StemAnalyzer.swift:46`](../../UzumeEngine/Sources/DSP/StemAnalyzer.swift) — Per-stem analyzer. Owns four `BandEnergyProcessor` (one per stem), one `BeatDetector` on drums, one `PitchTracker` on vocals. Runs a lightweight vDSP FFT to convert mono waveforms to magnitudes (1024-point, 512 bins). Per-stem EMA rate `stemEMADecay = 0.9989` (~10 s time constant @ 94 Hz; relaxed from 0.995 after the 2026-04-17 Slint diagnosis quoted at lines 94-104).
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -284,7 +284,7 @@ Tuning constants confirmed: `windowSize = 2048`, `yinThreshold = 0.15`, `confide
 
 ### `StemAnalyzer+RichMetadata.swift` (169 lines) — `production-active`
 
-[`StemAnalyzer+RichMetadata.swift:18`](../../PhospheneEngine/Sources/DSP/StemAnalyzer+RichMetadata.swift) — MV-3a/MV-3c rich metadata: per-stem `OnsetRate`, `Centroid`, `AttackRatio`, `EnergySlope` via fast/slow RMS EMAs (50 ms / 500 ms time constants) and a leaky-integrator onset accumulator (`100 ms` refractory, `0.5 s` window decay, `× 2.0` rate multiplier). The 2026-04-17 rising-edge fix (preventing 3–5 frames-per-hit double-counting) is documented in code at lines 69–76.
+[`StemAnalyzer+RichMetadata.swift:18`](../../UzumeEngine/Sources/DSP/StemAnalyzer+RichMetadata.swift) — MV-3a/MV-3c rich metadata: per-stem `OnsetRate`, `Centroid`, `AttackRatio`, `EnergySlope` via fast/slow RMS EMAs (50 ms / 500 ms time constants) and a leaky-integrator onset accumulator (`100 ms` refractory, `0.5 s` window decay, `× 2.0` rate multiplier). The 2026-04-17 rising-edge fix (preventing 3–5 frames-per-hit double-counting) is documented in code at lines 69–76.
 
 ### `Sources/Session/GridOnsetCalibrator.swift` — `boundary-deferred` to Session subsystem audit
 
@@ -351,10 +351,10 @@ Items are greppable as `CA\.1-FU-\d+`. If/when CA.2+ audits land, a top-level `d
 | ID | Scope | Done-when | Est. sessions | Status |
 |---|---|---|---|---|
 | **CA.1-FU-1** | Eliminate the per-frame `StructuralAnalyzer` + `NoveltyDetector` + `SelfSimilarityMatrix` runtime-orphan chain. Two options to pick at planning time: **(a)** gate the chain in `MIRPipeline.process` so it runs at preparation time only (cheapest — preserves the existing prep-time `sectionCount` consumer at `SessionPreparer+Analysis.swift:289`); **(b)** wire `MIRPipeline.latestStructuralPrediction` into `VisualizerEngine` → orchestrator at runtime so `TransitionPolicy.structuralBoundary` triggers fire from real per-frame predictions instead of from the synthetic `StructuralPrediction` currently constructed at `SessionPlanner.swift:317` (higher leverage; more code touched). | Audio-callback hot path no longer runs SSM + novelty detection per frame, OR the orchestrator's runtime `prediction` is sourced from MIRPipeline instead of synthetically. Tests + golden sessions regenerated. Closeout cites which option (a/b) was chosen and why. | 1–2 | Ready now |
-| **CA.1-FU-2** | Demote `MIRPipeline.spectralRolloff` from `public private(set) var` to `private` (or delete entirely). Zero non-DSP consumers; the underlying value still flows into `StructuralAnalyzer.SpectralSummary.rolloff` internally and that path is unchanged. Natural to bundle with FU-1 — if the StructuralAnalyzer chain is gated to prep-time only, the public field is doubly redundant. | Public exposure removed; build green; `grep -rn "spectralRolloff" PhospheneApp PhospheneEngine/Sources` returns DSP-only hits. | <1 | Ready now (natural to bundle with FU-1) |
+| **CA.1-FU-2** | Demote `MIRPipeline.spectralRolloff` from `public private(set) var` to `private` (or delete entirely). Zero non-DSP consumers; the underlying value still flows into `StructuralAnalyzer.SpectralSummary.rolloff` internally and that path is unchanged. Natural to bundle with FU-1 — if the StructuralAnalyzer chain is gated to prep-time only, the public field is doubly redundant. | Public exposure removed; build green; `grep -rn "spectralRolloff" UzumeApp UzumeEngine/Sources` returns DSP-only hits. | <1 | Ready now (natural to bundle with FU-1) |
 | **CA.1-FU-3** | Trivial code-comment cleanup: `ChromaExtractor.swift:16` header docstring says "Bins below 65 Hz (C2) are skipped" but the constant at `:63` is `minFrequency = 500.0` (≈ B4). The constant is authoritative; the comment is stale. CA.1 left the code untouched per audit-only rule; this is the leftover alignment. | Header comment at `ChromaExtractor.swift:16` references 500 Hz / B4 and the rationale matches the comment at `:60-63`. | <1 | Ready now (trivial) |
 | **CA.1-FU-4** | Add a `PitchTracker` regression test that exercises the **live-incremental code path** (two consecutive `process(samples:)` calls with 1024-sample inputs, ring buffer fills on the second call, YIN fires only then). Existing tests at `PitchTrackerTests.swift:47-87` pass full 2048-sample windows directly — the same test/prod parity gap that hid the PT.1 bug for ~5 months. BUG-R010 explicitly acknowledges this gap. | New test in `PitchTrackerTests` runs two consecutive `process(samples: [Float](repeating: …, count: 1024))` calls on a synthetic 440 Hz tone; asserts confidence is 0 on call 1 (ring buffer not yet full) and confidence ≥ 0.6 on call 2 (ring buffer full, YIN runs against the accumulated buffer). | 1 | Ready now |
-| **CA.1-FU-5** | Relocate `Sources/Session/GridOnsetCalibrator.swift` and (probably) `Sources/Session/BeatGridAnalyzer.swift` to `Sources/DSP/`. Both are DSP capabilities by every functional criterion except file location. The `BeatGridAnalyzing` *protocol* may legitimately stay in Session (the testability-seam pattern is shared with `StemAnalyzing` / `MoodClassifying`); the `DefaultBeatGridAnalyzer` *implementation* belongs in DSP. Decide at planning time. | Files relocated; `PhospheneEngine/Package.swift` module dependencies updated; tests still pass; the Session module's dependency on DSP types narrows. | 1 | **Blocked on CA-Session audit.** The Session subsystem audit (likely CA.3+) will surface other DSP↔Session boundary work that should be bundled — moving these two files in isolation now would mean two separate Session-module touches. |
+| **CA.1-FU-5** | Relocate `Sources/Session/GridOnsetCalibrator.swift` and (probably) `Sources/Session/BeatGridAnalyzer.swift` to `Sources/DSP/`. Both are DSP capabilities by every functional criterion except file location. The `BeatGridAnalyzing` *protocol* may legitimately stay in Session (the testability-seam pattern is shared with `StemAnalyzing` / `MoodClassifying`); the `DefaultBeatGridAnalyzer` *implementation* belongs in DSP. Decide at planning time. | Files relocated; `UzumeEngine/Package.swift` module dependencies updated; tests still pass; the Session module's dependency on DSP types narrows. | 1 | **Blocked on CA-Session audit.** The Session subsystem audit (likely CA.3+) will surface other DSP↔Session boundary work that should be bundled — moving these two files in isolation now would mean two separate Session-module touches. |
 
 **Bundling recommendation.** FU-1 + FU-2 are natural to land in a single increment (both touch `MIRPipeline.swift`; FU-2 trivial once FU-1's structural decision is made). FU-3 is trivial enough to fold into any DSP-adjacent commit that lands in the next few weeks. FU-4 stands alone. FU-5 waits for CA-Session.
 

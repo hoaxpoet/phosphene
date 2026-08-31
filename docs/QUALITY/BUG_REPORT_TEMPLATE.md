@@ -1,4 +1,4 @@
-# Phosphene — Bug Report Template
+# Uzume — Bug Report Template
 
 Copy this template when filing a new defect in `KNOWN_ISSUES.md` or in a commit message. All fields are required for P0/P1; P2 requires all except "session artifacts" (provide when available); P3 may omit reproduction steps.
 

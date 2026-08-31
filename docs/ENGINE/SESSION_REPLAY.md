@@ -1,6 +1,6 @@
 # Session Replay — Diagnostic Infrastructure
 
-`PresetSessionReplay` is a Swift executable target inside `PhospheneEngine/` that takes a recorded session directory + a preset name and emits a canonical evidence pack. **Every preset closeout that asserts an audio-coupled route works, or that the rendered output belongs in the same visual family as the references, must cite an evidence pack produced by this tool.** Hand-wave assertions ("Route X works", "reads in the same visual conversation as ref 01") are gate-bypass language and are no longer acceptable in closeouts.
+`PresetSessionReplay` is a Swift executable target inside `UzumeEngine/` that takes a recorded session directory + a preset name and emits a canonical evidence pack. **Every preset closeout that asserts an audio-coupled route works, or that the rendered output belongs in the same visual family as the references, must cite an evidence pack produced by this tool.** Hand-wave assertions ("Route X works", "reads in the same visual conversation as ref 01") are gate-bypass language and are no longer acceptable in closeouts.
 
 Authoring history: SR.1, 2026-05-20. Motivated by the AV.2.x cascade — 12+ increments shipped over a route (Route 1 vocals-pitch hue) that was firing 0 % of frames the entire time (PT.1 surfaced the bug after 5 months of "tests green" closeouts). The diagnostic infrastructure that would have caught the gap immediately did not exist before SR.1.
 
@@ -9,7 +9,7 @@ Authoring history: SR.1, 2026-05-20. Motivated by the AV.2.x cascade — 12+ inc
 ## Invocation
 
 ```
-swift run --package-path PhospheneEngine PresetSessionReplay \
+swift run --package-path UzumeEngine PresetSessionReplay \
     --session  /path/to/2026-05-20T01-23-03Z \
     --preset   aurora_veil \
     [--output  /tmp/replay/<session>_<preset>] \
@@ -110,7 +110,7 @@ These are documented as honest limitations, not deferred work:
 
 ## See also
 
-- `PhospheneEngine/Sources/PresetSessionReplay/` — implementation
+- `UzumeEngine/Sources/PresetSessionReplay/` — implementation
 - `CLAUDE.md` "Diagnostic infrastructure precedes fidelity claims" discipline rule
 - `docs/presets/AURORA_VEIL_RESEARCH_AV3X_2026-05-20.md` — the AV.3.x design dossier that surfaced the cascade-of-failures and motivated SR.1
 - AV.2.x cascade release notes (`docs/RELEASE_NOTES_DEV.md` entries `[dev-2026-05-18-c]` through `[dev-2026-05-20-a]`) — the empirical case for why this infrastructure became mandatory

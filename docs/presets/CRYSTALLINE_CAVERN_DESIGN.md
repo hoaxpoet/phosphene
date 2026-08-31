@@ -4,7 +4,7 @@ A static-camera ray-march scene of a glowing geode interior, with crystalline ma
 
 ## 1. Intent
 
-This is the ceiling. A potential collaborator looking at Phosphene's catalog should be able to point at Crystalline Cavern and understand that the engine supports professional-quality 3D rendering with full PBR, real-time global illumination, and stable static-scene framing as a specific design pattern — distinct from Volumetric Lithograph's camera-flight or Glass Brutalist's architectural corridor.
+This is the ceiling. A potential collaborator looking at Uzume's catalog should be able to point at Crystalline Cavern and understand that the engine supports professional-quality 3D rendering with full PBR, real-time global illumination, and stable static-scene framing as a specific design pattern — distinct from Volumetric Lithograph's camera-flight or Glass Brutalist's architectural corridor.
 
 Compositionally, the camera sits inside a small geode cavity looking at the central crystal cluster from a fixed eye. The architecture is permanent (D-020); only light, atmosphere, caustics, and a thin mv_warp shimmer over the lit frame respond to audio.
 

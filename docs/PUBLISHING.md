@@ -2,7 +2,8 @@
 
 **Decisions CONFIRMED by Matt, 2026-07-12:** (1) the history rewrite RUNS
 before first publish (§2 below is no longer optional); (2) weights ship as a
-Release asset, LFS keeps reference media only (§1); (3) `prompts/` ships with
+Release asset (§1) — and since D-211/LFS.2 the reference media left git too,
+so **nothing is LFS-tracked any more**; (3) `prompts/` ships with
 its framing README (done at PUB.1); (4) preset hot-reload gets wired with
 compile errors surfaced on the toast surface (queued — review Phase 2).
 
@@ -46,7 +47,7 @@ needs no history rewrite.
 
 ```bash
 # 1. Build the archive from a verified checkout (from repo root):
-cd PhospheneEngine/Sources/ML/Weights
+cd UzumeEngine/Sources/ML/Weights
 shasum -a 256 -c SHA256SUMS --quiet && echo verified
 tar -czf /tmp/ml-weights.tar.gz --exclude SHA256SUMS -C . .
 shasum -a 256 /tmp/ml-weights.tar.gz > /tmp/ml-weights.tar.gz.sha256
@@ -57,20 +58,20 @@ gh release create ml-weights-v1 /tmp/ml-weights.tar.gz /tmp/ml-weights.tar.gz.sh
   --notes "Stem-separation / beat-tracking / instrument-family weights. Fetched by Scripts/fetch_weights.sh; provenance and licenses in docs/CREDITS.md."
 
 # 3. Verify the fetch path end-to-end BEFORE untracking anything:
-mv PhospheneEngine/Sources/ML/Weights /tmp/weights-backup
-mkdir PhospheneEngine/Sources/ML/Weights
-cp /tmp/weights-backup/SHA256SUMS PhospheneEngine/Sources/ML/Weights/
+mv UzumeEngine/Sources/ML/Weights /tmp/weights-backup
+mkdir UzumeEngine/Sources/ML/Weights
+cp /tmp/weights-backup/SHA256SUMS UzumeEngine/Sources/ML/Weights/
 Scripts/fetch_weights.sh          # must download + verify 482 files
 # (restore from backup if anything fails)
 
 # 4. Untrack the weights (files stay on disk), keep SHA256SUMS tracked:
-git rm --cached -r PhospheneEngine/Sources/ML/Weights
-git add PhospheneEngine/Sources/ML/Weights/SHA256SUMS
-printf 'PhospheneEngine/Sources/ML/Weights/*\n!PhospheneEngine/Sources/ML/Weights/SHA256SUMS\n' >> .gitignore
+git rm --cached -r UzumeEngine/Sources/ML/Weights
+git add UzumeEngine/Sources/ML/Weights/SHA256SUMS
+printf 'UzumeEngine/Sources/ML/Weights/*\n!UzumeEngine/Sources/ML/Weights/SHA256SUMS\n' >> .gitignore
 # Remove the two Weights *.bin lines from .gitattributes (no longer LFS).
 
 # 5. CI: in .github/workflows/ci.yml replace the LFS weights pull with
-#    `Scripts/fetch_weights.sh` (cache PhospheneEngine/Sources/ML/Weights
+#    `Scripts/fetch_weights.sh` (cache UzumeEngine/Sources/ML/Weights
 #    keyed on SHA256SUMS to avoid re-downloading every run).
 ```
 
@@ -101,8 +102,8 @@ manifests stay OUT of the excision scope (his 2026-07-11 direction).
 
 ```bash
 # Fresh mirror — NEVER run filter-repo on the working clone:
-git clone --mirror https://github.com/hoaxpoet/uzume.git /tmp/phosphene-rewrite
-cd /tmp/phosphene-rewrite
+git clone --mirror https://github.com/hoaxpoet/uzume.git /tmp/uzume-rewrite
+cd /tmp/uzume-rewrite
 
 cat > /tmp/mailmap << 'EOF'
 hoaxpoet <253968857+hoaxpoet@users.noreply.github.com> <braesidebandit@Matthews-Mac-mini.local>
@@ -150,7 +151,7 @@ SHA; PR refs keep pre-rewrite objects alive — closing/locking old PRs helps.
 ## 4. Policy trigger to resolve before contributors arrive (D-113)
 
 D-111/D-113 retired the Milkdrop author pre-release **notification
-protocol** "until Phosphene opens preset development to community
+protocol** "until Uzume opens preset development to community
 contributors" — publication IS that trigger. Options: (a) reinstate
 notification for future Milkdrop-inspired ports (a per-preset checklist
 item in CONTRIBUTING), (b) explicitly re-retire it with a D-number
@@ -165,5 +166,5 @@ unaddressed contradicts the repo's own decision log.
   Screen-Recording TCC gotcha are documented in README, but watch the first
   issues for what the docs still assume.
 - Perf suites on non-Mac-mini hardware (tracked as a Phase 2 item: gate
-  behind `PHOSPHENE_PERF_GATE=1`).
+  behind `UZUME_PERF_GATE=1`).
 - LFS bandwidth meter (step 3).

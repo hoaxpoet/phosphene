@@ -74,7 +74,7 @@ Local-file playback is a parallel source path that joins the streaming-path stat
 4. **Drag-and-drop** onto the window (LF.4 single file; LF.5 multi-file, folder, M3U, mixed combinations — flattened in drop order).
 5. **Finder double-click** on a registered audio or M3U file after the user opts into Uzume via the macOS "Open With…" panel (LF.5 file-association).
 6. **Terminal:** `open -a Uzume path/to/file.m4a` (LF.5 file-association).
-7. **`PHOSPHENE_LOCAL_FILE_PLAYBACK=<path>`** env-var hook at launch (dev/CI — single file only; loops forever for debugging).
+7. **`UZUME_LOCAL_FILE_PLAYBACK=<path>`** env-var hook at launch (dev/CI — single file only; loops forever for debugging).
 
 All seven dispatch through the LF.5 canonical API `SessionManager.startLocalFiles(at:origin:)`, which transitions:
 
@@ -597,7 +597,7 @@ This is the canonical mapping from internal error states to user-facing language
 | Spotify private playlist (HTTP 403) | "That playlist is private. Uzume needs a public Spotify playlist." | "Paste a different link" | — |
 | Spotify playlist not found (HTTP 404) | "Couldn't find that playlist. The link may be wrong or the playlist may have been deleted." | "Paste again" | — |
 | Spotify auth failure (missing/bad credentials) | "Uzume couldn't reach Spotify right now. Check your network or try Apple Music." | "Try again" | "Use Apple Music" |
-| Spotify Client ID absent from the build (**DEBUG builds only** — developer-setup failure, not an end-user one; Release falls back to the generic auth-failure row above) | "No Spotify Client ID in this build. Create PhospheneApp/Phosphene.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again." | (developer action) | — |
+| Spotify Client ID absent from the build (**DEBUG builds only** — developer-setup failure, not an end-user one; Release falls back to the generic auth-failure row above) | "No Spotify Client ID in this build. Create UzumeApp/Uzume.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again." | (developer action) | — |
 | Empty playlist | "That playlist doesn't have any tracks yet." | "Pick a different playlist" | — |
 
 ### 9.3 Preparation errors (state: `.preparing`)
@@ -744,10 +744,10 @@ The debug overlay uses distinctly-shaped icons alongside colors for status (✓ 
 
 ## 13. Proposed View Hierarchy
 
-Initial recommendation; adjust in implementation (Increment U.1). `PhospheneApp/` grows these files:
+Initial recommendation; adjust in implementation (Increment U.1). `UzumeApp/` grows these files:
 
 ```
-PhospheneApp/
+UzumeApp/
   Views/
     ContentView.swift              → switch on SessionManager.state
     Idle/

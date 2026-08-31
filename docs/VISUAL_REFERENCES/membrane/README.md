@@ -8,7 +8,7 @@
 
 ## Preset summary
 
-Membrane today is the only Phosphene preset still using the thin global feedback render path (`feedback` pass; not `mv_warp`). Each frame samples the previous frame through a single uniform zoom and rotation, then alpha-composites the new scene at decay ≈ 0.955. Motion compounds across many frames, but the per-frame transform is paradigm-thin: identical for every pixel in the frame. Compared to a per-vertex warp mesh, the result is closer to "simple pulsation" than "compound organic motion" (per `MILKDROP_ARCHITECTURE.md §4`).
+Membrane today is the only Uzume preset still using the thin global feedback render path (`feedback` pass; not `mv_warp`). Each frame samples the previous frame through a single uniform zoom and rotation, then alpha-composites the new scene at decay ≈ 0.955. Motion compounds across many frames, but the per-frame transform is paradigm-thin: identical for every pixel in the frame. Compared to a per-vertex warp mesh, the result is closer to "simple pulsation" than "compound organic motion" (per `MILKDROP_ARCHITECTURE.md §4`).
 
 The aesthetic target is an organic, breathing, painterly fluid surface — meditative, full-bleed, continuous. Continuous energy dominates; beats are accents only (per `CLAUDE.md → Audio Data Hierarchy`, Layer 1 vs Layer 4). The references in this folder describe what that surface should *look like* after uplift; the rubric and routing sections describe what it must *be* mechanically.
 

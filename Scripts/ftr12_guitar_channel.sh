@@ -1,7 +1,7 @@
 #!/bin/bash
 # ftr12_guitar_channel.sh — FTR.12: run the guitar-channel report over the whole corpus.
 #
-# The QUESTION: is there any per-stem feature Phosphene already computes that separates a
+# The QUESTION: is there any per-stem feature Uzume already computes that separates a
 # guitar from the drums on real material? Fractal Tree's tips have been routed to
 # `other_onset_rate` since FTR.8 on the strength of one track.
 #
@@ -17,7 +17,7 @@
 # ear — see the findings doc's limitations note.
 #
 # Usage:  Scripts/ftr12_guitar_channel.sh [out.txt] [seconds]
-# Single track:  FTR12_AUDIO=… FTR12_LABEL=… swift test --package-path PhospheneEngine \
+# Single track:  FTR12_AUDIO=… FTR12_LABEL=… swift test --package-path UzumeEngine \
 #                  --filter GuitarChannel
 
 set -uo pipefail
@@ -57,7 +57,7 @@ for entry in "${CORPUS[@]}"; do
     echo "FTR12PATH|$label|$rel"
   } >> "$OUT"
   FTR12_AUDIO="$path" FTR12_LABEL="$label" FTR12_SECONDS="$SECONDS_PER_TRACK" \
-    swift test --package-path PhospheneEngine --filter GuitarChannel 2>&1 | tee -a "$OUT" \
+    swift test --package-path UzumeEngine --filter GuitarChannel 2>&1 | tee -a "$OUT" \
     | grep -E "^\s+(FTR12PANNS|guitar classes)" || fail=1
 done
 

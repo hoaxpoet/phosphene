@@ -17,4 +17,4 @@ if [ "$#" -ne 1 ]; then
   exit 2
 fi
 
-exec swift run --package-path PhospheneEngine ChainHealthAnalyzer "$1"
+exec swift run --package-path UzumeEngine ChainHealthAnalyzer "$1"

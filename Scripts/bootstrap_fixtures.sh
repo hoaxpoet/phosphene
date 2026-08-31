@@ -22,7 +22,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="$ROOT/PhospheneEngine/Tests/Fixtures/tempo"
+DEST="$ROOT/UzumeEngine/Tests/Fixtures/tempo"
 MANIFEST="$ROOT/Scripts/fixtures.manifest"
 
 # Any required file absent => there is work to do.
@@ -47,7 +47,7 @@ echo "==> $missing required fixture(s) missing — restoring"
 
 # Primary checkout = first entry of `git worktree list` (always the main tree).
 MAIN="$(git -C "$ROOT" worktree list --porcelain | awk '/^worktree /{print $2; exit}')"
-SRC="$MAIN/PhospheneEngine/Tests/Fixtures/tempo"
+SRC="$MAIN/UzumeEngine/Tests/Fixtures/tempo"
 
 mkdir -p "$DEST"
 if [ "$SRC" != "$DEST" ] && [ -n "$(ls -A "$SRC" 2>/dev/null || true)" ]; then

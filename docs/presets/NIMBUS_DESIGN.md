@@ -1,7 +1,7 @@
 # Nimbus — volumetric luminous-body preset
 
 **Working name:** *Nimbus* (a nimbus is both a rain-bearing cloud and the luminous halo around a radiant body — single word, house style, captures the gaseous-and-glowing duality). Provisional; your call.
-**Lineage:** the first volumetric preset. No Phosphene preset currently *composes* the V.2 Volume tree (`Clouds` / `ParticipatingMedia` / `HenyeyGreenstein` / `Caustics` / `LightShafts`) — the utilities ship and compile but have no production consumer. Nimbus is the proof that a single coherent gaseous body can carry a preset at fidelity.
+**Lineage:** the first volumetric preset. No Uzume preset currently *composes* the V.2 Volume tree (`Clouds` / `ParticipatingMedia` / `HenyeyGreenstein` / `Caustics` / `LightShafts`) — the utilities ship and compile but have no production consumer. Nimbus is the proof that a single coherent gaseous body can carry a preset at fidelity.
 **Family:** `volumetric` (new family) — or fold under an existing abstract family; see §8.
 
 ---
@@ -14,7 +14,7 @@
 
 Nimbus is a **single-pass 2D direct-fragment volumetric ray-march**: the fragment shader marches a view ray through a procedural density field and composites single-scatter lighting against a dark void. Architecturally it is an ordinary `direct` preset (like Aurora Veil, which ships `passes: []`) — the V.2 Volume utilities are already injected into every preset's shader by the shared preamble (`PresetLoader+Preamble.swift`). Density is a **baked Perlin-Worley 3D texture** (billows) shaped by an analytic envelope; lighting is the ported **HZD / "Nubis"** recipe — **Beer-Powder × Henyey-Greenstein × a short cone self-shadow march**. There is no second paradigm — no particle pass, no mesh, no feedback. **D-029 is satisfied trivially: `direct` only.**
 
-The spine, and why it fits Phosphene's first principle:
+The spine, and why it fits Uzume's first principle:
 
 > **Continuous energy blooms and flows the gas (primary). Nothing fires on the beat.**
 > The body's size, brightness, and flow rate rise and fall with broadband energy deviation — a continuous swell with gas-like momentum, zero detection delay. The activity lives entirely in the continuous flow of the gas; there is no per-beat response (FA #4 / FA #33). This is the continuous-energy-primary policy made literal in a volume.
@@ -25,7 +25,7 @@ Everything else is deliberately thin: **Energy** blooms-and-flows it (continuous
 
 ## 1. Creative architecture
 
-**Nimbus is a single coherent mass of glowing cool gas, suspended in a black void, that moves with the music.** It is exactly what the reference packet shows — ink blooming in water, lit smoke folding (`01` / `02` / `03`): a dense brighter core, billowing / cauliflower structure, soft wisps feathering into the dark, lit so it glows from within. Nothing beyond that — **no storm, no spark, no creature, no narrative.** The appeal is the appeal of any good abstract visualizer (Milkdrop, a plasma shader, a lava lamp wired to sound): a beautiful luminous volume whose motion is married to the music. Its job in Phosphene is the soft, deep, **atmospheric** preset — the volumetric counterweight to the geometric ones (webs, mosaics, mirrored fluid). That is the whole concept; the discipline is to add nothing the reference images don't show.
+**Nimbus is a single coherent mass of glowing cool gas, suspended in a black void, that moves with the music.** It is exactly what the reference packet shows — ink blooming in water, lit smoke folding (`01` / `02` / `03`): a dense brighter core, billowing / cauliflower structure, soft wisps feathering into the dark, lit so it glows from within. Nothing beyond that — **no storm, no spark, no creature, no narrative.** The appeal is the appeal of any good abstract visualizer (Milkdrop, a plasma shader, a lava lamp wired to sound): a beautiful luminous volume whose motion is married to the music. Its job in Uzume is the soft, deep, **atmospheric** preset — the volumetric counterweight to the geometric ones (webs, mosaics, mirrored fluid). That is the whole concept; the discipline is to add nothing the reference images don't show.
 
 ### 1.1 What it looks like (grounded in the reference packet)
 

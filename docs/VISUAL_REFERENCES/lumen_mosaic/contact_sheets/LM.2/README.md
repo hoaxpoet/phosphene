@@ -1,6 +1,6 @@
 # Lumen Mosaic — LM.2 Contact Sheet
 
-Captured 2026-05-09 via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReview"`. Output is from
+Captured 2026-05-09 via `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter "PresetVisualReview"`. Output is from
 `PresetVisualReviewTests.renderPresetVisualReview` with `LumenPatternEngine`
 wired into the deferred ray-march path at fragment slot 8 (LM.2 task 8).
 

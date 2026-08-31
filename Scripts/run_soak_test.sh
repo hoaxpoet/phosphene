@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_soak_test.sh — Build and run a Phosphene soak test (Increment 7.1).
+# run_soak_test.sh — Build and run a Uzume soak test (Increment 7.1).
 #
 # Usage:
 #   ./Scripts/run_soak_test.sh                         # 2-hour run, procedural audio

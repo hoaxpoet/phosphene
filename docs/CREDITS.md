@@ -1,6 +1,6 @@
 # Credits
 
-Phosphene is MIT-licensed (see `LICENSE`). It bundles third-party model
+Uzume is MIT-licensed (see `LICENSE`). It bundles third-party model
 weights and reference code under their own licenses, listed below.
 Downstream redistributors must preserve these notices.
 
@@ -9,9 +9,9 @@ Downstream redistributors must preserve these notices.
 ## BeatNet — beat / downbeat tracking (FORMERLY USED — no longer bundled)
 
 **Status:** Removed. Phase DSP.2 pivoted from BeatNet to Beat This! (D-077, 2026-05-04).
-The vendored weights (`PhospheneEngine/Sources/ML/Weights/beatnet/`) were deleted in
+The vendored weights (`UzumeEngine/Sources/ML/Weights/beatnet/`) were deleted in
 commit `f1788401`, and the derived converter (`Scripts/convert_beatnet_weights.py`) in
-the D-163 follow-up (2026-06-14). **No BeatNet-derived material ships in Phosphene.** The
+the D-163 follow-up (2026-06-14). **No BeatNet-derived material ships in Uzume.** The
 notice below is retained as a historical acknowledgment, not a live CC-BY redistribution
 obligation.
 
@@ -25,7 +25,7 @@ the GTZAN-trained `model_1_weights.pt` was re-encoded (PyTorch state_dict → pe
 
 ## Beat This! — beat / downbeat tracking weights
 
-**Used in:** `PhospheneEngine/Sources/ML/Weights/beat_this/` (vendored
+**Used in:** `UzumeEngine/Sources/ML/Weights/beat_this/` (vendored
 weights), `Scripts/convert_beatthis_weights.py` (converter),
 `Scripts/dump_beatthis_reference.py` (reference fixture generator).
 
@@ -112,7 +112,7 @@ asserts public-domain-by-convention based on two decades of free
 release and ubiquitous reuse across projectM-derived applications.
 The pack supports a takedown path: preset authors can contact the
 projectM team to have their preset removed from future releases.
-Phosphene commits to honoring takedown requests routed via that path.
+Uzume commits to honoring takedown requests routed via that path.
 No `.milk` file is redistributed in this repository (D-111 scope
 condition; Dragon Bloom's reference copy was removed at PUB.1 — its
 SHA-256 is retained in the sidecar as provenance).
@@ -136,7 +136,7 @@ seven were authored against a **butterchurn built-in JSON** rendered as a live
 oracle through `tools/milkdrop-render/`; only Dragon Bloom read a `.milk`.
 Where no hash was taken at authoring, `sha256` is omitted rather than invented.
 
-| Phosphene preset (`.metal` / `.json`) | Source preset | Original author (best-effort) | Source form | Certified |
+| Uzume preset (`.metal` / `.json`) | Source preset | Original author (best-effort) | Source form | Certified |
 |---|---|---|---|---|
 | `DragonBloom` | `$$$ Royal - Mashup (220)` | $$$ Royal mashup series (multiple component authors) | `.milk` (hashed; copy removed at PUB.1) | ✅ |
 | `FataMorgana` | `martin [shadow harlequins shape code] - fata morgana` | Martin | butterchurn built-in JSON (no hash taken) | ✅ |
@@ -162,19 +162,19 @@ Commons; the full per-file provenance table is in
 | `11_anti_uniform_glow_tube.jpg` | Jurii | CC BY 3.0 |
 
 **Modifications:** These are **inspired-by works, not ports of record**
-(D-113): each is authored from scratch on Phosphene's primitives
+(D-113): each is authored from scratch on Uzume's primitives
 (`mv_warp` + custom Metal shaders), reproduces the source's visual
-character against a live butterchurn oracle, and then adds Phosphene's
+character against a live butterchurn oracle, and then adds Uzume's
 music coupling — deviation primitives (D-026), stem-driven routing,
 beat-grid/downbeat events, and (Nacre) the Tonal Interval Vector
 palette. No Milkdrop runtime, `.milk` parser, or transpiled shader
-text ships in Phosphene.
+text ships in Uzume.
 
 ---
 
 ## Open-Unmix HQ — stem separation weights
 
-**Used in:** `PhospheneEngine/Sources/ML/Weights/` (vendored weights
+**Used in:** `UzumeEngine/Sources/ML/Weights/` (vendored weights
 for `vocals`, `drums`, `bass`, `other`).
 
 **Source:** Fabian-Robert Stöter, Stefan Uhlich, Antoine Liutkus,
@@ -195,8 +195,8 @@ MPSGraph init time, not at conversion.
 
 ## PANNs MobileNetV1 — instrument-family activity weights
 
-**Used in:** `PhospheneEngine/Sources/ML/Weights/panns_mobilenetv1/`
-(vendored AudioSet 527-class audio-tagger weights). Phosphene runs the
+**Used in:** `UzumeEngine/Sources/ML/Weights/panns_mobilenetv1/`
+(vendored AudioSet 527-class audio-tagger weights). Uzume runs the
 tagger over the 30 s preview clip to derive per-family instrument
 activity (strings / brass / woodwinds / percussion) for orchestral
 presets (IFC / D-177).
@@ -222,6 +222,33 @@ front-end. BatchNorm folded at MPSGraph init time.
 
 ---
 
+## App icon — "First Opening" (first-party, from the brand repository)
+
+**Source of truth:** [`hoaxpoet/uzume-site`](https://github.com/hoaxpoet/uzume-site)
+— `brand/icon/Uzume.iconset/`, produced in that repo's BRAND.1 increment and
+selected by Matt ("First Opening wins"). Brand rules live in its `BRAND.md`;
+the artifact inventory and licences in its `ARTIFACTS.md`.
+
+**What is installed here:** the ten PNGs in
+`UzumeApp/Assets.xcassets/AppIcon.appiconset/` are **byte-identical** (SHA-256)
+to the approved iconset — installed at RN.1, verified at RN.3. There is no
+re-export, crop, or recolour between the approved master and the shipped
+`Uzume.app`. `BRAND.md` forbids recolouring, sharpening, adding type or glow,
+flattening the spectrum, and monochrome substitutes.
+
+**Do not regenerate the icon in this repository.** Change it in `uzume-site`,
+re-export there, and copy the iconset across; then re-run the checksum
+comparison in that repo's `ARTIFACTS.md` §RN.1 handoff.
+
+The `.icns` container and the favicon set are deliberately **not** vendored
+here: macOS builds the icon from the asset catalogue, and the app has no web
+surface.
+
+Fonts (Alumni Sans, PT Sans — both SIL OFL 1.1) are brand-repo assets used for
+the wordmark; the application itself ships neither as a bundled resource.
+
+---
+
 ## Other dependencies
 
 System frameworks (Apple): Metal, MetalKit, MetalPerformanceShadersGraph,
@@ -231,7 +258,7 @@ required.
 
 ---
 
-If you ship a derivative of Phosphene, you must:
+If you ship a derivative of Uzume, you must:
 
 1. Preserve the MIT notice in `LICENSE` and the Beat This! MIT notice
    in this file. (BeatNet is no longer bundled — its CC-BY section above

@@ -19,7 +19,7 @@ The diagnosis is structural, not tactical:
 - **The references are macro photographs.** Their visual signature involves real depth-of-field, real refraction with chromatic dispersion, real subsurface scattering on silk fibers, real volumetric atmosphere with light shafts hitting actual particulate. None of these are reachable via clever fragment-shader composition; they require a 3D scene representation the renderer can sample with a camera.
 - **No visual feedback loop on the LLM side.** Tactical increments under that constraint converge on local-optima — they each close a small named gap while the gap-to-reference stays large. The way to break out is structural: change the rendering tech, not the recipes.
 
-This doc proposes moving Arachne onto Phosphene's existing **`ray_march` render path** (used by VolumetricLithograph, KineticSculpture, GlassBrutalist) — a 3-pass deferred Cook-Torrance PBR pipeline with G-buffer, lighting, IBL, SSGI, and a real 3D camera. The infrastructure exists; this is a port, not a build-out.
+This doc proposes moving Arachne onto Uzume's existing **`ray_march` render path** (used by VolumetricLithograph, KineticSculpture, GlassBrutalist) — a 3-pass deferred Cook-Torrance PBR pipeline with G-buffer, lighting, IBL, SSGI, and a real 3D camera. The infrastructure exists; this is a port, not a build-out.
 
 ### 1.1 Visual target reframe (canonical)
 
@@ -95,7 +95,7 @@ Each decision below has my recommendation, but **Matt picks**. Decisions are ind
 
 **Option C.1 — Screen-space refraction.** Drops compute their normal in 3D, refract the view ray, then sample the lit-scene texture (or WORLD texture) at an offset UV. Cheap (one texture sample per drop pixel). Loses detail at drop edges where the refracted ray would exit the screen.
 
-**Option C.2 — BVH ray tracing.** ⚠ *RECON.17 (2026-08-26): the `RayIntersector`/`BVHBuilder` infrastructure this option assumed was deleted — it was never wired into a preset, and C.1 was the chosen option below. Reviving C.2 means rebuilding it (git history), not re-enabling it.* Drops compute the refracted ray in 3D and trace it through the BVH (Phosphene's `RayIntersector` exists). The hit point's albedo/lighting is computed there. Expensive but accurate — real refraction through real geometry, including chromatic dispersion if we trace separate rays per RGB channel.
+**Option C.2 — BVH ray tracing.** ⚠ *RECON.17 (2026-08-26): the `RayIntersector`/`BVHBuilder` infrastructure this option assumed was deleted — it was never wired into a preset, and C.1 was the chosen option below. Reviving C.2 means rebuilding it (git history), not re-enabling it.* Drops compute the refracted ray in 3D and trace it through the BVH (Uzume's `RayIntersector` exists). The hit point's albedo/lighting is computed there. Expensive but accurate — real refraction through real geometry, including chromatic dispersion if we trace separate rays per RGB channel.
 
 **Option C.3 — Hybrid: screen-space refraction with depth.** Use the G-buffer's depth + albedo. The refracted ray steps through the depth field looking for a hit. Cheaper than BVH, more accurate than screen-space at edges. Used by Unreal screen-space refraction.
 
@@ -163,7 +163,7 @@ V.8.x accepts this artifact as the **fidelity floor for the foreground-foliage-c
 
 `Arachne.json` `passes` → `["ray_march", "post_process"]` (drop `["staged"]`).
 
-The `ray_march` pass is Phosphene's existing 3-pass deferred:
+The `ray_march` pass is Uzume's existing 3-pass deferred:
 1. **G-buffer** — depth, normal, material ID, albedo. Per-pixel ray march into `sceneSDF`.
 2. **Lighting** — Cook-Torrance BRDF + IBL ambient + SSGI. Reads G-buffer, writes lit RGB.
 3. **Composite** — tone-map + final color.

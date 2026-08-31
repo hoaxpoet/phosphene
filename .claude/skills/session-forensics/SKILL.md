@@ -1,6 +1,6 @@
 ---
 name: session-forensics
-description: Invoke when analyzing recorded Phosphene sessions (features.csv, stems.csv, raw_tap.wav, session.log) or choosing/using the diagnostic CLIs (TempoDumpRunner, ColdStartVerifier, PresetSessionReplay, BeatThisActivationDumper, QualityReelAnalyzer, BeatBench). Enforces replay-before-live.
+description: Invoke when analyzing recorded Uzume sessions (features.csv, stems.csv, raw_tap.wav, session.log) or choosing/using the diagnostic CLIs (TempoDumpRunner, ColdStartVerifier, PresetSessionReplay, BeatThisActivationDumper, QualityReelAnalyzer, BeatBench). Enforces replay-before-live.
 ---
 
 # session-forensics — recorded sessions + the diagnostic CLIs
@@ -20,17 +20,17 @@ A `SessionRecorder` capture (auto-on per session) writes a session directory con
 
 ## 2. CLI inventory
 
-Every invocation's flags were read this session directly from each tool's `@main` `ParsableCommand` `@Option`/`@Flag` declarations (argument-parser derives `--kebab-case` from camelCase property names); executable target names confirmed against `PhospheneEngine/Package.swift`. Run form: `swift run --package-path PhospheneEngine <Target> …`.
+Every invocation's flags were read this session directly from each tool's `@main` `ParsableCommand` `@Option`/`@Flag` declarations (argument-parser derives `--kebab-case` from camelCase property names); executable target names confirmed against `UzumeEngine/Package.swift`. Run form: `swift run --package-path UzumeEngine <Target> …`.
 
 | Tool | Answers the question… | Verified one-line invocation |
 |---|---|---|
-| **TempoDumpRunner** | What IOI/tempo does BeatDetector derive from this audio file offline? (per-band IOI histogram + autocorrelation BPM) | `swift run --package-path PhospheneEngine TempoDumpRunner --audio-file <path> --label <name> --out <dump.txt> [--metadata-bpm <bpm>]` |
-| **ColdStartVerifier** | How well does a captured session's cold-start beat sync align to Beat This! ground truth? (default = session verify) | `swift run --package-path PhospheneEngine ColdStartVerifier --session <dir> [--out <report.md>]` |
+| **TempoDumpRunner** | What IOI/tempo does BeatDetector derive from this audio file offline? (per-band IOI histogram + autocorrelation BPM) | `swift run --package-path UzumeEngine TempoDumpRunner --audio-file <path> --label <name> --out <dump.txt> [--metadata-bpm <bpm>]` |
+| **ColdStartVerifier** | How well does a captured session's cold-start beat sync align to Beat This! ground truth? (default = session verify) | `swift run --package-path UzumeEngine ColdStartVerifier --session <dir> [--out <report.md>]` |
 | ↳ ColdStartVerifier modes | Short-window Beat This! accuracy / within-capture position stability / cross-capture reproducibility / accent-window pass-rate / arithmetic self-check | append one of `--rediagnose [--rediagnose-windows 3,4,5]` · `--position-sweep` · `--cross-capture --sessions <a,b,c>` · `--accent-window-pass-rate` · `--self-test` |
-| **PresetSessionReplay** | How did a preset's audio→visual routes fire on a recorded session, and does it score against the cert rubric? | `swift run --package-path PhospheneEngine PresetSessionReplay --session <dir> --preset <name> [--output <dir>] [--references-dir <dir>]` |
-| **BeatThisActivationDumper** | What are Beat This!'s per-frame activations on this audio, for cross-validation against the PyTorch reference? | `swift run --package-path PhospheneEngine BeatThisActivationDumper --audio <path> --out <activations.json> [--raw-dir <dir>]` |
-| **QualityReelAnalyzer** | How beat-reactive is a rendered quality reel — do visual events land on the beat grid? | `swift run --package-path PhospheneEngine QualityReelAnalyzer --reel <video> --out <report.md> --frames-dir <dir> [--audio <path>] [--max-beats N] [--audio-only]` |
-| **BeatBench** | How does a beat grid score against the tapped ground truth? (metrics + targets: `beatbench`) | `swift run --package-path PhospheneEngine BeatBench --mode offline-grid [--tracks <ids>] [--report <path>]`; `--audio <file> [--seconds N]` inspects one file's grid; `--self-test` validates the metrics. **session-replay mode is not built yet** — live-path metrics have no baseline. |
+| **PresetSessionReplay** | How did a preset's audio→visual routes fire on a recorded session, and does it score against the cert rubric? | `swift run --package-path UzumeEngine PresetSessionReplay --session <dir> --preset <name> [--output <dir>] [--references-dir <dir>]` |
+| **BeatThisActivationDumper** | What are Beat This!'s per-frame activations on this audio, for cross-validation against the PyTorch reference? | `swift run --package-path UzumeEngine BeatThisActivationDumper --audio <path> --out <activations.json> [--raw-dir <dir>]` |
+| **QualityReelAnalyzer** | How beat-reactive is a rendered quality reel — do visual events land on the beat grid? | `swift run --package-path UzumeEngine QualityReelAnalyzer --reel <video> --out <report.md> --frames-dir <dir> [--audio <path>] [--max-beats N] [--audio-only]` |
+| **BeatBench** | How does a beat grid score against the tapped ground truth? (metrics + targets: `beatbench`) | `swift run --package-path UzumeEngine BeatBench --mode offline-grid [--tracks <ids>] [--report <path>]`; `--audio <file> [--seconds N]` inspects one file's grid; `--self-test` validates the metrics. **session-replay mode is not built yet** — live-path metrics have no baseline. |
 
 ## 3. Replay-before-live (rule, not advice)
 

@@ -12,7 +12,7 @@
 
 Skein is a **persistent paint canvas**: a feedback buffer that *accumulates* marks instead of decaying them, with new paint composited alpha-over each frame and the camera looking straight down at the result. This is architecturally a **sibling of Dragon Bloom** — the `passes: ["direct", "mv_warp"]` brush-accumulated-through-feedback pattern (D-135 / D-138) — with two changes: the warp is set to **identity** (paint doesn't move once it lands) and decay is **off** (paint persists). The "draw new geometry normal-alpha on top of the accumulated frame" mechanism Skein needs is the exact strands-on-top loop Dragon Bloom already ships.
 
-The spine of the design, and the reason it fits Phosphene's first principle so cleanly:
+The spine of the design, and the reason it fits Uzume's first principle so cleanly:
 
 > **Continuous energy pours the lines (primary). Beats flick the splatters (accent).**
 > The long curving drip lines — the dominant Pollock mark — are a continuous pour traced by a moving "painter." The droplet bursts are transient accents on onsets. This is the *continuous-energy-primary / beat-onset-accent* policy made literal.

@@ -3,7 +3,7 @@
 **Audit increment:** CA.3
 **Date:** 2026-05-20
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneEngine/Sources/Session/` — 22 Swift files, ~3,425 LoC (20 in the top-level directory + 2 in `Connectors/`). Boundary annotations for Session↔DSP, Session↔ML, Session↔Audio, Session↔Orchestrator, Session↔App.
+**Scope:** `UzumeEngine/Sources/Session/` — 22 Swift files, ~3,425 LoC (20 in the top-level directory + 2 in `Connectors/`). Boundary annotations for Session↔DSP, Session↔ML, Session↔Audio, Session↔Orchestrator, Session↔App.
 **Methodology:** [`docs/prompts/PHASE_CA_KICKOFF_CA3_SESSION_2026-05-20.md`](../prompts/PHASE_CA_KICKOFF_CA3_SESSION_2026-05-20.md).
 **Reads relied on:** `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/CAPABILITY_REGISTRY/DSP_MIR.md` (CA.1), `docs/CAPABILITY_REGISTRY/ML.md` (CA.2), `docs/DECISIONS.md` (D-008, D-017, D-018, D-019, D-046, D-052, D-056, D-061, D-068, D-069, D-070, D-091), `docs/QUALITY/KNOWN_ISSUES.md` (BUG-005, BUG-006, BUG-007.8, BUG-007.9, BUG-008, BUG-R002–R006), `docs/ENGINEERING_PLAN.md`.
 
@@ -16,12 +16,12 @@
 | Verdict | Count | Notes |
 |---|---|---|
 | `production-active` | 21 files | Default verdict. Every other Session source file has at least one production consumer and the documented behaviour matches the code. |
-| `stub` | 1 file | `LocalFolderConnector.swift` — `public final class LocalFolderConnector` whose entire body is gated behind `#if ENABLE_LOCAL_FOLDER_CONNECTOR`. Grep confirms the flag is referenced only in the file's own gate and in a `ConnectorPickerViewModel.swift` comment (`localFolderEnabled is false in v1; ENABLE_LOCAL_FOLDER_CONNECTOR compile flag gates it`); it is **not** set in `Package.swift`, `Phosphene.xcconfig`, or any Swift build setting. The class never compiles in production builds. The file is intentional scaffold per D-046 / UX_SPEC §4.4, not dead code — but the audit verdict for a `#if`-gated stub with no enabled site is `stub`. |
+| `stub` | 1 file | `LocalFolderConnector.swift` — `public final class LocalFolderConnector` whose entire body is gated behind `#if ENABLE_LOCAL_FOLDER_CONNECTOR`. Grep confirms the flag is referenced only in the file's own gate and in a `ConnectorPickerViewModel.swift` comment (`localFolderEnabled is false in v1; ENABLE_LOCAL_FOLDER_CONNECTOR compile flag gates it`); it is **not** set in `Package.swift`, `Uzume.xcconfig`, or any Swift build setting. The class never compiles in production builds. The file is intentional scaffold per D-046 / UX_SPEC §4.4, not dead code — but the audit verdict for a `#if`-gated stub with no enabled site is `stub`. |
 | `broken-but-claimed` | 0 | No new BUG entries. BUG-006 (cited in the CA.3 kickoff as Open / P1) is in fact **already `Resolved` per `docs/QUALITY/KNOWN_ISSUES.md`** (BUG-006.2 wiring fix, 2026-05-06); the kickoff prompt's "Active BUGs in scope" list was stale. BUG-005 is Open / P3 / `session.ux` only — UX-copy improvement work, not a Session-module correctness defect. |
 | `documented-but-missing` | 2 | (a) `ARCHITECTURE.md §Session Preparation` lines 112–124 describes a 7-step pipeline that omits four pieces of work that have landed since: D-070 preview-URL primary path (Spotify `preview_url` inline, iTunes Search fallback — Failed Approach #47); the Beat This! offline beat-grid pass (D-077 via `BeatGridAnalyzer`); the DSP.4 drums-stem beat grid; BUG-007.8 `GridOnsetCalibrator` per-track offset calibration; Round 26 (2026-05-15) metadata-driven `BeatGrid.overridingBeatsPerBar` override via `MetadataPreFetcher`. (b) `ARCHITECTURE.md §Module Map Tests/Session/` block references `StemCacheTests` as a separate test file; no such file exists on disk (`StemCache` is exercised inside `SessionPreparerTests` and the `PreparedBeatGrid*WiringTests` integration suite). |
 | `built-but-undocumented` | 2 | (a) `ARCHITECTURE.md §Session/` module-map block at lines 544–554 lists 9 of 22 source files — 13 are missing (full list under `§Cross-references` below). Same shape as CA.1's DSP/ 6-of-20 drift and CA.2's ML/ 9-of-16 drift. (b) `ARCHITECTURE.md §Module Map Tests/Session/` block at line 580 lists 9 of 14 actual test files (6 missing + 1 phantom — see `documented-but-missing`). |
 | `unverified-claim` | 0 | — |
-| `boundary-noted` | 4 | Session ↔ App boundaries: `SessionManager` is `@MainActor ObservableObject` observed by `PhospheneApp/ViewModels/SessionStateViewModel`, `PlaybackChromeViewModel`, `PreparationProgressViewModel`, `EndSessionConfirmViewModel`, `ReadyViewModel`; six concrete views switch on `SessionState`. `SpotifyOAuthTokenProvider` (in `PhospheneApp/Services/`) conforms to the Session-module `SpotifyTokenProviding` protocol per D-069 Decision 2 — boundary-noted, not boundary-deferred (no future re-audit will change the placement). |
+| `boundary-noted` | 4 | Session ↔ App boundaries: `SessionManager` is `@MainActor ObservableObject` observed by `UzumeApp/ViewModels/SessionStateViewModel`, `PlaybackChromeViewModel`, `PreparationProgressViewModel`, `EndSessionConfirmViewModel`, `ReadyViewModel`; six concrete views switch on `SessionState`. `SpotifyOAuthTokenProvider` (in `UzumeApp/Services/`) conforms to the Session-module `SpotifyTokenProviding` protocol per D-069 Decision 2 — boundary-noted, not boundary-deferred (no future re-audit will change the placement). |
 | `boundary-deferred` | 0 (new) | The three CA.1/CA.2 carry-forward items resolve in §Resolution-of-CA.1/CA.2-boundary-deferred-items below — final verdicts assigned, no new deferrals filed. |
 | `dead` | 0 | — |
 
@@ -62,7 +62,7 @@
 
    Doc-drift correction applied in this increment.
 
-2. **`ARCHITECTURE.md §Module Map Tests/Session/` (line 580) — references nonexistent `StemCacheTests`.** The line reads: *"SessionManagerTests, PlaylistConnectorTests, PreviewResolverTests, PreviewDownloaderTests, SessionPreparerTests, **StemCacheTests**, …"*. `find PhospheneEngine/Tests -name "StemCacheTests*"` returns no results. `StemCache`'s behaviour is exercised inside `SessionPreparerTests` (which constructs and asserts on `cache.store` / `cache.loadForPlayback`) and `PreparedBeatGridWiringTests` / `PreparedBeatGridAppLayerWiringTests` (which assert cache-store / cache-load wiring across the engine boundary). The phantom file reference is removed in this increment.
+2. **`ARCHITECTURE.md §Module Map Tests/Session/` (line 580) — references nonexistent `StemCacheTests`.** The line reads: *"SessionManagerTests, PlaylistConnectorTests, PreviewResolverTests, PreviewDownloaderTests, SessionPreparerTests, **StemCacheTests**, …"*. `find UzumeEngine/Tests -name "StemCacheTests*"` returns no results. `StemCache`'s behaviour is exercised inside `SessionPreparerTests` (which constructs and asserts on `cache.store` / `cache.loadForPlayback`) and `PreparedBeatGridWiringTests` / `PreparedBeatGridAppLayerWiringTests` (which assert cache-store / cache-load wiring across the engine boundary). The phantom file reference is removed in this increment.
 
 ### unverified-claim
 
@@ -90,9 +90,9 @@ None. Every public, internal, or fileprivate symbol in `Sources/Session/` has at
 
 1. **`LocalFolderConnector` (`LocalFolderConnector.swift:16`) — `stub`.** Entire class body is gated behind `#if ENABLE_LOCAL_FOLDER_CONNECTOR`. The flag is referenced in exactly two places:
    - `LocalFolderConnector.swift:9` — the gate itself.
-   - `PhospheneApp/ViewModels/ConnectorPickerViewModel.swift:8` — a code comment: *"localFolderEnabled is false in v1; ENABLE_LOCAL_FOLDER_CONNECTOR compile flag gates it."*
+   - `UzumeApp/ViewModels/ConnectorPickerViewModel.swift:8` — a code comment: *"localFolderEnabled is false in v1; ENABLE_LOCAL_FOLDER_CONNECTOR compile flag gates it."*
 
-   `grep -rn "ENABLE_LOCAL_FOLDER_CONNECTOR" Package.swift PhospheneApp/Phosphene.xcconfig PhospheneEngine` returns no other hits. The flag is not set in `swiftSettings`, `cSettings`, or any `*.xcconfig`. The class is therefore never compiled into either the test target or the production app target.
+   `grep -rn "ENABLE_LOCAL_FOLDER_CONNECTOR" Package.swift UzumeApp/Uzume.xcconfig UzumeEngine` returns no other hits. The flag is not set in `swiftSettings`, `cSettings`, or any `*.xcconfig`. The class is therefore never compiled into either the test target or the production app target.
 
    The file is intentional scaffold per D-046 (connector picker architecture) and UX_SPEC §4.4 (Local Folder as a v2 surface). The header comment says verbatim: *"Gated by ENABLE_LOCAL_FOLDER_CONNECTOR compile flag; not enabled in v1. Actual folder reading is out of scope until post-v1."* The body throws `PlaylistConnectorError.networkFailure("Local folder connector not yet implemented.")` — itself a sentinel rather than a real implementation.
 
@@ -134,7 +134,7 @@ None. Every public, internal, or fileprivate symbol in `Sources/Session/` has at
 
 The audit produced no new `boundary-deferred` findings. The following Session-module boundary surfaces are noted (verdict complete; no future re-audit required):
 
-- **Session ↔ App (engine ↔ `PhospheneApp/`).** `SessionManager` is `@MainActor ObservableObject`; consumed by `PhospheneApp/ViewModels/SessionStateViewModel.swift:39` (state mirroring), `PhospheneApp/ViewModels/PlaybackChromeViewModel.swift:114` (progressive readiness subscription), `PhospheneApp/ViewModels/PreparationProgressViewModel.swift:81` (publisher subscription), `PhospheneApp/ViewModels/EndSessionConfirmViewModel.swift:22` + `PhospheneApp/ViewModels/ReadyViewModel.swift:66` + 6 view files (`IdleView`, `ConnectingView`, `PreparationProgressView`, `ReadyView`, `PlaybackView`, `EndedView`). `PhospheneApp/Services/NetworkRecoveryCoordinator.swift:104` subscribes to `sessionStatePublisher` and calls `SessionManager.resumeFailedNetworkTracks()` per D-061(d) when reachability transitions `false → true`. The QR.4 / D-091 `currentTrackIndex` chain is on `VisualizerEngine`, not `SessionManager` (`PhospheneApp/VisualizerEngine.swift:77` `@Published var currentTrackIndex: Int?`); the App-layer view-models bind to `VisualizerEngine.currentTrackIndex` and `SessionManager.state` independently per `D-091`'s "two-publisher" contract.
+- **Session ↔ App (engine ↔ `UzumeApp/`).** `SessionManager` is `@MainActor ObservableObject`; consumed by `UzumeApp/ViewModels/SessionStateViewModel.swift:39` (state mirroring), `UzumeApp/ViewModels/PlaybackChromeViewModel.swift:114` (progressive readiness subscription), `UzumeApp/ViewModels/PreparationProgressViewModel.swift:81` (publisher subscription), `UzumeApp/ViewModels/EndSessionConfirmViewModel.swift:22` + `UzumeApp/ViewModels/ReadyViewModel.swift:66` + 6 view files (`IdleView`, `ConnectingView`, `PreparationProgressView`, `ReadyView`, `PlaybackView`, `EndedView`). `UzumeApp/Services/NetworkRecoveryCoordinator.swift:104` subscribes to `sessionStatePublisher` and calls `SessionManager.resumeFailedNetworkTracks()` per D-061(d) when reachability transitions `false → true`. The QR.4 / D-091 `currentTrackIndex` chain is on `VisualizerEngine`, not `SessionManager` (`UzumeApp/VisualizerEngine.swift:77` `@Published var currentTrackIndex: Int?`); the App-layer view-models bind to `VisualizerEngine.currentTrackIndex` and `SessionManager.state` independently per `D-091`'s "two-publisher" contract.
 
 - **Session ↔ Orchestrator (`Sources/Orchestrator/`).** `TrackProfile` is consumed by `DefaultPresetScorer` (via `PresetScoringContext`) at preparation time and at runtime via `VisualizerEngine+Orchestrator.swift:83` / `:326` / `:449`. `SessionPlan` is a deliberately-minimal stub per D-017; the Orchestrator's `PlannedSession` / `PlannedTrack` / `PlannedTransition` are richer types built on top (D-034). `Session` module **cannot** import `Orchestrator` (circular dependency per `ARCHITECTURE.md:209`); the wiring happens in the App layer.
 
@@ -159,13 +159,13 @@ The audit produced no new `boundary-deferred` findings. The following Session-mo
 
 ## Per-file capability index
 
-Citations use `path:line` format. Inventory data from per-file direct reads (Explore agents not used — file sizes were tractable for direct reading); consumer counts from `grep -rn` of canonical type names across `PhospheneApp/`, `PhospheneEngine/Sources/`, and `PhospheneEngine/Tests/`. Visibility cross-checked against the file's text per the CA.3 visibility-verification rule.
+Citations use `path:line` format. Inventory data from per-file direct reads (Explore agents not used — file sizes were tractable for direct reading); consumer counts from `grep -rn` of canonical type names across `UzumeApp/`, `UzumeEngine/Sources/`, and `UzumeEngine/Tests/`. Visibility cross-checked against the file's text per the CA.3 visibility-verification rule.
 
 Consolidation: 21 of 22 files concentrate on `production-active`; the per-file index below mirrors CA.1/CA.2's consolidated form. Non-`production-active` files (LocalFolderConnector) are visually marked. Boundary-resolved files (BeatGridAnalyzer, GridOnsetCalibrator) get their final verdicts here plus a cross-link to §Resolution.
 
 ### `Session.swift` (5 lines) — `production-active`
 
-Module entry-point marker. `@_exported import Shared` so any `import Session` consumer automatically gets the Shared types. No public surface beyond the import re-export. Consumed implicitly by every `import Session` site (16+ in `PhospheneApp/` + tests).
+Module entry-point marker. `@_exported import Shared` so any `import Session` consumer automatically gets the Shared types. No public surface beyond the import re-export. Consumed implicitly by every `import Session` site (16+ in `UzumeApp/` + tests).
 
 ### `SessionTypes.swift` (124 lines) — `production-active`
 
@@ -181,7 +181,7 @@ Four shared value types for the session preparation pipeline.
 
 ### `SessionManager.swift` (354 lines) — `production-active`
 
-[`SessionManager.swift:37`](../../PhospheneEngine/Sources/Session/SessionManager.swift) — `@MainActor public final class SessionManager: ObservableObject`. Owns the lifecycle state machine, coordinates `PlaylistConnector` / `SessionPreparer` / `StemCache`. Two `startSession` variants (one for connector-driven, one for App-pre-fetched tracks per D-070 Bug 2). Background preparation `Task` so `startSession` returns immediately; `startNow()` advances `.preparing → .ready` when `progressiveReadinessLevel >= .readyForFirstTracks`.
+[`SessionManager.swift:37`](../../UzumeEngine/Sources/Session/SessionManager.swift) — `@MainActor public final class SessionManager: ObservableObject`. Owns the lifecycle state machine, coordinates `PlaylistConnector` / `SessionPreparer` / `StemCache`. Two `startSession` variants (one for connector-driven, one for App-pre-fetched tracks per D-070 Bug 2). Background preparation `Task` so `startSession` returns immediately; `startNow()` advances `.preparing → .ready` when `progressiveReadinessLevel >= .readyForFirstTracks`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -206,11 +206,11 @@ Four shared value types for the session preparation pipeline.
 
 ### `SessionManager+Readiness.swift` (82 lines) — `production-active`
 
-[`SessionManager+Readiness.swift:21`](../../PhospheneEngine/Sources/Session/SessionManager+Readiness.swift) — `static func computeReadiness(statuses:trackList:cache:) -> ProgressiveReadinessLevel`. Pure function (zero side effects); extracted from `SessionManager.swift` to stay under the 400-line SwiftLint gate after BUG-006.1 instrumentation expanded the main file. D-056 `.partial` threshold rule (BPM + ≥1 genre tag) implemented at lines 60–65. Consumed at two sites in `SessionManager.swift` (line 209 subscription, line 237 final-bookkeeping recompute). Tested by `ProgressiveReadinessTests` (10 cases).
+[`SessionManager+Readiness.swift:21`](../../UzumeEngine/Sources/Session/SessionManager+Readiness.swift) — `static func computeReadiness(statuses:trackList:cache:) -> ProgressiveReadinessLevel`. Pure function (zero side effects); extracted from `SessionManager.swift` to stay under the 400-line SwiftLint gate after BUG-006.1 instrumentation expanded the main file. D-056 `.partial` threshold rule (BPM + ≥1 genre tag) implemented at lines 60–65. Consumed at two sites in `SessionManager.swift` (line 209 subscription, line 237 final-bookkeeping recompute). Tested by `ProgressiveReadinessTests` (10 cases).
 
 ### `PreparationProgressPublishing.swift` (35 lines) — `production-active`
 
-[`PreparationProgressPublishing.swift:16`](../../PhospheneEngine/Sources/Session/PreparationProgressPublishing.swift) — `@MainActor public protocol PreparationProgressPublishing: AnyObject`. Three requirements: `trackStatuses: [TrackIdentity: TrackPreparationStatus]` (read-only), `trackStatusesPublisher: AnyPublisher<…, Never>` (Combine subscription), `cancelPreparation()` (no-op-safe). Production conformer: `SessionPreparer` (`SessionPreparer.swift:380` `extension SessionPreparer: PreparationProgressPublishing {}`). Test conformer: `FakePreparationProgressPublisher.swift:15`. Consumer: `PreparationProgressViewModel.swift:67 publisher: any PreparationProgressPublishing` and `PreparationProgressView.swift:58`.
+[`PreparationProgressPublishing.swift:16`](../../UzumeEngine/Sources/Session/PreparationProgressPublishing.swift) — `@MainActor public protocol PreparationProgressPublishing: AnyObject`. Three requirements: `trackStatuses: [TrackIdentity: TrackPreparationStatus]` (read-only), `trackStatusesPublisher: AnyPublisher<…, Never>` (Combine subscription), `cancelPreparation()` (no-op-safe). Production conformer: `SessionPreparer` (`SessionPreparer.swift:380` `extension SessionPreparer: PreparationProgressPublishing {}`). Test conformer: `FakePreparationProgressPublisher.swift:15`. Consumer: `PreparationProgressViewModel.swift:67 publisher: any PreparationProgressPublishing` and `PreparationProgressView.swift:58`.
 
 ### `TrackPreparationStatus.swift` (75 lines) — `production-active`
 
@@ -224,7 +224,7 @@ Two enums.
 
 ### `SessionPreparer.swift` (383 lines) — `production-active`
 
-[`SessionPreparer.swift:63`](../../PhospheneEngine/Sources/Session/SessionPreparer.swift) — `@MainActor public final class SessionPreparer: ObservableObject`. Sequential per-track preparation (the `StemSeparator` is single-instance and never called concurrently). Stored `Task` so `cancelPreparation()` interrupts at stage boundaries. Two `@Published` state surfaces: `progress: (completed, total)` (legacy scalar) and `trackStatuses: [TrackIdentity: TrackPreparationStatus]` (per-track, U.4 product of `D-056`).
+[`SessionPreparer.swift:63`](../../UzumeEngine/Sources/Session/SessionPreparer.swift) — `@MainActor public final class SessionPreparer: ObservableObject`. Sequential per-track preparation (the `StemSeparator` is single-instance and never called concurrently). Stored `Task` so `cancelPreparation()` interrupts at stage boundaries. Two `@Published` state surfaces: `progress: (completed, total)` (legacy scalar) and `trackStatuses: [TrackIdentity: TrackPreparationStatus]` (per-track, U.4 product of `D-056`).
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -246,7 +246,7 @@ Two TODO markers at the file top (`U.4-followup`): split `.mir` sub-stage emissi
 
 ### `SessionPreparer+Analysis.swift` (353 lines) — `production-active`
 
-[`SessionPreparer+Analysis.swift:66`](../../PhospheneEngine/Sources/Session/SessionPreparer+Analysis.swift) — `nonisolated static func analyzePreview(...)`. The composition surface for the seven-step pipeline run inside `Task.detached(priority: .userInitiated)`:
+[`SessionPreparer+Analysis.swift:66`](../../UzumeEngine/Sources/Session/SessionPreparer+Analysis.swift) — `nonisolated static func analyzePreview(...)`. The composition surface for the seven-step pipeline run inside `Task.detached(priority: .userInitiated)`:
 
 1. Stem separation (`separator.separate(audio:channelCount:sampleRate:)` — ML module).
 2. Mono waveform extraction from UMA `stemBuffers` (line 84–88).
@@ -274,17 +274,17 @@ Diagnostic-only — no production behaviour depends on these log lines, but they
 
 ### `PreviewResolver.swift` (171 lines) — `production-active`
 
-[`PreviewResolver.swift:13`](../../PhospheneEngine/Sources/Session/PreviewResolver.swift) — `public protocol PreviewResolving: Sendable` + `public final class PreviewResolver`. D-070 Spotify-inline-then-iTunes-fallback. Per-track in-memory cache with `URL??` semantics (`.none` = not cached; `.some(.none)` = cached "no preview"; `.some(.some(url))` = cached URL). Sliding-window rate limiter (20 req/min default per D-011) implemented at lines 124–143; suspends rather than errors.
+[`PreviewResolver.swift:13`](../../UzumeEngine/Sources/Session/PreviewResolver.swift) — `public protocol PreviewResolving: Sendable` + `public final class PreviewResolver`. D-070 Spotify-inline-then-iTunes-fallback. Per-track in-memory cache with `URL??` semantics (`.none` = not cached; `.some(.none)` = cached "no preview"; `.some(.some(url))` = cached URL). Sliding-window rate limiter (20 req/min default per D-011) implemented at lines 124–143; suspends rather than errors.
 
 The Spotify-inline short-circuit at lines 73–76 is the D-070 Decision (Failed Approach #47): if `track.spotifyPreviewURL != nil`, seed the cache and return without any network call. Tests: `PreviewResolverTests.spotifyPreviewURL_returnedWithoutNetworkCall` (`:160`), `spotifyPreviewURL_cachedOnSecondCall` (`:176`), plus the iTunes-fallback path tests for `spotifyPreviewURL: nil`.
 
 ### `PreviewDownloader.swift` (202 lines) — `production-active`
 
-[`PreviewDownloader.swift:12`](../../PhospheneEngine/Sources/Session/PreviewDownloader.swift) — `public protocol PreviewDownloading: Sendable` + `public final class PreviewDownloader`. Injectable `fileFetcher` closure (default `URLSession.shared`) so tests never touch the network. AVAudioFile-based decode to mono Float32 (stereo averaged). `batchDownload(tracks:)` uses `withTaskGroup` with a configurable concurrency ceiling (default 4). Temp files written to `tempDirectoryURL` and deleted via `defer`. Format detection via magic-byte sniffing (`audioFileExtension(for:)` at lines 172–197) — WAV, AIFF, CAF, MP3, default M4A — needed because preview-server `Content-Type` headers aren't reliable.
+[`PreviewDownloader.swift:12`](../../UzumeEngine/Sources/Session/PreviewDownloader.swift) — `public protocol PreviewDownloading: Sendable` + `public final class PreviewDownloader`. Injectable `fileFetcher` closure (default `URLSession.shared`) so tests never touch the network. AVAudioFile-based decode to mono Float32 (stereo averaged). `batchDownload(tracks:)` uses `withTaskGroup` with a configurable concurrency ceiling (default 4). Temp files written to `tempDirectoryURL` and deleted via `defer`. Format detection via magic-byte sniffing (`audioFileExtension(for:)` at lines 172–197) — WAV, AIFF, CAF, MP3, default M4A — needed because preview-server `Content-Type` headers aren't reliable.
 
 ### `StemCache.swift` (132 lines) — `production-active`
 
-[`StemCache.swift:15, 72`](../../PhospheneEngine/Sources/Session/StemCache.swift) — `public struct CachedTrackData` (six fields: stemWaveforms / stemFeatures / trackProfile / beatGrid / drumsBeatGrid / gridOnsetOffsetMs) and `public final class StemCache: @unchecked Sendable` (NSLock-guarded dictionary). The most-used Session-module type by consumer count.
+[`StemCache.swift:15, 72`](../../UzumeEngine/Sources/Session/StemCache.swift) — `public struct CachedTrackData` (six fields: stemWaveforms / stemFeatures / trackProfile / beatGrid / drumsBeatGrid / gridOnsetOffsetMs) and `public final class StemCache: @unchecked Sendable` (NSLock-guarded dictionary). The most-used Session-module type by consumer count.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -295,11 +295,11 @@ The Spotify-inline short-circuit at lines 73–76 is the D-070 Decision (Failed 
 
 ### `TrackIdentity.swift` (143 lines) — `production-active`
 
-[`TrackIdentity.swift:23`](../../PhospheneEngine/Sources/Session/TrackIdentity.swift) — `public struct TrackIdentity: Sendable, Codable`. Seven identity fields (title / artist / album / duration / appleMusicID / spotifyID / musicBrainzID) plus the `spotifyPreviewURL` resolution hint excluded from `Equatable`, `Hashable`, AND `Codable` per D-070 + D-091 (cache-key invariant: hint must not affect dictionary key contract). The custom `Equatable` (lines 119–127) and `Hashable` (lines 134–141) implementations are the regression-discriminating surface for the cache-key contract; the custom `CodingKeys` enum (lines 65–67) is the regression-discriminator for serialization compatibility. 299 consumer references across `PhospheneApp/` + `PhospheneEngine/` + `Tests/`.
+[`TrackIdentity.swift:23`](../../UzumeEngine/Sources/Session/TrackIdentity.swift) — `public struct TrackIdentity: Sendable, Codable`. Seven identity fields (title / artist / album / duration / appleMusicID / spotifyID / musicBrainzID) plus the `spotifyPreviewURL` resolution hint excluded from `Equatable`, `Hashable`, AND `Codable` per D-070 + D-091 (cache-key invariant: hint must not affect dictionary key contract). The custom `Equatable` (lines 119–127) and `Hashable` (lines 134–141) implementations are the regression-discriminating surface for the cache-key contract; the custom `CodingKeys` enum (lines 65–67) is the regression-discriminator for serialization compatibility. 299 consumer references across `UzumeApp/` + `UzumeEngine/` + `Tests/`.
 
 ### `TrackProfile.swift` (65 lines) — `production-active`
 
-[`TrackProfile.swift:15`](../../PhospheneEngine/Sources/Session/TrackProfile.swift) — `public struct TrackProfile: Sendable`. Seven fields (bpm / key / mood / spectralCentroidAvg / genreTags / stemEnergyBalance / estimatedSectionCount) + `TrackProfile.empty` defaults. Consumed by `DefaultPresetScorer` (Orchestrator) and `DefaultSessionPlanner.plan(...)`. 162 non-Session consumer references.
+[`TrackProfile.swift:15`](../../UzumeEngine/Sources/Session/TrackProfile.swift) — `public struct TrackProfile: Sendable`. Seven fields (bpm / key / mood / spectralCentroidAvg / genreTags / stemEnergyBalance / estimatedSectionCount) + `TrackProfile.empty` defaults. Consumed by `DefaultPresetScorer` (Orchestrator) and `DefaultSessionPlanner.plan(...)`. 162 non-Session consumer references.
 
 ### `PlaylistConnector.swift` (254 lines) — `production-active`
 
@@ -315,7 +315,7 @@ See `§stub` finding above. Entire body gated behind `#if ENABLE_LOCAL_FOLDER_CO
 
 ### `BeatGridAnalyzer.swift` (81 lines) — `production-active` (CA.1 boundary-deferred — resolved)
 
-[`BeatGridAnalyzer.swift:19, 40`](../../PhospheneEngine/Sources/Session/BeatGridAnalyzer.swift) — `public protocol BeatGridAnalyzing: Sendable` + `public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendable`. Composes DSP's `BeatThisPreprocessor` (audio → log-mel) + ML's `BeatThisModel` (transformer inference, D-077) + DSP's `BeatGridResolver` (postprocess to `BeatGrid`). Frame rate fixed at 50.0 fps (22050/441 = 50.0). Graceful degradation: returns `.empty` on preprocessor failure (line 63) or model.predict failure (line 76–79).
+[`BeatGridAnalyzer.swift:19, 40`](../../UzumeEngine/Sources/Session/BeatGridAnalyzer.swift) — `public protocol BeatGridAnalyzing: Sendable` + `public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendable`. Composes DSP's `BeatThisPreprocessor` (audio → log-mel) + ML's `BeatThisModel` (transformer inference, D-077) + DSP's `BeatGridResolver` (postprocess to `BeatGrid`). Frame rate fixed at 50.0 fps (22050/441 = 50.0). Graceful degradation: returns `.empty` on preprocessor failure (line 63) or model.predict failure (line 76–79).
 
 Production consumers: `SessionPreparer+Analysis.swift:116` (full mix), `SessionPreparer+Analysis.swift:145` (drums stem only — same analyzer instance, MPSGraph graph reusable across calls); `VisualizerEngine+InitHelpers.swift:108` (engine init wiring); `VisualizerEngine+Stems.swift:392` (runtime live-grid analyzer cache for the BUG-007.x live-grid path).
 
@@ -325,7 +325,7 @@ Test consumers: `BeatGridIntegrationTests` (6 cases with both `CountingBeatGridA
 
 ### `GridOnsetCalibrator.swift` (198 lines) — `production-active` (CA.1 boundary-deferred — resolved)
 
-[`GridOnsetCalibrator.swift:28`](../../PhospheneEngine/Sources/Session/GridOnsetCalibrator.swift) — `public struct GridOnsetCalibrator`. BUG-007.8 per-track median offset calibrator: replays preview audio offline through a live `BeatDetector` (DSP module), matches sub-bass onsets (`result.onsets[0]`, matching D-075 / Failed Approach #50) to `BeatGrid` beats within ±200 ms, returns median `(gridBeat − onsetTime)` in milliseconds. Returns 0 when grid is empty, samples insufficient, or no matched onsets.
+[`GridOnsetCalibrator.swift:28`](../../UzumeEngine/Sources/Session/GridOnsetCalibrator.swift) — `public struct GridOnsetCalibrator`. BUG-007.8 per-track median offset calibrator: replays preview audio offline through a live `BeatDetector` (DSP module), matches sub-bass onsets (`result.onsets[0]`, matching D-075 / Failed Approach #50) to `BeatGrid` beats within ±200 ms, returns median `(gridBeat − onsetTime)` in milliseconds. Returns 0 when grid is empty, samples insufficient, or no matched onsets.
 
 Production consumers: `SessionPreparer+Analysis.swift:179` (prep-time calibration); `VisualizerEngine+Stems.swift:271` (BUG-007.9 runtime recalibration against tap audio after stem-separation lock stabilises).
 
@@ -335,7 +335,7 @@ Test consumers: `GridOnsetCalibratorTests` (5 cases — empty-grid, insufficient
 
 ### `BPMMismatchCheck.swift` (181 lines) — `production-active`
 
-[`BPMMismatchCheck.swift:91, 164`](../../PhospheneEngine/Sources/Session/BPMMismatchCheck.swift) — `public func detectBPMMismatch(...)` (2-way, BUG-008.2 backward-grep-able) + `public func detectThreeWayBPMDisagreement(...)` (3-way, DSP.4 diagnostic). Plus two result structs: `BPMMismatchWarning` and `ThreeWayBPMReading`. Pure functions — no I/O, no logging, no Sendable concerns. Default threshold 3 % (intentionally generous — 0.4 % is the `BeatGridResolver`'s own `±0.5` BPM tolerance at 125 BPM; 3 % leaves headroom for legitimate small disagreements like Money's 1.4 %).
+[`BPMMismatchCheck.swift:91, 164`](../../UzumeEngine/Sources/Session/BPMMismatchCheck.swift) — `public func detectBPMMismatch(...)` (2-way, BUG-008.2 backward-grep-able) + `public func detectThreeWayBPMDisagreement(...)` (3-way, DSP.4 diagnostic). Plus two result structs: `BPMMismatchWarning` and `ThreeWayBPMReading`. Pure functions — no I/O, no logging, no Sendable concerns. Default threshold 3 % (intentionally generous — 0.4 % is the `BeatGridResolver`'s own `±0.5` BPM tolerance at 125 BPM; 3 % leaves headroom for legitimate small disagreements like Money's 1.4 %).
 
 Sole production consumer: `SessionPreparer+WiringLogs.logBPMMismatchIfAny(track:)` at lines 81 (3-way) and 104 (2-way). Test consumer: `BPMMismatchCheckTests` (16+ cases). No App-layer or non-Session consumer — diagnostic-only.
 
@@ -464,7 +464,7 @@ None. The audit verified every D-008, D-017, D-018, D-019, D-046, D-052, D-056, 
 - D-056 (progressive readiness) — verified at `SessionManager+Readiness.computeReadiness(...)` (line 21) + `defaultProgressiveReadinessThreshold` (`SessionTypes.swift:63`) + `.partial` threshold rule (`SessionManager+Readiness.swift:60-65`).
 - D-061 (long-session resilience) — App-layer coordinators; verified `SessionPreparer.resumeFailedNetworkTracks()` exists at `:346` and `SessionManager.resumeFailedNetworkTracks()` wraps it at `:324`.
 - D-068 (client-credentials connector) — the `DefaultSpotifyTokenProvider` client-credentials token provider was **retired in CLEAN.2.1** (the bundled client secret was eliminated). The `SpotifyWebAPIConnector` + `SpotifyTokenProviding` protocol remain; OAuth + PKCE (D-069) is the token source. `MissingCredentialsTokenProvider` is the `makeLive()` fallback.
-- D-069 (OAuth + PKCE) — App-layer concrete (`PhospheneApp/Services/SpotifyOAuthTokenProvider.swift`) conforms to engine-side `SpotifyTokenProviding` protocol; correctly placed per Decision 2.
+- D-069 (OAuth + PKCE) — App-layer concrete (`UzumeApp/Services/SpotifyOAuthTokenProvider.swift`) conforms to engine-side `SpotifyTokenProviding` protocol; correctly placed per Decision 2.
 - D-070 (`/items` schema + `preview_url` capture) — verified at `SpotifyWebAPIConnector.parseTrack(_:)` (line 228, especially line 241), `TrackIdentity.spotifyPreviewURL` excluded from Equatable/Hashable/Codable (lines 65-67, 119-127, 134-141), `PreviewResolver` short-circuit (line 73-76).
 - D-091 (QR.4 SettingsStore collapse + `currentTrackIndex`) — App-layer; the Session-side touchpoint (`PlannedSession.canonicalIdentity(matchingTitle:artist:)`) lives in Orchestrator, not Session — boundary-noted.
 
@@ -488,7 +488,7 @@ Items are greppable as `CA\.3-FU-\d+`. If/when a top-level `docs/CAPABILITY_REGI
 
 | ID | Scope | Done-when | Est. sessions | Status |
 |---|---|---|---|---|
-| **CA.3-FU-1** | Relocate `Sources/Session/GridOnsetCalibrator.swift` → `Sources/DSP/GridOnsetCalibrator.swift`. The struct is functionally a DSP capability (constructs `BeatDetector`, runs vDSP FFTs, consumes `BeatGrid`, returns `Double`). Both consumers (`SessionPreparer+Analysis.swift:179`, `VisualizerEngine+Stems.swift:271`) already import DSP. The relocation is mechanical: 1 file move + verify Package.swift if module exports require it. Closes CA.1-FU-5's GridOnsetCalibrator half (which was marked "Blocked on CA-Session audit" — block is cleared by this audit). Explicitly does NOT relocate `BeatGridAnalyzer` — see §Resolution-of-CA.1/CA.2-boundary-deferred-items for why that stays in Session/. | File at `Sources/DSP/GridOnsetCalibrator.swift`; both consumer call sites unchanged; `swift test --package-path PhospheneEngine` passes; SwiftLint clean. | <1 | Ready now |
+| **CA.3-FU-1** | Relocate `Sources/Session/GridOnsetCalibrator.swift` → `Sources/DSP/GridOnsetCalibrator.swift`. The struct is functionally a DSP capability (constructs `BeatDetector`, runs vDSP FFTs, consumes `BeatGrid`, returns `Double`). Both consumers (`SessionPreparer+Analysis.swift:179`, `VisualizerEngine+Stems.swift:271`) already import DSP. The relocation is mechanical: 1 file move + verify Package.swift if module exports require it. Closes CA.1-FU-5's GridOnsetCalibrator half (which was marked "Blocked on CA-Session audit" — block is cleared by this audit). Explicitly does NOT relocate `BeatGridAnalyzer` — see §Resolution-of-CA.1/CA.2-boundary-deferred-items for why that stays in Session/. | File at `Sources/DSP/GridOnsetCalibrator.swift`; both consumer call sites unchanged; `swift test --package-path UzumeEngine` passes; SwiftLint clean. | <1 | Ready now |
 | **CA.3-FU-2** | Decide the fate of `LocalFolderConnector.swift`. Today it is a `#if ENABLE_LOCAL_FOLDER_CONNECTOR`-gated stub with no enabled site anywhere in the build. Two options: **(a)** Delete the file. UX_SPEC §4.4 mentions local-folder as a v2 surface, but the deletion can be reverted from git history when v2 work starts. Matches D-068's "silent-degrade removal" aesthetic — don't ship dead scaffold. **(b)** Replace the `#if` gate with a runtime-disabled toggle that surfaces a "Local folder support coming in a future update" UX. The current behaviour (the class never compiles) is the worst of both worlds: a developer reading `LocalFolderConnector.swift` sees scaffold that isn't actually wired and may waste time tracing the gate. **Recommended (a) to Matt** — the engineering cost is low and the v2 revival starts cleaner from spec than from a year-old stub. Either decision is a Matt call. | Either (a) `LocalFolderConnector.swift` is deleted and the `ConnectorPickerViewModel` comment updated, OR (b) the `#if` gate is replaced with a runtime-disabled toggle. Build green; SwiftLint clean. | <1 | **Blocked on Matt's product call** (delete vs. keep-as-runtime-disabled) |
 | **CA.3-FU-3** | (Optional, low priority.) Retire BUG-006.1 `WIRING:` log instrumentation per the QR.5 plan. The instrumentation is in `SessionManager.startSession`, `SessionManager._beginPreparation`, `SessionManager.startNow()`, `SessionPreparer.prepare(tracks:)`, `SessionPreparer+WiringLogs.logWiringDoneSummary` / `logDrumsBeatGridLine` / `logBPMMismatchIfAny`. BUG-006 is closed; BUG-007 + BUG-008 are tracked but not Session-module-side issues. Costs nothing at runtime; the value of keeping it is "the next session-prep regression has the diagnostic trail already in place." Costs of retiring: net negative readability surface around 10–20 lines of LOC. Defer to QR.5; flagging here for completeness. | Either the `WIRING:` family is retired (and `SessionPreparer+WiringLogs.swift` either deleted or trimmed to just the DONE summary + the BPM-mismatch warnings), OR the file's top comment is updated to say "intentional permanent instrumentation" so it doesn't read as cleanup-pending. | <1 | Deferred to QR.5 wave |
 
@@ -515,7 +515,7 @@ Items are greppable as `CA\.3-FU-\d+`. If/when a top-level `docs/CAPABILITY_REGI
 **Recommended changes for CA.4.**
 - **Default to direct reads for subsystems ≤ 5k LoC.** Explore agents have real value for larger codebases; their overhead (and the over-assertion-of-public failure mode) is not justified for tight modules. The visibility grep stays mandatory either way.
 - **Verify the kickoff prompt against `KNOWN_ISSUES.md`** as the audit's second step (right after reading the prior audit's section). CA.3 found the kickoff's BUG-006 "Open" claim was stale; that was a 30-second cross-check that saved hours of false-positive diagnosis work.
-- **Recommended next subsystem for CA.4:** **Orchestrator** (`PhospheneEngine/Sources/Orchestrator/`). The Session audit surfaced multiple Session-Orchestrator boundary touchpoints (`TrackProfile` consumption by `DefaultPresetScorer`, `SessionPlan` → `PlannedSession` lift in App layer, `PlannedSession.canonicalIdentity(matchingTitle:artist:)` consumed during prepared-cache wiring). The Orchestrator's per-file CA audit closes that boundary cleanly and gives the next CA-App audit full context. **Alternative ordering:** if BUG-012 reproduces and Step 2 diagnosis lands within the next week, the diagnosis may surface different priorities; defer CA.4 scope decision until then.
+- **Recommended next subsystem for CA.4:** **Orchestrator** (`UzumeEngine/Sources/Orchestrator/`). The Session audit surfaced multiple Session-Orchestrator boundary touchpoints (`TrackProfile` consumption by `DefaultPresetScorer`, `SessionPlan` → `PlannedSession` lift in App layer, `PlannedSession.canonicalIdentity(matchingTitle:artist:)` consumed during prepared-cache wiring). The Orchestrator's per-file CA audit closes that boundary cleanly and gives the next CA-App audit full context. **Alternative ordering:** if BUG-012 reproduces and Step 2 diagnosis lands within the next week, the diagnosis may surface different priorities; defer CA.4 scope decision until then.
 
 The audit format continues to produce real, actionable findings (one stub, two doc-drift categories, three boundary-deferred resolutions). Recommend continuing into CA.4 with the methodology refinements above; minor consolidations as noted.
 

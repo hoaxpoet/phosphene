@@ -22,7 +22,7 @@ against a PERMUTATION NULL — the same max-over-phase statistic computed on shu
 features — and what counts is the margin over that null, not the raw d.
 
 Usage:
-    ~/phosphene-ml-env/bin/python tools/barline_probe.py \\
+    ~/uzume-ml-env/bin/python tools/barline_probe.py \\
         --beats-dir /tmp/barprobe \\
         --fixtures ~/phosphene_beatbench_fixtures
 """

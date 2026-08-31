@@ -59,7 +59,7 @@ Execution order is top-to-bottom and largely linear now: **NB.3 (the look) → N
 **Key files.** `docs/VISUAL_REFERENCES/nimbus/*`, `docs/presets/NIMBUS_DESIGN.md`, `DECISIONS.md` (D-139).
 
 **Done-when.**
-- `swift run --package-path PhospheneTools CheckVisualReferences` green for the nimbus folder.
+- `swift run --package-path UzumeTools CheckVisualReferences` green for the nimbus folder.
 - Trait matrix + anti-references reviewed and approved by you.
 - D-139 in `DECISIONS.md`.
 

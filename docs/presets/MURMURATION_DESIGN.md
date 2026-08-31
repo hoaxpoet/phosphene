@@ -203,7 +203,7 @@ whole point of the redesign.
 orientation-vs-density waves, aspect-ratio constancy, the critical-noise requirement, and predator
 escape tactics.
 
-**Infrastructure precedent (in-repo):** `PhospheneEngine/Sources/Presets/FerrofluidOcean/
+**Infrastructure precedent (in-repo):** `UzumeEngine/Sources/Presets/FerrofluidOcean/
 FerrofluidParticles.swift` already runs a GPU **spatial-binning** kernel (bin → sort → neighbour
 iterate) for 2,500 particles. Murmuration's neighbour-grid boids is the same pattern at higher count.
 No net-new engine *capability* — particles pass already exists (D-029); this is a new conformer.

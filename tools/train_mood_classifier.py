@@ -2,7 +2,7 @@
 """
 Train a mood classifier on the DEAM dataset and export to CoreML .mlpackage for ANE.
 
-The model maps 10 audio features (matching Phosphene's MIRPipeline) to continuous
+The model maps 10 audio features (matching Uzume's MIRPipeline) to continuous
 valence/arousal values in [-1, 1], following Russell's circumplex model of affect.
 
 Input features (10 floats, z-score normalized):
@@ -98,7 +98,7 @@ DEFAULT_ANNOTATIONS_DIR = os.path.join(
     SCRIPT_DIR, "data", "DEAM", "annotations", "annotations",
     "annotations averaged per song", "song_level",
 )
-DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "PhospheneEngine", "Sources", "ML", "Models")
+DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "UzumeEngine", "Sources", "ML", "Models")
 DEFAULT_CACHE_PATH = os.path.join(SCRIPT_DIR, "data", "deam_features_cache.npz")
 
 
@@ -206,7 +206,7 @@ def compute_key_correlations(chroma):
 # ---------------------------------------------------------------------------
 
 def extract_features_from_audio(audio_path):
-    """Extract 10 features from an audio file, matching Phosphene's MIRPipeline.
+    """Extract 10 features from an audio file, matching Uzume's MIRPipeline.
 
     Returns a 10-element numpy array (track-level means), or None on failure.
     """
@@ -702,7 +702,7 @@ def convert_to_coreml(model, output_dir, scaler_means, scaler_stds):
     )
 
     # Add metadata
-    mlmodel.author = "Phosphene (DEAM-trained)"
+    mlmodel.author = "Uzume (DEAM-trained)"
     mlmodel.short_description = (
         "Valence/arousal mood classifier trained on DEAM dataset. "
         "Input: 10 z-score-normalized audio features (6-band energy, spectral centroid, "
@@ -783,7 +783,7 @@ def main():
     cache_path = None if args.no_cache else args.cache_features
 
     print("=" * 64)
-    print("Phosphene Mood Classifier -- DEAM Training Pipeline")
+    print("Uzume Mood Classifier -- DEAM Training Pipeline")
     print("=" * 64)
     print(f"Architecture: {NUM_FEATURES} -> 64 (ReLU) -> 32 (ReLU) -> 16 (ReLU) -> {NUM_OUTPUTS} (tanh)")
     print(f"Audio dir:       {args.audio_dir}")

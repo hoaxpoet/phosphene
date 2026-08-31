@@ -45,7 +45,7 @@ When a measurement is not available from existing artifacts, the gap is named ex
 
 ### Component 1a — Prep-time Beat This! grid (BeatGridResolver + Beat This! on the 30 s preview)
 
-**Code locus.** `PhospheneEngine/Sources/Session/SessionPreparer+Analysis.swift:116-122` (full-mix preview path) → `DefaultBeatGridAnalyzer.analyzeBeatGrid(samples:sampleRate:)` → `BeatThisPreprocessor` → `BeatThisModel` → `BeatGridResolver.resolve(beatProbs:downbeatProbs:frameRate:)` → `BeatGrid(beats:downbeats:bpm:beatsPerBar:barConfidence:frameRate:frameCount:)`.
+**Code locus.** `UzumeEngine/Sources/Session/SessionPreparer+Analysis.swift:116-122` (full-mix preview path) → `DefaultBeatGridAnalyzer.analyzeBeatGrid(samples:sampleRate:)` → `BeatThisPreprocessor` → `BeatThisModel` → `BeatGridResolver.resolve(beatProbs:downbeatProbs:frameRate:)` → `BeatGrid(beats:downbeats:bpm:beatsPerBar:barConfidence:frameRate:frameCount:)`.
 
 **What it actually does.**
 - Runs Beat This! on the 30 s Spotify preview clip and returns a `BeatGrid` in *preview-time*: beat 0 is at preview-time 0, beat N is at preview-time `~60/bpm × N`. The preview is **typically excerpted from somewhere around track-time 60-90 s** (Spotify's CDN convention); the preview's clock has no defined relationship to the full track's clock.
@@ -80,7 +80,7 @@ The specific failure mode the install path commits to: any track whose Spotify p
 
 ### Component 1b — Prep-time `gridOnsetOffsetMs` seed (`GridOnsetCalibrator`)
 
-**Code locus.** `PhospheneEngine/Sources/Session/GridOnsetCalibrator.swift` (199 lines). Consumed at prep time by `SessionPreparer+Analysis.swift:179` (writes to `CachedTrackData.gridOnsetOffsetMs`) and at install time by `VisualizerEngine+Stems.swift:486` (passed as `initialDriftMs` to `MIRPipeline.setBeatGrid(_:initialDriftMs:)`).
+**Code locus.** `UzumeEngine/Sources/Session/GridOnsetCalibrator.swift` (199 lines). Consumed at prep time by `SessionPreparer+Analysis.swift:179` (writes to `CachedTrackData.gridOnsetOffsetMs`) and at install time by `VisualizerEngine+Stems.swift:486` (passed as `initialDriftMs` to `MIRPipeline.setBeatGrid(_:initialDriftMs:)`).
 
 **What it actually does.**
 1. Spawns a fresh `BeatDetector(binCount: 512, sampleRate: Float(sampleRate), fftSize: 1024)` and creates an FFT setup.
@@ -119,7 +119,7 @@ The specific failure mode the install path commits to: any track whose Spotify p
 
 ### Component 2 — Cold-start grid install path
 
-**Code locus.** `PhospheneApp/VisualizerEngine+Stems.swift:480-503`:
+**Code locus.** `UzumeApp/VisualizerEngine+Stems.swift:480-503`:
 
 ```swift
 if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
@@ -150,7 +150,7 @@ The audit's finding: the install path is structurally incapable of frame-1 phase
 
 ### Component 3 — Live drift EMA (`LiveBeatDriftTracker.update`)
 
-**Code locus.** `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift:484-584`. Called per-frame from `MIRPipeline.process` (line 319-323): `liveDriftTracker.update(subBassOnset: ctx.beat.onsets[0], playbackTime: elapsedSeconds, deltaTime: ctx.deltaTime)`.
+**Code locus.** `UzumeEngine/Sources/DSP/LiveBeatDriftTracker.swift:484-584`. Called per-frame from `MIRPipeline.process` (line 319-323): `liveDriftTracker.update(subBassOnset: ctx.beat.onsets[0], playbackTime: elapsedSeconds, deltaTime: ctx.deltaTime)`.
 
 **What it actually does.**
 
@@ -232,7 +232,7 @@ This component is not a separate code locus; it is the *behavioural finding* abo
 
 ### Component 5a — Verifier clock-offset estimation
 
-**Code locus.** `PhospheneEngine/Sources/ColdStartVerifier/ColdStartAnalysis.swift:127-146` (`resolveAudibleBeats`) + `ClockOffset.swift:29-53` (`ClockOffset.estimate`).
+**Code locus.** `UzumeEngine/Sources/ColdStartVerifier/ColdStartAnalysis.swift:127-146` (`resolveAudibleBeats`) + `ClockOffset.swift:29-53` (`ClockOffset.estimate`).
 
 **What it actually does.**
 
@@ -256,7 +256,7 @@ This component is not a separate code locus; it is the *behavioural finding* abo
 
 ### Component 5b — Verifier ground-truth Beat This! on raw-tap
 
-**Code locus.** `PhospheneEngine/Sources/ColdStartVerifier/BeatThisGrid.swift:22-34` (`BeatThisGrid.beats(samples:sampleRate:sliceStartS:durationS:analyzer:)`) — runs `DefaultBeatGridAnalyzer.analyzeBeatGrid(samples:sampleRate:)` (= same Beat This! pipeline as production prep) on a 25 s slice of raw_tap.wav starting at `offsetS - 3 s` (3 s lead-in, 25 s total — keeps the spectrogram under Beat This!'s 1500-frame `tMax` at 50 fps).
+**Code locus.** `UzumeEngine/Sources/ColdStartVerifier/BeatThisGrid.swift:22-34` (`BeatThisGrid.beats(samples:sampleRate:sliceStartS:durationS:analyzer:)`) — runs `DefaultBeatGridAnalyzer.analyzeBeatGrid(samples:sampleRate:)` (= same Beat This! pipeline as production prep) on a 25 s slice of raw_tap.wav starting at `offsetS - 3 s` (3 s lead-in, 25 s total — keeps the spectrogram under Beat This!'s 1500-frame `tMax` at 50 fps).
 
 **What it claims.** `ColdStartAnalysis.swift:5-13`: *"audible beat = a Beat This! beat. Beat This! is re-run offline on a per-track slice of raw_tap.wav (BeatThisGrid) — a genuine beat tracker, one beat per beat."* The verifier treats Beat This! on raw-tap as the audible-beat ground truth.
 
@@ -306,7 +306,7 @@ The verifier circularity caveat (the CS.1.y.2-redo fix and the verifier use the 
 
 ### Component 6 — `BeatDetector` sub-bass onset feed
 
-**Code locus.** `PhospheneEngine/Sources/DSP/BeatDetector.swift:200-257` (`process` returns `Result.onsets[0]` for the sub-bass band) + `:309-331` (`detectOnsets`) + `:362-391` (`recordOnsetTimestamps`). Band 0 is 20-80 Hz; 400 ms per-band cooldown; spectral flux > 1.5× median over 50-frame buffer + cooldown gate.
+**Code locus.** `UzumeEngine/Sources/DSP/BeatDetector.swift:200-257` (`process` returns `Result.onsets[0]` for the sub-bass band) + `:309-331` (`detectOnsets`) + `:362-391` (`recordOnsetTimestamps`). Band 0 is 20-80 Hz; 400 ms per-band cooldown; spectral flux > 1.5× median over 50-frame buffer + cooldown gate.
 
 **Consumers.**
 1. `LiveBeatDriftTracker.update(subBassOnset:)` at `MIRPipeline.process` line 320 — the live drift EMA's per-onset input.
@@ -548,10 +548,10 @@ The BSAudit deliverable above identified BSAudit-FU-5 (cross-capture-stable refe
 
 | File | Purpose |
 |---|---|
-| [`BeatPhaseStats.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/BeatPhaseStats.swift) | Shared circular-mean phase math + median-IOI. ReDiagnosis factored to use it. |
-| [`PositionSweep.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/PositionSweep.swift) + [`PositionSweepReport.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/PositionSweepReport.swift) | Path A.1: for each track, Beat This! at sliding 25 s slices (default 10 s stride). |
-| [`CrossCapture.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/CrossCapture.swift) + [`CrossCaptureReport.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/CrossCaptureReport.swift) | Path A.2: across multiple sessions of the same playlist, compare same-position-25s-slice grids vs first-session reference. |
-| [`ColdStartVerifierCommand+PathA.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand+PathA.swift) | CLI runners; flag wiring in the main command file. |
+| [`BeatPhaseStats.swift`](../../UzumeEngine/Sources/ColdStartVerifier/BeatPhaseStats.swift) | Shared circular-mean phase math + median-IOI. ReDiagnosis factored to use it. |
+| [`PositionSweep.swift`](../../UzumeEngine/Sources/ColdStartVerifier/PositionSweep.swift) + [`PositionSweepReport.swift`](../../UzumeEngine/Sources/ColdStartVerifier/PositionSweepReport.swift) | Path A.1: for each track, Beat This! at sliding 25 s slices (default 10 s stride). |
+| [`CrossCapture.swift`](../../UzumeEngine/Sources/ColdStartVerifier/CrossCapture.swift) + [`CrossCaptureReport.swift`](../../UzumeEngine/Sources/ColdStartVerifier/CrossCaptureReport.swift) | Path A.2: across multiple sessions of the same playlist, compare same-position-25s-slice grids vs first-session reference. |
+| [`ColdStartVerifierCommand+PathA.swift`](../../UzumeEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand+PathA.swift) | CLI runners; flag wiring in the main command file. |
 
 Engine suite: **1265 / 1265 pass** (baseline preserved). `--self-test`: PASS (7/7). Project-wide `swiftlint --strict`: 0 violations across 386 files.
 

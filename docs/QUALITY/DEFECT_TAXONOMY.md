@@ -1,4 +1,4 @@
-# Phosphene — Defect Taxonomy
+# Uzume — Defect Taxonomy
 
 Defects are classified by **severity** (P0–P3) and **domain**. Both axes determine the evidence requirements, fix process, and update obligations for each defect.
 

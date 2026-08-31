@@ -21,7 +21,7 @@ Run this at the **start** of any preset-related increment — authoring, uplift,
 **Three-part bar for any new preset concept.** Every concept must clear all three; pitches that pass two of three and rely on Matt to spot the missing third are not acceptable — surface concerns before the pitch:
 1. **Iconic visual subject deliverable at fidelity** — demonstrable from a comparable past preset. If Matt has flagged a fidelity gap on a similar preset before, the default is "I cannot deliver this" until proven otherwise.
 2. **Clear musical role** — the one-sentence rule above.
-3. **Infrastructure-feasible** — no render passes / engine surfaces / GPU contracts Phosphene lacks; if infrastructure must be added, confirm with Matt it's worth the increment.
+3. **Infrastructure-feasible** — no render passes / engine surfaces / GPU contracts Uzume lacks; if infrastructure must be added, confirm with Matt it's worth the increment.
 
 **After every M7 round, write one sentence: "what I now believe about why this preset is failing."** If the sentence doesn't change between rounds, the iteration is mechanical and the next increment is wasted — stop and re-scope.
 
