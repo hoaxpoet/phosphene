@@ -10,7 +10,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "SessionRecorderRetentionPolicy")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "SessionRecorderRetentionPolicy")
 
 // MARK: - SessionRecorderRetentionPolicy
 

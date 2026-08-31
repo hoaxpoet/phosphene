@@ -157,7 +157,7 @@ if status == noErr {
 // Step 3: Create an aggregate device containing the tap.
 let aggDesc: [String: Any] = [
     kAudioAggregateDeviceNameKey as String: "PhospheneAggregate",
-    kAudioAggregateDeviceUIDKey as String: "com.phosphene.aggregate.\(UUID().uuidString)",
+    kAudioAggregateDeviceUIDKey as String: "io.uzume.aggregate.\(UUID().uuidString)",
     kAudioAggregateDeviceIsPrivateKey as String: true,
     kAudioAggregateDeviceTapListKey as String: [[
         kAudioSubTapUIDKey as String: tapDesc.uuid.uuidString

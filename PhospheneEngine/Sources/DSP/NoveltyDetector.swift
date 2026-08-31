@@ -6,7 +6,7 @@ import Foundation
 import Accelerate
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.dsp", category: "NoveltyDetector")
+private let logger = Logger(subsystem: "io.uzume.dsp", category: "NoveltyDetector")
 
 // MARK: - NoveltyDetector
 

@@ -23,7 +23,7 @@ import QuartzCore
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "RayMarchPipeline")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "RayMarchPipeline")
 
 // MARK: - RayMarchPipeline
 

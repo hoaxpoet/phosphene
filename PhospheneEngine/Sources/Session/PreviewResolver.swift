@@ -167,4 +167,4 @@ public final class PreviewResolver: PreviewResolving, @unchecked Sendable {
 
 // MARK: - Logger
 
-private let logger = Logger(subsystem: "com.phosphene", category: "PreviewResolver")
+private let logger = Logger(subsystem: "io.uzume", category: "PreviewResolver")

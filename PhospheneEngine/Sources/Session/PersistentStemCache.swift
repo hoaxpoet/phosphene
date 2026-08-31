@@ -218,11 +218,11 @@ public final class PersistentStemCache: @unchecked Sendable {
 
     /// Default sub-path under `~/Library/Application Support` where the
     /// cache lives in production.
-    public static let defaultRootSubpath: String = "Phosphene/StemCache"
+    public static let defaultRootSubpath: String = "Uzume/StemCache"
 
     /// `UserDefaults` key holding the LRU eviction cap (Int64 byte count).
     /// Operators can override the default 500 MB cap without a recompile:
-    ///   defaults write com.phosphene.app phosphene.cache.localFile.maxBytes -int <bytes>
+    ///   defaults write io.uzume.mac phosphene.cache.localFile.maxBytes -int <bytes>
     public static let maxBytesUserDefaultsKey: String = "phosphene.cache.localFile.maxBytes"
 
     /// LF.4 default cap. 500 MB ≈ 70 cached tracks at ~7 MB/track (LF.3
@@ -246,7 +246,7 @@ public final class PersistentStemCache: @unchecked Sendable {
 
     /// Construct a cache rooted at the given directory. When
     /// `rootDirectory` is `nil`, defaults to
-    /// `~/Library/Application Support/Phosphene/StemCache/`. Creates
+    /// `~/Library/Application Support/Uzume/StemCache/`. Creates
     /// the directory tree if missing (idempotent).
     ///
     /// `maxBytes` overrides the auto-eviction cap consulted after every

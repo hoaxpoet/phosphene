@@ -33,7 +33,7 @@ import simd
 import Shared
 import os.log
 
-private let particleLogger = Logger(subsystem: "com.phosphene.presets", category: "FerrofluidParticles")
+private let particleLogger = Logger(subsystem: "io.uzume.presets", category: "FerrofluidParticles")
 
 // MARK: - FerrofluidParticles
 

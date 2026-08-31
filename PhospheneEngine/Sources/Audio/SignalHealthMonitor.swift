@@ -130,7 +130,7 @@ public final class SignalHealthMonitor: @unchecked Sendable {
         expectedRates: Set<Int> = [44_100, 48_000],
         timeProvider: @escaping () -> CFAbsoluteTime = CFAbsoluteTimeGetCurrent,
         outputSampleRateProvider: @escaping () -> Double = SignalHealthMonitor.queryDefaultOutputSampleRate,
-        evaluationQueue: DispatchQueue = DispatchQueue(label: "com.phosphene.audio.signalHealth")
+        evaluationQueue: DispatchQueue = DispatchQueue(label: "io.uzume.audio.signalHealth")
     ) {
         self.windowSeconds = windowSeconds
         self.deadTapConfirmSeconds = deadTapConfirmSeconds

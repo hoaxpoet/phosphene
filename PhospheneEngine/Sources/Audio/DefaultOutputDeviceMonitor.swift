@@ -14,7 +14,7 @@ import Foundation
 import CoreAudio
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.audio", category: "DefaultOutputDeviceMonitor")
+private let logger = Logger(subsystem: "io.uzume.audio", category: "DefaultOutputDeviceMonitor")
 
 /// Fires a callback when the system default output device changes.
 public final class DefaultOutputDeviceMonitor: @unchecked Sendable {
@@ -22,7 +22,7 @@ public final class DefaultOutputDeviceMonitor: @unchecked Sendable {
     // MARK: - State
 
     /// Serial queue the Core Audio listener block is delivered on.
-    private let queue = DispatchQueue(label: "com.phosphene.audio.defaultOutputMonitor")
+    private let queue = DispatchQueue(label: "io.uzume.audio.defaultOutputMonitor")
 
     /// The registered listener block. Non-nil while monitoring. Retained so the
     /// exact same block can be passed to `AudioObjectRemovePropertyListenerBlock`.

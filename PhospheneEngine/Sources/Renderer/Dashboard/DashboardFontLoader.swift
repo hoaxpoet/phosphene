@@ -53,7 +53,7 @@ public enum DashboardFontLoader {
     // on subsequent calls without repeating bundle lookups or registration.
     private static let _lock = OSAllocatedUnfairLock<FontResolution?>(initialState: nil)
 
-    private static let log = Logger(subsystem: "com.phosphene", category: "DashboardFontLoader")
+    private static let log = Logger(subsystem: "io.uzume", category: "DashboardFontLoader")
 
     // MARK: - Public API
 

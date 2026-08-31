@@ -40,7 +40,7 @@ final class StreamingArtworkPublisher {
     private let publish: @MainActor (Data?) -> Void
 
     private let logger = Logger(
-        subsystem: "com.phosphene.app",
+        subsystem: "io.uzume.mac",
         category: "StreamingArtworkPublisher"
     )
 

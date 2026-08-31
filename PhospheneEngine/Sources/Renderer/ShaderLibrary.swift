@@ -4,7 +4,7 @@
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "ShaderLibrary")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "ShaderLibrary")
 
 public final class ShaderLibrary: @unchecked Sendable {
 

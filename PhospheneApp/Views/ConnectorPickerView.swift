@@ -133,7 +133,7 @@ struct ConnectorPickerView: View {
     ///
     /// Uses `OAuthSpotifyConnectionWrapper` so the ViewModel (and its in-flight Task,
     /// parsedURL, and text state) survive SwiftUI body re-evaluations caused by app
-    /// foregrounding via the `phosphene://` URL scheme callback. A ViewModel created
+    /// foregrounding via the `uzume://` URL scheme callback. A ViewModel created
     /// inline in a `@ViewBuilder` property is destroyed on every body re-evaluation;
     /// `@StateObject` inside the wrapper ensures it lives for the view's full lifetime.
     @ViewBuilder
@@ -190,7 +190,7 @@ private struct AppleMusicConnectionWrapper: View {
 /// A thin view wrapper that owns the `SpotifyConnectionViewModel` as a `@StateObject`,
 /// ensuring the VM and its in-flight OAuth Task survive across SwiftUI body re-evaluations.
 ///
-/// When the user completes the PKCE browser flow and macOS routes `phosphene://spotify-callback`
+/// When the user completes the PKCE browser flow and macOS routes `uzume://spotify-callback`
 /// back to the app, SwiftUI triggers a body re-evaluation of `ConnectorPickerView`. Any
 /// ViewModel created inline in a `@ViewBuilder` computed property would be torn down and
 /// recreated at that point — losing `parsedURL`, the active `connectTask`, and the

@@ -13,7 +13,7 @@ import AVFoundation
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.audio", category: "AudioInputRouter")
+private let logger = Logger(subsystem: "io.uzume.audio", category: "AudioInputRouter")
 
 // MARK: - InputMode
 
@@ -69,7 +69,7 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// Serial queue for tap teardown/reinstall work. Off the realtime thread
     /// because reinstalling involves destroying + recreating Core Audio devices.
     let tapMgmtQueue = DispatchQueue(
-        label: "com.phosphene.audio.tap-mgmt", qos: .utility)
+        label: "io.uzume.audio.tap-mgmt", qos: .utility)
 
     /// Number of reinstall attempts since the most recent `.silent` entry.
     /// Reset on transition to `.active`.

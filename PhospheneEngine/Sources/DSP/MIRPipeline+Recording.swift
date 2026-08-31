@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let recordingLogger = Logger(subsystem: "com.phosphene.dsp", category: "MIRPipeline")
+private let recordingLogger = Logger(subsystem: "io.uzume.dsp", category: "MIRPipeline")
 
 extension MIRPipeline {
 

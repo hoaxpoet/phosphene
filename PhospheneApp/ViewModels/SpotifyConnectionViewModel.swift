@@ -5,7 +5,7 @@
 //
 // New states added in U.11:
 //   .requiresLogin       → user has not authenticated with Spotify yet; shows login CTA
-//   .waitingForCallback  → browser open, waiting for phosphene://spotify-callback redirect
+//   .waitingForCallback  → browser open, waiting for uzume://spotify-callback redirect
 //
 // Error mapping when authenticated:
 //   .spotifyLoginRequired with oauthProvider.isAuthenticated == true
@@ -41,7 +41,7 @@ enum SpotifyConnectionState: Equatable {
     case privatePlaylist
     /// User needs to authenticate with Spotify (OAuth). Shows "Log in with Spotify" CTA.
     case requiresLogin
-    /// OAuth browser is open; waiting for the phosphene://spotify-callback redirect.
+    /// OAuth browser is open; waiting for the uzume://spotify-callback redirect.
     case waitingForCallback
     /// Auth failure — credentials missing, rejected, or OAuth flow failed.
     case authFailure

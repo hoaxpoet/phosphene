@@ -6,7 +6,7 @@
 import Foundation
 import os.log
 
-private let preambleLogger = Logger(subsystem: "com.phosphene.presets", category: "Preamble")
+private let preambleLogger = Logger(subsystem: "io.uzume.presets", category: "Preamble")
 
 // MARK: - Common Shader Preamble
 

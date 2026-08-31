@@ -16,7 +16,7 @@ import QuartzCore
 import Shared
 import os.log
 
-private let rmLogger = Logger(subsystem: "com.phosphene.renderer", category: "RenderPipeline")
+private let rmLogger = Logger(subsystem: "io.uzume.renderer", category: "RenderPipeline")
 
 // MARK: - Texture + IBL Attachment
 

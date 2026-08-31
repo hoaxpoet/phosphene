@@ -17,7 +17,7 @@ import Presets
 import Session
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "PlanPreview")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "PlanPreview")
 
 // MARK: - PlanPreviewRow
 

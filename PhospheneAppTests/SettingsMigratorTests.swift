@@ -10,7 +10,7 @@ import Testing
 struct SettingsMigratorTests {
 
     private func makeSuite() -> UserDefaults {
-        guard let suite = UserDefaults(suiteName: "com.phosphene.test.migrator.\(UUID().uuidString)") else {
+        guard let suite = UserDefaults(suiteName: "io.uzume.test.migrator.\(UUID().uuidString)") else {
             fatalError("UserDefaults suite init failed — test setup error")
         }
         return suite

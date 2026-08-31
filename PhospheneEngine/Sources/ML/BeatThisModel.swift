@@ -11,7 +11,7 @@ import Metal
 import MetalPerformanceShadersGraph
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.ml", category: "BeatThisModel")
+private let logger = Logger(subsystem: "io.uzume.ml", category: "BeatThisModel")
 
 // MARK: - Errors
 

@@ -16,7 +16,7 @@ import Foundation
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.ml", category: "InstrumentFamilyAnalyzer")
+private let logger = Logger(subsystem: "io.uzume.ml", category: "InstrumentFamilyAnalyzer")
 
 // MARK: - Protocol
 

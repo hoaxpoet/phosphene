@@ -9,7 +9,7 @@ import AppKit
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "DisplayManager")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "DisplayManager")
 
 // MARK: - DisplayManager
 

@@ -5,7 +5,7 @@ import Foundation
 import Metal
 import os.log
 
-private let videoLogger = Logger(subsystem: "com.phosphene", category: "SessionRecorder")
+private let videoLogger = Logger(subsystem: "io.uzume", category: "SessionRecorder")
 
 extension SessionRecorder {
 

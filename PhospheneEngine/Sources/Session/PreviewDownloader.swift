@@ -199,4 +199,4 @@ public final class PreviewDownloader: PreviewDownloading, @unchecked Sendable {
 
 // MARK: - Logger
 
-private let logger = Logger(subsystem: "com.phosphene", category: "PreviewDownloader")
+private let logger = Logger(subsystem: "io.uzume", category: "PreviewDownloader")

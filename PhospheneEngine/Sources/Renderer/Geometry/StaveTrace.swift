@@ -19,7 +19,7 @@ import Metal
 import Shared
 import os.log
 
-private let staveLogger = Logger(subsystem: "com.phosphene.renderer", category: "Stave")
+private let staveLogger = Logger(subsystem: "io.uzume.renderer", category: "Stave")
 
 // MARK: - GPU mirror
 

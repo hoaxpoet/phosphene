@@ -7,7 +7,7 @@ import Session
 import Shared
 import os.log
 
-private let captureLogger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
+private let captureLogger = Logger(subsystem: "io.uzume.mac", category: "VisualizerEngine")
 
 extension VisualizerEngine {
 

@@ -31,7 +31,7 @@ import Session
 import Shared
 import os.log
 
-private let lfLogger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine+LF")
+private let lfLogger = Logger(subsystem: "io.uzume.mac", category: "VisualizerEngine+LF")
 
 // MARK: - LocalFilePreparing conformance
 
@@ -116,7 +116,7 @@ extension VisualizerEngine: LocalFilePreparing {
         // BUG-091 instrumentation. A local-file session went 84 s with EVERY audio field
         // exactly zero and left NO trace of its own cause: this function's early returns are
         // silent, and its failure path logs to `os_log` only, which is not retained on the dev
-        // machine (a `log show` for `com.phosphene.app` over the failure window returned
+        // machine (a `log show` for `io.uzume.mac` over the failure window returned
         // nothing at all). The whole point of `session.log` is that a capture explains itself,
         // so every branch that can end in silence now writes there.
         guard let source = sessionManager.currentSource,

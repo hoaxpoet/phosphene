@@ -8,7 +8,7 @@ import Foundation
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.presets", category: "PresetLoader")
+private let logger = Logger(subsystem: "io.uzume.presets", category: "PresetLoader")
 
 // swiftlint:disable:next type_body_length
 public final class PresetLoader: @unchecked Sendable {
@@ -36,7 +36,7 @@ public final class PresetLoader: @unchecked Sendable {
     /// Fires on the main queue when a preset in the watch directory fails to
     /// load (shader compile error, PUB.7). Parameters: preset base name, and a
     /// short reason. The full compiler diagnostics are in os.log
-    /// (subsystem com.phosphene, category PresetLoader) — the callback exists
+    /// (subsystem io.uzume, category PresetLoader) — the callback exists
     /// so the app can point a contributor there instead of failing silently.
     /// Assigned by the app AFTER init, so bundle-load failures at startup
     /// (gated separately by PresetLoaderCompileFailureTest) never fire it;

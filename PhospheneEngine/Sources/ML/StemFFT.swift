@@ -34,7 +34,7 @@ import Accelerate
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.ml", category: "StemFFT")
+private let logger = Logger(subsystem: "io.uzume.ml", category: "StemFFT")
 
 // MARK: - StemFFTError
 

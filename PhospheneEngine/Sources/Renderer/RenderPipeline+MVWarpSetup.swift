@@ -5,7 +5,7 @@ import Metal
 import MetalKit
 import os.log
 
-private let mvWarpLogger = Logger(subsystem: "com.phosphene.renderer", category: "MVWarp")
+private let mvWarpLogger = Logger(subsystem: "io.uzume.renderer", category: "MVWarp")
 
 extension RenderPipeline {
 

@@ -12,7 +12,7 @@ import Metal
 import Shared
 import os.log
 
-private let passLogger = Logger(subsystem: "com.phosphene.renderer", category: "GBufferPass")
+private let passLogger = Logger(subsystem: "io.uzume.renderer", category: "GBufferPass")
 
 // MARK: - G-buffer Pass
 

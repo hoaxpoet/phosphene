@@ -11,7 +11,7 @@ import Testing
 struct SettingsViewModelTests {
 
     private func makeDefaults(_ tag: String = UUID().uuidString) -> UserDefaults {
-        guard let suite = UserDefaults(suiteName: "com.phosphene.test.vm.\(tag)") else {
+        guard let suite = UserDefaults(suiteName: "io.uzume.test.vm.\(tag)") else {
             fatalError("test suite init failed")
         }
         return suite

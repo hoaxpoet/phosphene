@@ -171,6 +171,7 @@
 		K10001 /* SettingsTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20001; };
 		K10002 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20002; };
 		K10003 /* SettingsMigrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20003; };
+		K10900 /* IdentityMigrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20900; };
 		K10004 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20004; };
 		K10010 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20010; };
 		K10012 /* VisualsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20012; };
@@ -181,6 +182,7 @@
 		K10022 /* SessionRecorderRetentionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20022; };
 		K10040 /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20040; };
 		K10041 /* SettingsMigratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20041; };
+		K10901 /* IdentityMigratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20901; };
 		K10042 /* SettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20042; };
 		K10043 /* SettingsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20043; };
 		K10044 /* SettingsStoreCertifiedToggleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20044; };
@@ -372,6 +374,7 @@
 		K20001 /* SettingsTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTypes.swift; sourceTree = "<group>"; };
 		K20002 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		K20003 /* SettingsMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMigrator.swift; sourceTree = "<group>"; };
+		K20900 /* IdentityMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityMigrator.swift; sourceTree = "<group>"; };
 		K20004 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		K20010 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		K20012 /* VisualsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualsSettingsSection.swift; sourceTree = "<group>"; };
@@ -382,6 +385,7 @@
 		K20022 /* SessionRecorderRetentionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderRetentionPolicy.swift; sourceTree = "<group>"; };
 		K20040 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
 		K20041 /* SettingsMigratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMigratorTests.swift; sourceTree = "<group>"; };
+		K20901 /* IdentityMigratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityMigratorTests.swift; sourceTree = "<group>"; };
 		K20042 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
 		K20043 /* SettingsViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewTests.swift; sourceTree = "<group>"; };
 		K20044 /* SettingsStoreCertifiedToggleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreCertifiedToggleTests.swift; sourceTree = "<group>"; };
@@ -582,6 +586,7 @@
 				J20002 /* PlaybackErrorBridge.swift */,
 				K20002 /* SettingsStore.swift */,
 				K20003 /* SettingsMigrator.swift */,
+				K20900 /* IdentityMigrator.swift */,
 				K20020 /* PresetScoringContextProvider.swift */,
 				K20022 /* SessionRecorderRetentionPolicy.swift */,
 				L20001 /* AccessibilityState.swift */,
@@ -733,6 +738,7 @@
 				J20005 /* ToastManagerConditionTests.swift */,
 				K20040 /* SettingsStoreTests.swift */,
 				K20041 /* SettingsMigratorTests.swift */,
+				K20901 /* IdentityMigratorTests.swift */,
 				K20042 /* SettingsViewModelTests.swift */,
 				K20043 /* SettingsViewTests.swift */,
 				K20044 /* SettingsStoreCertifiedToggleTests.swift */,
@@ -968,6 +974,7 @@
 				K10001 /* SettingsTypes.swift in Sources */,
 				K10002 /* SettingsStore.swift in Sources */,
 				K10003 /* SettingsMigrator.swift in Sources */,
+				K10900 /* IdentityMigrator.swift in Sources */,
 				K10004 /* SettingsViewModel.swift in Sources */,
 				K10010 /* SettingsView.swift in Sources */,
 				Q10008 /* LocalFilesSettingsSection.swift in Sources */,
@@ -1032,6 +1039,7 @@
 				J10005 /* ToastManagerConditionTests.swift in Sources */,
 				K10040 /* SettingsStoreTests.swift in Sources */,
 				K10041 /* SettingsMigratorTests.swift in Sources */,
+				K10901 /* IdentityMigratorTests.swift in Sources */,
 				K10042 /* SettingsViewModelTests.swift in Sources */,
 				K10043 /* SettingsViewTests.swift in Sources */,
 				K10044 /* SettingsStoreCertifiedToggleTests.swift in Sources */,
@@ -1223,8 +1231,6 @@
 				DEVELOPMENT_TEAM = 2LBTN9PB4Z;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PhospheneApp/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Uzume;
-				INFOPLIST_KEY_CFBundleName = Uzume;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2024 Matt. All rights reserved.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1254,8 +1260,6 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PhospheneApp/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Uzume;
-				INFOPLIST_KEY_CFBundleName = Uzume;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2024 Matt. All rights reserved.";
 				LD_RUNPATH_SEARCH_PATHS = (

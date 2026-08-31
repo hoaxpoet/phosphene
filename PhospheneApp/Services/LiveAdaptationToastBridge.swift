@@ -19,7 +19,7 @@ import Combine
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "LiveAdaptationToastBridge")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "LiveAdaptationToastBridge")
 
 // MARK: - LiveAdaptationToastBridge
 

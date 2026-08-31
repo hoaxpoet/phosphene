@@ -10,10 +10,10 @@ import Testing
 struct SpotifyKeychainStoreTests {
 
     /// Unique test service name so production Keychain entries are never touched.
-    private static let testService = "com.phosphene.spotify.test"
+    private static let testService = "io.uzume.spotify.test"
 
     private func makeStore() -> SpotifyKeychainStore {
-        SpotifyKeychainStore(service: Self.testService, account: "refresh_token_test")
+        SpotifyKeychainStore(service: Self.testService, account: "refresh_token_test", legacyService: nil)
     }
 
     @Test("save and load round-trip returns same token")

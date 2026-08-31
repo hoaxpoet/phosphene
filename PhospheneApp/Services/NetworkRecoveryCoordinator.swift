@@ -19,7 +19,7 @@ import Foundation
 import Session
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "NetworkRecoveryCoordinator")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "NetworkRecoveryCoordinator")
 
 // MARK: - NetworkRecoveryCoordinator
 

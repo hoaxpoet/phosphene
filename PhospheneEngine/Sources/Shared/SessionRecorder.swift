@@ -43,7 +43,7 @@ import Foundation
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene", category: "SessionRecorder")
+private let logger = Logger(subsystem: "io.uzume", category: "SessionRecorder")
 
 // MARK: - SessionRecorder
 
@@ -70,7 +70,7 @@ public final class SessionRecorder: @unchecked Sendable {
 
     // MARK: IO
 
-    let queue = DispatchQueue(label: "com.phosphene.recorder", qos: .utility)
+    let queue = DispatchQueue(label: "io.uzume.recorder", qos: .utility)
 
     // Optional because the session directory and its files are created LAZILY, on the first
     // actual write — see `materializeIfNeeded()` (BUG-083).

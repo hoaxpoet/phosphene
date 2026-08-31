@@ -24,7 +24,7 @@ import CoreText
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "DynamicTextOverlay")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "DynamicTextOverlay")
 
 // MARK: - DynamicTextOverlay
 

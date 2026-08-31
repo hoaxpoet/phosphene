@@ -17,7 +17,7 @@ import Presets
 import Session
 import Shared
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "VisualizerEngine")
 
 // MARK: - Orchestrator Wiring
 

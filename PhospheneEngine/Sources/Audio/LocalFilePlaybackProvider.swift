@@ -14,7 +14,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.audio", category: "LocalFilePlaybackProvider")
+private let logger = Logger(subsystem: "io.uzume.audio", category: "LocalFilePlaybackProvider")
 
 // MARK: - LocalFilePlaybackProvider
 
@@ -72,7 +72,7 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     /// engine lock (the BUG-021 ABBA, on AVFoundation's internal locks rather
     /// than the provider `lock`). Hopping lets the completion handler return at
     /// once, freeing the completion queue so `stop()`'s `dispatch_sync` can win.
-    private let rescheduleQueue = DispatchQueue(label: "com.phosphene.localfile.reschedule")
+    private let rescheduleQueue = DispatchQueue(label: "io.uzume.localfile.reschedule")
 
     // MARK: - Callback
 

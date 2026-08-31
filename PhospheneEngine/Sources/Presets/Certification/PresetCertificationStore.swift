@@ -11,7 +11,7 @@ import Foundation
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.presets", category: "CertificationStore")
+private let logger = Logger(subsystem: "io.uzume.presets", category: "CertificationStore")
 
 // MARK: - PresetCertificationStore
 

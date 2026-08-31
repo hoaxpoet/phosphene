@@ -18,7 +18,7 @@ import Metal
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "MitosisGen2")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "MitosisGen2")
 
 // MARK: - GPU layouts (mirror the MSL structs in Renderer/Shaders/MitosisGen2.metal)
 

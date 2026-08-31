@@ -19,7 +19,7 @@ import Presets
 import Session
 import Shared
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "PlaybackActionRouter")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "PlaybackActionRouter")
 
 // MARK: - AdaptationFields
 
