@@ -15,7 +15,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.ml", category: "BeatThisTiledInference")
+private let logger = Logger(subsystem: "io.uzume.ml", category: "BeatThisTiledInference")
 
 public enum BeatThisTiledInference {
 

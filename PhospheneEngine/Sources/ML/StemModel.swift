@@ -19,7 +19,7 @@ import MetalPerformanceShadersGraph
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.ml", category: "StemModel")
+private let logger = Logger(subsystem: "io.uzume.ml", category: "StemModel")
 
 // MARK: - Errors
 

@@ -23,7 +23,7 @@ public final class MusicBrainzFetcher: MetadataFetching, Sendable {
     private static let baseURL = "https://musicbrainz.org/ws/2"
 
     /// User-Agent required by MusicBrainz API policy.
-    private static let userAgent = "Phosphene/1.0 (https://github.com/hoaxpoet/phosphene)"
+    private static let userAgent = "Phosphene/1.0 (https://github.com/hoaxpoet/uzume)"
 
     public init() {}
 

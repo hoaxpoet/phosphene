@@ -17,7 +17,7 @@ import Shared
 import SwiftUI
 import os.log
 
-private let apiLogger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
+private let apiLogger = Logger(subsystem: "io.uzume.mac", category: "VisualizerEngine")
 
 extension VisualizerEngine {
 

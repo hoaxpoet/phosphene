@@ -17,7 +17,7 @@
 import Metal
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "TextureManager")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "TextureManager")
 
 // MARK: - TextureManager
 

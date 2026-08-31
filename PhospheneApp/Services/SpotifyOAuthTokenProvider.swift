@@ -22,7 +22,7 @@ import Foundation
 import Session          // SpotifyTokenProviding, PlaylistConnectorError
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "SpotifyOAuth")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "SpotifyOAuth")
 
 // MARK: - SpotifyOAuthLoginProviding
 
@@ -85,7 +85,7 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
 
     private static let expiryMarginSeconds: TimeInterval = 300  // refresh 5 min early
     private static let loginTimeoutSeconds: TimeInterval = 300  // 5 min browser timeout
-    private static let redirectURI = "phosphene://spotify-callback"
+    private static let redirectURI = "uzume://spotify-callback"
     private static let authEndpoint = "https://accounts.spotify.com/authorize"
     private static let tokenEndpoint = "https://accounts.spotify.com/api/token"
     private static let scopes = "playlist-read-private playlist-read-collaborative"
@@ -170,7 +170,7 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
     public func handleCallback(url: URL) async {
         guard
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-            components.scheme == "phosphene",
+            components.scheme == "uzume",
             components.host == "spotify-callback"
         else { return }
 

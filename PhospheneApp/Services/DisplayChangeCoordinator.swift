@@ -19,7 +19,7 @@ import Foundation
 import os.log
 import Renderer
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "DisplayChangeCoordinator")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "DisplayChangeCoordinator")
 
 // MARK: - DisplayChangeCoordinator
 

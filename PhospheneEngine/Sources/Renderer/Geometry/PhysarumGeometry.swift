@@ -16,7 +16,7 @@ import Metal
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "Physarum")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "Physarum")
 
 // MARK: - PhysConfig (mirror of MSL `PhysConfig`, 48 bytes)
 

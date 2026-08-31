@@ -11,7 +11,7 @@ import Presets
 import Renderer
 import Shared
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "VisualizerEngine")
 
 /// Map a `marks.primitive` descriptor string to an `MTLPrimitiveType` (Skein.ENGINE.1.1,
 /// D-143). The descriptor lives in the Presets module, which does not import Metal, so it

@@ -20,7 +20,7 @@ import os.log
 import Session
 import Shared
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "PreparationErrorVM")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "PreparationErrorVM")
 
 // MARK: - PreparationPresentationState
 

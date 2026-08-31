@@ -101,7 +101,7 @@ manifests stay OUT of the excision scope (his 2026-07-11 direction).
 
 ```bash
 # Fresh mirror — NEVER run filter-repo on the working clone:
-git clone --mirror https://github.com/hoaxpoet/phosphene.git /tmp/phosphene-rewrite
+git clone --mirror https://github.com/hoaxpoet/uzume.git /tmp/phosphene-rewrite
 cd /tmp/phosphene-rewrite
 
 cat > /tmp/mailmap << 'EOF'
@@ -127,7 +127,7 @@ git filter-repo \
 # commit since --invert-paths removed them from the tree too — re-adding
 # under the new .gitattributes rule stores them as LFS objects).
 
-git push --force --mirror https://github.com/hoaxpoet/phosphene.git
+git push --force --mirror https://github.com/hoaxpoet/uzume.git
 ```
 
 **After a rewrite:** every clone and worktree is invalidated. On the Mac

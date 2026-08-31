@@ -19,7 +19,7 @@ import Metal
 import Shared
 import os.log
 
-private let witchlightLogger = Logger(subsystem: "com.phosphene.renderer", category: "Witchlight")
+private let witchlightLogger = Logger(subsystem: "io.uzume.renderer", category: "Witchlight")
 
 // MARK: - WLConfig (mirror of MSL `WLConfig`, 2 × uint + 17 × float = 76 bytes)
 

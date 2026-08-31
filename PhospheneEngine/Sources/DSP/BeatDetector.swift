@@ -10,7 +10,7 @@ import Accelerate
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.dsp", category: "BeatDetector")
+private let logger = Logger(subsystem: "io.uzume.dsp", category: "BeatDetector")
 
 // MARK: - BeatDetector
 

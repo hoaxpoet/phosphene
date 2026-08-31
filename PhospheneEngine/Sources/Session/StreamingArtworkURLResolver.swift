@@ -128,4 +128,4 @@ public final class StreamingArtworkURLResolver: StreamingArtworkURLResolving, @u
 
 // MARK: - Logger
 
-private let logger = Logger(subsystem: "com.phosphene", category: "StreamingArtworkURLResolver")
+private let logger = Logger(subsystem: "io.uzume", category: "StreamingArtworkURLResolver")

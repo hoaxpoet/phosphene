@@ -184,7 +184,7 @@ private struct OAuthSpotifyConnectionWrapper: View {
 }
 ```
 
-The Spotify wrapper's docstring (`ConnectorPickerView.swift:152-160`) cites the failure mode explicitly: *"A ViewModel created inline in a `@ViewBuilder` property is destroyed on every body re-evaluation. … When the user completes the PKCE browser flow and macOS routes `phosphene://spotify-callback` back to the app, SwiftUI triggers a body re-evaluation of ConnectorPickerView."*
+The Spotify wrapper's docstring (`ConnectorPickerView.swift:152-160`) cites the failure mode explicitly: *"A ViewModel created inline in a `@ViewBuilder` property is destroyed on every body re-evaluation. … When the user completes the PKCE browser flow and macOS routes `uzume://spotify-callback` back to the app, SwiftUI triggers a body re-evaluation of ConnectorPickerView."*
 
 The Apple Music side does not have an equivalent URL-callback foregrounding scenario, but other parent body re-evaluations (e.g., `viewModel.appleMusicRunning` changing via the 250 ms-debounced NSWorkspace observer in `ConnectorPickerViewModel`) could still trigger the same defect class — if SwiftUI's `NavigationStack` calls the `navigationDestination(for:)` closure on parent re-evals while the user is on the AppleMusic destination, the inline `AppleMusicConnectionViewModel()` would be re-instantiated. Whether this actually happens in production depends on SwiftUI's NavigationStack behaviour under destination-closure re-eval.
 

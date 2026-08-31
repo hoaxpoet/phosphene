@@ -640,7 +640,7 @@ Free MusicBrainz API search. `public final class MusicBrainzFetcher: MetadataFet
 | `init()` | `production-active` | `VisualizerEngine+Audio.swift:58` | |
 | `fetch(title:artist:) async -> PartialTrackProfile?` | `production-active` | MetadataPreFetcher | Returns `(genreTags, duration)`; never returns BPM/key/etc. |
 
-**User-Agent:** `"Phosphene/1.0 (https://github.com/hoaxpoet/phosphene)"` (line 26) — MusicBrainz API policy requires a descriptive User-Agent. Rate limit (1 req/sec per docs/header comment) is NOT explicitly enforced in code — relies on the per-track event frequency to stay polite. Worth noting; not a finding unless production traffic patterns surface a 429.
+**User-Agent:** `"Phosphene/1.0 (https://github.com/hoaxpoet/uzume)"` (line 26) — MusicBrainz API policy requires a descriptive User-Agent. Rate limit (1 req/sec per docs/header comment) is NOT explicitly enforced in code — relies on the per-track event frequency to stay polite. Worth noting; not a finding unless production traffic patterns surface a 429.
 
 **No findings.**
 

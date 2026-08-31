@@ -46,11 +46,11 @@ primary/canonical app (on `main`) has no Glaze, which is why cycling showed noth
 is kept current (rebuilt each increment; the bundle below is fresh).
 
 **⚠️⚠️ QUIT every running Phosphene first.** The worktree build and your canonical app share the bundle ID
-`com.phosphene.app`, so if a Phosphene is already running, `open <worktree path>` just re-focuses the RUNNING
+`io.uzume.mac`, so if a Phosphene is already running, `open <worktree path>` just re-focuses the RUNNING
 one (your canonical, no Glaze) — it will NOT launch the worktree build. ⌘Q all of them (check Force-Quit), THEN:
 
 ```sh
-open ~/Library/Developer/Xcode/DerivedData/PhospheneApp-fjevhlmowimaxjdcdeahnfybpseg/Build/Products/Debug/PhospheneApp.app
+open ~/Library/Developer/Xcode/DerivedData/PhospheneApp-fjevhlmowimaxjdcdeahnfybpseg/Build/Products/Debug/Uzume.app
 ```
 (Or open *this worktree's* `PhospheneApp.xcodeproj` in Xcode → ⌘R — it uses the same DerivedData.) It's a
 Debug build, so the preset-cycle shortcuts are live. *(Worktree builds can't do Spotify — use a local file.)*

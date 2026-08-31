@@ -10,7 +10,7 @@ Jargon: [docs/GLOSSARY.md](../GLOSSARY.md). Authoring discipline (read first):
 
 ## 1. Develop (nothing to register)
 
-- [ ] `~/Library/Application Support/Phosphene/Presets/<Name>.metal` + `<Name>.json`
+- [ ] `~/Library/Application Support/Uzume/Presets/<Name>.metal` + `<Name>.json`
       — hot-reload dev loop, zero repo edits (CONTRIBUTING §dev loop).
       Or in-repo from the start: `PhospheneEngine/Sources/Presets/Shaders/`
       (auto-discovered at build; no pbxproj edit — the Shaders directory is a

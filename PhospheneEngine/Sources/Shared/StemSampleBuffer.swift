@@ -6,7 +6,7 @@ import Accelerate
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene", category: "shared")
+private let logger = Logger(subsystem: "io.uzume", category: "shared")
 
 // MARK: - StemSampleBuffer
 

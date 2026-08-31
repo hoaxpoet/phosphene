@@ -13,7 +13,7 @@ import Testing
 struct PresetScoringContextProviderTests {
 
     private func makeProvider(detectedTier: DeviceTier = .tier1) -> (PresetScoringContextProvider, SettingsStore) {
-        guard let suite = UserDefaults(suiteName: "com.phosphene.test.prov.\(UUID().uuidString)") else {
+        guard let suite = UserDefaults(suiteName: "io.uzume.test.prov.\(UUID().uuidString)") else {
             fatalError("test suite init failed")
         }
         let store = SettingsStore(defaults: suite)

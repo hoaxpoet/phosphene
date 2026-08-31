@@ -20,7 +20,7 @@ import Session
 import Shared
 import SwiftUI
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "VisualizerEngine")
 
 // MARK: - MIRDiagnostics
 
@@ -360,7 +360,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     var streamingArtworkFetcher: StreamingArtworkFetching = DefaultStreamingArtworkFetcher()
 
     /// Disk cache for fetched artwork bytes (SHA-256-keyed LRU, 100 MB cap,
-    /// `~/Library/Caches/com.phosphene.app/streaming-artwork/`).
+    /// `~/Library/Caches/io.uzume.mac/streaming-artwork/`).
     var streamingArtworkDiskCache = StreamingArtworkDiskCache()
 
     /// Owns the in-flight artwork fetch task for the live streaming track.
@@ -397,7 +397,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// on the same local file installs cached BeatGrid + stems in
     /// ~100 ms instead of re-running the ~2 s pre-analysis. Wired
     /// eagerly in `init` to a default cache rooted at
-    /// `~/Library/Application Support/Phosphene/StemCache/`. Stays
+    /// `~/Library/Application Support/Uzume/StemCache/`. Stays
     /// `nil` if the cache directory can't be created — the LF path
     /// then falls through to the LF.2 in-memory-only flow on every
     /// launch.
@@ -491,7 +491,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let stemAnalyzer: StemAnalyzer
 
     /// Background queue for stem separation (utility QoS — never blocks render).
-    let stemQueue = DispatchQueue(label: "com.phosphene.stemSeparator", qos: .utility)
+    let stemQueue = DispatchQueue(label: "io.uzume.stemSeparator", qos: .utility)
 
     /// Repeating timer that triggers stem separation every 5 seconds.
     var stemTimer: DispatchSourceTimer?
@@ -745,7 +745,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Background queue running MIR analysis off the real-time audio thread.
     let analysisQueue = DispatchQueue(
-        label: "com.phosphene.analysis",
+        label: "io.uzume.analysis",
         qos: .userInteractive
     )
 
@@ -947,7 +947,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // CSP.3 (2026-05-27): Ferrofluid Ocean cold-start fix toggle. Reads
         // UserDefaults at app launch; default ON (CSP.3 is the experimental
         // arm of Matt's A/B). To run the off-side without recompiling:
-        //   defaults write com.phosphene.app ffoColdStartFixEnabled -bool NO
+        //   defaults write io.uzume.mac ffoColdStartFixEnabled -bool NO
         // The toggle gates TWO things:
         //   1. MIRPipeline.trackElapsedS writes the real time when ON; 100.0
         //      when OFF (collapses the shader's smoothstep crossfade to the
@@ -1009,7 +1009,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // LF.3 / D-130: stand up the persistent disk-backed cache used
         // by the LF preparation path (consumed by VisualizerEngine+LocalFilePlayback.swift
         // through the `LocalFilePreparing` delegate). Defaults to
-        // `~/Library/Application Support/Phosphene/StemCache/`. Failure
+        // `~/Library/Application Support/Uzume/StemCache/`. Failure
         // to create the directory leaves `persistentStemCache = nil`
         // and the LF path falls through to the in-memory-only flow.
         do {

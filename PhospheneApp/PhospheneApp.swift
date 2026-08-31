@@ -3,7 +3,7 @@ import Renderer
 import SwiftUI
 import os.log
 
-private let lfLogger = Logger(subsystem: "com.phosphene.app", category: "LF1")
+private let lfLogger = Logger(subsystem: "io.uzume.mac", category: "LF1")
 
 /// Phosphene application entry point.
 ///
@@ -21,7 +21,7 @@ private let lfLogger = Logger(subsystem: "com.phosphene.app", category: "LF1")
 /// `spotifyOAuth` (U.11) is a long-lived actor that owns the Spotify OAuth
 /// Authorization Code + PKCE token lifecycle. It is created once here and passed
 /// to `ConnectorPickerView` via environment injection. The `.onOpenURL` modifier
-/// routes `phosphene://spotify-callback` redirects back to the actor.
+/// routes `uzume://spotify-callback` redirects back to the actor.
 @main
 struct PhospheneApp: App {
     @StateObject private var engine = VisualizerEngine()
@@ -38,6 +38,10 @@ struct PhospheneApp: App {
     private let spotifyOAuth = SpotifyOAuthTokenProvider.makeLive()
 
     init() {
+        // RN.1: adopt state stranded by the bundle-ID change (settings domain,
+        // stem cache). Runs before SettingsMigrator so the key migration below
+        // sees the carried-over values. Idempotent; a no-op after first launch.
+        IdentityMigrator.migrate()
         // Migrate legacy UserDefaults keys to the phosphene.settings.* scheme.
         SettingsMigrator.migrate()
         // Prune old session folders according to the persisted retention policy.
@@ -98,10 +102,10 @@ struct PhospheneApp: App {
                     engine.applyShowUncertifiedPresets(value)
                 }
             }
-            // Route phosphene://spotify-callback back to the OAuth actor (U.11)
+            // Route uzume://spotify-callback back to the OAuth actor (U.11)
             // and file:// URLs to the LF.5 file-association dispatch path.
             .onOpenURL { url in
-                if url.scheme == "phosphene", url.host == "spotify-callback" {
+                if url.scheme == "uzume", url.host == "spotify-callback" {
                     Task { await spotifyOAuth.handleCallback(url: url) }
                     return
                 }

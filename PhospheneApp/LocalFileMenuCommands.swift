@@ -36,7 +36,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import os.log
 
-private let menuLogger = Logger(subsystem: "com.phosphene.app", category: "LocalFileMenuCommands")
+private let menuLogger = Logger(subsystem: "io.uzume.mac", category: "LocalFileMenuCommands")
 
 // MARK: - LocalFileMenuCommands
 

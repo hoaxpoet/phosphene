@@ -25,7 +25,7 @@ Phosphene is **macOS-only**, single-user, **on-device only — no cloud, no tele
 | 2 | App sandbox | **Off** — `app-sandbox = false` is the only entitlement. | Document — incompatible with the tap; partial sandbox not viable. |
 | 3 | Hardened runtime + notarization | **Hardened runtime ON** (CLEAN.2.5a — `ENABLE_HARDENED_RUNTIME=YES` on the app target **Release** config; Debug left unhardened so XCTest injection works; signs `-o runtime`; `automation.apple-events` entitlement added). Still dev-signed ("Apple Development"), **not yet Developer ID / notarized**. | **CLEAN.2.5a done + verified** (HR; runtime gates verified 2026-06-15 — tap green @ −6 dBFS under HR, Apple-Events entitlement accepted); **CLEAN.2.5b deferred** — Developer ID + notarization, blocked on a paid Apple Developer Program membership. |
 | 4 | Library validation | Not declared. Links Apple frameworks + SPM static libs only. | Document — not required; keep ON under hardened runtime. |
-| 5 | `phosphene://` OAuth callback | scheme + host + `state` (CSRF/replay) + nil-pending rejection; double-checked at `.onOpenURL`. | Document — mitigated (CLEAN.2.2). |
+| 5 | `uzume://` OAuth callback | scheme + host + `state` (CSRF/replay) + nil-pending rejection; double-checked at `.onOpenURL`. | Document — mitigated (CLEAN.2.2). |
 | 6 | Local-file open path | Defensive m3u parser + AVFoundation decoders; resolved entries canonicalized + filtered to an audio extension allow-list. | **BUG-051 fixed 2026-08-07** (BUG051.1) — allow-list applied at the parser boundary. |
 | 7 | Secrets at rest + no-telemetry | OAuth tokens in Keychain; only the public client ID is checked in; no telemetry. | Document — posture strength. |
 
@@ -76,13 +76,13 @@ The tap is **TCC-gated**: macOS requires the user to grant screen-recording perm
 
 **Decision.** Document — **not required, no fix**. Verified under hardened runtime (CLEAN.2.5a): library validation is on by default and was **left on** — no `disable-library-validation` declared, confirmed on the signed binary (`codesign -d --entitlements`).
 
-## 5. `phosphene://` OAuth callback
+## 5. `uzume://` OAuth callback
 
-**Current posture (verified — `PhospheneApp/Services/SpotifyOAuthTokenProvider.swift` `handleCallback`, `PhospheneApp/PhospheneApp.swift:104` `.onOpenURL`).** The custom URL scheme `phosphene://spotify-callback` is the OAuth redirect target. The callback is validated at two layers:
-- `.onOpenURL` dispatches only when `url.scheme == "phosphene"` **and** `url.host == "spotify-callback"`;
+**Current posture (verified — `PhospheneApp/Services/SpotifyOAuthTokenProvider.swift` `handleCallback`, `PhospheneApp/PhospheneApp.swift:104` `.onOpenURL`).** The custom URL scheme `uzume://spotify-callback` is the OAuth redirect target. The callback is validated at two layers:
+- `.onOpenURL` dispatches only when `url.scheme == "uzume"` **and** `url.host == "spotify-callback"`;
 - `handleCallback` re-checks scheme + host, then enforces the **`state` CSRF/replay guard** — the returned `state` must equal the `pendingState` sent in the authorize URL; a nil `pendingState` (no login in flight) is rejected as possible CSRF/replay (CLEAN.2.2.3a). Missing-code / denied-auth paths fail closed.
 
-**Threat / rationale.** Custom URL schemes can be invoked by any app, so a callback handler is an injection surface: a malicious `phosphene://spotify-callback?code=…` could try to inject an auth code or replay an old one. The `state` round-trip + nil-pending rejection close the CSRF/replay class; PKCE (CLEAN.2.1) means an injected code is useless without the matching verifier.
+**Threat / rationale.** Custom URL schemes can be invoked by any app, so a callback handler is an injection surface: a malicious `uzume://spotify-callback?code=…` could try to inject an auth code or replay an old one. The `state` round-trip + nil-pending rejection close the CSRF/replay class; PKCE (CLEAN.2.1) means an injected code is useless without the matching verifier.
 
 **Decision.** Document — **mitigated by CLEAN.2.2**. No gap found, no fix filed.
 

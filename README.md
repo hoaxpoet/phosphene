@@ -29,7 +29,7 @@ definition.
 ## Getting started
 
 ```bash
-git clone https://github.com/hoaxpoet/phosphene.git
+git clone https://github.com/hoaxpoet/uzume.git
 cd phosphene
 
 # ML weights (~167 MB) ship as a GitHub Release asset, not repo content:
@@ -71,7 +71,7 @@ For the inner dev loop, `Scripts/test_fast.sh` runs the pure-logic core
   [docs/RUNBOOK.md](docs/RUNBOOK.md).
 - **Developer gotcha:** every rebuild re-signs the binary and macOS silently
   orphans the Screen Recording grant — the tap goes silent while the app
-  looks ready. Recovery: `tccutil reset ScreenCapture com.phosphene.app`,
+  looks ready. Recovery: `tccutil reset ScreenCapture io.uzume.mac`,
   re-grant, relaunch. Or just develop against local-file playback, which
   needs no permission.
 

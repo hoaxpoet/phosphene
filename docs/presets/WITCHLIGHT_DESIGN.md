@@ -507,7 +507,7 @@ Secondary reference: **Cymatic Resonance** (`CymaticSandGeometry`) for the most 
 
 Every item in [`NEW_PRESET_CHECKLIST.md`](NEW_PRESET_CHECKLIST.md), listed or marked not-applicable with a reason. WL.2 executes this; nothing here is discovered late.
 
-**§1 Develop** — hot-reload from `~/Library/Application Support/Phosphene/Presets/` during authoring, or in-repo from the start (`Sources/Presets/Shaders/` is auto-discovered; no pbxproj edit).
+**§1 Develop** — hot-reload from `~/Library/Application Support/Uzume/Presets/` during authoring, or in-repo from the start (`Sources/Presets/Shaders/` is auto-discovered; no pbxproj edit).
 
 **§2 Land in-repo**
 - [ ] `PhospheneEngine/Sources/Presets/Shaders/Witchlight.metal`

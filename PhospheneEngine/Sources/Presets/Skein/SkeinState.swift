@@ -28,7 +28,7 @@ import Metal
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.presets", category: "Skein")
+private let logger = Logger(subsystem: "io.uzume.presets", category: "Skein")
 
 // MARK: - Stem identity
 

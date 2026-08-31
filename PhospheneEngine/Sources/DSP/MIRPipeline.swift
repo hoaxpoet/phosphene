@@ -8,7 +8,7 @@ import Foundation
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.dsp", category: "MIRPipeline")
+private let logger = Logger(subsystem: "io.uzume.dsp", category: "MIRPipeline")
 
 // MARK: - MIRPipeline
 
@@ -123,7 +123,7 @@ public final class MIRPipeline: @unchecked Sendable {
     /// CSP.3 is the experiment arm of Matt's A/B. To run the off-side
     /// without recompiling:
     /// ```
-    /// defaults write com.phosphene.app ffoColdStartFixEnabled -bool NO
+    /// defaults write io.uzume.mac ffoColdStartFixEnabled -bool NO
     /// ```
     ///
     /// **When false**, `buildFeatureVector` writes `trackElapsedS = 100.0`

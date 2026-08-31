@@ -80,7 +80,7 @@ One-line pointers to the load-bearing references (the former per-topic pointer s
 - Swift 6.0, `SWIFT_STRICT_CONCURRENCY = complete`. `async`/`await` and actors. Avoid raw `DispatchQueue` except for Accelerate/vDSP.
 - Shared types: `Sendable`. Audio frame types: `@frozen`, SIMD-aligned.
 - `NSLock.withLock {}` from synchronous contexts only. For types mixing sync callbacks with async API, use `@unchecked Sendable` class with NSLock.
-- No `print()`. Use `os.Logger` via `Shared/Logging.swift`. App-layer files instantiate their own `Logger(subsystem: "com.phosphene.app", category: ...)` — `Logging.session` is engine-internal.
+- No `print()`. Use `os.Logger` via `Shared/Logging.swift`. App-layer files instantiate their own `Logger(subsystem: "io.uzume.mac", category: ...)` — `Logging.session` is engine-internal.
 - SwiftLint: `force_cast`/`force_try`/`force_unwrapping` → error. `file_length` warning at 400 (relaxed for `.metal`). `cyclomatic_complexity` warning at 10.
 - All `public` API has `///` doc comments. Every file uses `// MARK: -` dividers.
 - Protocol-first design. Every injectable dependency has a protocol. Tests use doubles from `TestDoubles/`.
@@ -156,4 +156,4 @@ The historical changelog formerly inline here grew to ~190 lines and became a do
 - **Dependencies**: Minimize external. Prefer Apple frameworks. Linked: Metal, MetalKit, MetalPerformanceShadersGraph, AVFoundation, Accelerate, ScreenCaptureKit (Info.plist only), MusicKit.
 - **Learning stays local**: On-device only. No cloud, no telemetry.
 - **License**: MIT.
-- **Git history is maintained on github.com/hoaxpoet/phosphene.** Each increment lands as one or more commits with the increment ID in the message (e.g., `[SB.1] Routing: convert drums to drumsEnergyDev (D-026)`). For change diagnosis, prefer `git log`, `git diff`, and `git bisect` over reconstructing from documentation. `ENGINEERING_PLAN.md` and `DECISIONS.md` remain authoritative for intent and rationale; git is authoritative for what changed.
+- **Git history is maintained on github.com/hoaxpoet/uzume.** Each increment lands as one or more commits with the increment ID in the message (e.g., `[SB.1] Routing: convert drums to drumsEnergyDev (D-026)`). For change diagnosis, prefer `git log`, `git diff`, and `git bisect` over reconstructing from documentation. `ENGINEERING_PLAN.md` and `DECISIONS.md` remain authoritative for intent and rationale; git is authoritative for what changed.

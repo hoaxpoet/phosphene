@@ -14,7 +14,7 @@ import os.log
 import Session
 import Shared
 
-private let wiringLogger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine.Wiring")
+private let wiringLogger = Logger(subsystem: "io.uzume.mac", category: "VisualizerEngine.Wiring")
 
 /// BUG-006.1 instrumentation: identifies which call site invoked
 /// `resetStemPipeline(for:caller:)`. Used in `WIRING:` logs to disambiguate

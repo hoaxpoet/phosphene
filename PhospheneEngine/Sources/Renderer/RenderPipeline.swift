@@ -8,7 +8,7 @@ import Metal
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "RenderPipeline")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "RenderPipeline")
 
 // HANG.1's one stored probe tips this long-lived renderer owner over the 300-line threshold;
 // behavior remains split across the RenderPipeline+*.swift extensions below.

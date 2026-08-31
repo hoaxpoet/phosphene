@@ -46,7 +46,6 @@ reads" are not reads — see the entry.)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
-| BUG-111 | **P1** · fix landed 2026-08-31 (BUG111.1); **pending Matt's live first-run validation** | app.ui / permission | **First-run Screen Recording deadlock: on a machine that has never granted capture, the permission card is the only reachable UI and it cannot lead to a grant.** macOS lists an app in Privacy & Security → Screen & System Audio Recording only after that app has called `CGRequestScreenCaptureAccess()`. The only call site was `VisualizerEngine+PublicAPI.swift:56` on the `startAudio()` path, and `ContentView`'s permission gate sits above the session-state switch — so the card's "Open System Settings" deep link opened a pane the app was absent from, and the one code path that would register it was unreachable. Closed loop; the only escape is adding the `.app` by hand with the pane's "+" button. Fires on a fresh install, after `tccutil reset ScreenCapture`, and after the RN.1 bundle-ID change (`com.phosphene.app` → `io.uzume.mac`), which orphaned the existing grant. Observed live by Matt 2026-08-31. Detail below |
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
 | BUG-091 | **P1** · instrumentation landed 2026-08-17; awaiting one reproduction | app.session / pipeline-wiring | **A single local file is selected, preparation succeeds, and NO PLAYBACK EVER STARTS — the session runs with every audio field exactly 0.0.** Matt, 2026-08-17. Measured on `2026-08-17T17-19-19Z`: 1262 frames over 84 s of render clock, and `playback_time_s` / `track_elapsed_s` / `accumulatedAudioTime` / `bass` / `mid` / `treble` / `pulse_amp01` / `beatPhase01` each hold **exactly one distinct value, 0.0**, for the whole session. Preparation is healthy — stem-cache hit, BeatGrid installed (94.1 BPM, 47 beats), plan built. **The discriminator is a diff against the working local-file session 1.5 h earlier (`16-19-13Z`, same file, same OS build):** the working run logs `WIRING: provider.start INSTANCE` and an AVAudioEngine node tap (`TAP_BUFFER: requested=1024 delivered=4410 → 10 Hz`) and NO process tap; the failed run has an identical preparation sequence with `provider.start` **absent**, an unexplained 8 s gap, and then `TAP: startCapture → createProcessTap` — the SYSTEM-AUDIO path — installed twice. `resetStemPipeline caller=other` has exactly one call site (`handleLocalFileReady`), so that function ran and cleared all three of its guards, then never reached the router start. **Root cause NOT asserted** (BUG-061's rule): the strongest candidate is the `catch` around `audioRouter.start(mode:.localFilePlayback)`, which logs to `os_log` only and calls `endSession()` → `currentSource = nil` → `startAudio()`'s LF.4 guard misses → the tap is installed and `stopInternal()` tears the provider down. **Unconfirmable from the artifacts: the app's `lfLogger` output is not retained** (`log show --predicate 'subsystem == "com.phosphene.app"'` over the window returns zero lines), which is itself the reason an 84 s silent session left no trace of its cause. Instrumentation for exactly that is now in (see below). Detail below |
@@ -74,28 +73,6 @@ reads" are not reads — see the entry.)*
 ---
 
 ## Open
-
----
-
-### BUG-111 — FIXED (BUG111.1, pending live validation): the first-run permission card could not lead to a grant (2026-08-31)
-
-**Severity:** P1 · **Domain:** `app.ui` / permission · **Failure class:** `api-contract`
-
-**Expected:** on a machine with no Screen Recording grant, the permission card's primary action leads to a state where the user can grant capture.
-
-**Actual:** the card's only action deep-links to Privacy & Security → Screen & System Audio Recording, which does not list the app at all. There is nothing to toggle, and no other UI is reachable — the permission gate in `ContentView` sits above the session-state switch, so the app cannot be entered.
-
-**Reproduce:** `tccutil reset ScreenCapture io.uzume.mac`, relaunch. (Equivalently: a fresh install, or the RN.1 bundle-ID change, which orphaned the `com.phosphene.app` grant.)
-
-**Artifacts:** source verification, not a session capture — `grep -rn CGRequestScreenCaptureAccess --include='*.swift'` returns exactly one call site, `PhospheneApp/VisualizerEngine+PublicAPI.swift:56`, on `startAudio()`. Matt confirmed on the live app that no path reaches it from the gated state.
-
-**Root cause:** macOS registers an app in the Screen & System Audio Recording list only when the app calls `CGRequestScreenCaptureAccess()`. U.2 (2026-04-22, `63908e94`) chose preflight + URL scheme and explicitly never prompted — "the request API's system dialog doesn't compose with 'Open System Settings and return'" (`ENGINEERING_PLAN.md` §U.2 Key decisions). **That rationale silently assumed the app was already listed.** It holds for the revoke-and-re-grant case it was written for; it does not hold on first run, where the deep link has no target. (The rationale dates from U.2, not U.11 — verified against the commit that introduced the file.)
-
-**Fix (BUG111.1):** `PermissionOnboardingView`'s primary CTA now calls `CGRequestScreenCaptureAccess()` ("Allow Access"), which registers the app with TCC and shows the OS dialog. The old deep link is kept as a secondary link ("Already allowed it? Open System Settings") for the already-denied case, where macOS suppresses the dialog but the app *is* listed. No state, no branch — both routes are always available, so the card is actionable whatever the TCC state. `SystemScreenCapturePermissionProvider` still never prompts: it stays the passive probe `PermissionMonitor` polls, and its header comment now says why rather than repeating the retired rationale.
-
-**Verification criteria:** *automated* — app build green, `PermissionOnboardingViewTests` identifier set covers `phosphene.onboarding.grantAccess`, `Scripts/check_user_strings.sh` PASS, `swiftlint --strict` 0. *Manual (Matt, required — UX-flow change per the defect skill)* — `tccutil reset ScreenCapture <bundle id>`, relaunch, press **Allow Access**: the OS dialog appears, the app is thereafter listed in the pane, and after toggling it on the app auto-advances past the card without a relaunch (`PermissionMonitor`'s `didBecomeActive` refresh).
-
-**Status:** fix landed and green on the automated gates; **not resolved until Matt's live first-run walk.** Per the defect skill's multi-increment rule the instrumentation and diagnosis increments were collapsed into the fix — the root cause was established from source and Matt's live observation with nothing left for instrumentation to expose. **Matt approved the collapse in chat, 2026-08-31** ("yes, collapsing them is fine").
 
 ---
 
@@ -1402,6 +1379,46 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ---
 
 ## Resolved (recent)
+
+### BUG-111 — RESOLVED (BUG111.1): the first-run permission card could not lead to a grant (2026-08-31)
+
+**Severity:** P1 · **Domain:** `app.ui` / permission · **Failure class:** `api-contract`
+
+**Expected:** on a machine with no Screen Recording grant, the permission card's primary action leads to a state where the user can grant capture.
+
+**Actual:** the card's only action deep-links to Privacy & Security → Screen & System Audio Recording, which does not list the app at all. There is nothing to toggle, and no other UI is reachable — the permission gate in `ContentView` sits above the session-state switch, so the app cannot be entered.
+
+**Reproduce:** `tccutil reset ScreenCapture io.uzume.mac`, relaunch. (Equivalently: a fresh install, or the RN.1 bundle-ID change, which orphaned the `com.phosphene.app` grant.)
+
+**Artifacts:** source verification, not a session capture — `grep -rn CGRequestScreenCaptureAccess --include='*.swift'` returns exactly one call site, `PhospheneApp/VisualizerEngine+PublicAPI.swift:56`, on `startAudio()`. Matt confirmed on the live app that no path reaches it from the gated state.
+
+**Root cause:** macOS registers an app in the Screen & System Audio Recording list only when the app calls `CGRequestScreenCaptureAccess()`. U.2 (2026-04-22, `63908e94`) chose preflight + URL scheme and explicitly never prompted — "the request API's system dialog doesn't compose with 'Open System Settings and return'" (`ENGINEERING_PLAN.md` §U.2 Key decisions). **That rationale silently assumed the app was already listed.** It holds for the revoke-and-re-grant case it was written for; it does not hold on first run, where the deep link has no target. (The rationale dates from U.2, not U.11 — verified against the commit that introduced the file.)
+
+**Fix (BUG111.1):** `PermissionOnboardingView`'s primary CTA now calls `CGRequestScreenCaptureAccess()` ("Allow Access"), which registers the app with TCC and shows the OS dialog. The old deep link is kept as a secondary link ("Already allowed it? Open System Settings") for the already-denied case, where macOS suppresses the dialog but the app *is* listed. No state, no branch — both routes are always available, so the card is actionable whatever the TCC state. `SystemScreenCapturePermissionProvider` still never prompts: it stays the passive probe `PermissionMonitor` polls, and its header comment now says why rather than repeating the retired rationale.
+
+**Verification criteria:** *automated* — app build green, `PermissionOnboardingViewTests` identifier set covers `phosphene.onboarding.grantAccess`, `Scripts/check_user_strings.sh` PASS, `swiftlint --strict` 0. *Manual (Matt, required — UX-flow change per the defect skill)* — `tccutil reset ScreenCapture <bundle id>`, relaunch, press **Allow Access**: the OS dialog appears, the app is thereafter listed in the pane, and after toggling it on the app auto-advances past the card without a relaunch (`PermissionMonitor`'s `didBecomeActive` refresh).
+
+**Status:** fix landed and green on the automated gates; **not resolved until Matt's live first-run walk.** Per the defect skill's multi-increment rule the instrumentation and diagnosis increments were collapsed into the fix — the root cause was established from source and Matt's live observation with nothing left for instrumentation to expose. **Matt approved the collapse in chat, 2026-08-31** ("yes, collapsing them is fine").
+
+---
+
+**Live validation (Matt, 2026-08-31).** Walked on a machine reset to the first-run state with
+`tccutil reset ScreenCapture com.phosphene.app`. All four steps held: the card showed **Allow
+Access** as its primary button; clicking it raised the macOS system dialog — the thing that did
+not previously exist, and the whole deadlock; the app then appeared in Privacy & Security →
+Screen & System Audio Recording without being added by hand; and the card advanced to the normal
+UI with no manual relaunch, `pollForScreenCapturePermission()` picking the grant up on its own.
+
+**Validated on the pre-rename identity, deliberately.** This branch predates RN.1, so it builds
+`com.phosphene.app` / `PhospheneApp.app`. The fix is identity-independent — it is about whether
+the card calls `CGRequestScreenCaptureAccess()` at all — and testing on `io.uzume.mac` would have
+burned the Screen Recording grant set up for RN.1's own verification. Worth an opportunistic
+re-check under the new identity, but nothing in the fix touches identity.
+
+**One false negative en route, tooling not code.** The first walk launched via a
+`DerivedData/PhospheneApp-*` glob and hit a stale build (25 such directories exist on this
+machine), reporting "only Open System Settings" — indistinguishable from the fix not working.
+Resolve the exact `BUILT_PRODUCTS_DIR` before quoting a launch path in any manual walk.
 
 ### BUG-102 — RESOLVED (BUG102.1 / BUG102.2): BeatBench's money and bleed references were at an untrusted metrical level (2026-08-19 → 2026-08-27)
 

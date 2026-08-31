@@ -4,14 +4,24 @@
 // No sandbox entitlements are required — Phosphene runs unsandboxed
 // (com.apple.security.app-sandbox = false).
 //
-// Default service key: "com.phosphene.spotify"
+// Default service key: "io.uzume.spotify"
 // Default account key: "refresh_token"
+//
+// RN.1: the rename orphans tokens written under "com.phosphene.spotify" — the
+// user reconnects Spotify once, and that is deliberate. An adoption fallback
+// was implemented and REVERTED: under the new bundle ID the app has no ACL on
+// the old item, so SecItemCopyMatching raises a modal authorization prompt and
+// BLOCKS. Because this store is built from a stored-property initializer on
+// PhospheneApp, that blocked launch itself — the app wedged before init()'s
+// body ran and the XCTest runner could never connect. Silent cross-identity
+// adoption needs a shared keychain-access-group, which is a signing change well
+// outside RN.1. One OAuth click beats a scary dialog on every cold start.
 
 import Foundation
 import Security
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "SpotifyKeychain")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "SpotifyKeychain")
 
 // MARK: - SpotifyKeychainStoring
 
@@ -40,10 +50,10 @@ public final class SpotifyKeychainStore: SpotifyKeychainStoring, @unchecked Send
     /// Create a keychain store.
     ///
     /// - Parameters:
-    ///   - service: Keychain service identifier (default: `"com.phosphene.spotify"`).
+    ///   - service: Keychain service identifier (default: `"io.uzume.spotify"`).
     ///   - account: Keychain account name (default: `"refresh_token"`).
     public init(
-        service: String = "com.phosphene.spotify",
+        service: String = "io.uzume.spotify",
         account: String = "refresh_token"
     ) {
         self.service = service

@@ -25,7 +25,7 @@ import Shared
 import Audio
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.ml", category: "MoodClassifier")
+private let logger = Logger(subsystem: "io.uzume.ml", category: "MoodClassifier")
 
 // MARK: - MoodClassifier
 

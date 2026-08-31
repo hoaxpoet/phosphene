@@ -21,7 +21,7 @@ import Metal
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.renderer", category: "MeshGenerator")
+private let logger = Logger(subsystem: "io.uzume.renderer", category: "MeshGenerator")
 
 // MARK: - MeshGeneratorConfiguration
 

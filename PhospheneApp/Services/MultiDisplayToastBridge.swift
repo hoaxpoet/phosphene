@@ -4,7 +4,7 @@ import AppKit
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.app", category: "MultiDisplayToastBridge")
+private let logger = Logger(subsystem: "io.uzume.mac", category: "MultiDisplayToastBridge")
 
 // MARK: - MultiDisplayToastBridge
 

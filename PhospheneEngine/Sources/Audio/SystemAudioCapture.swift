@@ -23,7 +23,7 @@ import AppKit
 import CoreGraphics
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.audio", category: "SystemAudioCapture")
+private let logger = Logger(subsystem: "io.uzume.audio", category: "SystemAudioCapture")
 
 // MARK: - AudioCaptureError
 
@@ -112,7 +112,7 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
 
     /// Serial queue for tap reinstall — kept OFF the monitor's listener queue so
     /// teardown/destroy never runs reentrantly from inside the Core Audio callback.
-    private let reinstallQueue = DispatchQueue(label: "com.phosphene.audio.tapReinstall")
+    private let reinstallQueue = DispatchQueue(label: "io.uzume.audio.tapReinstall")
 
     private let stateLock = NSLock()
 
@@ -212,7 +212,7 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
     private func createAggregateDevice() throws -> AudioDeviceID {
         let aggDesc: [String: Any] = [
             kAudioAggregateDeviceNameKey as String: "PhospheneAggregate",
-            kAudioAggregateDeviceUIDKey as String: "com.phosphene.aggregate.\(UUID().uuidString)",
+            kAudioAggregateDeviceUIDKey as String: "io.uzume.aggregate.\(UUID().uuidString)",
             kAudioAggregateDeviceIsPrivateKey as String: true,
             kAudioAggregateDeviceTapListKey as String: [[
                 kAudioSubTapUIDKey as String: tapUUID.uuidString

@@ -7,7 +7,7 @@ import Accelerate
 import Shared
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.dsp", category: "SpectralAnalyzer")
+private let logger = Logger(subsystem: "io.uzume.dsp", category: "SpectralAnalyzer")
 
 // MARK: - SpectralAnalyzer
 

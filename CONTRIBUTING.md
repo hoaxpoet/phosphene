@@ -48,11 +48,11 @@ motion is valid only on the cached `BeatGrid`. The full hierarchy is in
 ## The development loop (no accounts required)
 
 1. **Hot-reload (fastest):** drop your `.metal` + `.json` into
-   `~/Library/Application Support/Phosphene/Presets/` (created on first
+   `~/Library/Application Support/Uzume/Presets/` (created on first
    launch) while the app runs — every save recompiles and swaps the preset
    in live. A broken save shows a toast and keeps the previous version
    running (full compiler diagnostics in the log:
-   `log stream --predicate 'subsystem == "com.phosphene.presets"'`).
+   `log stream --predicate 'subsystem == "io.uzume.presets"'`).
    Note: a `certified: true` flag in a hot-reload sidecar is honored locally
    without the repo's flash/rubric gates — leave it `false` while developing
    and use *Show uncertified presets* (below).

@@ -2,7 +2,7 @@ import Metal
 import Shared
 import os.log
 
-private let presetLogger = Logger(subsystem: "com.phosphene.renderer", category: "RenderPipeline")
+private let presetLogger = Logger(subsystem: "io.uzume.renderer", category: "RenderPipeline")
 
 extension RenderPipeline {
 

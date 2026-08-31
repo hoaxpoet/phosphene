@@ -22,7 +22,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEIGHTS_DIR="$REPO_ROOT/PhospheneEngine/Sources/ML/Weights"
 MANIFEST="$WEIGHTS_DIR/SHA256SUMS"
-DEFAULT_URL="https://github.com/hoaxpoet/phosphene/releases/download/ml-weights-v1/ml-weights.tar.gz"
+DEFAULT_URL="https://github.com/hoaxpoet/uzume/releases/download/ml-weights-v1/ml-weights.tar.gz"
 URL="${PHOSPHENE_WEIGHTS_URL:-$DEFAULT_URL}"
 
 [ -f "$MANIFEST" ] || { echo "fetch_weights: missing $MANIFEST — repo checkout is broken" >&2; exit 1; }

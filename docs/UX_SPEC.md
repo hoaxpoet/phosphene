@@ -1,4 +1,4 @@
-# Phosphene — UX Specification
+# Uzume — UX Specification
 
 **Status:** Draft v0.2. Canonical source for user-facing product UX. Engineering-level UI decisions live in `ARCHITECTURE.md §UI Layer`; error-handling internals live in `RUNBOOK.md`.
 
@@ -16,11 +16,11 @@ Two personas. They are not mutually exclusive — in almost every session both a
 
 ### 1.1 The Curator (primary)
 
-The person who builds the playlist, runs Phosphene, owns the experience. In a listening-party scenario they're also the host. In a solo session they're also the person experiencing the visuals (what v0.1 called the "ambient user" was never a separate persona — it's the Curator in a different mood).
+The person who builds the playlist, runs Uzume, owns the experience. In a listening-party scenario they're also the host. In a solo session they're also the person experiencing the visuals (what v0.1 called the "ambient user" was never a separate persona — it's the Curator in a different mood).
 
-**What they need:** preparation that feels worthwhile, an unambiguous signal that Phosphene is ready, in-session controls that let them steer the experience without disrupting viewers, mid-session recovery when things go wrong.
+**What they need:** preparation that feels worthwhile, an unambiguous signal that Uzume is ready, in-session controls that let them steer the experience without disrupting viewers, mid-session recovery when things go wrong.
 
-**What they will tolerate:** up to 2 minutes of preparation on larger playlists, if the result is delightful. This is a significant shift from v0.1's 30-second ceiling — the Curator *will* wait if Phosphene delivers. What they will not tolerate: 2 minutes of preparation followed by mediocre output.
+**What they will tolerate:** up to 2 minutes of preparation on larger playlists, if the result is delightful. This is a significant shift from v0.1's 30-second ceiling — the Curator *will* wait if Uzume delivers. What they will not tolerate: 2 minutes of preparation followed by mediocre output.
 
 **What they will not tolerate:** a session that's disappointing with no mechanism to fix it, errors that interrupt the experience for viewers, hidden controls they can't find when they need to intervene.
 
@@ -42,7 +42,7 @@ The person invited by the Curator to experience the playlist and visuals. They w
 
 ### 1.3 Persona implications for this spec
 
-- The **Active Viewer is silent**. Their dissatisfaction reaches the Curator only via body language or spoken feedback. Phosphene cannot observe them. Recovery mechanisms must therefore be available to the Curator via a channel the viewer doesn't see — keyboard shortcuts, hidden panels, second-display controllers.
+- The **Active Viewer is silent**. Their dissatisfaction reaches the Curator only via body language or spoken feedback. Uzume cannot observe them. Recovery mechanisms must therefore be available to the Curator via a channel the viewer doesn't see — keyboard shortcuts, hidden panels, second-display controllers.
 - Every degradation during `.playing` must either recover invisibly or be surfaced only where the Curator can see it, not where viewers can.
 - Visual quality ceiling (Phase V) is primarily the Active Viewer gate. Robustness (Phase 7) is primarily the Curator gate.
 - The Curator-as-Active-Viewer collapse means solo sessions can skip the controller/output split (§7.9). Party sessions require it.
@@ -55,7 +55,7 @@ The person invited by the Curator to experience the playlist and visuals. They w
 
 | State | Top-level view | Primary visible content | User actions available |
 |---|---|---|---|
-| `.idle` | `IdleView` | Phosphene logo, "Connect a playlist" CTA, "Start listening" (ad-hoc fallback) | Pick a source, start ad-hoc mode, open settings, **Open Local File…** (`File → ⌘O` or drag-and-drop) |
+| `.idle` | `IdleView` | Uzume logo, "Connect a playlist" CTA, "Start listening" (ad-hoc fallback) | Pick a source, start ad-hoc mode, open settings, **Open Local File…** (`File → ⌘O` or drag-and-drop) |
 | `.connecting` | `ConnectingView` | Per-connector spinner with honest copy ("Asking Apple Music for your playlist…") | Cancel |
 | `.preparing` | `PreparationProgressView` | Track list with per-track status + aggregate progress + partial-ready CTA | Cancel, "Start now" (when progressive-ready), retry individual track |
 | `.ready` | `ReadyView` (streaming) / `PlaybackView` (local file) | Streaming: "Press play in [Apple Music / Spotify / your music app]" + plan-preview affordance (§6.2). Local file: routes to `PlaybackView` immediately (engine controls playback). | Streaming: preview plan, modify plan, return to preparation, cancel session. Local file: same as `.playing`. |
@@ -72,8 +72,8 @@ Local-file playback is a parallel source path that joins the streaming-path stat
 2. **`File → Open Local Folder…`** (LF.5 folder picker, no accelerator).
 3. **`File → Open Recent ▸`** submenu (LF.5 — last 10 file / folder / M3U opens, newest first; "(missing)" disabled for stale entries; `Clear Recents` at the bottom).
 4. **Drag-and-drop** onto the window (LF.4 single file; LF.5 multi-file, folder, M3U, mixed combinations — flattened in drop order).
-5. **Finder double-click** on a registered audio or M3U file after the user opts into Phosphene via the macOS "Open With…" panel (LF.5 file-association).
-6. **Terminal:** `open -a Phosphene path/to/file.m4a` (LF.5 file-association).
+5. **Finder double-click** on a registered audio or M3U file after the user opts into Uzume via the macOS "Open With…" panel (LF.5 file-association).
+6. **Terminal:** `open -a Uzume path/to/file.m4a` (LF.5 file-association).
 7. **`PHOSPHENE_LOCAL_FILE_PLAYBACK=<path>`** env-var hook at launch (dev/CI — single file only; loops forever for debugging).
 
 All seven dispatch through the LF.5 canonical API `SessionManager.startLocalFiles(at:origin:)`, which transitions:
@@ -89,17 +89,17 @@ All seven dispatch through the LF.5 canonical API `SessionManager.startLocalFile
 
 **Source labels.** `SessionOrigin` distinguishes `.localFile(URL)` / `.localFiles([URL])` / `.localFolder(URL, expanded: [URL])` / `.localPlaylist(URL, expanded: [URL])` so the chrome can show source-aware labels ("Playing 12 tracks from ~/Music/2026 Mix" vs filename vs M3U name). The `SessionOrigin == ` operator compares root + expanded list so the same-origin no-op detection works across all four shapes.
 
-**Cache hygiene UI.** `Phosphene → Clear Local-File Cache (67.4 MB)` (size label dynamic per `engine.localFileCacheBytes`). One click empties the persistent disk cache and shows a confirmation alert with the bytes freed. Automatic LRU eviction (500 MB cap by default; UserDefaults override at `phosphene.cache.localFile.maxBytes`) runs after every successful preparation write so the user-facing footprint stays bounded.
+**Cache hygiene UI.** `Uzume → Clear Local-File Cache (67.4 MB)` (size label dynamic per `engine.localFileCacheBytes`). One click empties the persistent disk cache and shows a confirmation alert with the bytes freed. Automatic LRU eviction (500 MB cap by default; UserDefaults override at `phosphene.cache.localFile.maxBytes`) runs after every successful preparation write so the user-facing footprint stays bounded.
 
-**Folder cap.** Folders + multi-file drops > 200 audio files truncate to the first 200 (alphabetical) with a localized NSAlert ("Phosphene queued the first 200 of N tracks"). The 200 cap balances against the 500 MB cache cap (~70 cached tracks) so larger folders don't thrash eviction mid-queue. Larger folders need smaller subsets for full coverage.
+**Folder cap.** Folders + multi-file drops > 200 audio files truncate to the first 200 (alphabetical) with a localized NSAlert ("Uzume queued the first 200 of N tracks"). The 200 cap balances against the 500 MB cache cap (~70 cached tracks) so larger folders don't thrash eviction mid-queue. Larger folders need smaller subsets for full coverage.
 
 **Recents menu behavior.** `File → Open Recent ▸` lists the last 10 opens, newest first. Entries are uniquely identified by `(URL, kind)` — opening the folder `/tmp/Music` and the file `/tmp/Music/song.m4a` are distinct. Re-opening an entry already in the list moves it to position 1 (LRU). Stale entries (file no longer at the recorded path) render disabled with `(missing)` suffix; clicking removes them from the list rather than attempting to open. `Clear Recents` empties the list. Persistence is `phosphene.lf.recents` UserDefaults (JSON-encoded `[RecentItem]` — defensive load truncates oversized state on read).
 
 **ID3 / Vorbis / MP4-atom metadata.** Title / artist / album extracted via `AVAsset.commonMetadata` at preparation time, persisted alongside the cached analysis in `PersistentStemCache` schema v2. Surfaces as the `TrackIdentity` title in `PlaybackView` chrome post-preparation. Album artwork is captured + stored in an optional sibling `artwork.bin` file but is not displayed at LF.5 scope (UI is LF.6).
 
-**File-association.** `Info.plist` registers Phosphene as an Alternate handler (NOT Default) for `m4a / mp3 / flac / m3u / m3u8`. The user opts in via the Finder "Open With…" panel; `open -a Phosphene <path>` in Terminal also works once LaunchServices re-registers the bundle. The `.onOpenURL` handler distinguishes `phosphene://` (Spotify OAuth) from `file://` (LF queue dispatch); unsupported extensions are silently ignored (no alert pop on unexpected URLs the OS routed here).
+**File-association.** `Info.plist` registers Uzume as an Alternate handler (NOT Default) for `m4a / mp3 / flac / m3u / m3u8`. The user opts in via the Finder "Open With…" panel; `open -a Uzume <path>` in Terminal also works once LaunchServices re-registers the bundle. The `.onOpenURL` handler distinguishes `uzume://` (Spotify OAuth) from `file://` (LF queue dispatch); unsupported extensions are silently ignored (no alert pop on unexpected URLs the OS routed here).
 
-**Unsupported formats / failed M3U / empty folders.** The menu picker, drop handler, and file-association handler validate file extensions (`.m4a` / `.mp3` / `.flac`) and M3U parseability. Failures surface as localized NSAlerts: "That file can't be played" / "Phosphene supports .m4a, .mp3, and .flac files." / "That folder doesn't have any playable audio files." / "Phosphene couldn't read that playlist." No silent failure modes from user-initiated paths; the file-association path silently ignores unsupported extensions (the OS chose to route them; Phosphene shouldn't pop modal alerts on system-routed URLs).
+**Unsupported formats / failed M3U / empty folders.** The menu picker, drop handler, and file-association handler validate file extensions (`.m4a` / `.mp3` / `.flac`) and M3U parseability. Failures surface as localized NSAlerts: "That file can't be played" / "Uzume supports .m4a, .mp3, and .flac files." / "That folder doesn't have any playable audio files." / "Uzume couldn't read that playlist." No silent failure modes from user-initiated paths; the file-association path silently ignores unsupported extensions (the OS chose to route them; Uzume shouldn't pop modal alerts on system-routed URLs).
 
 ---
 
@@ -113,11 +113,11 @@ On every app foregrounding, check `CGPreflightScreenCaptureAccess()`. If `false`
 
 One screen. No wizard.
 
-**Headline:** "Phosphene needs permission to hear music playing on your Mac."
+**Headline:** "Uzume needs permission to hear music playing on your Mac."
 
 **Body (three short sentences, not a wall of text):**
 
-> To follow along with your music, Phosphene listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn't record your screen, your microphone, or anything else. Nothing ever leaves your Mac.
+> To follow along with your music, Uzume listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn't record your screen, your microphone, or anything else. Nothing ever leaves your Mac.
 
 **Primary CTA:** "Allow Access" — calls `CGRequestScreenCaptureAccess()`, which shows the OS permission dialog **and registers the app in Privacy & Security → Screen & System Audio Recording**. macOS only lists an app there once it has requested access, so the Settings deep link cannot be the primary action: on a first run the pane is empty and the card is the only reachable UI (BUG-111, D-226).
 
@@ -125,7 +125,7 @@ One screen. No wizard.
 
 **Secondary link:** "Why does this need screen recording permission?" — reveals a second paragraph:
 
-> On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Phosphene uses only the audio portion.
+> On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Uzume uses only the audio portion.
 
 **Return detection:** when the app foregrounds with `CGPreflightScreenCaptureAccess()` now `true`, auto-advance to `.idle`. Don't require a user click.
 
@@ -133,7 +133,7 @@ One screen. No wizard.
 
 After permission is granted, before first session, show a one-time notice:
 
-> Phosphene renders high-contrast, fast-changing visuals. If you're sensitive to flashing lights or strobe patterns, enable **Reduce motion** in Settings before starting.
+> Uzume renders high-contrast, fast-changing visuals. If you're sensitive to flashing lights or strobe patterns, enable **Reduce motion** in Settings before starting.
 
 Two CTAs: "I understand" (dismisses, stored in `UserDefaults`), "Enable Reduce motion" (flips the setting, dismisses).
 
@@ -154,7 +154,7 @@ Two primary affordances:
 
 A tertiary "Settings" button sits in the top-right corner.
 
-Nothing else on this screen. Phosphene logo, two buttons, settings gear.
+Nothing else on this screen. Uzume logo, two buttons, settings gear.
 
 ### 4.2 `ConnectorPickerView`
 
@@ -195,7 +195,7 @@ UI: single text field captioned "Paste a Spotify playlist link." Placeholder: `h
 Validation on paste:
 
 - Valid playlist URL → "Found [Playlist Name] — [N] tracks" preview, `Continue` button
-- Valid track/album/artist URL (not playlist) → "That's a [track/album/artist], not a playlist. Phosphene needs a playlist URL."
+- Valid track/album/artist URL (not playlist) → "That's a [track/album/artist], not a playlist. Uzume needs a playlist URL."
 - Invalid → "That doesn't look like a Spotify playlist link."
 
 Rate-limit handling: Spotify Web API has client-credentials rate limits. If hit during `.connecting`, show "Spotify is being slow — still trying" (auto-retry backoff `[2 s, 5 s, 15 s]`). If three attempts fail: "Couldn't reach Spotify. Check your network or try a different source."
@@ -212,7 +212,7 @@ Rate-limit handling: Spotify Web API has client-credentials rate limits. If hit 
 
 A preparation phase with no feedback feels broken regardless of how long it takes. A preparation phase with legible per-track feedback can take two minutes and still feel like anticipation — especially if the Curator trusts that the result will be delightful.
 
-Phosphene's design bet: Curators will wait up to 2 minutes for large playlists if Phosphene earns that time. The UI's job is to make the wait feel purposeful, not stalled.
+Uzume's design bet: Curators will wait up to 2 minutes for large playlists if Uzume earns that time. The UI's job is to make the wait feel purposeful, not stalled.
 
 ### 5.2 `PreparationProgressView` layout
 
@@ -269,7 +269,7 @@ If preparation exceeds **2 minutes of total elapsed time** without reaching prog
 
 > "This is taking longer than expected. [Try again] • [Start reactive mode]"
 
-Reactive mode is `DefaultReactiveOrchestrator` — the ad-hoc fallback. This guarantees Phosphene always has a path to `.playing` from `.preparing`, even on degenerate networks. When a planned session later becomes ready during reactive playback, offer a seamless handoff: "Your planned session is ready. Switch?" (yes / keep reactive).
+Reactive mode is `DefaultReactiveOrchestrator` — the ad-hoc fallback. This guarantees Uzume always has a path to `.playing` from `.preparing`, even on degenerate networks. When a planned session later becomes ready during reactive playback, offer a seamless handoff: "Your planned session is ready. Switch?" (yes / keep reactive).
 
 ---
 
@@ -368,7 +368,7 @@ Auto-hide uses opacity fade over 500 ms. The render surface is unmodified during
 - Settings gear
 - Close/end session
 
-**No playback controls — streaming path only.** For connector-driven sessions (Apple Music, Spotify) Phosphene does not control the source app; any "pause" button on `PlaybackView` would be a lie. **LF.5.fix carve-out (2026-05-28):** for local-file sessions Phosphene IS the player, so a hover-revealed transport bar (Stop / Prev / Play-Pause / Next) renders at the bottom-center of `PlaybackView` whenever `currentSource?.isLocalFile == true`. The bar piggybacks on the existing `overlayVisible` auto-hide and disappears with the rest of the chrome. UX-2 in §10 carries the same carve-out language.
+**No playback controls — streaming path only.** For connector-driven sessions (Apple Music, Spotify) Uzume does not control the source app; any "pause" button on `PlaybackView` would be a lie. **LF.5.fix carve-out (2026-05-28):** for local-file sessions Uzume IS the player, so a hover-revealed transport bar (Stop / Prev / Play-Pause / Next) renders at the bottom-center of `PlaybackView` whenever `currentSource?.isLocalFile == true`. The bar piggybacks on the existing `overlayVisible` auto-hide and disappears with the rest of the chrome. UX-2 in §10 carries the same carve-out language.
 
 ### 7.4 Live adaptation controls (keyboard-only, invisible to viewers)
 
@@ -425,7 +425,7 @@ Shortcuts are listed in a help overlay accessible via `Shift+?` (to avoid confli
 
 `PlaybackView` can be dragged to any display. On display hot-plug:
 
-- Display added: offer a toast: "New display connected. Move Phosphene there?" with "Move" / "Dismiss". Default dismiss.
+- Display added: offer a toast: "New display connected. Move Uzume there?" with "Move" / "Dismiss". Default dismiss.
 - Active display removed: window reparents to primary display automatically; session state preserved.
 - Drawable size change: triggers `reallocateMVWarpTextures` + `SessionRecorder` writer relock (existing engine behavior, Increment 3.5.4.8).
 
@@ -433,19 +433,19 @@ See §7.9 for the first-class dedicated-output flow.
 
 ### 7.9 Dedicated Output Display (Host scenario, first-class)
 
-The listening-party case: Mac mini or laptop connected via HDMI or AirPlay to a TV or projector, with Active Viewers watching. The Curator wants Phosphene's visuals to dominate the TV while keeping controls accessible on a different display (laptop screen, phone via Sidecar, or similar).
+The listening-party case: Mac mini or laptop connected via HDMI or AirPlay to a TV or projector, with Active Viewers watching. The Curator wants Uzume's visuals to dominate the TV while keeping controls accessible on a different display (laptop screen, phone via Sidecar, or similar).
 
 Two supported modes, with graceful fallback between them.
 
 **Mode A: Single-window fullscreen on chosen display (v1)**
 
-Simplest setup. The Curator drags the Phosphene window to the target display and hits `⌘F` to fullscreen. All keyboard shortcuts continue to work from anywhere the window has focus.
+Simplest setup. The Curator drags the Uzume window to the target display and hits `⌘F` to fullscreen. All keyboard shortcuts continue to work from anywhere the window has focus.
 
 Enhanced v1 support:
 
-- **Settings → Visuals → Output display** — picker listing all connected displays. Selecting a display immediately moves the Phosphene window to it.
-- **`⌘Shift+F` shortcut** — sends Phosphene to the display that's *not* primary; if more than one non-primary display, cycles through them.
-- **Display-disconnect resilience** — when the target display disconnects, Phosphene reparents to primary and surfaces a toast: "Output display disconnected. Moved to main display."
+- **Settings → Visuals → Output display** — picker listing all connected displays. Selecting a display immediately moves the Uzume window to it.
+- **`⌘Shift+F` shortcut** — sends Uzume to the display that's *not* primary; if more than one non-primary display, cycles through them.
+- **Display-disconnect resilience** — when the target display disconnects, Uzume reparents to primary and surfaces a toast: "Output display disconnected. Moved to main display."
 - **Overlay chrome auto-hide respected** — in fullscreen on external display, overlay fades normally. Curator's keystrokes from laptop keyboard still work.
 
 **Mode B: Two-window controller + output (v2, post-Milestone-A)**
@@ -461,14 +461,14 @@ Implementation path: `NSScene` multi-window in SwiftUI with a shared `Visualizer
 
 **AirPlay receiver compatibility**
 
-When the selected output display is an AirPlay Receiver (Apple TV, compatible smart TV), macOS routes the display stream transparently. Phosphene treats it as any other external display. Two caveats the user should know (surfaced in Settings as a notice when AirPlay is the output):
+When the selected output display is an AirPlay Receiver (Apple TV, compatible smart TV), macOS routes the display stream transparently. Uzume treats it as any other external display. Two caveats the user should know (surfaced in Settings as a notice when AirPlay is the output):
 
 - AirPlay introduces ~60–150 ms of video latency, which is irrelevant for audio-reactive visuals (the audio is captured pre-latency at the Mac, so the visual/audio relationship is preserved at the TV).
-- 4K AirPlay can drop to 1080p under network contention. Phosphene's frame budget manager (Increment 6.2) scales quality regardless.
+- 4K AirPlay can drop to 1080p under network contention. Uzume's frame budget manager (Increment 6.2) scales quality regardless.
 
-**Audio output is not Phosphene's concern**
+**Audio output is not Uzume's concern**
 
-Phosphene captures audio via Core Audio tap and never outputs audio. The Host sends audio to speakers / HomePods / AirPlay sinks via their source app (Apple Music, Spotify) using standard macOS audio routing. Phosphene is agnostic about audio output. Documented once in Settings → Audio → (notice): "Phosphene listens to your Mac's audio but does not play audio. Use your music app's speaker settings for speakers, HomePods, or AirPlay."
+Uzume captures audio via Core Audio tap and never outputs audio. The Host sends audio to speakers / HomePods / AirPlay sinks via their source app (Apple Music, Spotify) using standard macOS audio routing. Uzume is agnostic about audio output. Documented once in Settings → Audio → (notice): "Uzume listens to your Mac's audio but does not play audio. Use your music app's speaker settings for speakers, HomePods, or AirPlay."
 
 ### 7.10 Reduced motion
 
@@ -505,7 +505,7 @@ If the Curator loves the current preset, they press `+`: the preset is extended,
 
 Feedback is **silent by default**. Active Viewers don't notice. Post-v1, repeated nudge patterns feed adaptive learning.
 
-**When a nudge fails to help.** If the Curator presses `-` twice within 90 seconds, Phosphene surfaces an ambient hint in the bottom-right toast slot (Curator's display only, per §7.9 Mode A and Mode B):
+**When a nudge fails to help.** If the Curator presses `-` twice within 90 seconds, Uzume surfaces an ambient hint in the bottom-right toast slot (Curator's display only, per §7.9 Mode A and Mode B):
 
 > Not quite hitting the mark? Try ⌘R to re-plan.
 
@@ -539,7 +539,7 @@ Confirmation dialog — this is expensive:
 
 > Re-analyze takes about 20–30 seconds per 20 tracks. Meanwhile visuals continue in reactive mode. Re-analyze?
 
-On confirm, Phosphene enters reactive mode immediately (using `DefaultReactiveOrchestrator`) and re-preparation runs in the background. When ready, offers seamless handoff: "Your re-planned session is ready. Switch?"
+On confirm, Uzume enters reactive mode immediately (using `DefaultReactiveOrchestrator`) and re-preparation runs in the background. When ready, offers seamless handoff: "Your re-planned session is ready. Switch?"
 
 **"End and start over"**
 Returns to `.idle`. Typical use: change playlist, change source, or abandon the current session entirely. No confirmation — the next step is picking a source anyway.
@@ -580,8 +580,8 @@ This is the canonical mapping from internal error states to user-facing language
 
 | Cause | User copy | Primary CTA | Secondary |
 |---|---|---|---|
-| `CGPreflightScreenCaptureAccess() == false` | "Phosphene needs permission to hear music playing on your Mac." | "Open System Settings" | "Why?" (reveals explainer) |
-| AppleScript permission denied | "Phosphene needs permission to talk to Apple Music. You can grant this in System Settings → Privacy & Security → Automation." | "Open System Settings" | "Skip to Spotify" |
+| `CGPreflightScreenCaptureAccess() == false` | "Uzume needs permission to hear music playing on your Mac." | "Open System Settings" | "Why?" (reveals explainer) |
+| AppleScript permission denied | "Uzume needs permission to talk to Apple Music. You can grant this in System Settings → Privacy & Security → Automation." | "Open System Settings" | "Skip to Spotify" |
 | Sandbox preventing capture | (should not occur — app sandbox is disabled per RUNBOOK) | Dev-facing log only | — |
 
 ### 9.2 Connection errors (state: `.connecting`)
@@ -591,12 +591,12 @@ This is the canonical mapping from internal error states to user-facing language
 | Apple Music not running | "Apple Music isn't running. Open it and start a playlist." | "Open Apple Music" | "Use Spotify instead" |
 | No currently-playing playlist | "Start playing a playlist in Apple Music, then come back." | (auto-retries) | "Cancel" |
 | Spotify URL malformed | "That doesn't look like a Spotify playlist link." | "Paste again" | — |
-| Spotify URL is track/album | "That's a track, not a playlist. Phosphene needs a playlist URL." | "Paste again" | — |
+| Spotify URL is track/album | "That's a track, not a playlist. Uzume needs a playlist URL." | "Paste again" | — |
 | Spotify API rate-limited | "Spotify is being slow — still trying." (auto-retries with backoff) | — | "Cancel" |
 | Spotify API unreachable | "Couldn't reach Spotify. Check your network or try a different source." | "Try again" | "Use Apple Music" |
-| Spotify private playlist (HTTP 403) | "That playlist is private. Phosphene needs a public Spotify playlist." | "Paste a different link" | — |
+| Spotify private playlist (HTTP 403) | "That playlist is private. Uzume needs a public Spotify playlist." | "Paste a different link" | — |
 | Spotify playlist not found (HTTP 404) | "Couldn't find that playlist. The link may be wrong or the playlist may have been deleted." | "Paste again" | — |
-| Spotify auth failure (missing/bad credentials) | "Phosphene couldn't reach Spotify right now. Check your network or try Apple Music." | "Try again" | "Use Apple Music" |
+| Spotify auth failure (missing/bad credentials) | "Uzume couldn't reach Spotify right now. Check your network or try Apple Music." | "Try again" | "Use Apple Music" |
 | Spotify Client ID absent from the build (**DEBUG builds only** — developer-setup failure, not an end-user one; Release falls back to the generic auth-failure row above) | "No Spotify Client ID in this build. Create PhospheneApp/Phosphene.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again." | (developer action) | — |
 | Empty playlist | "That playlist doesn't have any tracks yet." | "Pick a different playlist" | — |
 
@@ -606,7 +606,7 @@ This is the canonical mapping from internal error states to user-facing language
 |---|---|---|---|
 | iTunes preview not found (1 track) | "Skipped — preview unavailable" on row; track status `.partial` | Inline on track row | Orchestrator plans around with metadata only |
 | iTunes preview API rate-limit | "Preparing more slowly than usual" top-of-list banner | Top banner | Auto-continues with backoff |
-| Network offline | "You're offline. Phosphene can't fetch previews." | Full-screen replacement | "Retry when online", "Start reactive mode" |
+| Network offline | "You're offline. Uzume can't fetch previews." | Full-screen replacement | "Retry when online", "Start reactive mode" |
 | Stem separation failure (1 track) | "Skipped — couldn't analyze" on row | Inline on track row | Track status `.failed`; orchestrator excludes |
 | All tracks failed to prepare | "Couldn't prepare any of this playlist. Try a different one." | Full-screen replacement | "Pick another playlist" + "Start reactive mode" |
 | First-track preparation >90 s | Expand copy per §5.6 — offer reactive-mode handoff | Top banner | User-chosen |
@@ -621,7 +621,7 @@ Placement convention: subtle status toast, bottom-right of `PlaybackView` — **
 | Silence >3 s | "Listening…" (small badge, center-top) | Signal returns |
 | Silence >15 s | "Haven't heard anything for a while. Is the music playing?" | Signal returns |
 | Tap reinstall attempt | (no user copy — logged only) | — |
-| Three tap reinstalls failed | "Couldn't re-hear the audio. Try quitting and re-opening Phosphene." | User action |
+| Three tap reinstalls failed | "Couldn't re-hear the audio. Try quitting and re-opening Uzume." | User action |
 | MPSGraph allocation failure mid-session | "Analyzer hiccup — using backup mode." (reactive without live stems) | Next track |
 | Sample rate mismatch (96 kHz) | "Audio is at 96 kHz. For best results set Audio MIDI Setup to 48 kHz." | Session restart |
 | Wrong normalization / low level (`SignalHealthMonitor` `band=low`, ASH.2) | "Audio levels are low. Check Spotify's 'Normalize Volume' setting — it should be off." (Spotify source; generic "Check your music app's volume normalization settings" otherwise) | Auto (10 s); **once per session** |
@@ -658,15 +658,15 @@ All user-facing strings live in `Localizable.strings` (even though v1 is English
 - **Capture mode** — System audio (default) / Specific app (picker lists running apps that produce audio) / Local file (for testing)
 - **Source app overrides** — (visible when Capture mode = Specific app) dropdown
 - **Quality hints** — read-only notice block linking to the relevant `RUNBOOK` checklist items: "For best results: Apple Music Sound Check off / Spotify Normalize Volume off / Audio MIDI Setup at 48 kHz"
-- **Audio output notice** — "Phosphene listens to your Mac's audio but does not play audio. Use your music app's speaker settings for speakers, HomePods, or AirPlay." (per §7.9)
+- **Audio output notice** — "Uzume listens to your Mac's audio but does not play audio. Use your music app's speaker settings for speakers, HomePods, or AirPlay." (per §7.9)
 
 ### 10.2 Visuals
 
 - **Device tier** — Auto (default) / Force M1/M2 (Tier 1) / Force M3+ (Tier 2). Override for testing or deliberate quality trade-off.
 - **Quality ceiling** — Auto / Performance (disables SSGI, reduces mesh density) / Balanced (default) / Ultra (ignores frame-budget governor; for recording/capture)
-- **Output display** — picker listing all connected displays. Selecting moves Phosphene there. (§7.9 Mode A)
+- **Output display** — picker listing all connected displays. Selecting moves Uzume there. (§7.9 Mode A)
 - **Reduced motion** — Matches system (default) / Always on / Always off
-- **Preset family blocklist** — multi-select; excludes families the user doesn't enjoy. This is the only catalog-narrowing control. There is deliberately **no "Include Milkdrop presets" switch** — Milkdrop-inspired presets are simply Phosphene presets (D-119 / D-215 §13.5, Matt 2026-08-07); the dead "Coming in a future update" row was removed at MD.0.
+- **Preset family blocklist** — multi-select; excludes families the user doesn't enjoy. This is the only catalog-narrowing control. There is deliberately **no "Include Milkdrop presets" switch** — Milkdrop-inspired presets are simply Uzume presets (D-119 / D-215 §13.5, Matt 2026-08-07); the dead "Coming in a future update" row was removed at MD.0.
 - **Show live-adaptation toasts** — Off (default) / On. Brief Curator-only acknowledgments on `+` / `-` / `⌘R` (per §7.4)
 - **Adaptive learning from feedback** — Off (default, post-v1) / On. Uses nudge history to tune weights.
 
@@ -856,17 +856,17 @@ Every new view gets a snapshot test using swift-testing `@Test` + `@MainActor`, 
 These are UX-level decisions that are non-obvious; append them to `DECISIONS.md` as they are implemented.
 
 - **UX-1: Permission onboarding is not a wizard.** One screen, two sentences, open Settings. Multi-step flows are cognitive friction.
-- **UX-2: Phosphene does not control playback (streaming path only).** No pause/play/skip controls on `PlaybackView` for connector-driven sessions (Apple Music, Spotify) — Phosphene cannot honour them. **LF.5.fix carve-out (2026-05-28):** for `currentSource?.isLocalFile == true` Phosphene IS the player, so a hover-revealed transport bar (Stop / Prev / Play-Pause / Next) at the bottom-center of `PlaybackView` is mandatory. See §7.3.
+- **UX-2: Uzume does not control playback (streaming path only).** No pause/play/skip controls on `PlaybackView` for connector-driven sessions (Apple Music, Spotify) — Uzume cannot honour them. **LF.5.fix carve-out (2026-05-28):** for `currentSource?.isLocalFile == true` Uzume IS the player, so a hover-revealed transport bar (Stop / Prev / Play-Pause / Next) at the bottom-center of `PlaybackView` is mandatory. See §7.3.
 - **UX-3: "Start now" with partial readiness is a prominent CTA.** Preparation is not a hard gate. Users who want to start early can.
 - **UX-4: Never show a full-screen error during `.playing`.** Playback errors use bottom-right toasts only, on the Curator's display in multi-display setups. The visuals are the point and viewers are watching them.
 - **UX-5: First-audio autodetect advances `.ready → .playing`.** No user click required. Tapping only shows a hint.
 - **UX-6: Every user-facing string is externalized even in English-only v1.** Future localization is additive.
 - **UX-7: Debug overlay is separate from user overlay chrome.** Never shown to users by default.
-- **UX-8: Preparation time tolerance is 2 minutes, not 30 seconds.** Curators will wait if Phosphene earns the time. Progressive-ready CTA surfaces at 3 tracks; 90 s and 2 min escapes surface reactive-mode alternatives.
+- **UX-8: Preparation time tolerance is 2 minutes, not 30 seconds.** Curators will wait if Uzume earns the time. Progressive-ready CTA surfaces at 3 tracks; 90 s and 2 min escapes surface reactive-mode alternatives.
 - **UX-9: Pre-play plan preview is a first-class affordance.** Curators do not have to blind-trust the orchestrator. They can verify.
 - **UX-10: Live adaptation is silent by default.** Feedback nudges (`+` / `-` / `.`) don't surface viewer-visible acknowledgments. The Active Viewer experiences continuity; the Curator controls from behind the curtain.
 - **UX-11: Dedicated output display is a first-class flow, not a workaround.** Settings → Output display, `⌘Shift+F` shortcut, display-disconnect resilience. Two-window controller + output is deferred to v2 but informs the v1 design.
-- **UX-12: Phosphene never routes audio.** Output device selection is the source app's responsibility. Phosphene documents this once in Settings rather than surfacing audio-routing controls it would not actually control.
+- **UX-12: Uzume never routes audio.** Output device selection is the source app's responsibility. Uzume documents this once in Settings rather than surfacing audio-routing controls it would not actually control.
 
 ---
 
@@ -886,7 +886,7 @@ These are UX-level decisions that are non-obvious; append them to `DECISIONS.md`
 Items that need a decision before Increment U.1 ships:
 
 1. **Local folder connector in v1?** Proposed off in v1 to reduce scope. Decision: Matt.
-2. **Session progress dots or horizontal scrubber in `PlaybackView`?** Proposed dots. Scrubber invites "skip to track" misconception given Phosphene doesn't control playback.
+2. **Session progress dots or horizontal scrubber in `PlaybackView`?** Proposed dots. Scrubber invites "skip to track" misconception given Uzume doesn't control playback.
 3. **"End session" in overlay or require Esc-twice?** Proposed visible button + Esc-twice confirm. Party-host scenario has risk of accidental end.
 4. **Photosensitivity notice: mandatory first-run or skippable?** Proposed mandatory (dismissible but shown). Legal/ethical floor.
 5. **Do we ship `SettingsView` in v1 at all?** Proposed yes — at minimum the diagnostics section + Output Display picker. Full settings can incrementalize.
@@ -918,11 +918,11 @@ As a physical object: a Braun audio component redesigned today — precise, purp
 - Winamp/screensaver nostalgia — no skeuomorphic knobs, no visualizer-bar clichés
 - "AI product" glow aesthetics — no cyan-on-dark, no purple-to-blue gradients, no neon scan lines
 - Streaming app chrome — no playlist carousels, no recommendation UI conventions
-- Club/EDM dark mode — Phosphene serves all music, including quiet jazz, ambient, and classical
+- Club/EDM dark mode — Uzume serves all music, including quiet jazz, ambient, and classical
 
 ### 18.3 Aesthetic Direction
 
-**Theme:** Dark. Phosphene runs in dim rooms. The visual output is the point; UI chrome should dissolve into the background. Every non-playback state is a waiting room for the visuals — beautiful, but aware of its supporting role.
+**Theme:** Dark. Uzume runs in dim rooms. The visual output is the point; UI chrome should dissolve into the background. Every non-playback state is a waiting room for the visuals — beautiful, but aware of its supporting role.
 
 **Color palette (OKLCH):**
 
@@ -977,11 +977,11 @@ As a physical object: a Braun audio component redesigned today — precise, purp
 
 4. **Color carries meaning — never decorate with it.** Purple for ambient presence. Coral for energy and action. Teal for precision and data. A surface is never purple "to look good" — it's purple because something is in session.
 
-5. **PlaybackView is the product. Everything else is infrastructure.** The visualizer IS Phosphene. All other views exist to reach that moment and should disappear the instant they are no longer needed.
+5. **PlaybackView is the product. Everything else is infrastructure.** The visualizer IS Uzume. All other views exist to reach that moment and should disappear the instant they are no longer needed.
 
 ### 18.5 State-Specific Design Notes
 
-**IdleView:** Phosphene name centered, two choices only (coral primary CTA + ghost secondary). Visualizer runs at 0.1× opacity as a background whisper of what's coming.
+**IdleView:** Uzume name centered, two choices only (coral primary CTA + ghost secondary). Visualizer runs at 0.1× opacity as a background whisper of what's coming.
 
 **PermissionOnboardingView:** One screen, no wizard. Generous vertical breathing room. Headline is a statement of need, not an apology. Three sentences maximum. Nothing competes with the primary CTA.
 

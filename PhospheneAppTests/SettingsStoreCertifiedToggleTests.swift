@@ -15,7 +15,7 @@ import Shared
 // MARK: - Helpers (reuse the isolated-defaults pattern from SettingsStoreTests)
 
 private func makeSuite() -> UserDefaults {
-    let name = "com.phosphene.test.certified.\(UUID().uuidString)"
+    let name = "io.uzume.test.certified.\(UUID().uuidString)"
     guard let suite = UserDefaults(suiteName: name) else { fatalError("UserDefaults suite init failed") }
     return suite
 }

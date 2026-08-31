@@ -6,7 +6,7 @@ import Foundation
 import Accelerate
 import os.log
 
-private let logger = Logger(subsystem: "com.phosphene.dsp", category: "SelfSimilarityMatrix")
+private let logger = Logger(subsystem: "io.uzume.dsp", category: "SelfSimilarityMatrix")
 
 // MARK: - SelfSimilarityMatrix
 

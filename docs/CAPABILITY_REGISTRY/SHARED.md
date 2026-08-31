@@ -285,7 +285,7 @@ Public surface: 1 class + extension cluster.
   - `public func finish()` — idempotent; flushes all writers.
   - Public `sessionDir: URL`.
 
-Threading contract: all hot-path methods dispatch onto a private `queue: DispatchQueue` (label `com.phosphene.recorder`, qos `.utility`). `finish()` uses `queue.sync` for blocking flush. CSV file handles are private; only the queue mutates them. Storage: `videoWriter`, `videoInput`, `pixelAdaptor`, `captureTexture`, frame counters, and raw-tap state are all internal/private — accessed only through `queue.async` blocks.
+Threading contract: all hot-path methods dispatch onto a private `queue: DispatchQueue` (label `io.uzume.recorder`, qos `.utility`). `finish()` uses `queue.sync` for blocking flush. CSV file handles are private; only the queue mutates them. Storage: `videoWriter`, `videoInput`, `pixelAdaptor`, `captureTexture`, frame counters, and raw-tap state are all internal/private — accessed only through `queue.async` blocks.
 
 CSV header invariants (lines 325-352):
 - features.csv: 37 columns (frame through frame_gpu_ms). DM.3a-aware (frame_cpu_ms + frame_gpu_ms appended at end per CSV-append-only-invariant comment at lines 321-324).
@@ -410,11 +410,11 @@ Verdict: **production-active** for the concrete class; **production-orphan** for
 
 #### [`Logging.swift`](../../PhospheneEngine/Sources/Shared/Logging.swift) (37 LoC)
 
-Public enum `Logging` with 8 static `Logger` instances at subsystem `com.phosphene`: audio, dsp, renderer, orchestrator, ml, metadata, session, bug012.
+Public enum `Logging` with 8 static `Logger` instances at subsystem `io.uzume`: audio, dsp, renderer, orchestrator, ml, metadata, session, bug012.
 
 Consumer fan-out: every PhospheneEngine module (dsp / ml / Audio / Renderer / Orchestrator / Presets / Session) uses one or more of these. `Logging.bug012` is referenced only by `BUG012Probe.swift` (per the BUG-012-i1 instrumentation contract).
 
-Note: `Logging.session` is the engine-module session logger. **App-layer code MUST NOT use it** per CLAUDE.md §Code Style ("App-layer services use `Logger(subsystem:category:)` directly, not `Logging.session`."). Confirmed by reading App-layer SessionRecorder construction site at `PhospheneApp/VisualizerEngine+Audio.swift` (engine-layer file path; the engine SessionRecorder uses `Logger(subsystem: "com.phosphene", category: "SessionRecorder")` directly at line 38, NOT `Logging.session`).
+Note: `Logging.session` is the engine-module session logger. **App-layer code MUST NOT use it** per CLAUDE.md §Code Style ("App-layer services use `Logger(subsystem:category:)` directly, not `Logging.session`."). Confirmed by reading App-layer SessionRecorder construction site at `PhospheneApp/VisualizerEngine+Audio.swift` (engine-layer file path; the engine SessionRecorder uses `Logger(subsystem: "io.uzume", category: "SessionRecorder")` directly at line 38, NOT `Logging.session`).
 
 Verdict: **production-active**.
 
@@ -514,7 +514,7 @@ Public surface: 1 enum namespace + 1 nested struct.
 
 Thread-safety: single `NSLock` guards all `_*` storage. `nonisolated(unsafe)` annotations on the storage match the documented Swift 6 strict-concurrency pattern + the precedent at VisualizerEngine `_tapSampleRate`.
 
-Logging API: `emitInfo` / `emitNotice` route through `Logging.bug012` (per Logging.swift's bug012 category at subsystem `com.phosphene`).
+Logging API: `emitInfo` / `emitNotice` route through `Logging.bug012` (per Logging.swift's bug012 category at subsystem `io.uzume`).
 
 Read-only confirmation: BUG012Probe is in scope per the kickoff but **never edited** in CA-Shared per the standing rule. The file header at line 28 says "Remove this file when BUG-012 closes" — operational note for the eventual closeout.
 
