@@ -18,7 +18,7 @@ Phosphene uses Spotify's Authorization Code + PKCE flow (user-level OAuth). The 
 **One-time developer setup:**
 
 1. Go to [https://developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and log in.
-2. Click **Create app**. Name it "Phosphene". Add redirect URI: **`uzume://spotify-callback`** (exact, required). Check **Web API**. Accept terms.
+2. Click **Create app**. Name it "Uzume". Add redirect URI: **`uzume://spotify-callback`** (exact, required). Check **Web API**. Accept terms.
 3. Copy the **Client ID** from the app dashboard. (No client secret is needed for PKCE.)
 4. Create `PhospheneApp/Phosphene.local.xcconfig` (gitignored) with:
    ```
@@ -118,7 +118,16 @@ launch will hang on that dialog:
 security delete-generic-password -s io.uzume.spotify ~/Library/Keychains/login.keychain-db
 ```
 
-**3. Nothing to do for settings or the stem cache.** `IdentityMigrator` runs at launch and
+**3. Update the Spotify redirect URI — on Spotify's side.** This one is not in the repo and
+no sweep can fix it. The app now sends `uzume://spotify-callback`, but an app registration
+created before the rename still whitelists `phosphene://spotify-callback`, and Spotify rejects
+the login with **"redirect_uri: Not matching configuration"** *after* the user has already typed
+their password — so it reads like a credentials failure rather than a config one. On
+developer.spotify.com/dashboard → your app → Settings → Redirect URIs, add
+`uzume://spotify-callback`. Leaving the old entry alongside it is harmless and keeps a
+pre-rename build working.
+
+**4. Nothing to do for settings or the stem cache.** `IdentityMigrator` runs at launch and
 carries the UserDefaults domain plus `~/Library/Application Support/Phosphene` →
 `.../Uzume` (the stem cache — hundreds of MB, each entry an ML separation pass). It is
 idempotent and never overwrites a value already set under the new identity.
