@@ -65,7 +65,7 @@ through a real vDSP FFT, cross-checked against an independent time-domain measur
 
 ```
 FT_SESSION=~/Documents/phosphene_sessions/<id> FT_EVENT=<seconds> \
-  swift test --package-path PhospheneEngine --filter SpectralDensityRealAudio
+  swift test --package-path UzumeEngine --filter SpectralDensityRealAudio
 ```
 
 It is env-gated (a session capture is not a committed fixture) and asserts the reference

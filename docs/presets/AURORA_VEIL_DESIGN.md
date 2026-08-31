@@ -11,7 +11,7 @@
 
 > **Amendment 2026-05-18: rendering architecture pivot.** Pre-implementation desk research surfaced three convergent authoritative prior-art references (nimitz "Auroras" / Lawlor & Genetti 2011 / Wittens NeverSeenTheSky) and a 15-mode failure-mode taxonomy. The original §5 specified a 2D pixel-shader "ribbon with horizontal proximity test against a `warped_fbm` centre-line + vertical fbm rays" — structurally distinct from every photographically-credible procedural aurora in the wild, and exposed to at least four named failure modes (#3, #9, #13, missing multi-timescale motion). §5 has been rewritten around the **volumetric-raymarch recipe**: per-pixel raymarch up a vertical column, triangular domain-warped noise (`triNoise2d`-style) sampled at each step, running-average vertical smear, per-march-step IQ-cosine palette cycling for Lawlor-Genetti height-curve stratification, mv_warp for substrate temporal compounding. Original §5 preserved verbatim in §5-LEGACY at end-of-doc for the iteration history. Research dossier: `docs/presets/AURORA_VEIL_RESEARCH_2026-05-18.md` (READ FIRST — load-bearing for the architectural rationale and the 9-question authenticity rubric used at AV.3 cert).
 
-A direct-fragment + `mv_warp` preset rendering an aurora curtain over a faintly-starred night sky. Lowest-barrier authoring example in Phosphene's catalog: no SDF, no PBR, no mesh shader. Demonstrates the canonical Milkdrop pattern (direct fragment + per-vertex feedback warp) which currently has no consumer in the catalog.
+A direct-fragment + `mv_warp` preset rendering an aurora curtain over a faintly-starred night sky. Lowest-barrier authoring example in Uzume's catalog: no SDF, no PBR, no mesh shader. Demonstrates the canonical Milkdrop pattern (direct fragment + per-vertex feedback warp) which currently has no consumer in the catalog.
 
 ## 1. Intent
 
@@ -68,7 +68,7 @@ The existing `15_atmosphere_aurora_forest.jpg` in `docs/VISUAL_REFERENCES/arachn
 
 **Architectural prior art (READ THESE FIRST).** Three convergent references from the 2026-05-18 desk research dossier (`AURORA_VEIL_RESEARCH_2026-05-18.md`):
 
-1. **nimitz "Auroras" (Shadertoy XtGGRt, 2017)** — the canonical procedural-aurora recipe. Triangular domain-warped noise + 50-step volumetric raymarch + running-average smear + per-march-step palette cycling. Phosphene's recipe is a clean-room MSL reimplementation of this algorithm (Shadertoy source is CC-BY-NC-SA, incompatible with MIT; algorithms aren't copyrightable, code is).
+1. **nimitz "Auroras" (Shadertoy XtGGRt, 2017)** — the canonical procedural-aurora recipe. Triangular domain-warped noise + 50-step volumetric raymarch + running-average smear + per-march-step palette cycling. Uzume's recipe is a clean-room MSL reimplementation of this algorithm (Shadertoy source is CC-BY-NC-SA, incompatible with MIT; algorithms aren't copyrightable, code is).
 2. **Lawlor & Genetti, *Interactive Volume Rendering Aurora on the GPU* (WSCG 2011)** — the physical anchor. `emission = H(altitude) × F(x, y)` factorization: 1D height curve × 2D electron-flux footprint. nimitz's per-march-step palette IS the Lawlor `H(z)` curve; `triNoise2d` IS the Lawlor `F(x, y)`.
 3. **Wittens NeverSeenTheSky (2013)** — the motion reference. Real aurora motion is curling vortical, not pan-the-noise-coordinate. We borrow curl-noise advection (cheap) without paying the full fluid-solver cost (expensive).
 
@@ -130,9 +130,9 @@ Algorithm exposure in `AURORA_VEIL_RESEARCH_2026-05-18.md §1.1`. Implementer re
 
 ### 5.4 Multi-timescale motion (Failure Mode #4 mitigation — non-negotiable)
 
-Real aurora moves on **four separable timescales** (research §2.1). Phosphene's mechanism per scale:
+Real aurora moves on **four separable timescales** (research §2.1). Uzume's mechanism per scale:
 
-| Timescale | What moves | Phosphene mechanism |
+| Timescale | What moves | Uzume mechanism |
 |---|---|---|
 | **Minutes (substorm advance)** | Whole-hemisphere brightening | Not modelled at AV (we render ~30s panels); future increment if needed |
 | **Tens of seconds (substrate drift)** | Curtain undulation, ribbon-shape evolution | `tri_noise_2d` time argument at `spd = 0.06`; mv_warp `decay = 0.945` |

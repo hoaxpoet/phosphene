@@ -3,7 +3,7 @@
 **Family:** hypnotic (feedback) — radial/iridescent bloom register
 **Render pipeline (proposed):** direct_fragment + mv_warp (same substrate as Nacre / Dragon Bloom / Fata Morgana)
 **Rubric (proposed):** lightweight — stylized 2D feedback (exempt from full detail-cascade + material-count requirements)
-**Last curated:** 2026-06-26 (rendered by Claude Code from the faithful butterchurn built-in; Phosphene name **Floret** + scope **faithful base + uplifts** greenlit by Matt). Plan: `docs/presets/FLORET_PLAN.md`.
+**Last curated:** 2026-06-26 (rendered by Claude Code from the faithful butterchurn built-in; Uzume name **Floret** + scope **faithful base + uplifts** greenlit by Matt). Plan: `docs/presets/FLORET_PLAN.md`.
 
 **Source:** the Milkdrop preset
 `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression`
@@ -53,7 +53,7 @@ What DOES matter for this preset (substitute for the full rubric):
 
 ## Anti-references
 
-- **Full-field dark↔bright strobing.** The source breathes hard to near-black troughs and bright peaks on a ~2 s cycle. A faithful copy of that **global luminance swing is a flash-safety failure** (the cert gate measures flashes/s). Phosphene must hold a **steady global luminance floor (D-157)** and carry the "pulse" through expansion/motion + local rim intensity, not full-frame brightness. (This is exactly Nacre's NACRE.3 lesson: brightness is the wrong connection medium for a bright field → drive the read through motion.)
+- **Full-field dark↔bright strobing.** The source breathes hard to near-black troughs and bright peaks on a ~2 s cycle. A faithful copy of that **global luminance swing is a flash-safety failure** (the cert gate measures flashes/s). Uzume must hold a **steady global luminance floor (D-157)** and carry the "pulse" through expansion/motion + local rim intensity, not full-frame brightness. (This is exactly Nacre's NACRE.3 lesson: brightness is the wrong connection medium for a bright field → drive the read through motion.)
 - **Rigid mechanical kaleidoscope.** If the 3-fold symmetry reads as a hard mirror-tiled mandala with no organic swirl, it has lost the vortex/`z²` character that makes it a *bloom* and not a *gif kaleidoscope*.
 - **Opaque blobs / mud.** Bubbles lose translucency + rim-light → lava-lamp lumps.
 - **Literal botanical sunflower.** It is abstract; do not chase petals/disc realism (representational-preset trap — needs 3D + scene; out of register).
@@ -61,7 +61,7 @@ What DOES matter for this preset (substitute for the full rubric):
 
 ## Audio routing notes (proposed — confirm at plan stage)
 
-Phosphene re-routes the source's loose coupling onto the Audio Data Hierarchy (continuous energy primary; D-026 deviation primitives; D-019 warmup):
+Uzume re-routes the source's loose coupling onto the Audio Data Hierarchy (continuous energy primary; D-026 deviation primitives; D-019 warmup):
 
 - **Continuous mid/overall energy → bloom inflation** (swell of the filament→bubble expansion + rim intensity). The source uses energy⁶→`q8`→motion speed; we map sustained energy to bloom radius/brightness-of-rims via an EMA envelope. Primary driver.
 - **Bass onset → swirl spin-up / field rotation** (source `rot = bass·rad`). Map `f.bassDev`; bounded (D-157), Layer-4 accent.

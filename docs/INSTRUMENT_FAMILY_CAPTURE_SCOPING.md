@@ -6,7 +6,7 @@
 
 ## 1. The problem
 
-Phosphene drives visuals from **4-stem separation** (Open-Unmix → vocals / drums / bass / other) + **frequency-register bands** (3-band + 6-band energy). On orchestral / acoustic-ensemble music this fails: all pitched content collapses into **"other,"** so the engine cannot tell which **instrument family** (strings / brass / woodwinds / percussion) is playing. Register-bands are a weak proxy — a low note is a low note whether it's a cello or a tuba.
+Uzume drives visuals from **4-stem separation** (Open-Unmix → vocals / drums / bass / other) + **frequency-register bands** (3-band + 6-band energy). On orchestral / acoustic-ensemble music this fails: all pitched content collapses into **"other,"** so the engine cannot tell which **instrument family** (strings / brass / woodwinds / percussion) is playing. Register-bands are a weak proxy — a low note is a low note whether it's a cello or a tuba.
 
 This caps the musicality of any preset that wants to respond to the *orchestra*, not just the spectrum. It is the load-bearing constraint on **Ricercar** ("the orchestra painting itself," D-176 — each section a painterly identity), and Matt is explicitly **holding** Ricercar's quality bar on it. But the capability is **reusable** — instrument-family awareness would benefit any acoustic/orchestral preset.
 
@@ -142,7 +142,7 @@ The 2026-06-29 spike is reproducible:
 
 ## 13. IFC.5 — validation (partial: pipeline ✅, orchestral corpus pending)
 
-**Diagnostic surface (✅).** `InstrumentFamilyDumper` (`executableTarget`, retained-diagnostic) decodes a clip → runs the **production** `InstrumentFamilyAnalyzer` (44.1 kHz decode → resample 44.1→32 kHz → 2 s/1 s windows → PANNs → D-026 tracker) → prints the per-window strings/brass/woodwinds/percussion activity table + leader-per-window, `--out` writes JSON. This exercises the **resample path IFC.2's parity did not cover** (parity fed 32 kHz directly). Run: `swift run --package-path PhospheneEngine InstrumentFamilyDumper --audio <clip> [--start s --duration s --out j.json]`.
+**Diagnostic surface (✅).** `InstrumentFamilyDumper` (`executableTarget`, retained-diagnostic) decodes a clip → runs the **production** `InstrumentFamilyAnalyzer` (44.1 kHz decode → resample 44.1→32 kHz → 2 s/1 s windows → PANNs → D-026 tracker) → prints the per-window strings/brass/woodwinds/percussion activity table + leader-per-window, `--out` writes JSON. This exercises the **resample path IFC.2's parity did not cover** (parity fed 32 kHz directly). Run: `swift run --package-path UzumeEngine InstrumentFamilyDumper --audio <clip> [--start s --duration s --out j.json]`.
 
 **Production-path validation on real audio (✅, 2026-06-30).** Ran the dumper on the committed tempo fixtures (real recordings). Firing is musically correct:
 - **`so_what.m4a` (Miles Davis — muted trumpet lead + alto sax + ride/drums):** **brass leads** most windows (peak smoothed 0.42 / dev 0.50 at t≈9 s), **percussion** surfaces at the ride/drum-fill moments (dev 0.31–0.32), woodwinds track brass lower (the sax under the trumpet), **strings ≈ 0** (correct — no strings in the quintet). Real acoustic **brass discrimination** confirmed on a real recording — the capability generalizes beyond the two spike clips.

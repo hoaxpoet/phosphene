@@ -157,8 +157,8 @@ trail, multi-species) at promotion if wanted.
   (parameter-as-function-of-trail) — https://www.sagejenson.com/36points/ .
 - **License:** Bleuje / Sage are CC-BY-NC-SA 3.0 — the *algorithm* is
   re-implemented in our own MSL (techniques aren't copyrightable); no GLSL is
-  copied into MIT Phosphene.
-- The web-dominant *musical* coupling and the Kintsugi grade are Phosphene-original
+  copied into MIT Uzume.
+- The web-dominant *musical* coupling and the Kintsugi grade are Uzume-original
   (no published demo grounds them) — empirically grounded by this session's
   rendered evidence rather than a prior art reference.
 

@@ -91,7 +91,7 @@ GIF frame 57, upscaled. Same register as `01` at a shallower camera angle.
   source spreads each line along screen-space X only, never vertically, which is why
   the lines stay crisply separated in Y while reading soft in X. That asymmetry is
   load-bearing; an isotropic bloom will close the gaps and collapse the raster into a
-  solid sheet. (Whether Phosphene spreads along screen X or along the line's own
+  solid sheet. (Whether Uzume spreads along screen X or along the line's own
   tangent is open — see anti-reference 5.)
 - **Trust: the sky gradient.** A single soft gradient wash from the light side,
   falling to black. Not a skybox, not stars, not clouds.
@@ -198,5 +198,5 @@ Deliberately noted rather than silently absent, per the checklist's curation rul
   specified in prose in `MENISCUS_PLAN.md` §4 and must be judged from a rendered
   contact sheet, not from these frames.
 - **No reference for the stem-region layout.** The drop-placement scheme is a
-  Phosphene invention (§5); its legibility can only be assessed in motion against
+  Uzume invention (§5); its legibility can only be assessed in motion against
   real music at M7.

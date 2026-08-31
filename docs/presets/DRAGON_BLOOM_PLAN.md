@@ -1,6 +1,6 @@
 # Dragon Bloom — Milkdrop Uplift Plan (from `$$$ Royal - Mashup (220)`)
 
-**Status:** **✅ DONE + CERTIFIED (2026-06-02, D-138).** L4 (rich warm fill) + the full music response shipped and the preset is certified (Matt live M7 across 5 Spotify tracks + a local file). The L4 struggle resolved by replicating butterchurn's render loop wholesale from its source rather than patching Phosphene's mv_warp piecemeal (FA #70). The faithful loop facts (no-decay custom warp, 8-bit feedback clamp, waves-normal-alpha-on-top, comp echo/gamma/invert display-only, symmetry-from-echo, 32×24 mesh) + the music response (each-arm-an-instrument, bass breathing, per-arm flares, comp-stage beat pump, energy-weighted tumble) are in **D-138**. The historical Spike/layer narrative below is retained as the record of how it got here.
+**Status:** **✅ DONE + CERTIFIED (2026-06-02, D-138).** L4 (rich warm fill) + the full music response shipped and the preset is certified (Matt live M7 across 5 Spotify tracks + a local file). The L4 struggle resolved by replicating butterchurn's render loop wholesale from its source rather than patching Uzume's mv_warp piecemeal (FA #70). The faithful loop facts (no-decay custom warp, 8-bit feedback clamp, waves-normal-alpha-on-top, comp echo/gamma/invert display-only, symmetry-from-echo, 32×24 mesh) + the music response (each-arm-an-instrument, bass breathing, per-arm flares, comp-stage beat pump, energy-weighted tumble) are in **D-138**. The historical Spike/layer narrative below is retained as the record of how it got here.
 
 **Historical status (pre-D-138):** **Spike 1 ✅ PASSED.** **Spike 2 (bilateral symmetry) ✅ symmetry confirmed by Matt M7 2026-06-02** ("looks symmetric, can't see the line of symmetry" — symmetric, no clipart seam). **BUT Matt M7 also surfaced: "not really seeing petals yet."** Investigation (reading `source.milk` + standing up the live butterchurn reference) found **Spike 1's mechanic ≠ the reference's mechanic** — see §0 (Mechanic decode). The live reference is now **faithful** (the converter botched the HLSL warp shader → hand-written GLSL fix in `tools/dragon_bloom_reference/`; it reproduces the warm feathered bloom matching the gif/still). **Matt reframed this as an UPLIFT** (not a literal copy) and approved (2026-06-02) the **feedback-native uplift** with strands ← **drums/bass/vocals** stems — see §0 "The uplift approach" (D-137). **L1 (strands←stems), L2 (petal warp + bilateral mirror), L3 (chromatic), L5 (warm palette) all ✅ DONE 2026-06-02** — the bloom now renders as a warm fiery bilaterally-symmetric feathered bloom matching the reference family (offline diag verified per layer; L2 Matt-M7-confirmed symmetric live). **Remaining: L4 — the rich warm FILL.** Matt M7 (2026-06-02): the bloom reads dull/desaturated, pixelated, bright only at centre. The empirical recipe is now measured from the faithful oracle (§0 L4): full warp shader (normalise+resample = saturated fill) + `bInvert=1` (warm) + fast fill (video echo), in that order (invert only works once filled). A focused, grounded next increment — NOT tuning. Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
 
@@ -8,7 +8,7 @@
 
 > **Spike 1 history (3 commits + 1 re-tune, 2026-06-01 → 2026-06-02).** Shipped `d380ed00` (skeleton, D-135). Two live-test rounds against Matt's Spotify playlist surfaced and fixed two issues: (1) raw waveform amplitude is path-dependent and NOT AGC-normalised → in-shader RMS normalisation (`cffefe65`); (2) the Spike-1 audio routing drove motion from primitives that are structurally near-dead on bass-dominant music (`mid_att_rel` feather flow ≈ 0, clamped `bass_dev` breathing ≈ 0) → re-tuned to signals measured alive on both paths (signed `bass_rel`, `spectralFlux`, beat) in `0ceef58f`. That round also corrected a misdiagnosis (BUG-025 root cause), shelved an unnecessary AGC increment (AGC.1), and filed the real structural issue (BUG-027) — see `docs/ENGINEERING_PLAN.md` Dragon Bloom entries + `docs/SHADER_CRAFT.md §14.1` (signal-liveness rule born from this). **The lesson for Spike 2/3: verify audio primitives are alive on the target music by measuring stddev on a real session — don't trust a primitive's name.**
 
-**Reference:** `$$$ Royal - Mashup (220)` (cream-of-crop `Dancer/Petals/`). Matt's pick to start — "sufficiently different from other presets" (fills the glowsticks/feedback register Phosphene lacks; not close to any certified preset).
+**Reference:** `$$$ Royal - Mashup (220)` (cream-of-crop `Dancer/Petals/`). Matt's pick to start — "sufficiently different from other presets" (fills the glowsticks/feedback register Uzume lacks; not close to any certified preset).
 
 ---
 
@@ -57,13 +57,13 @@ layer). Harness notes (audio-boost, invert-off) in that dir's README.
 ### The uplift approach (Matt-approved 2026-06-02) — D-137
 
 This is an **uplift**, not a literal transcription (Matt 2026-06-02): translate
-the preset's *identity* onto Phosphene's platform and use the technologies
+the preset's *identity* onto Uzume's platform and use the technologies
 Milkdrop/butterchurn never had. Matt approved the **feedback-native uplift** —
-stay in Phosphene's proven mv_warp feedback register (where the original's charm
-lives and where Phosphene reliably succeeds), uplifting along three axes:
+stay in Uzume's proven mv_warp feedback register (where the original's charm
+lives and where Uzume reliably succeeds), uplifting along three axes:
 
 1. **Strands ← real stems (the headline musical uplift).** Milkdrop drives its 3
-   strands by mid/bass/treble FFT bands. Phosphene has stem separation — map the
+   strands by mid/bass/treble FFT bands. Uzume has stem separation — map the
    3 strands to **drums / bass / vocals** (Matt's pick); `other` tints the
    palette. Each arm of the bloom *is* an instrument. Driven via deviation
    primitives (D-026); stems available from frame 1 via StemCache.
@@ -155,7 +155,7 @@ layer milestones.
 
 ## 0b. Future exploration — 3-D depth spike (Matt, 2026-06-02)
 
-**Matt wants to explore 3-D depth for this preset as a SEPARATE spike — and possibly a separate preset.** This is logged backlog, NOT part of the D-137 feedback-native uplift (which deliberately stays in the mv_warp register and rejected a 3-D rebuild as the main path). The idea: render the strands as real 3-D volumetric filaments with depth / lighting / self-shadowing (Phosphene's ray-march / SDF / PBR hero tech), rather than Milkdrop's flat 2-D projection.
+**Matt wants to explore 3-D depth for this preset as a SEPARATE spike — and possibly a separate preset.** This is logged backlog, NOT part of the D-137 feedback-native uplift (which deliberately stays in the mv_warp register and rejected a 3-D rebuild as the main path). The idea: render the strands as real 3-D volumetric filaments with depth / lighting / self-shadowing (Uzume's ray-march / SDF / PBR hero tech), rather than Milkdrop's flat 2-D projection.
 
 Treat as its own spike with its own concept-viability gate (three-part bar) — it is the high-fidelity-hero register that has stalled before (Drift Motes D-102, Ferrofluid, Aurora Veil), so it needs an explicit grounding/feasibility pass before authoring. May warrant a distinct preset (e.g. "Dragon Bloom 3D" / a new name) rather than replacing the feedback-native Dragon Bloom — keep both options open. Do not start until the D-137 uplift has shipped and Matt greenlights the spike.
 
@@ -167,9 +167,9 @@ A warm, **bilaterally-symmetric feathered bloom** — fiery red/orange/yellow pe
 
 ## 2. Why this is the most confident target of the catalog
 
-This is the inverse of the Goldengrove problem. Every part of the mechanic maps to an *existing, documented, reference-backed* Phosphene capability:
+This is the inverse of the Goldengrove problem. Every part of the mechanic maps to an *existing, documented, reference-backed* Uzume capability:
 
-| Milkdrop mechanic | Phosphene equivalent | Status |
+| Milkdrop mechanic | Uzume equivalent | Status |
 |---|---|---|
 | Per-pixel `warp` + 12×9 motion vectors | `mv_warp` `mvWarpPerVertex()` (32×24 UV-displacement grid) | ✅ D-027; **Starburst** is a direct+mv_warp reference |
 | `fDecay` / video-echo | mv_warp decay (warp pass × decay) | ✅ built |
@@ -182,11 +182,11 @@ This is the inverse of the Goldengrove problem. Every part of the mechanic maps 
 
 ## 3. 3-part bar
 
-1. **Iconic subject deliverable at fidelity** — ✅ likely. The look is feedback-texture + palette, which Phosphene's mv_warp produces natively; no hero-material or painterly-fidelity risk (the thing that sinks me). Risk is *aesthetic tuning*, not structural.
+1. **Iconic subject deliverable at fidelity** — ✅ likely. The look is feedback-texture + palette, which Uzume's mv_warp produces natively; no hero-material or painterly-fidelity risk (the thing that sinks me). Risk is *aesthetic tuning*, not structural.
 2. **Clear musical role** — see §4. The waveform-driven bloom is load-bearing: the shape *is* the audio.
 3. **Infrastructure-feasible** — ✅ strongest of any candidate. Existing mv_warp + waveform/FFT buffers + a reference preset (Starburst). Zero net-new render infrastructure.
 
-**This is the lowest-risk preset build proposed all session** — proven mechanic, reference implementation, no new infra, and the fidelity register (procedural feedback + palette) is one Phosphene reliably hits.
+**This is the lowest-risk preset build proposed all session** — proven mechanic, reference implementation, no new infra, and the fidelity register (procedural feedback + palette) is one Uzume reliably hits.
 
 ## 4. The music→visual model (from real signals — the load-bearing part)
 
@@ -201,11 +201,11 @@ One primitive per visual layer (per `feedback_audio_layer_one_primitive`), every
 | **Palette / warmth** | `valence` + `spectral_centroid` | warm/fiery on bright/positive, cooler/deeper otherwise |
 | **Per-instrument color** *(stretch)* | stems (`vocals`/`drums`/`other` energy) tint different feather bands | the bloom's colors separate by instrument |
 
-The honest strength here vs. Goldengrove: feedback presets are *built* to turn audio into compound motion — the "does it read musical" question is the one register where Phosphene has a proven yes (D-027, the whole MV phase). The waveform driving the shape is a direct, non-ambient coupling.
+The honest strength here vs. Goldengrove: feedback presets are *built* to turn audio into compound motion — the "does it read musical" question is the one register where Uzume has a proven yes (D-027, the whole MV phase). The waveform driving the shape is a direct, non-ambient coupling.
 
 ## 5. The one real aesthetic risk — symmetry
 
-Bilateral symmetry is a Phosphene anti-pattern when it reads as **flat clipart symmetry** (Failed Approach #48 — the Arachne anti-reference was symmetric clipart). Mashup (220) gets away with it *only because the feedback texture is rich* (feathered flow, not flat mirrored shapes). **Rule for the build:** the mirror fold is applied to a richly-feedback-warped field, never to flat geometry; if the symmetric output ever reads as clipart, break it with per-side hash jitter / asymmetric warp bias (the FA #44 per-instance-variation rule). This is a tuning constraint, not a structural blocker.
+Bilateral symmetry is a Uzume anti-pattern when it reads as **flat clipart symmetry** (Failed Approach #48 — the Arachne anti-reference was symmetric clipart). Mashup (220) gets away with it *only because the feedback texture is rich* (feathered flow, not flat mirrored shapes). **Rule for the build:** the mirror fold is applied to a richly-feedback-warped field, never to flat geometry; if the symmetric output ever reads as clipart, break it with per-side hash jitter / asymmetric warp bias (the FA #44 per-instance-variation rule). This is a tuning constraint, not a structural blocker.
 
 ## 6. De-risking spikes (before the full build)
 
@@ -236,6 +236,6 @@ Add the mirror fold; confirm it reads as *organic feathered bloom*, not *flat mi
 
 ## 9. Recommendation
 
-**Proceed to Spike 1.** It's a small, Starburst-derived build that proves the feedback bloom dances to the music before any symmetry/palette investment — and the whole thing sits on Phosphene's single most-proven capability (mv_warp / Milkdrop feedback), with a reference implementation and zero new infrastructure. This is the candidate I'm most confident about all session.
+**Proceed to Spike 1.** It's a small, Starburst-derived build that proves the feedback bloom dances to the music before any symmetry/palette investment — and the whole thing sits on Uzume's single most-proven capability (mv_warp / Milkdrop feedback), with a reference implementation and zero new infrastructure. This is the candidate I'm most confident about all session.
 
 *(Verified this session: mv_warp D-027 + direct-preset support (Starburst); waveform slot 2 + FFT slot 1 on all fragment encoders; `feedback` vs `mv_warp` pass distinction; source mechanic from the raw `.milk`. Citations: CLAUDE.md FA #32 / D-027 line 457; ARCHITECTURE.md §Renderer mv_warp (lines 189/202/203), GPU contract slots 1–2; `RenderPipeline+MVWarp`/`+FeedbackDraw`; Starburst.json.)*

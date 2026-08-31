@@ -4,17 +4,17 @@
 
 **Why:** No shared SDF operators exist today — every ray-march preset rolls its own `sceneSDF`, and smooth-min lives only as a stray Quilez constant in Ferrofluid (per the 2026-06-29 audit). This is purely additive and immediately upgrades Glass Brutalist, Kinetic Sculpture, Lumen Mosaic, Volumetric Lithograph, and Ferrofluid (richer booleans/bevels, domain repetition), plus the Lipschitz discipline that targets the FA #64 dot-pattern class.
 
-**Build boundary:** This is a Metal/Swift change — build, lint, and the `RENDER_VISUAL` harness run on macOS + Xcode + Apple Silicon (`xcodebuild -scheme PhospheneApp …`). It cannot be compiled in the Cowork Linux sandbox. This document is the hand-off; do the wholesale port + compile on the Mac (FA #73 — port the reference wholesale).
+**Build boundary:** This is a Metal/Swift change — build, lint, and the `RENDER_VISUAL` harness run on macOS + Xcode + Apple Silicon (`xcodebuild -scheme UzumeApp …`). It cannot be compiled in the Cowork Linux sandbox. This document is the hand-off; do the wholesale port + compile on the Mac (FA #73 — port the reference wholesale).
 
 ---
 
 ## 1. License (take the MIT option)
 
-`hg_sdf` is dual-licensed **MIT OR CC-BY-NC-4.0** (verified at https://mercury.sexy/hg_sdf/, version line 2021-07-28). Take **MIT** so it's compatible with MIT-licensed Phosphene. Retain the original copyright + MIT notice as a header comment in the vendored file. Source of truth to port from: https://mercury.sexy/hg_sdf/hg_sdf.glsl (download on the Mac; it served as binary to the sandbox fetcher).
+`hg_sdf` is dual-licensed **MIT OR CC-BY-NC-4.0** (verified at https://mercury.sexy/hg_sdf/, version line 2021-07-28). Take **MIT** so it's compatible with MIT-licensed Uzume. Retain the original copyright + MIT notice as a header comment in the vendored file. Source of truth to port from: https://mercury.sexy/hg_sdf/hg_sdf.glsl (download on the Mac; it served as binary to the sandbox fetcher).
 
 ## 2. Placement & wiring
 
-- Add a new utility tree, e.g. `PhospheneEngine/Sources/Presets/Utilities/SDF/hg_sdf.metal` (mirror the existing `Utilities/Volume`, `Utilities/Geometry`, `Utilities/PBR`, `Utilities/Noise` convention).
+- Add a new utility tree, e.g. `UzumeEngine/Sources/Presets/Utilities/SDF/hg_sdf.metal` (mirror the existing `Utilities/Volume`, `Utilities/Geometry`, `Utilities/PBR`, `Utilities/Noise` convention).
 - Register it in the preamble loader: `PresetLoader+Preamble.swift` already does `loadUtilityDirectory("Utilities/Volume", …)` etc. (audit ref). Add the SDF tree to that load list. **Inject it before any preset `sceneSDF`** — the preamble is prepended, so order matters.
 - `.metal` `file_length` lint is relaxed (SHADER_CRAFT §11.1), so a long single header is fine — don't split for lint.
 
@@ -102,8 +102,8 @@ Refactor **one** existing hard-surface ray-march preset (Glass Brutalist or Kine
 
 ## 7. Closeout gates (per CLAUDE.md increment protocol)
 
-- `xcodebuild -scheme PhospheneApp build` clean (warnings-as-errors via xcconfig).
-- `swift test --package-path PhospheneEngine` + `xcodebuild test` all pass (regression gate).
+- `xcodebuild -scheme UzumeApp build` clean (warnings-as-errors via xcconfig).
+- `swift test --package-path UzumeEngine` + `xcodebuild test` all pass (regression gate).
 - `swiftlint lint --strict` clean.
 - `RENDER_VISUAL=1` contact sheet attached (proof-preset before/after).
 - **Update `docs/CAPABILITY_REGISTRY/RENDERER.md`:** SDF authoring Missing → Supported, cite the new file + the proof-preset.

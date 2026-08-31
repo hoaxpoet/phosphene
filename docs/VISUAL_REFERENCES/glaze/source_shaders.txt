@@ -100,7 +100,7 @@ COMP shader — the glossy "wet jelly" finish: multi-scale unsharp from blur1/2/
   ret = ret*ret;  ret = sqrt(ret);                                          // contrast curve (≈gamma)
  }
   NOTE: hue_shader = butterchurn's per-pixel preset hue field (the rainbow). Substitute with a
-        Phosphene palette (time-rotated + chroma/centroid-nudged), per the plan's audio table.
+        Uzume palette (time-rotated + chroma/centroid-nudged), per the plan's audio table.
         blur1/blur2/blur3 = the 3-level blur pyramid → the crux of the glossy sheen.
 
 ================================================================================

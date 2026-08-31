@@ -121,7 +121,7 @@ identical to the pre-3.5.2 implementation.
    kick-drum bass, which the current `bass_energy` routing cannot distinguish.
 3. Evaluate `vocalsPitchHz` for sky-gradient hue shift in addition to or instead
    of `vocals_energy`-driven warmth. Pitch-keyed sky tint would give the preset
-   a Phosphene-exclusive capability not available to Milkdrop.
+   a Uzume-exclusive capability not available to Milkdrop.
 
 ---
 

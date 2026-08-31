@@ -18,11 +18,11 @@
 
 The reference images (`04_specular_pattern_glass_closeup.jpg` for cell + frost detail, `05_lighting_pattern_glass_dual_color.jpg` for the saturated multi-colour backlight character) show hammered pattern glass — irregular hex-biased cells, each a raised dimple separated by sharp inter-cell ridges, every cell carrying a fine bumpy frost that catches light at sub-pixel scale, and strong coloured light behind. **Each cell carries its own colour**, vivid, often differing markedly from its neighbours.
 
-Phosphene's catalog has the material for this (`mat_pattern_glass`, V.3 Materials cookbook §4.5b) but no preset that uses pattern glass as the entire visual surface with vivid per-cell colour driven by music. Lumen Mosaic is that preset.
+Uzume's catalog has the material for this (`mat_pattern_glass`, V.3 Materials cookbook §4.5b) but no preset that uses pattern glass as the entire visual surface with vivid per-cell colour driven by music. Lumen Mosaic is that preset.
 
 **Aesthetic role: an energetic dance partner.** The preset that makes people want to get up and dance. Cells change constantly — every cell carries its own evolving colour, and on a kick-driven track the field of cells reads as a vibrant honeycomb pulsing in time with the music. None of the other ray-march presets sits in that pocket — Volumetric Lithograph is gestural terrain, Glass Brutalist depicts moving architecture, Kinetic Sculpture is geometric motion. Lumen Mosaic owns the **vibrant-cell-field-dancing-with-the-music** register.
 
-Phosphene-wide invariant (CLAUDE.md): muted palettes have no place in the catalog. Quiet moments exist (silence, breakdowns, intros) but the active visual register is always vivid, saturated, alive.
+Uzume-wide invariant (CLAUDE.md): muted palettes have no place in the catalog. Quiet moments exist (silence, breakdowns, intros) but the active visual register is always vivid, saturated, alive.
 
 This is **not** Glass Brutalist v3. Glass Brutalist depicts brutalist concrete corridor architecture with pattern glass as one element in a bigger spatial composition; Lumen Mosaic has no depicted architectural scene — the glass *is* the scene, and colour through the glass is the music.
 
@@ -91,7 +91,7 @@ After multiple rounds of iteration, the decisions that govern the current implem
 
 `LumenMosaic.json` `passes` → `["ray_march", "post_process"]`.
 
-The `ray_march` pass is Phosphene's existing 3-pass deferred (G-buffer / lighting / composite). For Lumen Mosaic, `sceneSDF` returns a single planar glass panel; one-step trace, no expensive iteration. `post_process` adds bloom and ACES. SSGI is intentionally **disabled** — the panel is emission-dominated; SSGI's contribution is invisible against bright emissive cells.
+The `ray_march` pass is Uzume's existing 3-pass deferred (G-buffer / lighting / composite). For Lumen Mosaic, `sceneSDF` returns a single planar glass panel; one-step trace, no expensive iteration. `post_process` adds bloom and ACES. SSGI is intentionally **disabled** — the panel is emission-dominated; SSGI's contribution is invisible against bright emissive cells.
 
 ### 4.2 sceneSDF
 

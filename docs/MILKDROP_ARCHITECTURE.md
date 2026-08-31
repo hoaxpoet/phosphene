@@ -1,10 +1,10 @@
-# Milkdrop Architecture Research — Findings and Implications for Phosphene
+# Milkdrop Architecture Research — Findings and Implications for Uzume
 
 **Status:** Reference document. MV-0 through MV-3 complete (2026-04-17). See "Phase MV Implementation Outcomes" section at the end for what shipped and key learnings. Phase MV is finished; next is Phase 4 (Orchestrator).
 
 **Written:** 2026-04-16, after six failed iterations on Volumetric Lithograph made it clear that preset-level tuning was not converging on "feels musical." Matt challenged the premise: Milkdrop achieves convincing musical synchronization with 20-year-old technology, so why can't we?
 
-This document is the self-contained record of what Milkdrop actually does, where Phosphene's architecture diverges, and what must change to match Milkdrop's baseline musicality. Future sessions can execute the plan without re-doing the research.
+This document is the self-contained record of what Milkdrop actually does, where Uzume's architecture diverges, and what must change to match Milkdrop's baseline musicality. Future sessions can execute the plan without re-doing the research.
 
 ---
 
@@ -30,7 +30,7 @@ That is the complete list. Milkdrop presets do **not** have access to:
 - Structural analysis
 - Spectral centroid or flux
 
-Phosphene already produces all of the above via MIRPipeline / StemAnalyzer / MoodClassifier / ChromaExtractor / StructuralAnalyzer. **Our audio analysis is richer than Milkdrop's, not poorer.** This eliminates the hypothesis that we lack audio sophistication.
+Uzume already produces all of the above via MIRPipeline / StemAnalyzer / MoodClassifier / ChromaExtractor / StructuralAnalyzer. **Our audio analysis is richer than Milkdrop's, not poorer.** This eliminates the hypothesis that we lack audio sophistication.
 
 ## 2. The AGC normalization convention matters
 
@@ -53,15 +53,15 @@ my_volume = (bass + mid + treb) / 3;
 zoom = zoom + 0.1 * (my_volume - 1.0);  // pulses on loud moments, recedes on quiet
 ```
 
-### How Phosphene currently does it
+### How Uzume currently does it
 
-[`BandEnergyProcessor.swift:21`](../PhospheneEngine/Sources/DSP/BandEnergyProcessor.swift) implements the same Milkdrop-style AGC with one key difference — our convention centers `bass`/`mid`/`treble` around **0.5** rather than 1.0:
+[`BandEnergyProcessor.swift:21`](../UzumeEngine/Sources/DSP/BandEnergyProcessor.swift) implements the same Milkdrop-style AGC with one key difference — our convention centers `bass`/`mid`/`treble` around **0.5** rather than 1.0:
 
 ```
 /// AGC normalizes output so average levels map to ~0.5, loud moments reach 0.8–1.0.
 ```
 
-The pipeline is equivalent. The scaling is cosmetic. What isn't cosmetic: **Phosphene preset shaders have been authored using absolute thresholds** like `smoothstep(0.22, 0.32, f.bass)`.
+The pipeline is equivalent. The scaling is cosmetic. What isn't cosmetic: **Uzume preset shaders have been authored using absolute thresholds** like `smoothstep(0.22, 0.32, f.bass)`.
 
 Absolute thresholds are the wrong primitive for an AGC-normalized signal. The output of AGC inherently depends on running-average context — a kick drum that reads as `bass = 0.7` during a sparse section might read as `bass = 0.25` during a busy section, because the running average rose. The kick is equally acoustically loud. Absolute thresholds are brittle across tracks and even across sections of the same track.
 
@@ -131,7 +131,7 @@ The guide documents roughly 40 authorable per-frame parameters that Milkdrop pre
 
 This is a rich authoring vocabulary. Our presets author Metal shader functions directly — more flexible than Milkdrop's equation language, but much heavier and less iterative.
 
-## 4. Phosphene's architectural divergence
+## 4. Uzume's architectural divergence
 
 Render-pass breakdown of our 11 presets (current, post-D-029 revert):
 
@@ -151,7 +151,7 @@ Render-pass breakdown of our 11 presets (current, post-D-029 revert):
 
 No preset currently uses the `mv_warp` Milkdrop-style per-vertex warp. MV-2 shipped the `mv_warp` render pass as an *opt-in* capability, applied it to Starburst and VolumetricLithograph, and was reverted on both (see D-029). The pass itself remains in the engine — it is a legitimate motion-source paradigm for future presets that fit its constraints (direct-fragment presets, or static-camera ray-march scenes). It must not be stacked on a moving world-space camera or a particle system; see Failed Approaches #32 in CLAUDE.md.
 
-Even our two feedback presets have a much thinner warp than Milkdrop's per-vertex mesh. See [`Common.metal:107-156`](../PhospheneEngine/Sources/Renderer/Shaders/Common.metal):
+Even our two feedback presets have a much thinner warp than Milkdrop's per-vertex mesh. See [`Common.metal:107-156`](../UzumeEngine/Sources/Renderer/Shaders/Common.metal):
 
 ```metal
 fragment float4 feedback_warp_fragment(...) {
@@ -238,7 +238,7 @@ Three sub-increments landed together (D-028):
 - [projectM GitHub](https://github.com/projectM-visualizer/projectm) — LGPL reimplementation.
 - [projectM `Loudness.cpp`](https://github.com/projectM-visualizer/projectm/blob/master/src/libprojectM/Audio/Loudness.cpp) — confirmed the AGC normalization formula.
 - [presets-cream-of-the-crop](https://github.com/projectM-visualizer/presets-cream-of-the-crop) — Jason Fletcher's curated preset pack.
-- Matt's product-vision research document ("Architectural Framework for Phosphene"): cross-referenced; noted its aspirational claims (sub-millisecond latency, HTDemucs swap, Basic Pitch port) that are not part of this plan.
-- [`BandEnergyProcessor.swift`](../PhospheneEngine/Sources/DSP/BandEnergyProcessor.swift) — confirmed our existing Milkdrop-style AGC.
-- [`Common.metal`](../PhospheneEngine/Sources/Renderer/Shaders/Common.metal) — confirmed our existing feedback warp is global, not per-vertex.
-- Preset `.json` descriptors in [`PhospheneEngine/Sources/Presets/Shaders/`](../PhospheneEngine/Sources/Presets/Shaders/) — confirmed 9 of 11 presets do not use feedback.
+- Matt's product-vision research document ("Architectural Framework for Uzume"): cross-referenced; noted its aspirational claims (sub-millisecond latency, HTDemucs swap, Basic Pitch port) that are not part of this plan.
+- [`BandEnergyProcessor.swift`](../UzumeEngine/Sources/DSP/BandEnergyProcessor.swift) — confirmed our existing Milkdrop-style AGC.
+- [`Common.metal`](../UzumeEngine/Sources/Renderer/Shaders/Common.metal) — confirmed our existing feedback warp is global, not per-vertex.
+- Preset `.json` descriptors in [`UzumeEngine/Sources/Presets/Shaders/`](../UzumeEngine/Sources/Presets/Shaders/) — confirmed 9 of 11 presets do not use feedback.

@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-29
 **Status:** Research / strategy memo. **Not a committed increment.** No code, no tests, no `ENGINEERING_PLAN`/`DECISIONS` edits made — this is a proposal surface for Matt's review. Where it says "would land," it means *if scoped into an increment later*.
-**Scope:** how to "solve multi-instrument audio separation for a broad range of file formats (MP3/M4A/FLAC) including classical music," at and beyond the current state of the art, mapped onto Phosphene's existing architecture.
+**Scope:** how to "solve multi-instrument audio separation for a broad range of file formats (MP3/M4A/FLAC) including classical music," at and beyond the current state of the art, mapped onto Uzume's existing architecture.
 
 ---
 
@@ -11,11 +11,11 @@
 The task name hides its own trap: it assumes the goal is *separation into named instruments*. Two reframes make it tractable, and they are the whole memo.
 
 1. **Separate what you ask for, not a fixed list.** "Stems" (drums/bass/vocals/other) is a Western-pop vocabulary; a string quartet has none of those four. Any fixed output taxonomy is guaranteed to fail on some genre. The escape is *query/condition-based* separation — feed the mixture **plus a query** (label, text, example clip, timbre embedding) and get *that* source. One mechanism, unbounded vocabulary. This dissolves "including classical."
-2. **Phosphene needs control signals, not clean audio.** Perceptual separation (clean isolated tracks) is the hard, often-unsolvable target. Visuals need only a *per-voice time-varying envelope* correlated with that voice's activity — a far weaker requirement, and weaker requirements are where "works on everything" lives.
+2. **Uzume needs control signals, not clean audio.** Perceptual separation (clean isolated tracks) is the hard, often-unsolvable target. Visuals need only a *per-voice time-varying envelope* correlated with that voice's activity — a far weaker requirement, and weaker requirements are where "works on everything" lives.
 
 Together: **a universal decomposition with a guaranteed floor and an opportunistic ceiling.** The floor always returns something drivable on any file in any genre; the ceiling returns clean stems when content cooperates. Breadth comes from a content-adaptive *router*, not one heroic model.
 
-This is already Phosphene's central design rule (Audio Data Hierarchy): continuous energy/spectral = primary driver, stems = supplementary (Layers 1–3 default, Layer 5 stems supplementary). The proposal is to **widen "supplementary" from a 4-slot pop array into a decomposition ladder, and keep the spectral floor load-bearing.**
+This is already Uzume's central design rule (Audio Data Hierarchy): continuous energy/spectral = primary driver, stems = supplementary (Layers 1–3 default, Layer 5 stems supplementary). The proposal is to **widen "supplementary" from a 4-slot pop array into a decomposition ladder, and keep the spectral floor load-bearing.**
 
 ---
 
@@ -93,7 +93,7 @@ Object/immersive audio (Atmos/MPEG-H) ships instruments/groups as separate objec
 2. **Floor (Tier 0):** spatial cues pay off here — orchestras are physically laid out in stereo (first violins left, celli right), so direction-of-arrival separation *works* where it can't on mono-panned pop — plus HPSS, multi-pitch salience, activity detection. Always produces good drivers.
 3. **Ceiling (opportunistic):** Tier-3 score/metadata queries when score/tags exist; Tier-2 language queries otherwise.
 4. **Frontier:** Tier-4 generative/MixIT as it matures.
-5. **Expectation-setting:** you will *not* get clean isolated orchestral stems. You *will* get reliable, musically-meaningful per-section/per-salience control signals — which is all Phosphene needs (Reframe 2).
+5. **Expectation-setting:** you will *not* get clean isolated orchestral stems. You *will* get reliable, musically-meaningful per-section/per-salience control signals — which is all Uzume needs (Reframe 2).
 
 ---
 

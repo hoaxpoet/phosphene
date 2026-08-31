@@ -3,7 +3,7 @@
 **Audit increment:** CA-Shared
 **Date:** 2026-05-21
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneEngine/Sources/Shared/` — 25 Swift files / 3,515 LoC (matches kickoff).
+**Scope:** `UzumeEngine/Sources/Shared/` — 25 Swift files / 3,515 LoC (matches kickoff).
 **Methodology:** Phase CA scoping document ([`docs/prompts/PHASE_CA_KICKOFF_CA_SHARED_2026-05-21.md`](../prompts/PHASE_CA_KICKOFF_CA_SHARED_2026-05-21.md) — kickoff content embedded in user message).
 **Reads relied on:**
 - [`CLAUDE.md`](../../CLAUDE.md) — §Key Types pointer, §GPU Contract pointer, §Audio Data Hierarchy, §Audio Analysis Tuning, §Code Style, Failed Approaches #21/#22/#28/#29/#44/#52, §What NOT To Do.
@@ -75,11 +75,11 @@ All 22 Shared files producing concrete types or namespaces have at least one non
 
 **1. `SpectralHistoryPublishing` protocol** (`SpectralHistoryBuffer.swift:18-63`).
 
-Declared as a public protocol with 6 required members (`gpuBuffer`, `append`, `updateBeatGridData`, `readOverlayState`, `readSessionMode`, `readDriftMs`, `reset`). Conformed to by the concrete `SpectralHistoryBuffer` at line 80. The only consumer of `SpectralHistoryBuffer` in production code (`RenderPipeline.swift:142, 289` and `VisualizerEngine+Audio.swift:357, 361`) refers to the **concrete class**, not the protocol. The documented motivation in the file header — "enables test doubles" — is not exercised: tests use the concrete `SpectralHistoryBuffer` directly (`PhospheneEngine/Tests/PhospheneEngineTests/Renderer/SpectralCartographTests.swift` and the spectral history test file both work against the concrete class).
+Declared as a public protocol with 6 required members (`gpuBuffer`, `append`, `updateBeatGridData`, `readOverlayState`, `readSessionMode`, `readDriftMs`, `reset`). Conformed to by the concrete `SpectralHistoryBuffer` at line 80. The only consumer of `SpectralHistoryBuffer` in production code (`RenderPipeline.swift:142, 289` and `VisualizerEngine+Audio.swift:357, 361`) refers to the **concrete class**, not the protocol. The documented motivation in the file header — "enables test doubles" — is not exercised: tests use the concrete `SpectralHistoryBuffer` directly (`UzumeEngine/Tests/UzumeEngineTests/Renderer/SpectralCartographTests.swift` and the spectral history test file both work against the concrete class).
 
 ```
-$ grep -rn ": SpectralHistoryPublishing\b\|SpectralHistoryPublishing?\b\|as SpectralHistoryPublishing" --include='*.swift' PhospheneApp PhospheneEngine 2>/dev/null
-PhospheneEngine/Sources/Shared/SpectralHistoryBuffer.swift:80:public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked Sendable {
+$ grep -rn ": SpectralHistoryPublishing\b\|SpectralHistoryPublishing?\b\|as SpectralHistoryPublishing" --include='*.swift' UzumeApp UzumeEngine 2>/dev/null
+UzumeEngine/Sources/Shared/SpectralHistoryBuffer.swift:80:public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked Sendable {
 ```
 
 (1 hit = the conformance declaration; 0 protocol-as-type uses.)
@@ -88,11 +88,11 @@ Verdict: **production-orphan**. Filed as **CA-Shared-FU-2** (paired with the Ste
 
 **2. `StemSampleBuffering` protocol** (`StemSampleBuffer.swift:15-44`).
 
-Declared as a public protocol with 6 required members (`write`, two `snapshotLatest` overloads, two `rms` overloads, `reset`). Conformed to by the concrete `StemSampleBuffer` at line 54. The only production consumer (`PhospheneApp/VisualizerEngine.swift:233`) stores it as the concrete type:
+Declared as a public protocol with 6 required members (`write`, two `snapshotLatest` overloads, two `rms` overloads, `reset`). Conformed to by the concrete `StemSampleBuffer` at line 54. The only production consumer (`UzumeApp/VisualizerEngine.swift:233`) stores it as the concrete type:
 
 ```
-$ grep -rn ": StemSampleBuffering\b\|StemSampleBuffering?\b\|as StemSampleBuffering" --include='*.swift' PhospheneApp PhospheneEngine 2>/dev/null
-PhospheneEngine/Sources/Shared/StemSampleBuffer.swift:54:public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
+$ grep -rn ": StemSampleBuffering\b\|StemSampleBuffering?\b\|as StemSampleBuffering" --include='*.swift' UzumeApp UzumeEngine 2>/dev/null
+UzumeEngine/Sources/Shared/StemSampleBuffer.swift:54:public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
 ```
 
 (1 hit = the conformance declaration; 0 protocol-as-type uses.)
@@ -104,8 +104,8 @@ Same shape as SpectralHistoryPublishing. Both are paired under CA-Shared-FU-2.
 Declared and returns `ErrorRetryStatus?` based on the case. Documented as auto-retry status for cases like `.noCurrentlyPlayingPlaylist` (2-second polling), `.spotifyRateLimited(attempt:)`, and `.previewRateLimited`. **Zero production callsites.**
 
 ```
-$ grep -rn "\.retryStatus\b" --include='*.swift' PhospheneApp PhospheneEngine/Sources 2>/dev/null
-PhospheneEngine/Sources/Shared/UserFacingError+Presentation.swift:113:    public var retryStatus: ErrorRetryStatus? {
+$ grep -rn "\.retryStatus\b" --include='*.swift' UzumeApp UzumeEngine/Sources 2>/dev/null
+UzumeEngine/Sources/Shared/UserFacingError+Presentation.swift:113:    public var retryStatus: ErrorRetryStatus? {
 ```
 
 (1 hit = the declaration site; 0 consumer accesses.)
@@ -117,8 +117,8 @@ The "attempt 2 of 3" copy that this accessor is supposed to deliver is currently
 Declared and returns `Bool` for the three condition-bound silence cases (`.silenceBrief`, `.silenceExtended`, `.audioLevelsLow`). Documented as "the `PlaybackErrorBridge` should use condition-tagged dismiss." **Zero production callsites.**
 
 ```
-$ grep -rn "\.isConditionBound\b" --include='*.swift' PhospheneApp PhospheneEngine/Sources 2>/dev/null
-PhospheneEngine/Sources/Shared/UserFacingError+Presentation.swift:170:    public var isConditionBound: Bool {
+$ grep -rn "\.isConditionBound\b" --include='*.swift' UzumeApp UzumeEngine/Sources 2>/dev/null
+UzumeEngine/Sources/Shared/UserFacingError+Presentation.swift:170:    public var isConditionBound: Bool {
 ```
 
 (1 hit = the declaration site; 0 consumer accesses.)
@@ -130,24 +130,24 @@ PhospheneEngine/Sources/Shared/UserFacingError+Presentation.swift:170:    public
 Declared as a convenience EMA-step wrapper. Documented in line 43 as "Equivalent to computing `factor(at:)` and applying the mix inline." **Zero production callsites.**
 
 ```
-$ grep -rn "\.step(current:" --include='*.swift' PhospheneApp PhospheneEngine/Sources 2>/dev/null
+$ grep -rn "\.step(current:" --include='*.swift' UzumeApp UzumeEngine/Sources 2>/dev/null
 (empty)
 
-$ grep -rn "\.factor(at:" --include='*.swift' PhospheneApp PhospheneEngine/Sources 2>/dev/null
-PhospheneEngine/Sources/DSP/BeatDetector.swift:337:        let decay = Self.pulseSmoother.factor(at: fps)
-PhospheneEngine/Sources/DSP/BandEnergyProcessor.swift:220:        let attRate = Self.attenuatedSmoother.factor(at: fps)
-PhospheneEngine/Sources/DSP/BandEnergyProcessor.swift:222:            let instantRate = Self.instantSmoothers[i].factor(at: fps)
-PhospheneEngine/Sources/DSP/BandEnergyProcessor.swift:228:            let rate = Self.sixBandSmoothers[i].factor(at: fps)
+$ grep -rn "\.factor(at:" --include='*.swift' UzumeApp UzumeEngine/Sources 2>/dev/null
+UzumeEngine/Sources/DSP/BeatDetector.swift:337:        let decay = Self.pulseSmoother.factor(at: fps)
+UzumeEngine/Sources/DSP/BandEnergyProcessor.swift:220:        let attRate = Self.attenuatedSmoother.factor(at: fps)
+UzumeEngine/Sources/DSP/BandEnergyProcessor.swift:222:            let instantRate = Self.instantSmoothers[i].factor(at: fps)
+UzumeEngine/Sources/DSP/BandEnergyProcessor.swift:228:            let rate = Self.sixBandSmoothers[i].factor(at: fps)
 ```
 
 All 4 consumers use only `factor(at:)`. Filed as **CA-Shared-FU-3**.
 
 ### documented-but-missing (3)
 
-**`BandEnergy` / `SpectralFeatures` / `OnsetPulses`** — claimed in `ARCHITECTURE.md` §Key Types at lines 799 / 801 / 802 as if they were Swift structs. They do not exist anywhere in `PhospheneApp/` or `PhospheneEngine/`:
+**`BandEnergy` / `SpectralFeatures` / `OnsetPulses`** — claimed in `ARCHITECTURE.md` §Key Types at lines 799 / 801 / 802 as if they were Swift structs. They do not exist anywhere in `UzumeApp/` or `UzumeEngine/`:
 
 ```
-$ grep -rln "\bstruct (BandEnergy|SpectralFeatures|OnsetPulses)\b" --include='*.swift' PhospheneApp PhospheneEngine 2>/dev/null
+$ grep -rln "\bstruct (BandEnergy|SpectralFeatures|OnsetPulses)\b" --include='*.swift' UzumeApp UzumeEngine 2>/dev/null
 (empty)
 ```
 
@@ -155,7 +155,7 @@ These were likely retired before the project's current state and the docs were n
 
 ### built-but-undocumented (4)
 
-Files present in `PhospheneEngine/Sources/Shared/` but missing from `ARCHITECTURE.md` §Module Map Shared/ block (lines 668-678):
+Files present in `UzumeEngine/Sources/Shared/` but missing from `ARCHITECTURE.md` §Module Map Shared/ block (lines 668-678):
 
 1. `StemFeatures.swift` (189 LoC). The 256-byte GPU contract for stem features (D-099 / DM.2). Missing entirely from ARCH listing.
 2. `BeatSyncSnapshot.swift` (60 LoC). Per-frame beat-sync diagnostic snapshot (CLAUDE.md §Defect Handling artifact requirement for `dsp.beat`). Missing.
@@ -176,15 +176,15 @@ Detailed cross-reference: CA-Audio AUDIO.md filed the CA.3 line-145 correction (
 
 ### GPU-contract value types (8 files / 1,278 LoC)
 
-#### [`Shared.swift`](../../PhospheneEngine/Sources/Shared/Shared.swift) (4 LoC)
+#### [`Shared.swift`](../../UzumeEngine/Sources/Shared/Shared.swift) (4 LoC)
 
 Module marker. Comment-only. `import Foundation`. Verdict: **production-active** (canonical module entry point).
 
-#### [`AudioFeatures.swift`](../../PhospheneEngine/Sources/Shared/AudioFeatures.swift) (10 LoC)
+#### [`AudioFeatures.swift`](../../UzumeEngine/Sources/Shared/AudioFeatures.swift) (10 LoC)
 
 Documentation umbrella for the AudioFeatures+ extensions. Comment-only file; no types declared. Verdict: **production-active** (documentation anchor).
 
-#### [`AudioFeatures+Analyzed.swift`](../../PhospheneEngine/Sources/Shared/AudioFeatures+Analyzed.swift) (372 LoC)
+#### [`AudioFeatures+Analyzed.swift`](../../UzumeEngine/Sources/Shared/AudioFeatures+Analyzed.swift) (372 LoC)
 
 Public surface: 5 types.
 - `FeatureVector` (@frozen public struct, Sendable) — **48 floats / 192 bytes**. The load-bearing GPU contract. Init takes 24 named args + defaults zero on the rest. `static let zero`.
@@ -201,7 +201,7 @@ Consumer fan-out for `StructuralPrediction`: DSP (`StructuralAnalyzer.computePre
 
 Verdict: **production-active** for every type. **One stale doc-comment finding:** `AnalyzedFrame.swift:35` (sibling file) describes `FeatureVector` as "96 bytes" — pre-DM.2 size. Same drift as ARCH §Key Types line 779 (correctly 192 bytes). Bundled into CA-Audio-FU-9.
 
-#### [`AudioFeatures+Frame.swift`](../../PhospheneEngine/Sources/Shared/AudioFeatures+Frame.swift) (93 LoC)
+#### [`AudioFeatures+Frame.swift`](../../UzumeEngine/Sources/Shared/AudioFeatures+Frame.swift) (93 LoC)
 
 Public surface: 3 types.
 - `AudioFrame` (@frozen public struct, Sendable) — PCM block metadata: timestamp / sampleRate / sampleCount / channelCount / bufferOffset. 24 bytes.
@@ -212,7 +212,7 @@ Consumer fan-out: AudioFrame consumed by Audio (`StemSeparator.separate` builds 
 
 Verdict: **production-active** for all three. No drift.
 
-#### [`AudioFeatures+Metadata.swift`](../../PhospheneEngine/Sources/Shared/AudioFeatures+Metadata.swift) (121 LoC)
+#### [`AudioFeatures+Metadata.swift`](../../UzumeEngine/Sources/Shared/AudioFeatures+Metadata.swift) (121 LoC)
 
 Public surface: 3 types.
 - `MetadataSource` (public enum: String, Sendable, Equatable, Codable) — 5 cases: appleMusic / spotify / musicKit / nowPlaying / unknown.
@@ -223,7 +223,7 @@ Cross-reference: PRE-2026-05-21 CA.3 SESSION.md line 145 wrongly claimed TrackMe
 
 Verdict: **production-active** for all three. **boundary-noted** for the cluster.
 
-#### [`AudioFeatures+SceneUniforms.swift`](../../PhospheneEngine/Sources/Shared/AudioFeatures+SceneUniforms.swift) (149 LoC)
+#### [`AudioFeatures+SceneUniforms.swift`](../../UzumeEngine/Sources/Shared/AudioFeatures+SceneUniforms.swift) (149 LoC)
 
 Public surface: 1 type.
 - `SceneUniforms` (@frozen public struct, Sendable) — 8× SIMD4<Float> = 128 bytes. Camera basis (origin/fov/forward/right/up) + primary light (position/intensity/color) + scene params (audioTime/aspectRatio/near/far + fogNear/fogFar). Convenience accessors for unpacked SIMD3<Float> camera position, scalar fov, etc.
@@ -232,7 +232,7 @@ Consumer fan-out: 11 prod consumers across Renderer (RayMarchPipeline binds at b
 
 Verdict: **production-active**. No drift.
 
-#### [`StemFeatures.swift`](../../PhospheneEngine/Sources/Shared/StemFeatures.swift) (189 LoC)
+#### [`StemFeatures.swift`](../../UzumeEngine/Sources/Shared/StemFeatures.swift) (189 LoC)
 
 Public surface: 1 type.
 - `StemFeatures` (@frozen public struct, Sendable, Equatable) — **64 floats / 256 bytes**. Per D-099 / DM.2 / D-127.
@@ -253,7 +253,7 @@ Producer-side audit complete: every field has a defined producer chain. **One st
 
 Verdict: **production-active**.
 
-#### [`AnalyzedFrame.swift`](../../PhospheneEngine/Sources/Shared/AnalyzedFrame.swift) (64 LoC)
+#### [`AnalyzedFrame.swift`](../../UzumeEngine/Sources/Shared/AnalyzedFrame.swift) (64 LoC)
 
 Public surface: 1 type.
 - `AnalyzedFrame` (public struct, Sendable) — timestamped bundle: timestamp / audioFrame / fftResult / stemData / featureVector / emotionalState / structuralPrediction. `static let empty`.
@@ -262,7 +262,7 @@ Consumer fan-out: Audio (`LookaheadBuffer` carries them; `AudioInputRouter.onAna
 
 Verdict: **production-active**. **One inline-doc drift:** line 35 `/// Packed feature vector for GPU uniform upload (96 bytes).` — FeatureVector is 192 bytes post-DM.2. Bundled into CA-Audio-FU-9.
 
-#### [`BeatSyncSnapshot.swift`](../../PhospheneEngine/Sources/Shared/BeatSyncSnapshot.swift) (60 LoC)
+#### [`BeatSyncSnapshot.swift`](../../UzumeEngine/Sources/Shared/BeatSyncSnapshot.swift) (60 LoC)
 
 Public surface: 1 type.
 - `BeatSyncSnapshot` (public struct, Sendable) — 9 fields: barPhase01 / beatsPerBar / beatInBar / isDownbeat / sessionMode / lockState / gridBPM / playbackTimeS / driftMs. `static let zero`.
@@ -273,7 +273,7 @@ Verdict: **production-active**. This is the load-bearing diagnostic artifact for
 
 ### SessionRecorder cluster (5 files / 803 LoC)
 
-#### [`SessionRecorder.swift`](../../PhospheneEngine/Sources/Shared/SessionRecorder.swift) (375 LoC)
+#### [`SessionRecorder.swift`](../../UzumeEngine/Sources/Shared/SessionRecorder.swift) (375 LoC)
 
 Public surface: 1 class + extension cluster.
 - `SessionRecorder` (public final class, @unchecked Sendable) — continuous diagnostic capture.
@@ -297,7 +297,7 @@ Consumer fan-out: App (`VisualizerEngine` constructs at init; `VisualizerEngine+
 
 Verdict: **production-active**. Drawable-size-lock invariant (Failed Approach #28) **verified clean** — see required-section §"Verification of SessionRecorder drawable-size-lock invariant" below.
 
-#### [`SessionRecorder+CSV.swift`](../../PhospheneEngine/Sources/Shared/SessionRecorder+CSV.swift) (78 LoC)
+#### [`SessionRecorder+CSV.swift`](../../UzumeEngine/Sources/Shared/SessionRecorder+CSV.swift) (78 LoC)
 
 Static extension methods on SessionRecorder:
 - `csvRow(features:frame:wallclock:) -> String` (2-arg back-compat)
@@ -310,10 +310,10 @@ CSV column producer-side. Reads FeatureVector and StemFeatures field-by-field vi
 
 Verdict: **production-active**.
 
-#### [`SessionRecorder+RawTap.swift`](../../PhospheneEngine/Sources/Shared/SessionRecorder+RawTap.swift) (162 LoC)
+#### [`SessionRecorder+RawTap.swift`](../../UzumeEngine/Sources/Shared/SessionRecorder+RawTap.swift) (162 LoC)
 
 Public API:
-- `recordRawTapSamples(pointer:count:sampleRate:channelCount:)` — Core Audio tap callback safe; heavy I/O hops onto `queue`. Caps at 30 s by default; `PHOSPHENE_FULL_RAW_TAP=1` env var lifts the cap to 24 hours (per `QualityReelAnalyzer` requirement, line 134).
+- `recordRawTapSamples(pointer:count:sampleRate:channelCount:)` — Core Audio tap callback safe; heavy I/O hops onto `queue`. Caps at 30 s by default; `UZUME_FULL_RAW_TAP=1` env var lifts the cap to 24 hours (per `QualityReelAnalyzer` requirement, line 134).
 - `static func writeWav(samples:sampleRate:to:)` — 16-bit PCM WAV writer for stem dumps.
 
 RIFF/WAVE format implementation: streaming header (placeholder data sizes at init; patched at finish via `finalizeRawTapHeader` → `patchRawTapHeader`). 32-bit Float input (format 3), per the live-tap rate.
@@ -324,7 +324,7 @@ Consumer fan-out: App (`VisualizerEngine+Audio.swift` per-callback raw-sample fo
 
 Verdict: **production-active**.
 
-#### [`SessionRecorder+Stems.swift`](../../PhospheneEngine/Sources/Shared/SessionRecorder+Stems.swift) (37 LoC)
+#### [`SessionRecorder+Stems.swift`](../../UzumeEngine/Sources/Shared/SessionRecorder+Stems.swift) (37 LoC)
 
 Public API:
 - `recordStemSeparation(stemWaveforms:sampleRate:trackTitle:)` — writes 4 PCM WAV files per stem to `stems/<idx>_<title>/` directory.
@@ -335,7 +335,7 @@ Consumer fan-out: App (`VisualizerEngine+Stems.swift` calls after each separatio
 
 Verdict: **production-active**.
 
-#### [`SessionRecorder+Video.swift`](../../PhospheneEngine/Sources/Shared/SessionRecorder+Video.swift) (151 LoC)
+#### [`SessionRecorder+Video.swift`](../../UzumeEngine/Sources/Shared/SessionRecorder+Video.swift) (151 LoC)
 
 Internal API:
 - `appendVideoFrame(from:wallclock:)` — main per-frame append. Reads texture bytes via `MTLTexture.getBytes` into the pixel-buffer-pool pixel buffer (no double-copy); adapts at PTS = wallclock × 1e6 microseconds.
@@ -352,7 +352,7 @@ Verdict: **production-active**. **Failed Approach #28 fully respected** — see 
 
 ### UMA / buffer primitives (3 files / 626 LoC)
 
-#### [`UMABuffer.swift`](../../PhospheneEngine/Sources/Shared/UMABuffer.swift) (181 LoC)
+#### [`UMABuffer.swift`](../../UzumeEngine/Sources/Shared/UMABuffer.swift) (181 LoC)
 
 Public surface: 2 classes + 1 enum.
 - `UMABuffer<T>` (public final class, @unchecked Sendable) — typed view over `.storageModeShared` MTLBuffer. `init(device:capacity:) throws`, `subscript(index)`, `pointer: UnsafeMutableBufferPointer<T>`, `byteLength: Int`, `write<C: Collection<T>>(_:offset:)` + `where T == Float` fast-path memcpy specialisation.
@@ -363,12 +363,12 @@ Consumer fan-out (`UMABuffer`): 7 prod files (Audio/AudioBuffer, Audio/Streaming
 
 Verdict: **production-active**. Threading contract (header comment lines 5-9) is documentation, not Swift-enforced — callers carry the synchronization burden. No drift.
 
-#### [`SpectralHistoryBuffer.swift`](../../PhospheneEngine/Sources/Shared/SpectralHistoryBuffer.swift) (237 LoC)
+#### [`SpectralHistoryBuffer.swift`](../../UzumeEngine/Sources/Shared/SpectralHistoryBuffer.swift) (237 LoC)
 
 Public surface: 1 protocol + 1 class.
 - `SpectralHistoryPublishing` (public protocol, AnyObject, Sendable) — see production-orphan-2 finding above.
 - `SpectralHistoryBuffer` (public final class, conforms to SpectralHistoryPublishing, @unchecked Sendable).
-  - `init(device:)` — allocates 4096 floats × 4 bytes = 16384 B at `.storageModeShared`. **fatalError** on allocation failure (line 135) — diverges from the `UMABuffer.init throws` pattern but is acceptable since the buffer is allocated once at engine init and any device that can render Phosphene can allocate 16 KB.
+  - `init(device:)` — allocates 4096 floats × 4 bytes = 16384 B at `.storageModeShared`. **fatalError** on allocation failure (line 135) — diverges from the `UMABuffer.init throws` pattern but is acceptable since the buffer is allocated once at engine init and any device that can render Uzume can allocate 16 KB.
   - `append(features:stems:)` — single-writer (render thread); no lock.
   - `updateBeatGridData(relativeBeatTimes:relativeDownbeatTimes:bpm:lockState:sessionMode:driftMs:)` — analysis-queue writer; uses `beatGridLock: NSLock`.
   - `readOverlayState() -> (bpm: Float, lockState: Int)` — render-thread reader; uses `beatGridLock`.
@@ -391,7 +391,7 @@ Consumer fan-out: App (`VisualizerEngine+Audio.swift:357, 361` reads static slot
 
 Verdict: **production-active** for the concrete class; **production-orphan** for the SpectralHistoryPublishing protocol. **ARCH §Key Types description for SpectralHistoryBuffer (line 819) is stale** — says `[2402..2419]` for reserved + bpm + lock_state but omits sessionMode (2420) + downbeat_times (2421-2428) + driftMs (2429). Bundled into CA-Audio-FU-9.
 
-#### [`StemSampleBuffer.swift`](../../PhospheneEngine/Sources/Shared/StemSampleBuffer.swift) (208 LoC)
+#### [`StemSampleBuffer.swift`](../../UzumeEngine/Sources/Shared/StemSampleBuffer.swift) (208 LoC)
 
 Public surface: 1 protocol + 1 class.
 - `StemSampleBuffering` (public protocol, AnyObject, Sendable) — see production-orphan-2 finding above.
@@ -408,17 +408,17 @@ Verdict: **production-active** for the concrete class; **production-orphan** for
 
 ### Utility infrastructure (6 files / 487 LoC)
 
-#### [`Logging.swift`](../../PhospheneEngine/Sources/Shared/Logging.swift) (37 LoC)
+#### [`Logging.swift`](../../UzumeEngine/Sources/Shared/Logging.swift) (37 LoC)
 
 Public enum `Logging` with 8 static `Logger` instances at subsystem `io.uzume`: audio, dsp, renderer, orchestrator, ml, metadata, session, bug012.
 
-Consumer fan-out: every PhospheneEngine module (dsp / ml / Audio / Renderer / Orchestrator / Presets / Session) uses one or more of these. `Logging.bug012` is referenced only by `BUG012Probe.swift` (per the BUG-012-i1 instrumentation contract).
+Consumer fan-out: every UzumeEngine module (dsp / ml / Audio / Renderer / Orchestrator / Presets / Session) uses one or more of these. `Logging.bug012` is referenced only by `BUG012Probe.swift` (per the BUG-012-i1 instrumentation contract).
 
-Note: `Logging.session` is the engine-module session logger. **App-layer code MUST NOT use it** per CLAUDE.md §Code Style ("App-layer services use `Logger(subsystem:category:)` directly, not `Logging.session`."). Confirmed by reading App-layer SessionRecorder construction site at `PhospheneApp/VisualizerEngine+Audio.swift` (engine-layer file path; the engine SessionRecorder uses `Logger(subsystem: "io.uzume", category: "SessionRecorder")` directly at line 38, NOT `Logging.session`).
+Note: `Logging.session` is the engine-module session logger. **App-layer code MUST NOT use it** per CLAUDE.md §Code Style ("App-layer services use `Logger(subsystem:category:)` directly, not `Logging.session`."). Confirmed by reading App-layer SessionRecorder construction site at `UzumeApp/VisualizerEngine+Audio.swift` (engine-layer file path; the engine SessionRecorder uses `Logger(subsystem: "io.uzume", category: "SessionRecorder")` directly at line 38, NOT `Logging.session`).
 
 Verdict: **production-active**.
 
-#### [`DeviceTier.swift`](../../PhospheneEngine/Sources/Shared/DeviceTier.swift) (26 LoC)
+#### [`DeviceTier.swift`](../../UzumeEngine/Sources/Shared/DeviceTier.swift) (26 LoC)
 
 Public enum `DeviceTier`: String, Sendable, Hashable, CaseIterable, Codable — `tier1`, `tier2`. Computed `frameBudgetMs: Float` returns 16.6 (both tiers — current decision: same budget; tier2 has architectural slack to fit more complex presets).
 
@@ -426,7 +426,7 @@ Consumer fan-out: 19 prod consumers across Orchestrator (PresetScoringContext, S
 
 Verdict: **production-active**. No drift.
 
-#### [`Smoother.swift`](../../PhospheneEngine/Sources/Shared/Smoother.swift) (52 LoC)
+#### [`Smoother.swift`](../../UzumeEngine/Sources/Shared/Smoother.swift) (52 LoC)
 
 Public surface: 1 struct.
 - `Smoother` (@frozen public struct, Sendable) — `rate30: Float`, `init(rate30:)`, `factor(at fps:) -> Float`, `step(current:target:at:) -> Float`.
@@ -437,7 +437,7 @@ Consumer fan-out: DSP (BandEnergyProcessor 5 sites, BeatDetector 1 site — all 
 
 Verdict: **production-active** for the type + init + `factor(at:)`; **production-orphan** for the `step` convenience accessor.
 
-#### [`RenderPass.swift`](../../PhospheneEngine/Sources/Shared/RenderPass.swift) (85 LoC)
+#### [`RenderPass.swift`](../../UzumeEngine/Sources/Shared/RenderPass.swift) (85 LoC)
 
 Public enum `RenderPass`: String, Codable, Sendable, CaseIterable — 10 cases: `direct`, `feedback`, `particles`, `meshShader`, `postProcess`, `rayMarch`, `icb`, `ssgi`, `mvWarp`, `staged`.
 
@@ -447,7 +447,7 @@ Consumer fan-out: Renderer (RenderPipeline owns `activePasses: [RenderPass]`; th
 
 Verdict: **production-active**. **ARCH §Key Types line 816 is missing `mv_warp` + `staged` from the cases list** — bundled into CA-Audio-FU-9.
 
-#### [`UserFacingError.swift`](../../PhospheneEngine/Sources/Shared/UserFacingError.swift) (183 LoC)
+#### [`UserFacingError.swift`](../../UzumeEngine/Sources/Shared/UserFacingError.swift) (183 LoC)
 
 Public surface: 1 enum + 1 nested enum.
 - `UserFacingError` (public enum, Sendable, Hashable, CaseIterable) — 29 cases organised by UX_SPEC §9 tables (§9.1 Permission × 3, §9.2 Connection × 7, §9.3 Preparation × 7, §9.4 Playback × 12).
@@ -468,7 +468,7 @@ Consumer fan-out: 10 prod consumers across App (FullScreenErrorView, TopBannerVi
 
 Verdict: **production-active**. Header comment correctly anchored to UX_SPEC §9 (line 7).
 
-#### [`UserFacingError+Presentation.swift`](../../PhospheneEngine/Sources/Shared/UserFacingError+Presentation.swift) (191 LoC)
+#### [`UserFacingError+Presentation.swift`](../../UzumeEngine/Sources/Shared/UserFacingError+Presentation.swift) (191 LoC)
 
 Public surface: 3 types + 6 instance accessors.
 - `ErrorPresentationMode` (public enum, Sendable, Equatable) — fullScreen / inlineOnRow / topBanner / bottomRightToast / logOnly.
@@ -477,14 +477,14 @@ Public surface: 3 types + 6 instance accessors.
 - Instance accessors on UserFacingError: `presentationMode`, `severity`, `retryStatus`, `primaryCTAKey`, `secondaryCTAKey`, `isConditionBound`, `conditionID`.
 
 Consumer-side audit:
-- `.presentationMode` — **prod consumers: 0** (only test consumers at `PhospheneEngine/Tests/PhospheneEngineTests/Shared/UserFacingErrorTests.swift:32, 56, 86-104, 111`). Production code does NOT read `error.presentationMode` to decide where to show toasts — instead, the App-layer dispatch logic in `PreparationErrorViewModel` and `FullScreenErrorView` hard-codes the presentation routing. The taxonomy lives only as a test discriminator. **Worth flagging as a partial production-orphan** — the documented intent is that consumers read `presentationMode` to route, but they don't.
+- `.presentationMode` — **prod consumers: 0** (only test consumers at `UzumeEngine/Tests/UzumeEngineTests/Shared/UserFacingErrorTests.swift:32, 56, 86-104, 111`). Production code does NOT read `error.presentationMode` to decide where to show toasts — instead, the App-layer dispatch logic in `PreparationErrorViewModel` and `FullScreenErrorView` hard-codes the presentation routing. The taxonomy lives only as a test discriminator. **Worth flagging as a partial production-orphan** — the documented intent is that consumers read `presentationMode` to route, but they don't.
 
 Wait — re-check. The `.severity` accessor IS consumed (FullScreenErrorView.swift:112, 121 + ToastManager.swift line context). Let me re-verify each accessor:
 
 | Accessor | Prod consumers | Status |
 |---|---|---|
 | `.presentationMode` | 0 (test-only at 9 lines) | **soft production-orphan** — documented as a routing primitive but no production consumer actually routes on it; the test suite acts as the contract gate. |
-| `.severity` | App: FullScreenErrorView.swift:112, 121 (color-mapping). Note PhospheneToast.severity is a different field. | **production-active**. |
+| `.severity` | App: FullScreenErrorView.swift:112, 121 (color-mapping). Note UzumeToast.severity is a different field. | **production-active**. |
 | `.retryStatus` | 0 | **production-orphan** (CA-Shared-FU-1). |
 | `.primaryCTAKey` | App: FullScreenErrorView.swift:86 | **production-active**. |
 | `.secondaryCTAKey` | App: FullScreenErrorView.swift:94 | **production-active**. |
@@ -497,7 +497,7 @@ Verdict: **production-active** with two production-orphan accessors filed as CA-
 
 ### Diagnostic / instrumentation (1 file / 320 LoC)
 
-#### [`BUG012Probe.swift`](../../PhospheneEngine/Sources/Shared/BUG012Probe.swift) (320 LoC)
+#### [`BUG012Probe.swift`](../../UzumeEngine/Sources/Shared/BUG012Probe.swift) (320 LoC)
 
 Public surface: 1 enum namespace + 1 nested struct.
 - `BUG012Probe` (public enum, namespace) — 12 static methods + 1 nested type.
@@ -530,7 +530,7 @@ Verdict: **production-active** (read-only per CA-Shared standing rule). **Missin
 
 ### Dashboard tokens (1 file / 130 LoC, in subdirectory)
 
-#### [`Dashboard/DashboardTokens.swift`](../../PhospheneEngine/Sources/Shared/Dashboard/DashboardTokens.swift) (130 LoC)
+#### [`Dashboard/DashboardTokens.swift`](../../UzumeEngine/Sources/Shared/Dashboard/DashboardTokens.swift) (130 LoC)
 
 Public surface: 1 struct (namespace) with 4 nested types.
 - `DashboardTokens.TypeScale` — 8 static `CGFloat` constants (caption / label / body / bodyLarge / numeric / hero / display + labelTracking).
@@ -543,8 +543,8 @@ Public surface: 1 struct (namespace) with 4 nested types.
 `#if canImport(AppKit)` guard around the AppKit import (line 14-16) — supports a hypothetical iOS / iPadOS surface where `NSColor` would resolve to a UIColor adapter; today macOS-only.
 
 Consumer-side audit:
-- **Renderer side:** `PhospheneEngine/Sources/Renderer/Dashboard/BeatCardBuilder.swift:83, 84` — uses `DashboardTokens.Color.textBody`, `.coral`. Plus DASH.7 builder cluster per CA.7b RENDERER_SUPPORTING.md §Dashboard.
-- **App side:** `PhospheneApp/Views/Dashboard/DashboardOverlayView.swift` (8 callsites: Spacing.md / .lg / .sm + Color.border / .surface), `DashboardRowView.swift` (10 callsites: TypeScale.body / .label + Color.textBody / .border), `DashboardCardView.swift` (3 callsites: Spacing.sm + TypeScale.bodyLarge + Color.textHeading). Plus 1 documentation cross-reference at `EndedView.swift:96` (comment-only).
+- **Renderer side:** `UzumeEngine/Sources/Renderer/Dashboard/BeatCardBuilder.swift:83, 84` — uses `DashboardTokens.Color.textBody`, `.coral`. Plus DASH.7 builder cluster per CA.7b RENDERER_SUPPORTING.md §Dashboard.
+- **App side:** `UzumeApp/Views/Dashboard/DashboardOverlayView.swift` (8 callsites: Spacing.md / .lg / .sm + Color.border / .surface), `DashboardRowView.swift` (10 callsites: TypeScale.body / .label + Color.textBody / .border), `DashboardCardView.swift` (3 callsites: Spacing.sm + TypeScale.bodyLarge + Color.textHeading). Plus 1 documentation cross-reference at `EndedView.swift:96` (comment-only).
 
 Verdict: **production-active**. **DashboardTokens placement is correct in Shared** — see required-section §"Verification of DashboardTokens placement" below. Note: `DashboardTokens.swift:5` comment cites D-080 as the rationale for Shared placement — D-080 is actually the QR.2 stem-affinity scoring decision, not the DashboardTokens placement decision. The correct rationale is D-081 / DASH.1.1 (referenced later in the same file's lore at line 11). Minor inline drift bundled into CA-Audio-FU-9.
 
@@ -675,7 +675,7 @@ Verdict: **production-active**. **DashboardTokens placement is correct in Shared
 
 ## Verification of TrackMetadata + PreFetchedTrackProfile + MetadataSource (CA.3 / CA-Audio carry-forward)
 
-**Verdict: closed.** All three types live in `PhospheneEngine/Sources/Shared/AudioFeatures+Metadata.swift`:
+**Verdict: closed.** All three types live in `UzumeEngine/Sources/Shared/AudioFeatures+Metadata.swift`:
 - `MetadataSource` at line 10.
 - `TrackMetadata` at line 30.
 - `PreFetchedTrackProfile` at line 69.
@@ -758,16 +758,16 @@ Verdict: **production-active**. **DashboardTokens placement is correct in Shared
 `DashboardTokens` is consumed by BOTH the Renderer module AND the App module:
 
 **Renderer-side consumers (via the Dashboard cluster CA.7b audited):**
-- `PhospheneEngine/Sources/Renderer/Dashboard/BeatCardBuilder.swift:83, 84` — uses `.Color.textBody` and `.Color.coral` for lock-state colour mapping.
+- `UzumeEngine/Sources/Renderer/Dashboard/BeatCardBuilder.swift:83, 84` — uses `.Color.textBody` and `.Color.coral` for lock-state colour mapping.
 - (Other Dashboard builder files reference DashboardTokens at additional sites per CA.7b RENDERER_SUPPORTING.md.)
 
 **App-side consumers:**
-- `PhospheneApp/Views/Dashboard/DashboardOverlayView.swift` — 8 callsites across `.Spacing.md / .lg / .sm` and `.Color.border / .surface`.
-- `PhospheneApp/Views/Dashboard/DashboardRowView.swift` — 10 callsites across `.TypeScale.body / .label`, `.Color.textBody / .border`.
-- `PhospheneApp/Views/Dashboard/DashboardCardView.swift` — 3 callsites across `.Spacing.sm`, `.TypeScale.bodyLarge`, `.Color.textHeading`.
-- Plus 1 documentation cross-reference in `PhospheneApp/Views/Ended/EndedView.swift:96` (comment-only).
+- `UzumeApp/Views/Dashboard/DashboardOverlayView.swift` — 8 callsites across `.Spacing.md / .lg / .sm` and `.Color.border / .surface`.
+- `UzumeApp/Views/Dashboard/DashboardRowView.swift` — 10 callsites across `.TypeScale.body / .label`, `.Color.textBody / .border`.
+- `UzumeApp/Views/Dashboard/DashboardCardView.swift` — 3 callsites across `.Spacing.sm`, `.TypeScale.bodyLarge`, `.Color.textHeading`.
+- Plus 1 documentation cross-reference in `UzumeApp/Views/Ended/EndedView.swift:96` (comment-only).
 
-**Moving to Renderer would break App-layer imports.** The App module already depends on `PhospheneEngine` (and through it, Shared); moving DashboardTokens into Renderer would force App views to depend on the Renderer subsystem solely for design tokens — same anti-pattern as App importing Audio just to read a sample-rate constant. Shared placement is the principle-of-least-surprise design.
+**Moving to Renderer would break App-layer imports.** The App module already depends on `UzumeEngine` (and through it, Shared); moving DashboardTokens into Renderer would force App views to depend on the Renderer subsystem solely for design tokens — same anti-pattern as App importing Audio just to read a sample-rate constant. Shared placement is the principle-of-least-surprise design.
 
 **Note:** the file header at `DashboardTokens.swift:5` cites "D-080" as the rationale for the Shared placement — D-080 is actually the QR.2 stem-affinity scoring decision. The actual rationale lives in D-081 / DASH.1.1 (referenced later in the same lore at line 11). Minor inline drift; bundled into CA-Audio-FU-9.
 
@@ -869,7 +869,7 @@ All Open BUGs verified at kickoff cross-check (BUG-016, BUG-015 [Resolved], BUG-
 
 **Phase CA closure status (per kickoff):**
 
-With CA-Shared closed, every Swift surface in `PhospheneEngine/Sources/` and `PhospheneApp/` is audited. Remaining audit work:
+With CA-Shared closed, every Swift surface in `UzumeEngine/Sources/` and `UzumeApp/` is audited. Remaining audit work:
 
 1. **CA-Audio-FU-9 (Module Map Sync)** — cross-cutting registry + doc sync. Now 7-in-a-row systemic. **Recommend Matt prioritise this next** before the cumulative drift compounds further. Scope: full sweep of ARCH §Module Map + §Key Types + §GPU Contract Details + per-source-file inline doc-comment fixes (the AnalyzedFrame.swift:35, SpectralHistoryBuffer.swift:78, DashboardTokens.swift:5 stale lines surfaced in CA-Shared). Estimate 1-2 sessions.
 2. **CA-Preset-Shaders (deferred)** — `.metal` shader files under `Sources/Presets/Shaders/` (17 files / 12,065 LoC). Methodology-distinct from capability-registry verdicts; aligns more naturally with the existing M7 cert review workflow than with the audit format. **Recommend NOT to schedule** as a CA increment unless Matt has a specific shader-fidelity question that warrants the cost; the existing `FidelityRubric` + manual M7 review already covers the "is this shader correct" question at a different layer.

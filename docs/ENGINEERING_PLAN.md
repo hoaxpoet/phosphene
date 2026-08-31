@@ -1,4 +1,4 @@
-# Phosphene — Engineering Plan
+# Uzume — Engineering Plan
 
 > **Narrative split (RB.3, 2026-06-11):** completed-increment narratives dated before 2026-06-01 moved to [`ENGINEERING_PLAN_HISTORY.md`](ENGINEERING_PLAN_HISTORY.md). Their headers remain below as the status record (increment ID → status + date); full narratives are in the history file and `git log`.
 
@@ -51,7 +51,7 @@ The pipeline has energy/beats/stems/centroid/pitch/mood but **nothing about harm
 
 ## Phase QG — Quality-gate mechanization ✅ (2026-07-09→10, extended 2026-08-03; D-180 / D-181 / D-182 / D-192 / D-193)
 
-Converts three prose closeout obligations into standing gates so the "green-while-broken" class can't reopen (the `vocalsPitchConfidence`-at-0%-for-5-months / Aurora-Veil-smear lineage). **QG.1** (D-180) — per-preset `audio_routes` sidecar manifest + `RouteCoverageTests` replaying real-audio fixtures; a red route is the gate working, never tune the floor (QG.1.2/.1.3 backfilled + armed Ricercar's routes). **QG.2** (D-181) — the mandatory pre-commit render-comparison sheet (`Scripts/compare_render.sh`) + verdict table, mechanizing REVIEW.1's 35 %-compliance prose rule. **QG.4** (D-182) — a named, env-gated multi-frame harness template per rendering paradigm (mv_warp / staged / ray_march / feedback) on a shared `HarnessTemplateCore` spine, so "write the harness FIRST" is a copy-adapt not a from-scratch build. **QG.3** (D-192 / D-193) — the preset↔audio coupling report, run at closeout under `PHOSPHENE_COUPLING=1`; a warning tier, deliberately **not** a cert gate. **QG.5** (`251f1332`, 2026-08-03) — `AudioRoute.Response` + `AudioResponseMetrics` + `ResponseBandTests`, extending route coverage from "does this route fire at all" to "does it move within its intended band". Increment detail in §Recently Completed. *(QG.3 and QG.5 were missing from this header until RECON.2, 2026-08-03 — QG.5 appeared only incidentally inside the FTR.2 body.)*
+Converts three prose closeout obligations into standing gates so the "green-while-broken" class can't reopen (the `vocalsPitchConfidence`-at-0%-for-5-months / Aurora-Veil-smear lineage). **QG.1** (D-180) — per-preset `audio_routes` sidecar manifest + `RouteCoverageTests` replaying real-audio fixtures; a red route is the gate working, never tune the floor (QG.1.2/.1.3 backfilled + armed Ricercar's routes). **QG.2** (D-181) — the mandatory pre-commit render-comparison sheet (`Scripts/compare_render.sh`) + verdict table, mechanizing REVIEW.1's 35 %-compliance prose rule. **QG.4** (D-182) — a named, env-gated multi-frame harness template per rendering paradigm (mv_warp / staged / ray_march / feedback) on a shared `HarnessTemplateCore` spine, so "write the harness FIRST" is a copy-adapt not a from-scratch build. **QG.3** (D-192 / D-193) — the preset↔audio coupling report, run at closeout under `UZUME_COUPLING=1`; a warning tier, deliberately **not** a cert gate. **QG.5** (`251f1332`, 2026-08-03) — `AudioRoute.Response` + `AudioResponseMetrics` + `ResponseBandTests`, extending route coverage from "does this route fire at all" to "does it move within its intended band". Increment detail in §Recently Completed. *(QG.3 and QG.5 were missing from this header until RECON.2, 2026-08-03 — QG.5 appeared only incidentally inside the FTR.2 body.)*
 
 ## Phase ASH — Audio signal health ✅ (2026-07-10; D-183 / D-184)
 
@@ -61,9 +61,9 @@ Turns the RUNBOOK's manual signal-chain triage catalog into running code — con
 
 Prepares the repo for opening to external preset contributors (Matt's go, 2026-07-11, off the full-codebase ultra review). **PUB.1** ✅ — the Phase-0 publish blockers: MIT `LICENSE`; root `README.md` + preset-focused `CONTRIBUTING.md`; D-111 Milkdrop attribution fulfilled (`inspired_by` blocks on all five Milkdrop-inspired sidecars + populated `CREDITS.md` table + `source.milk` removed per the no-redistribution scope condition); privacy sweep (memory/ snapshot, compiled audio_tap blob, personal-email redaction, portable hook root, `*.gif` LFS rule) — **corpus manifests deliberately retained per Matt**; `Scripts/fetch_weights.sh` + `Weights/SHA256SUMS` (Release-asset delivery, cutover staged); DOC.6 rotation run (fresh-clone doc gate green); `docs/PUBLISHING.md` maintainer cutover runbook (weights release, optional history rewrite, repo settings, the D-113 notification-protocol trigger needing Matt's pick). Remaining phases of the review remediation (code defects → contributor experience → doc reconciliation → refactoring) are queued as PUB.2+ / per the review artifact. Increment detail in §Recently Completed.
 
-## Phase RN — Rename (Phosphene → Uzume) 🔨 (2026-08-30; name decided 2026-08-09 after a five-round naming sprint)
+## Phase RN — Rename (Uzume → Uzume) 🔨 (2026-08-30; name decided 2026-08-09 after a five-round naming sprint)
 
-The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami whose planned, drummed performance lured the sun out of the cave. **RN.0** ✅ (2026-08-30) — preparation only: the naming sprint's evidence (`docs/planning/NAMING_REPORT.md`, `MYTH_RESEARCH.md`, `WEBSITE_PLAN.md`) and the two session prompts that commission the rename (`prompts/RN.1-prompt.md`, `prompts/BRAND.1-prompt.md`) move from an untracked working directory into the repo, so the decision's provenance survives independently of one machine's filesystem. No code, no identifiers, no user-visible strings touched. **RN.1** ✅ (2026-08-31, D-225) — external identity: bundle ID `io.uzume.mac`, product `Uzume.app` (module pinned to `PhospheneApp` for RN.2), `uzume://`, Keychain `io.uzume.spotify`, loggers `io.uzume.*`, Application Support `Uzume/`, repo `hoaxpoet/uzume`, and the first app icon the project has ever shipped. `IdentityMigrator` carries settings + the stem cache; TCC grants and the Spotify token deliberately do not migrate (the Keychain attempt froze app launch on a modal SecurityAgent prompt — see D-225). **RN.2** queued pending Matt's pick — whether the internal tree (`PhospheneApp`/`PhospheneEngine` targets, directories, scheme) renames too.
+The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami whose planned, drummed performance lured the sun out of the cave. **RN.0** ✅ (2026-08-30) — preparation only: the naming sprint's evidence (`docs/planning/NAMING_REPORT.md`, `MYTH_RESEARCH.md`, `WEBSITE_PLAN.md`) and the two session prompts that commission the rename (`prompts/RN.1-prompt.md`, `prompts/BRAND.1-prompt.md`) move from an untracked working directory into the repo, so the decision's provenance survives independently of one machine's filesystem. No code, no identifiers, no user-visible strings touched. **RN.1** ✅ (2026-08-31, D-225) — external identity: bundle ID `io.uzume.mac`, product `Uzume.app` (module pinned to `UzumeApp` for RN.2), `uzume://`, Keychain `io.uzume.spotify`, loggers `io.uzume.*`, Application Support `Uzume/`, repo `hoaxpoet/uzume`, and the first app icon the project has ever shipped. `IdentityMigrator` carries settings + the stem cache; TCC grants and the Spotify token deliberately do not migrate (the Keychain attempt froze app launch on a modal SecurityAgent prompt — see D-225). **RN.2** queued pending Matt's pick — whether the internal tree (`UzumeApp`/`UzumeEngine` targets, directories, scheme) renames too.
 
 ## Recently Completed
 
@@ -84,8 +84,8 @@ The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami who
 ### Increment FT.4.1 — the estimator alone wins; the tiler was the whole regression ✅ (2026-08-27)
 
 Matt's call after FT.4: isolate the two halves. The flag splits into
-`PHOSPHENE_FULLTRACK_DECODE` (tiler) and `PHOSPHENE_BARLINE` (estimator);
-`PHOSPHENE_FULLTRACK_BARS` still sets both so FT.4's arm stays reproducible. Report appended to
+`UZUME_FULLTRACK_DECODE` (tiler) and `UZUME_BARLINE` (estimator);
+`UZUME_FULLTRACK_BARS` still sets both so FT.4's arm stays reproducible. Report appended to
 [`FT4_FULLTRACK_BARS_AB_2026-08-27.md`](diagnostics/FT4_FULLTRACK_BARS_AB_2026-08-27.md).
 
 **Every beat-layer figure is identical to OFF on all nine tracks** — F, Cemgil, CMLt, AMLt. The
@@ -111,13 +111,13 @@ pushes consume phase, so the trade is the right way round — a trade, not a fre
 so BUG-107 must not be "fixed" by switching the full-track decode on. Any future attempt owns
 the 115.00 → 123.62 number first.
 
-**Still not shipped.** `PHOSPHENE_BARLINE` defaults OFF. Production adoption is the next
+**Still not shipped.** `UZUME_BARLINE` defaults OFF. Production adoption is the next
 increment and needs Matt: it changes what certified presets receive for bar position.
 
 ### Increment FT.4 — full-track decode + BarLineEstimator, A/B'd and NOT adopted ⏸ (2026-08-27)
 
 Matt approved wiring FT.3's `BarLineEstimator` with decline (2026-08-27), on the strength of its
-"answers 2 of 9, gets both right, declines 7". Wired behind `PHOSPHENE_FULLTRACK_BARS`
+"answers 2 of 9, gets both right, declines 7". Wired behind `UZUME_FULLTRACK_BARS`
 (default OFF, nothing ships) and A/B'd through the real analyzer. **It does not reproduce that
 result. Do not adopt as built.** Report:
 [`FT4_FULLTRACK_BARS_AB_2026-08-27.md`](diagnostics/FT4_FULLTRACK_BARS_AB_2026-08-27.md).
@@ -172,7 +172,7 @@ beats past ~26 s. `offline-grid` then clips the 90 s truth to the grid's ~26 s s
 reported F/CMLt describe 26 seconds of a 380-second track.
 
 **⚠ It also scopes BUG102.1's headline.** bleed's F 0.99 / CMLt 1.00 is real **over its first
-~30 s**, not the full track. "Phosphene's grid was right, suite 4 was never a tracking problem"
+~30 s**, not the full track. "Uzume's grid was right, suite 4 was never a tracking problem"
 holds for the opening and should be quoted with that scope.
 
 **The product consequence is on local files.** LFSTEM.1 has just moved local-file *stems* to a
@@ -207,7 +207,7 @@ hand-edited away.
 
 **⚠ The headline is what the bad reference was hiding.** money moves the OPPOSITE way to bleed:
 AMLt **0.88 → 0.43**, F 0.58 → 0.44, CMLt 0.00 → 0.43. Nothing in the engine changed — the metric
-stopped being fooled. Phosphene's grid reads **116.19 where the truth is 121.06, a 4% tempo
+stopped being fooled. Uzume's grid reads **116.19 where the truth is 121.06, a 4% tempo
 error**. Against the old half-rate reference that looked like a clean ×1.91 octave, which AMLt
 forgives by design; against the true level it is not an octave and is not forgiven. Suite 2's
 picture is worse and more honest — money's AMLt was never 0.88 in any meaningful sense, and the
@@ -252,7 +252,7 @@ gap — now measurable rather than masked.
 for 54 s (157–211 s), fitting 120.63 BPM; it was caught and rejected *before* reconcile rather
 than after, and the accepted pass is 90 s — matching every other track in the set (87–99 s). All
 rejected passes are preserved under `Tests/Fixtures/beatbench/taps/pre-BUG102/`. Separately,
-`reconcile.py`'s `PHOSPHENE_GRID` context dict was a stale 2026-07-27 preview-clip snapshot
+`reconcile.py`'s `UZUME_GRID` context dict was a stale 2026-07-27 preview-clip snapshot
 recording bleed at 174.6 and money at 123.2 against live readings of 115.00 and 116.19 — a third
 apparent metrical level, embedded in the very artifacts under dispute. Re-measured for the nine
 ground-truthed tracks; the rest are marked stale in place.
@@ -1188,10 +1188,10 @@ Phase U / Phase 4 / Phase 5 / Phase 6 / Phase 7 / Phase MV all complete; see his
 
 **Why this phase exists:** six iterations on Volumetric Lithograph produced incremental fixes but never converged on "feels like a band member playing along with the music." [`docs/MILKDROP_ARCHITECTURE.md`](MILKDROP_ARCHITECTURE.md) documents the research that identified the root cause:
 
-1. Milkdrop's audio vocabulary is **identical in scope to what Phosphene already computes** — no chord recognition, no pitch tracking, no stems. Our analysis pipeline is richer than theirs.
-2. Milkdrop's `bass`/`bass_att` are **AGC-normalized ratios centered at 1.0**. Phosphene's are centered at 0.5 via the same AGC mechanism. But our presets have been authored with absolute thresholds — the wrong primitive for an AGC signal. Absolute thresholds inherently fail across tracks because the AGC divisor moves with mix density.
+1. Milkdrop's audio vocabulary is **identical in scope to what Uzume already computes** — no chord recognition, no pitch tracking, no stems. Our analysis pipeline is richer than theirs.
+2. Milkdrop's `bass`/`bass_att` are **AGC-normalized ratios centered at 1.0**. Uzume's are centered at 0.5 via the same AGC mechanism. But our presets have been authored with absolute thresholds — the wrong primitive for an AGC signal. Absolute thresholds inherently fail across tracks because the AGC divisor moves with mix density.
 3. Milkdrop's "musical feel" comes from its **per-vertex feedback warp architecture**, not its audio analysis. Every preset warps the previous frame via a 32×24 grid, and motion *accumulates* over many frames. Simple audio inputs compound into rich organic motion.
-4. **9 of 11 Phosphene presets did not use any feedback loop** prior to MV-2 — they rendered from scratch each frame. Ray-march presets in particular showed only instantaneous audio state. This is why they felt "disconnected" from music regardless of how cleverly tuned.
+4. **9 of 11 Uzume presets did not use any feedback loop** prior to MV-2 — they rendered from scratch each frame. Ray-march presets in particular showed only instantaneous audio state. This is why they felt "disconnected" from music regardless of how cleverly tuned.
 
 MV-0 ✅, MV-1 ✅, MV-2 ✅, MV-3 ✅ complete.
 
@@ -1240,7 +1240,7 @@ Pulled forward from Phase 5.1 because Increment 4.1 (PresetScorer) cannot be bui
 - `PresetDescriptorMetadataTests`: round-trip, defaults, malformed, complexity variants (scalar + nested), on-disk back-fill regression (6 test functions).
 - D-029 in `docs/DECISIONS.md`. CLAUDE.md preset metadata table extended.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PresetDescriptorMetadataTests`
+**Verify:** `swift test --package-path UzumeEngine --filter PresetDescriptorMetadataTests`
 
 ---
 
@@ -1286,14 +1286,14 @@ Pulled forward from Phase 5.1 because Increment 4.1 (PresetScorer) cannot be bui
 - All existing tests must pass before and after each file change.
 
 **Done when:**
-- `swiftlint lint --strict --config .swiftlint.yml PhospheneEngine/Sources/ PhospheneEngine/Tests/ PhospheneApp/` reports **0 violations**.
-- `swift test --package-path PhospheneEngine` passes (all tests green).
-- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` succeeds with 0 errors.
+- `swiftlint lint --strict --config .swiftlint.yml UzumeEngine/Sources/ UzumeEngine/Tests/ UzumeApp/` reports **0 violations**.
+- `swift test --package-path UzumeEngine` passes (all tests green).
+- `xcodebuild -scheme UzumeApp -destination 'platform=macOS' build` succeeds with 0 errors.
 
 **Verify:**
 ```bash
-swiftlint lint --strict --config .swiftlint.yml PhospheneEngine/Sources/ PhospheneEngine/Tests/ PhospheneApp/
-swift test --package-path PhospheneEngine
+swiftlint lint --strict --config .swiftlint.yml UzumeEngine/Sources/ UzumeEngine/Tests/ UzumeApp/
+swift test --package-path UzumeEngine
 ```
 
 ---
@@ -1306,7 +1306,7 @@ swift test --package-path PhospheneEngine
 
 **New files:** `Orchestrator/PresetScorer.swift`, `Orchestrator/PresetScoringContext.swift`, `Shared/DeviceTier.swift`. Extended: `PresetDescriptor` (added `stemAffinity: [String: String]`), `ComplexityCost` (added `cost(for:)` helper), `Package.swift` (added `Session` dep to `Orchestrator` target, `Orchestrator` dep to test target).
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PresetScorerTests`
+**Verify:** `swift test --package-path UzumeEngine --filter PresetScorerTests`
 
 ---
 
@@ -1318,7 +1318,7 @@ swift test --package-path PhospheneEngine
 
 **New files:** `Orchestrator/TransitionPolicy.swift`, `Tests/Orchestrator/TransitionPolicyTests.swift`.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Verify:** `swift test --package-path UzumeEngine`
 
 ---
 
@@ -1328,13 +1328,13 @@ swift test --package-path PhospheneEngine
 
 **Landed 2026-04-20.** 13 unit tests covering empty-playlist/empty-catalog errors, single-track plan, 5-track family diversity, tier exclusion, mood arc, fatigue, full-exclusion fallback, determinism, `track(at:)` / `transition(at:)` lookups, precompile dedup, and precompile failure handling. D-034 in DECISIONS.md. 387 tests total; 4 pre-existing Apple Music env failures unchanged.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter SessionPlannerTests`
+**Verify:** `swift test --package-path UzumeEngine --filter SessionPlannerTests`
 
 ---
 
 ### Increment 4.4 — Golden Session Test Fixtures ✅
 
-**Landed:** 2026-04-20. *(Current state: regenerated multiple times since landing — QR.2 stem-affinity rescaling, V.7.6.2 multi-segment, BUG-004 closure 2026-05-12 expanding catalog 11 → 15 presets and adding Session D for Lumen Mosaic eligibility coverage. The current test file in `PhospheneEngine/Tests/.../Orchestrator/GoldenSessionTests.swift` is authoritative; the original-landing description below is preserved as a historical record.)*
+**Landed:** 2026-04-20. *(Current state: regenerated multiple times since landing — QR.2 stem-affinity rescaling, V.7.6.2 multi-segment, BUG-004 closure 2026-05-12 expanding catalog 11 → 15 presets and adding Session D for Lumen Mosaic eligibility coverage. The current test file in `UzumeEngine/Tests/.../Orchestrator/GoldenSessionTests.swift` is authoritative; the original-landing description below is preserved as a historical record.)*
 
 `GoldenSessionTests.swift` — 12 regression tests across three curated playlists that lock in the expected Orchestrator output for any given set of track profiles and the full 11-preset production catalog. Any future change to `DefaultPresetScorer`, `DefaultTransitionPolicy`, `DefaultSessionPlanner`, or a preset JSON sidecar that breaks a golden test is a regression; the test file must be updated with a scoring trace comment that proves the new expected values are correct.
 
@@ -1351,7 +1351,7 @@ swift test --package-path PhospheneEngine
 
 399 tests total; 4 pre-existing Apple Music env failures unchanged.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter GoldenSessionTests`
+**Verify:** `swift test --package-path UzumeEngine --filter GoldenSessionTests`
 
 ---
 
@@ -1378,7 +1378,7 @@ swift test --package-path PhospheneEngine
 
 407 tests total; 4 pre-existing Apple Music env failures unchanged.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter LiveAdapterTests`
+**Verify:** `swift test --package-path UzumeEngine --filter LiveAdapterTests`
 
 ---
 
@@ -1397,7 +1397,7 @@ swift test --package-path PhospheneEngine
 
 **Tests:** 407 → 415 (8 new). Same 4 pre-existing Apple Music environment failures.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter ReactiveOrchestratorTests`
+**Verify:** `swift test --package-path UzumeEngine --filter ReactiveOrchestratorTests`
 
 ---
 
@@ -1407,7 +1407,7 @@ swift test --package-path PhospheneEngine
 
 **Note:** This increment was pulled forward and completed as **Increment 4.0** because PresetScorer (Increment 4.1) requires this schema before it can be drafted. See Increment 4.0 above for the full done-when criteria and verification commands. All 5.1 scope items are complete.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Verify:** `swift test --package-path UzumeEngine`
 
 ---
 
@@ -1429,7 +1429,7 @@ swift test --package-path PhospheneEngine
 
 **Tests:** 415 → 419 (4 new @Test functions; Swift Testing counts @Test declarations, not parametrized cases). Same 4 pre-existing Apple Music environment failures.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PresetAcceptanceTests`
+**Verify:** `swift test --package-path UzumeEngine --filter PresetAcceptanceTests`
 
 ---
 
@@ -1442,7 +1442,7 @@ swift test --package-path PhospheneEngine
 - 64-bit dHash computed via 9×8 luma grid + horizontal-difference encoding (`computeLumaGrid` + `dHash`).
 - `goldenPresetHashes` dictionary: 11 preset entries × 3 fixtures = 33 comparisons. Fractal Tree excluded (meshShader).
 - Hamming distance ≤ 8 tolerance (87.5% match). Missing entries skip silently (safe for new presets).
-- `UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter test_printGoldenHashes` regenerates all values.
+- `UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path UzumeEngine --filter test_printGoldenHashes` regenerates all values.
 - Same buffer/skip infrastructure as Increment 5.2 (SceneUniforms for ray march, zeroed FFT/stems/history).
 - `_acceptanceFixture` and `PresetFixtureContext` promoted from `private` to `internal` in `PresetAcceptanceTests.swift` so `PresetRegressionTests.swift` can reference them directly.
 
@@ -1452,9 +1452,9 @@ swift test --package-path PhospheneEngine
 
 **Verify:**
 ```bash
-swift test --package-path PhospheneEngine --filter PresetRegressionTests
+swift test --package-path UzumeEngine --filter PresetRegressionTests
 # To regenerate goldens:
-UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter test_printGoldenHashes
+UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path UzumeEngine --filter test_printGoldenHashes
 ```
 
 ---
@@ -1465,17 +1465,17 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 
 ### Increment U.1 — Session-state views ✅
 
-**Scope:** `ContentView` becomes a pure switch on `SessionManager.state`. Six stub top-level views (`IdleView`, `ConnectingView`, `PreparationProgressView`, `ReadyView`, `PlaybackView`, `EndedView`) under `PhospheneApp/Views/`, each rendering a distinct testable hierarchy. `SessionStateViewModel` (`@MainActor ObservableObject`) observes `SessionManager` and publishes current state. New `CLAUDE.md §UX Contract` section. New `ARCHITECTURE.md §UI Layer` subsection.
+**Scope:** `ContentView` becomes a pure switch on `SessionManager.state`. Six stub top-level views (`IdleView`, `ConnectingView`, `PreparationProgressView`, `ReadyView`, `PlaybackView`, `EndedView`) under `UzumeApp/Views/`, each rendering a distinct testable hierarchy. `SessionStateViewModel` (`@MainActor ObservableObject`) observes `SessionManager` and publishes current state. New `CLAUDE.md §UX Contract` section. New `ARCHITECTURE.md §UI Layer` subsection.
 
 **Done when:**
 - ✅ Six views exist; each renders without errors for its corresponding state.
 - ✅ `ContentView` contains no state logic beyond routing.
-- ✅ Tests for each view — 9 tests across 3 suites in `PhospheneAppTests/SessionStateViewTests.swift`.
+- ✅ Tests for each view — 9 tests across 3 suites in `UzumeAppTests/SessionStateViewTests.swift`.
 - ✅ Reduced-motion system flag detection stub in place (used by later increments).
 
 **Implementation note:** Accessibility ID testing via SwiftUI's accessibility tree traversal is unreliable in unit tests — macOS only materialises the SwiftUI accessibility tree for active clients (VoiceOver, XCUITest). Each view exposes `static let accessibilityID: String`; `.accessibilityIdentifier(Self.accessibilityID)` binds it in the view body. Tests check the static constants; the binding is enforced by construction. See D-044.
 
-**Verify:** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test` — 9 new tests pass.
+**Verify:** `xcodebuild -scheme UzumeApp -destination 'platform=macOS' test` — 9 new tests pass.
 
 ---
 
@@ -1490,14 +1490,14 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 - `SystemScreenCapturePermissionProvider` (production) — `CGPreflightScreenCaptureAccess`.
   Never calls `CGRequestScreenCaptureAccess` (system dialog doesn't compose with URL-scheme flow).
 - `PhotosensitivityAcknowledgementStore` — injectable `UserDefaults` suite; key
-  `phosphene.onboarding.photosensitivityAcknowledged`.
+  `uzume.onboarding.photosensitivityAcknowledged`.
 - `PermissionOnboardingView` per UX_SPEC §3.2; opens
   `x-apple.systempreferences:…?Privacy_ScreenCapture` via `NSWorkspace.shared.open`.
   No Retry button — return-detection is automatic via `PermissionMonitor`.
 - `PhotosensitivityNoticeView` per UX_SPEC §3.3; surfaced as a `.sheet` on
   first `IdleView` appearance.
 - `ContentView` refactored to two-level switch: permission gate above state switch.
-  `PermissionMonitor` injected as `@EnvironmentObject` from `PhospheneApp`.
+  `PermissionMonitor` injected as `@EnvironmentObject` from `UzumeApp`.
 - `IdleView` updated with `.onAppear` + `.sheet(isPresented:)` for the notice.
 
 **Key decisions:**
@@ -1521,8 +1521,8 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 **Tests:** 535 → 549 (+14 new: 5 PermissionMonitor, 4 PhotosensitivityStore, 5 PermissionOnboarding). Pre-existing failures unchanged.
 
 **Verify:**
-- `swift test --package-path PhospheneEngine`
-- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`
+- `swift test --package-path UzumeEngine`
+- `xcodebuild -scheme UzumeApp -destination 'platform=macOS' test`
 - `swiftlint lint --strict --config .swiftlint.yml`
 
 ---
@@ -1562,7 +1562,7 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 - `LocalFolderConnector` stub: `#if ENABLE_LOCAL_FOLDER_CONNECTOR` compile flag; always
   throws `.networkFailure("not yet implemented")`.
 - `IdleView` updated: "Connect a playlist" → `.sheet`, "Start listening now" → ad-hoc
-  session. `PhospheneApp.swift` auto-start `startAdHocSession()` removed from `.onAppear`.
+  session. `UzumeApp.swift` auto-start `startAdHocSession()` removed from `.onAppear`.
 
 **Key decisions (D-046):**
 - `nonisolated(unsafe)` for NSWorkspace observer storage in `@MainActor` classes.
@@ -1571,12 +1571,12 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 - `.spotifyAuthRequired` silently degrades — no user-visible error since the session still
   starts (live-only reactive mode is valid and useful without OAuth).
 
-**Tests:** 21 new PhospheneApp tests (ConnectorPickerViewModelTests×9, SpotifyURLParserTests×12,
+**Tests:** 21 new UzumeApp tests (ConnectorPickerViewModelTests×9, SpotifyURLParserTests×12,
 AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTests×5 + identifier).
-56 PhospheneApp tests total. 0 SwiftLint violations.
+56 UzumeApp tests total. 0 SwiftLint violations.
 
 **Verify:**
-- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`
+- `xcodebuild -scheme UzumeApp -destination 'platform=macOS' test`
 - `swiftlint lint --strict --config .swiftlint.yml`
 
 ---
@@ -1592,7 +1592,7 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 - Cancel tears down in-flight work and returns to `.idle` without leaving orphan stem analyses.
 - 6+ unit tests, including a flaky-network fixture via `MockPreparationProgressPublisher`.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PreparationProgressTests`
+**Verify:** `swift test --package-path UzumeEngine --filter PreparationProgressTests`
 
 ---
 
@@ -1620,7 +1620,7 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 - `PresetPreviewController.startPreview(preset:stems:)` drives the RenderPipeline, not a stub.
 - 6+ unit tests for preview controller lifecycle + integration test for row-tap → visual change.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PresetPreviewTests`
+**Verify:** `swift test --package-path UzumeEngine --filter PresetPreviewTests`
 
 ---
 
@@ -1635,7 +1635,7 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 - "Modify" footer button opens the same picker for the last-tapped row.
 - 4+ unit tests for picker filtering + view model lock state after swap.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PlanModifyTests`
+**Verify:** `swift test --package-path UzumeEngine --filter PlanModifyTests`
 
 ---
 
@@ -1651,7 +1651,7 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 - Display hot-plug reparents window without crash or session loss.
 - 8+ unit tests for ViewModel state transitions + snapshot tests for each overlay configuration.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PlaybackChromeTests`
+**Verify:** `swift test --package-path UzumeEngine --filter PlaybackChromeTests`
 
 ---
 
@@ -1684,7 +1684,7 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 **Delivered (3 commits):**
 - **Part A:** `UserFacingError` (29 cases, `Shared` module), `Localizable.strings` (English), `LocalizedCopy` service, retroactive string extraction from U.1–U.6 views. Tests: `UserFacingErrorTests`, `LocalizedCopyTests`.
 - **Part B:** `FullScreenErrorView`, `PreparationFailureView`, `TopBannerView` (44pt amber banner), `PreparationErrorViewModel` (6 priority rules), `ReachabilityMonitor` (NWPathMonitor + 1s debounce), `StubReachabilityMonitor`. Wired into `PreparationProgressView`. Tests: `PreparationErrorViewModelTests` (7), `ReachabilityMonitorTests` (3).
-- **Part C:** `PhospheneToast.conditionID`, `ToastManager.dismissByCondition/_isConditionAsserted`, `PlaybackErrorConditionTracker`, `PlaybackErrorBridge` (replaces `SilenceToastBridge`; fires at 15s per §9.4; condition-ID auto-dismiss on recovery). Wired into `PlaybackView`. Tests: `ToastManagerConditionTests` (3), `PlaybackErrorConditionTrackerTests` (4), `PlaybackErrorBridgeTests` (8). D-051.
+- **Part C:** `UzumeToast.conditionID`, `ToastManager.dismissByCondition/_isConditionAsserted`, `PlaybackErrorConditionTracker`, `PlaybackErrorBridge` (replaces `SilenceToastBridge`; fires at 15s per §9.4; condition-ID auto-dismiss on recovery). Wired into `PlaybackView`. Tests: `ToastManagerConditionTests` (3), `PlaybackErrorConditionTrackerTests` (4), `PlaybackErrorBridgeTests` (8). D-051.
 
 **Done when:**
 - ✅ `UserFacingError` has a case for every row in UX_SPEC §8.1–§8.4 tables.
@@ -1694,7 +1694,7 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 - ✅ Never shows full-screen error during `.playing`.
 - ✅ Every error case has either CTA or auto-retry status indicator.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter UserFacingErrorCopyTests`
+**Verify:** `swift test --package-path UzumeEngine --filter UserFacingErrorCopyTests`
 
 ---
 
@@ -1704,9 +1704,9 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 
 **Landed (2026-04-24):** Three-part delivery across two commits (`5ec23e71`, `b67ec770`).
 
-Part A+B: `SettingsTypes` (5 enums/structs), `QualityCeiling` (Orchestrator module), `SettingsStore` (`phosphene.settings.*` key scheme, 11 properties, `captureModeChanged` subject), `SettingsMigrator`, `SettingsViewModel` + `AboutSectionData`, `SettingsView` (`NavigationSplitView`, 720×520pt), `AudioSettingsSection` + `VisualsSettingsSection` + `DiagnosticsSettingsSection` + `AboutSettingsSection`, `SourceAppPicker` + `PresetCategoryBlocklistPicker`, `CaptureModeReconciler` (LIVE-SWITCH, D-052), `SessionRecorderRetentionPolicy` (injected `now`/`wallClock`, active-session guard), `OnboardingReset`, `PresetScoringContextProvider` (effectiveTier + Part C TODOs).
+Part A+B: `SettingsTypes` (5 enums/structs), `QualityCeiling` (Orchestrator module), `SettingsStore` (`uzume.settings.*` key scheme, 11 properties, `captureModeChanged` subject), `SettingsMigrator`, `SettingsViewModel` + `AboutSectionData`, `SettingsView` (`NavigationSplitView`, 720×520pt), `AudioSettingsSection` + `VisualsSettingsSection` + `DiagnosticsSettingsSection` + `AboutSettingsSection`, `SourceAppPicker` + `PresetCategoryBlocklistPicker`, `CaptureModeReconciler` (LIVE-SWITCH, D-052), `SessionRecorderRetentionPolicy` (injected `now`/`wallClock`, active-session guard), `OnboardingReset`, `PresetScoringContextProvider` (effectiveTier + Part C TODOs).
 
-Part C: `PresetScoringContext` + `excludedFamilies`/`qualityCeiling` (backward-compat defaults, D-053), `DefaultPresetScorer` blocklist+quality-ceiling gates, `PresetScoringContextProvider.build()` wired, `SessionRecorder.init(enabled:)`, `LiveAdaptationToastBridge` key migrated, `PhospheneApp.swift` launch-time migration+pruning, settings gear sheet in `PlaybackView`. 50 `Localizable.strings` keys. 39 app tests + 9 engine tests. 573 engine total; 0 SwiftLint violations.
+Part C: `PresetScoringContext` + `excludedFamilies`/`qualityCeiling` (backward-compat defaults, D-053), `DefaultPresetScorer` blocklist+quality-ceiling gates, `PresetScoringContextProvider.build()` wired, `SessionRecorder.init(enabled:)`, `LiveAdaptationToastBridge` key migrated, `UzumeApp.swift` launch-time migration+pruning, settings gear sheet in `PlaybackView`. 50 `Localizable.strings` keys. 39 app tests + 9 engine tests. 573 engine total; 0 SwiftLint violations.
 
 ---
 
@@ -1723,7 +1723,7 @@ Part C: `PresetScoringContext` + `excludedFamilies`/`qualityCeiling` (backward-c
 - Contrast test fails a synthetic white-on-white preset fixture; passes against all production presets.
 - 8+ unit tests + contrast fixture tests.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter AccessibilityTests`
+**Verify:** `swift test --package-path UzumeEngine --filter AccessibilityTests`
 
 **Delivered (2026-04-24):** `AccessibilityState` (`@MainActor` ObservableObject, `NSWorkspace` + `ReducedMotionPreference` three-way logic). `RenderPipeline.frameReduceMotion` gates mv_warp via `drawMVWarpReducedMotion`. `RayMarchPipeline.reducedMotion` gates SSGI. Beat-clamp applied to `beatBass/Mid/Treble/Composite` in `draw(in:)` before `renderFrame`. Dynamic Type: all 16 user-facing view files updated (`.system(size:)` → semantic styles). VoiceOver: MetalView hidden, 8 interactive elements labelled, `AccessibilityLabels` service, 14 new `Localizable.strings` keys, `AccessibilityNotification.Announcement` on new toasts. Part C: `QualityGradeIndicator` (shape + letter code for color-blindness), `DebugOverlayView` SIGNAL block updated, `PresetContrastCertificationTests` (WCAG 4.5:1 gate). 14 new tests (5 `AccessibilityStateTests` + 3 `BeatAmplitudeClampTests` + 5 `MVWarpReducedMotionGateTests` + 9 `AccessibilityLabelsTests` + 1 `DynamicTypeRegressionTests` + N×3 `PresetContrastCertificationTests`). D-054.
 
@@ -1739,7 +1739,7 @@ V.1–V.6 build the authoring vocabulary. V.7–V.12 apply it to the existing pr
 
 ### Increment V.1 — Shader utility library: Noise + PBR
 
-**Scope:** New directory tree `PhospheneEngine/Sources/Renderer/Shaders/Utilities/` with subtrees `Noise/` and `PBR/`. ~90 new functions total. Per `SHADER_CRAFT.md §11.2`:
+**Scope:** New directory tree `UzumeEngine/Sources/Renderer/Shaders/Utilities/` with subtrees `Noise/` and `PBR/`. ~90 new functions total. Per `SHADER_CRAFT.md §11.2`:
 - `Noise/`: Perlin, Worley, Simplex, FBM (fbm4/fbm8/fbm12, vector fbm), RidgedMultifractal, DomainWarp, Curl, BlueNoise, Hash.
 - `PBR/`: BRDF (GGX, Lambert, Oren-Nayar, Ashikhmin-Shirley), Fresnel, NormalMapping, POM, Triplanar, DetailNormals, SSS, Fiber (Marschner-lite), Thin (thin-film interference).
 
@@ -1752,7 +1752,7 @@ SwiftLint `file_length` special-cased for `.metal` files (raise to 1000 or path-
 - Existing presets compile and render unchanged (additive change, no breaking modifications).
 - `fbm8`, `warped_fbm`, `ridged_mf`, `triplanar_sample`, `triplanar_normal`, `parallax_occlusion`, `mat_silk_thread` available for preset authoring.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter UtilityTests && xcodebuild -scheme PhospheneApp build`
+**Verify:** `swift test --package-path UzumeEngine --filter UtilityTests && xcodebuild -scheme UzumeApp build`
 
 ---
 
@@ -1774,27 +1774,27 @@ SwiftLint `file_length` special-cased for `.metal` files (raise to 1000 or path-
 - `Materials/Organic.metal` +`mat_velvet`, `Materials/Exotic.metal` +`mat_sand_glints`, `Materials/Dielectrics.metal` +`mat_concrete`.
 - §16.2 precompiled Metal archives: deferred (estimated ~23 ms, well below 1.0 s threshold).
 
-**Verify:** `swift test --package-path PhospheneEngine --filter MaterialCookbookTests && swift test --filter PresetRegressionTests`
+**Verify:** `swift test --package-path UzumeEngine --filter MaterialCookbookTests && swift test --filter PresetRegressionTests`
 
 ---
 
 ### Increment V.5 — Visual references library + quality reel
 
-**Scope:** Create `docs/VISUAL_REFERENCES/` directory with per-preset folders for all registered presets plus scaffolding for Phase MD presets. Each folder: 3–5 curated reference images with an annotated `README.md` specifying which visual traits are mandatory. Matt curates; Claude Code sessions reference by filename. Additionally: build a **quality reel** — a 3-minute multi-genre capture across (sparse jazz → hard electronic → symphonic), used as a one-glance quality-review artifact for future increments. Plus a `CheckVisualReferences` lint CLI (`PhospheneTools`) that enforces completeness and naming convention.
+**Scope:** Create `docs/VISUAL_REFERENCES/` directory with per-preset folders for all registered presets plus scaffolding for Phase MD presets. Each folder: 3–5 curated reference images with an annotated `README.md` specifying which visual traits are mandatory. Matt curates; Claude Code sessions reference by filename. Additionally: build a **quality reel** — a 3-minute multi-genre capture across (sparse jazz → hard electronic → symphonic), used as a one-glance quality-review artifact for future increments. Plus a `CheckVisualReferences` lint CLI (`UzumeTools`) that enforces completeness and naming convention.
 
 **Done when:**
 - Every registered preset has a `docs/VISUAL_REFERENCES/<preset>/` folder with 3–5 reference images and fully-annotated README.
 - Quality reel `docs/quality_reel.mp4` checked in (Git LFS).
-- `swift run --package-path PhospheneTools CheckVisualReferences --strict` passes with zero warnings.
+- `swift run --package-path UzumeTools CheckVisualReferences --strict` passes with zero warnings.
 - `SHADER_CRAFT.md §2.3` reference-image discipline is enforceable — Claude Code sessions cite filenames.
 - Matt approves curation round.
 
 **Verify:**
 ```bash
-swift run --package-path PhospheneTools CheckVisualReferences --strict
-swift test --package-path PhospheneEngine --filter UtilityTests
-swift test --package-path PhospheneEngine --filter PresetRegressionTests
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
+swift run --package-path UzumeTools CheckVisualReferences --strict
+swift test --package-path UzumeEngine --filter UtilityTests
+swift test --package-path UzumeEngine --filter PresetRegressionTests
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' build
 ```
 
 #### Session scaffolding shipped (2026-04-26)
@@ -1802,17 +1802,17 @@ xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
 The Claude Code session landed the V.5 runway in one sitting. Matt's curation runs in parallel and is tracked separately in `docs/VISUAL_REFERENCES/README.md`.
 
 **Pre-flight findings:**
-- **Preset count corrected: 13** (not 11 as CLAUDE.md stated). Confirmed by flat scan of `PhospheneEngine/Sources/Presets/Shaders/*.metal` matching `PresetLoader` behaviour.
+- **Preset count corrected: 13** (not 11 as CLAUDE.md stated). Confirmed by flat scan of `UzumeEngine/Sources/Presets/Shaders/*.metal` matching `PresetLoader` behaviour.
 - **FerrofluidOcean and FractalTree already ship** — both have `.metal` shader files and `.json` sidecars. CLAUDE.md listed them as V.9/V.10 "full rebuild" targets implying they were new; they are existing presets targeted for rebuild. Reference folders created as required.
 - **Membrane is an undocumented production preset** — `family: fluid`, `passes: feedback`, full-rubric treatment. Not mentioned in CLAUDE.md's module map. No engine changes made; CLAUDE.md module map update deferred to V.6 housekeeping.
 - **Stalker has no `.metal` file** — CLAUDE.md describes Increment 3.5.7 (Stalker) as complete, but no `Stalker.metal`, `StalkerGait.swift`, or `StalkerState.swift` exist in the repository. No reference folder created. Flag for Matt: either the increment is in progress and the metal file hasn't landed yet, or the code was deleted. D-064 records the observation.
 - **No existing `VISUAL_REFERENCES/` precedent** — naming convention defined from scratch per Part C of the increment spec; the §2.3 example filenames (`04_specular_fiber_highlight.jpg`) are the canonical exemplar.
 - **Git LFS**: pre-existing for `ML/Weights/*.bin`; extended for `docs/quality_reel*.mp4` and `docs/VISUAL_REFERENCES/**/*.{jpg,png}`.
-- **PhospheneTools**: new package (not pre-existing); establishes the location for future `MilkdropTranspiler` (Phase MD.1+).
+- **UzumeTools**: new package (not pre-existing); establishes the location for future `MilkdropTranspiler` (Phase MD.1+).
 
 **What shipped:**
 - `docs/VISUAL_REFERENCES/` — 13 preset folders (9 full-rubric + 4 lightweight) + `_TEMPLATE/` (2 variants) + `_NAMING_CONVENTION.md` + `phase_md/` + top-level `README.md` (curation kickoff)
-- `PhospheneTools/Package.swift` + `Sources/CheckVisualReferences/main.swift` — 5 lint rules, fail-soft default, `--strict` flag
+- `UzumeTools/Package.swift` + `Sources/CheckVisualReferences/main.swift` — 5 lint rules, fail-soft default, `--strict` flag
 - `docs/quality_reel_playlist.json` — 3-segment playlist contract with rationale fields
 - `.gitattributes` — LFS rules for images + quality reel
 - `docs/RUNBOOK.md` — "Recording the quality reel" section
@@ -1821,7 +1821,7 @@ The Claude Code session landed the V.5 runway in one sitting. Matt's curation ru
 - `docs/DECISIONS.md D-064` — records four design decisions
 
 **Lint baseline (expected pre-curation state):**
-`swift run --package-path PhospheneTools CheckVisualReferences` reports 13 "no reference images" warnings (one per preset folder), 0 errors. This is the correct intermediate state — folders scaffolded, images pending Matt's curation. Build and test suite unaffected (no engine code changed).
+`swift run --package-path UzumeTools CheckVisualReferences` reports 13 "no reference images" warnings (one per preset folder), 0 errors. This is the correct intermediate state — folders scaffolded, images pending Matt's curation. Build and test suite unaffected (no engine code changed).
 
 #### Reel + partial curation landed (2026-04-30)
 
@@ -1855,7 +1855,7 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 - [x] Toggle in Settings reveals uncertified.
 - [x] Increment 5.2 invariants still passing.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter FidelityRubricTests`
+**Verify:** `swift test --package-path UzumeEngine --filter FidelityRubricTests`
 
 ---
 
@@ -1881,7 +1881,7 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 - `SessionPlannerTests` updated for multi-segment outputs.
 - Live tests still pass; 0 SwiftLint violations.
 
-**Verify:** `swift test --package-path PhospheneEngine` + Matt runtime test on a multi-track playlist (verify presets transition mid-song, not just on track boundaries).
+**Verify:** `swift test --package-path UzumeEngine` + Matt runtime test on a multi-track playlist (verify presets transition mid-song, not just on track boundaries).
 
 **Estimated sessions:** 2–3. Load-bearing prerequisite for V.7.7+.
 
@@ -1963,7 +1963,7 @@ Trade-off: B gives consistent music-visual association at the cost of "this trac
 
 **Prerequisite:** V.8.0-spec ✅ 2026-05-08 (D-096).
 
-**Scope.** Stand up `Arachne3D` as a parallel preset alongside V.7.7D `Arachne` per D-096 Decision 1. New `Arachne3D.metal` + `Arachne3D.json` (display name `"Arachne 3D"`, `certified: false`, default `rubric_profile`) under `PhospheneEngine/Sources/Presets/Shaders/`. `passes: ["ray_march", "post_process"]` (drop `["staged"]`); WORLD pass continues to ship via the existing V.7.7B `arachne_world_fragment` writing `arachneWorldTex` (bound at the same texture index Arachne uses today). The ray-march pass implements `sceneSDF` / `sceneMaterial` using the V.2 SDF tree (`sd_capsule`, `sd_sphere`, `op_smooth_union`) for a **single static web** at `(0, 0, 0)`: 12 procedurally-unrolled spokes, one spiral revolution, no chord-segment subdivision, no drops, no spider, no build cycle. Material: `mat_silk_thread` (V.3 cookbook) on silk strands. Lighting: directional key + flat ambient; **no IBL, no SSGI** (`noSSGI` is the Tier-1 default per D-096 Decision 5). Camera: static, framed on the hub, FoV ~50°. `ArachneState` reused unchanged from V.7.7D — Arachne3D binds the same instance; existing 2D Arachne preset continues to render in parallel. **No `Arachne3DState` is introduced.** Layout audit on `WebGPU` to confirm a `hubZ: Float` extension fits in the existing 80-byte slot (purely additive — V.7.7D Arachne ignores the new field).
+**Scope.** Stand up `Arachne3D` as a parallel preset alongside V.7.7D `Arachne` per D-096 Decision 1. New `Arachne3D.metal` + `Arachne3D.json` (display name `"Arachne 3D"`, `certified: false`, default `rubric_profile`) under `UzumeEngine/Sources/Presets/Shaders/`. `passes: ["ray_march", "post_process"]` (drop `["staged"]`); WORLD pass continues to ship via the existing V.7.7B `arachne_world_fragment` writing `arachneWorldTex` (bound at the same texture index Arachne uses today). The ray-march pass implements `sceneSDF` / `sceneMaterial` using the V.2 SDF tree (`sd_capsule`, `sd_sphere`, `op_smooth_union`) for a **single static web** at `(0, 0, 0)`: 12 procedurally-unrolled spokes, one spiral revolution, no chord-segment subdivision, no drops, no spider, no build cycle. Material: `mat_silk_thread` (V.3 cookbook) on silk strands. Lighting: directional key + flat ambient; **no IBL, no SSGI** (`noSSGI` is the Tier-1 default per D-096 Decision 5). Camera: static, framed on the hub, FoV ~50°. `ArachneState` reused unchanged from V.7.7D — Arachne3D binds the same instance; existing 2D Arachne preset continues to render in parallel. **No `Arachne3DState` is introduced.** Layout audit on `WebGPU` to confirm a `hubZ: Float` extension fits in the existing 80-byte slot (purely additive — V.7.7D Arachne ignores the new field).
 
 Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion (V.8.2), spider (V.8.3), IBL cubemap + DoF (V.8.4), multi-web pool + cinematic camera + foreground build state machine (V.8.5), cert (V.8.6).
 
@@ -1980,10 +1980,10 @@ Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion 
 9. **Closeout report** per CLAUDE.md Increment Completion Protocol: files changed, tests run, harness output paths, doc updates (V.8.1 entry flipped to ✅; D-096 referenced as the architectural source), capability registry updates if any, known risks (anti-reference subjective check pending automated dHash; perf forecast unverified on Tier 1 hardware until Matt runs the harness on M1/M2), git status clean.
 
 **Verify:**
-- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` green.
-- `swift test --package-path PhospheneEngine` green; `swift test --package-path PhospheneEngine --filter PresetVisualReview` produces non-placeholder Arachne3D PNGs alongside Arachne PNGs.
+- `xcodebuild -scheme UzumeApp -destination 'platform=macOS' build` green.
+- `swift test --package-path UzumeEngine` green; `swift test --package-path UzumeEngine --filter PresetVisualReview` produces non-placeholder Arachne3D PNGs alongside Arachne PNGs.
 - `swiftlint lint --strict --config .swiftlint.yml` 0 violations on touched files.
-- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` writes Arachne3D contact-sheet PNGs to `/tmp/phosphene_visual/<ISO8601>/`.
+- `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview` writes Arachne3D contact-sheet PNGs to `/tmp/phosphene_visual/<ISO8601>/`.
 - Manual: launch app, cycle to Arachne3D, verify acceptance criteria 1–4 above.
 
 **Estimated sessions:** 1 (scaffold-only).
@@ -1996,7 +1996,7 @@ Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion 
 
 ### Increment V.7.7 — Arachne v8: WORLD pillar + 1–2 background dewy webs
 
-**Status correction (2026-05-07):** The `[V.7.7 redo]` commit (`fa5dacdf`, 2026-05-05 10:54) added the six-layer inline `drawWorld()` and frame threads to the *monolithic* `arachne_fragment`. Three hours later, `[V.7.7A]` (`ccefe065`, 2026-05-05 14:13) retired that fragment and shipped placeholder staged stubs. The V.7.7 work is therefore preserved as dead reference code in `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (free-function `drawWorld` ~line 142, legacy `arachne_fragment` ~line 617), not in the dispatched path. Promotion into the staged path is V.7.7B.
+**Status correction (2026-05-07):** The `[V.7.7 redo]` commit (`fa5dacdf`, 2026-05-05 10:54) added the six-layer inline `drawWorld()` and frame threads to the *monolithic* `arachne_fragment`. Three hours later, `[V.7.7A]` (`ccefe065`, 2026-05-05 14:13) retired that fragment and shipped placeholder staged stubs. The V.7.7 work is therefore preserved as dead reference code in `UzumeEngine/Sources/Presets/Shaders/Arachne.metal` (free-function `drawWorld` ~line 142, legacy `arachne_fragment` ~line 617), not in the dispatched path. Promotion into the staged path is V.7.7B.
 
 **Prerequisite:** V.7.7A staged-composition scaffold migration ✅ 2026-05-05.
 
@@ -2018,7 +2018,7 @@ Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion 
 
 ### Increment V.7.8 — Arachne v8: WEB pillar — foreground build refactor (corrected biology) [Subsumed by V.7.7C.2 — see V.7.7C.2 section above]
 
-**Status correction (2026-05-07):** The `[V.7.8]` commit (`3536a023`, 2026-05-05 11:06) added the chord-segment capture spiral to `arachneEvalWeb()` inside the monolithic fragment. Same retirement story as V.7.7 — code survives as dead reference at ~line 265 of `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal`; port to staged dispatch is V.7.7B. The chord-segment SDF replacement for the degenerate Archimedean curve (Failed Approach #34) is a permanent reference for V.7.7B; do not regress to circular rings.
+**Status correction (2026-05-07):** The `[V.7.8]` commit (`3536a023`, 2026-05-05 11:06) added the chord-segment capture spiral to `arachneEvalWeb()` inside the monolithic fragment. Same retirement story as V.7.7 — code survives as dead reference at ~line 265 of `UzumeEngine/Sources/Presets/Shaders/Arachne.metal`; port to staged dispatch is V.7.7B. The chord-segment SDF replacement for the degenerate Archimedean curve (Failed Approach #34) is a permanent reference for V.7.7B; do not regress to circular rings.
 
 **Status (2026-05-09 / D-095):** This V.7.5-era line item is **obsolete** — V.7.7C.2 implements the single-foreground build state machine (frame → radials → INWARD spiral → settle, audio-modulated TIME pacing, per-segment spider cooldown, build pause/resume on spider). See V.7.7C.2 above for the actual closeout.
 
@@ -2324,8 +2324,8 @@ in direct tension. The evidence that the tip layer is visible now rests on the t
 assertions (39 % presence, 1.36 crossings/s), which measure what actually reads on screen.
 
 **Also fixed in passing (real defect, found by the gate it broke).** `CommonLayoutTest`
-located the repo root by walking up to a directory *named* `phosphene` — which in a worktree
-at `phosphene/.claude/worktrees/<name>/` sails past the worktree onto the PRIMARY checkout.
+located the repo root by walking up to a directory *named* `uzume` — which in a worktree
+at `uzume/.claude/worktrees/<name>/` sails past the worktree onto the PRIMARY checkout.
 It was therefore comparing the worktree's Swift struct against the primary's `.metal`. Both
 failure directions are silent (a worktree MSL edit is invisible; an untouched primary reports
 a phantom mismatch). Now a fixed-depth ascent. The same gate correctly caught that
@@ -2335,7 +2335,7 @@ a phantom mismatch). Now a fixed-depth ascent. The same gate correctly caught th
 header doc. It had drifted to "48 floats = 192 bytes" — wrong by two increments — because no
 gate reads prose. Replaced with a pointer to the three real declaration sites.
 
-Files: `PhospheneEngine/Sources/DSP/MelodicNoteGate.swift` (new), `MIRPipeline.swift`,
+Files: `UzumeEngine/Sources/DSP/MelodicNoteGate.swift` (new), `MIRPipeline.swift`,
 `Shared/AudioFeatures+Analyzed.swift`, `Shared/SessionRecorder+CSV.swift`,
 `Presets/PresetLoader+Preamble.swift`, `Presets/AudioRoutePrimitives.swift`,
 `Renderer/Shaders/Common.metal`, `Presets/Shaders/FractalTree.metal` + `.json`;
@@ -4108,7 +4108,7 @@ can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the p
 ("close pending these adjustments") and it is verified offline on both source tracks; whether
 the tips now *read* as one-per-note is L4 and only his eye can settle it. Live review on *Hummer* plus **at least one mid-rich track** (*Hummer* is bass-dominant: the friendliest case for the old design and the harshest for `mid`/`treble`). Closeout cites per-route firing evidence from `features.csv` / `stems.csv` per the checklist's evidence rule. On positive M7: `certified: true`, add `"Fractal Tree"` to `FidelityRubricTests.certifiedPresets`.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter "FidelityRubric|AudioRouteSchema|RouteCoverage"`; SwiftLint clean; p95 frame time within the Tier 2 budget.
+**Verify:** `swift test --package-path UzumeEngine --filter "FidelityRubric|AudioRouteSchema|RouteCoverage"`; SwiftLint clean; p95 frame time within the Tier 2 budget.
 
 **Estimated sessions:** 4 (FTR.2 / FTR.3 / optional FTR.4 / FTR.5 cert).
 
@@ -4145,17 +4145,17 @@ the tips now *read* as one-per-note is L4 and only his eye can settle it. Live r
 **What an uplift actually is, as of 2026-08-07** (D-215 / `MILKDROP_STRATEGY.md` §13) — the four things §12 got wrong, stated positively so no author has to reconstruct them:
 
 - **Family:** one of the 11 cream-of-crop `PresetCategory` cases (D-123). There is **no** `milkdrop_inspired` family and **no** `.milkdropInspired` enum case. The seven shipped uplifts file as `hypnotic` ×6, `particles` ×1.
-- **Location:** flat in `PhospheneEngine/Sources/Presets/Shaders/`, named for the Phosphene preset (`Witchlight.metal`). There is **no** `Shaders/Milkdrop/` directory and no `<theme>_<source_name>` convention.
+- **Location:** flat in `UzumeEngine/Sources/Presets/Shaders/`, named for the Uzume preset (`Witchlight.metal`). There is **no** `Shaders/Milkdrop/` directory and no `<theme>_<source_name>` convention.
 - **Source:** a **butterchurn built-in** rendered through `tools/milkdrop-render/`, not a `.milk`. Candidates come from [`docs/presets/MILKDROP_UPLIFT_PICKS.md`](presets/MILKDROP_UPLIFT_PICKS.md), not D-112's nine.
 - **Origin marker:** the `inspired_by` sidecar block to the §13.3 union schema — documentation-only, not decoded by `PresetDescriptor`.
 
-**Why this phase exists (revised under inspired-by):** `docs/MILKDROP_ARCHITECTURE.md` informed Phosphene's own authoring patterns (MV-0 through MV-3); Phase MD turns the cream-of-crop pack into a long-term *inspiration source* for new Phosphene presets — each uplift is a hand-authored, Phosphene-native creation that honors a source Milkdrop preset's concept and aesthetic. The vehicle for that work is the `mv_warp` render pass (D-027) plus the rest of Phosphene's preset infrastructure (V.1–V.4 utilities, ray-march, MV-3 capabilities); Milkdrop-inspired presets become additional consumers alongside Gossamer / Volumetric Lithograph. Initial planning target is **~200 uplifts** (multi-year work stream, not a finite phase); the **20-preset first-release bundle (D-114)** is the near-term milestone.
+**Why this phase exists (revised under inspired-by):** `docs/MILKDROP_ARCHITECTURE.md` informed Uzume's own authoring patterns (MV-0 through MV-3); Phase MD turns the cream-of-crop pack into a long-term *inspiration source* for new Uzume presets — each uplift is a hand-authored, Uzume-native creation that honors a source Milkdrop preset's concept and aesthetic. The vehicle for that work is the `mv_warp` render pass (D-027) plus the rest of Uzume's preset infrastructure (V.1–V.4 utilities, ray-march, MV-3 capabilities); Milkdrop-inspired presets become additional consumers alongside Gossamer / Volumetric Lithograph. Initial planning target is **~200 uplifts** (multi-year work stream, not a finite phase); the **20-preset first-release bundle (D-114)** is the near-term milestone.
 
-**The 20-preset first-release bundle (D-114) is the load-bearing near-term milestone.** Phosphene's first public release ships when the catalog reaches 20 M7-certified presets — a mix of Phosphene-native + Milkdrop-inspired per D-115.
+**The 20-preset first-release bundle (D-114) is the load-bearing near-term milestone.** Uzume's first public release ships when the catalog reaches 20 M7-certified presets — a mix of Uzume-native + Milkdrop-inspired per D-115.
 
-**Measured state 2026-08-07 (MD.0):** 28 sidecars − 2 diagnostics = **26 production presets, 18 certified**, of which **7 are inspired-by (all certified)** and 11 Phosphene-native.
+**Measured state 2026-08-07 (MD.0):** 28 sidecars − 2 diagnostics = **26 production presets, 18 certified**, of which **7 are inspired-by (all certified)** and 11 Uzume-native.
 
-**Composition RESOLVED (Matt 2026-08-07): D-115 = C' — 10 Phosphene-native + 10 Milkdrop-inspired.** Open since 2026-05-12; A' (7+13) and B' (5+15) superseded. **The gap to first release is three more Milkdrop-inspired uplifts**, and no further native cert work beyond the ten already available (A' would have needed six). D-119's ≥ 50 % inspired-by is thereby a **steady-state target, not a first-release gate** — A' was priced on §12.1's "~2–3 days per preset," which the record falsifies (Witchlight ten increments, Meniscus eleven). See the D-115 amendment block and D-215.
+**Composition RESOLVED (Matt 2026-08-07): D-115 = C' — 10 Uzume-native + 10 Milkdrop-inspired.** Open since 2026-05-12; A' (7+13) and B' (5+15) superseded. **The gap to first release is three more Milkdrop-inspired uplifts**, and no further native cert work beyond the ten already available (A' would have needed six). D-119's ≥ 50 % inspired-by is thereby a **steady-state target, not a first-release gate** — A' was priced on §12.1's "~2–3 days per preset," which the record falsifies (Witchlight ten increments, Meniscus eleven). See the D-115 amendment block and D-215.
 
 ### Phase MD — D-122 trigger assessment (MD.0, 2026-08-07)
 
@@ -4186,7 +4186,7 @@ Runs in parallel with Phase V.7+, Phase AV, Phase CC, Phase G-uplift. Cadence af
 
 **Two findings the brief did not have.** (1) The D-120 residue is a **recurrence, not a leftover** — the CA.4 audit's 2026-05-20 grep was correct, and both sidecars were created months later (CR.1 2026-07-22, MEN.2a 2026-08-03) by authors following seven design docs that still prescribed the reverted fields. All seven now carry a supersession note; nothing rejects an unknown sidecar key at decode, so it can recur again. (2) `DragonBloom.json` carried a bare `sha256` with no `source_form`, leaving what was hashed ambiguous — it was a real `.milk`, now recorded.
 
-**Matt's two calls, same day, both landed in this increment.** **(1) Delete the Milkdrop Settings toggle** — the QR.4 / D-091 "Coming in a future update" stub, its store property, persistence key, view-model flag, `#if DEBUG` view row, two strings and three tests are removed (app tests 407 → 404). It could never have been wired honestly through `family`: `hypnotic` + `particles` also hold seven Phosphene-native presets (Aurora Veil, Plasma, Filigree, Mitosis, Cytokinesis, Murmuration, Nebula — five certified). **(2) D-115 = C' (10 + 10)**, resolved after twelve weeks; three more uplifts to the D-114 threshold, and D-122 trigger 4 closes `proceed`.
+**Matt's two calls, same day, both landed in this increment.** **(1) Delete the Milkdrop Settings toggle** — the QR.4 / D-091 "Coming in a future update" stub, its store property, persistence key, view-model flag, `#if DEBUG` view row, two strings and three tests are removed (app tests 407 → 404). It could never have been wired honestly through `family`: `hypnotic` + `particles` also hold seven Uzume-native presets (Aurora Veil, Plasma, Filigree, Mitosis, Cytokinesis, Murmuration, Nebula — five certified). **(2) D-115 = C' (10 + 10)**, resolved after twelve weeks; three more uplifts to the D-114 threshold, and D-122 trigger 4 closes `proceed`.
 
 **Deliberately not done:** `inspired_by` decoding on `PresetDescriptor` and unknown-key rejection at decode. The same missing mechanism explains both why the toggle could not be wired per-preset and why the D-120 fields re-entered a shipped sidecar unnoticed. A future increment that adds the decoding should carry the unknown-key gate with it.
 
@@ -4210,11 +4210,11 @@ Re-scoping the audit to the butterchurn-JSON corpus — same purpose, right corp
 
 **Status:** Retired entirely under the inspired-by reframe (`docs/MILKDROP_STRATEGY.md` §12, D-110 amendment, D-118).
 
-- **MD.2 (Transpiler CLI skeleton)** — no transpiler ships. `PhospheneTools/MilkdropTranspiler` SPM target was never created and will not be.
+- **MD.2 (Transpiler CLI skeleton)** — no transpiler ships. `UzumeTools/MilkdropTranspiler` SPM target was never created and will not be.
 - **MD.3 (Per-frame JSON emission + HLSL hand-port playbook)** — the JSON emission half required the transpiler; the hand-port playbook half is also retired (the substantial-similarity discipline rule in `SHADER_CRAFT.md §12.6` / D-116 replaces both translation modes).
 - **MD.4 (Per-vertex Metal emission)** — same; no transpiler, no automated emission.
 
-Under the inspired-by reframe, source `.milk` files become reference material that authors read end-to-end before drafting Phosphene-native uplifts. Each Milkdrop-inspired Phosphene preset is hand-authored from scratch against Phosphene's primitives (V.1–V.4 utilities, `mv_warp`, `ray_march`, MV-3 capabilities). The MD.1 grammar doc serves as the read-only reference (D-118). See `MILKDROP_STRATEGY.md` §12.7 / §12.9.
+Under the inspired-by reframe, source `.milk` files become reference material that authors read end-to-end before drafting Uzume-native uplifts. Each Milkdrop-inspired Uzume preset is hand-authored from scratch against Uzume's primitives (V.1–V.4 utilities, `mv_warp`, `ray_march`, MV-3 capabilities). The MD.1 grammar doc serves as the read-only reference (D-118). See `MILKDROP_STRATEGY.md` §12.7 / §12.9.
 
 ---
 
@@ -4234,10 +4234,10 @@ Under the inspired-by reframe, source `.milk` files become reference material th
 
 **Three remain** to close the 10-preset target. Candidates: [`docs/presets/MILKDROP_UPLIFT_PICKS.md`](presets/MILKDROP_UPLIFT_PICKS.md).
 
-**Scope (rewritten at MD.0 / D-215; supersedes the D-105 / D-106 / D-112-amendment scope):** Author 10 Milkdrop-inspired Phosphene presets, hand-crafted from scratch against Phosphene's primitives, each honoring a source preset's concept and aesthetic per the substantial-similarity discipline rule (`SHADER_CRAFT.md §12.6` / D-116 / D-121). Source is a **butterchurn built-in** rendered through `tools/milkdrop-render/`, picked by Matt from the rendered gallery. **This batch contributes to the 20-preset first-release bundle (D-114).**
+**Scope (rewritten at MD.0 / D-215; supersedes the D-105 / D-106 / D-112-amendment scope):** Author 10 Milkdrop-inspired Uzume presets, hand-crafted from scratch against Uzume's primitives, each honoring a source preset's concept and aesthetic per the substantial-similarity discipline rule (`SHADER_CRAFT.md §12.6` / D-116 / D-121). Source is a **butterchurn built-in** rendered through `tools/milkdrop-render/`, picked by Matt from the rendered gallery. **This batch contributes to the 20-preset first-release bundle (D-114).**
 
 **Done when** — what a real uplift ships, per the seven that did:
-- Flat `PhospheneEngine/Sources/Presets/Shaders/<Preset>.{metal,json}`, named for the Phosphene preset. **No `Shaders/Milkdrop/` subdirectory; no `<theme>_<source_name>` naming** (D-215 §13.2).
+- Flat `UzumeEngine/Sources/Presets/Shaders/<Preset>.{metal,json}`, named for the Uzume preset. **No `Shaders/Milkdrop/` subdirectory; no `<theme>_<source_name>` naming** (D-215 §13.2).
 - Sidecar declares one of the 11 cream-of-crop `PresetCategory` families (D-123) — **not** `milkdrop_inspired`, which does not exist — plus the appropriate `rubric_profile` (full or lightweight per author + M7 judgment) and the orchestrator metadata (`visual_density`, `motion_intensity`, `fatigue_risk`, …).
 - An `inspired_by` block to the D-215 §13.3 union schema: `milkdrop_filename`, `original_artist`, `pack`, `source_form`, and `sha256` of the artifact actually read (omitted where none was taken, with `source_form` saying why).
 - An `audio_routes` manifest that is **green under `RouteCoverageTests`** (QG.1 / D-180) — every declared route measurably alive on real music.
@@ -4257,7 +4257,7 @@ Under the inspired-by reframe, source `.milk` files become reference material th
 **Scope (rewritten at MD.0 / D-215; supersedes the D-105-amendment scope):** Continued Milkdrop-inspired uplift authoring beyond MD.5's initial batch. **No tier distinction** (the D-103 amendment retired the Classic / Evolved / Hybrid split); every uplift is hand-authored against the same discipline rule (D-116 / D-121). Stem routing, beat anticipation, mood coupling, ray-march composition — all per-preset authoring choices, not tier-mandated. Batch size and cadence are release-management decisions (separate from this phase scope).
 
 **Done when** — per uplift, identical to MD.5's done-when above:
-- Flat `Shaders/<Preset>.{metal,json}`, named for the Phosphene preset. **No `Shaders/Milkdrop/` directory.**
+- Flat `Shaders/<Preset>.{metal,json}`, named for the Uzume preset. **No `Shaders/Milkdrop/` directory.**
 - A cream-of-crop `PresetCategory` family (D-123) — **not** `milkdrop_inspired` — plus an `inspired_by` block to the D-215 §13.3 schema.
 - `audio_routes` green under `RouteCoverageTests`, a measured flash budget, a golden entry.
 - M7 plus the mandatory D-121 side-by-side before `certified: true`.
@@ -4284,7 +4284,7 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 
 **Carry-forward into WL.2:** two level-3 grounding ratings are open (§6) and Matt has them. WL.2's **first** deliverable is a motion-gated look-spike answering "does the figure read as a drawing?" before any shading work — not a tuning round (D-181 / D-194 / D-195; the D-201 Fractal Fly-By lesson).
 
-**Verify:** `swift test --package-path PhospheneEngine --filter DocIntegrityTests`; `swift run --package-path PhospheneTools CheckVisualReferences`.
+**Verify:** `swift test --package-path UzumeEngine --filter DocIntegrityTests`; `swift run --package-path UzumeTools CheckVisualReferences`.
 
 ---
 
@@ -4300,7 +4300,7 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 - The full §7.4 registration checklist executed.
 - Matt's live M7 **plus** the D-121 side-by-side against the source, with Matt's divergence rationale in the closeout.
 
-**Verify:** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`; `swift test --package-path PhospheneEngine`; `swiftlint lint --strict`.
+**Verify:** `xcodebuild -scheme UzumeApp -destination 'platform=macOS' build`; `swift test --package-path UzumeEngine`; `swiftlint lint --strict`.
 
 **Outcome.** Everything above shipped and is green. Flash budget MEASURED and inside every §5 ceiling (0.00 flashes/s; peak mean luma 0.0237 / 0.35; max Δ/frame 0.0009 / 0.06; flare extent 0.006 % and 0.126 % against the 3 % / 12 % caps). All eight routes carry per-route firing evidence; `trail_contraction` greens on `there_there` only, as declared, floor untouched. Phase travel reproduces the §2.3 table (2.09 / 1.80 / 15.10 circles per 30 s vs 2.1 / 1.7 / 15.4).
 
@@ -4337,7 +4337,7 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 
 **Done when:** ✅ ribbon share ≥ 0.6 % · ✅ peak luma ≥ 250 · ✅ backdrop gate green · ✅ flash budget and `MultiPassFlashHarnessTests` green · ✅ full engine suite (1735 tests / 248 suites) + app target + `swiftlint --strict` green.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter "Witchlight|ResponseBand"`; `RENDER_VISUAL=1 WITCHLIGHT_SESSION=… swift test --filter WitchlightMotionSequence` then `Scripts/motion_gate.sh witchlight <root>/<track>`.
+**Verify:** `swift test --package-path UzumeEngine --filter "Witchlight|ResponseBand"`; `RENDER_VISUAL=1 WITCHLIGHT_SESSION=… swift test --filter WitchlightMotionSequence` then `Scripts/motion_gate.sh witchlight <root>/<track>`.
 
 **Still open for certification:** Matt's live M7 on this build, the D-121 side-by-side, `certified: true`, and `FidelityRubricTests.certifiedPresets` membership. Not part of this increment.
 
@@ -4372,7 +4372,7 @@ Two curation errors produced it, both recorded in `docs/VISUAL_REFERENCES/witchl
 
 **Done when:** ✅ quiet-state floor down to the source's register · ✅ ribbon gate still green over the darker ground · ✅ gate ratcheted so it holds · ✅ flash budget unmoved or improved · ✅ full suites green.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter "Witchlight|ResponseBand"`; motion-sequence render + `Scripts/motion_gate.sh`.
+**Verify:** `swift test --package-path UzumeEngine --filter "Witchlight|ResponseBand"`; motion-sequence render + `Scripts/motion_gate.sh`.
 
 **Not taken, on Matt's instruction:** the flare detonation (§5 stands) and the stroke shape (still the WL.2 open decision). Certification still needs a live M7 on this build plus the D-121 side-by-side.
 
@@ -4499,7 +4499,7 @@ Reverted to keep `main` coherent — a half-tuned framing change that degrades b
 
 ### Increment WL.5 — Witchlight: the pen only draws when there is music 🔨 **CODE-COMPLETE 2026-08-05, pending live M7**
 
-**Why.** Matt's fifth M7, session `2026-08-05T13-06-38Z`: *"The starry background is moving too much. The witchlight pattern is still moving when the preset is idle, indicating that there is no real beat sync / connection to the music. The pattern / shape is fine, but it needs to feel connected to the music, otherwise it is not a Phosphene preset I will certify."*
+**Why.** Matt's fifth M7, session `2026-08-05T13-06-38Z`: *"The starry background is moving too much. The witchlight pattern is still moving when the preset is idle, indicating that there is no real beat sync / connection to the music. The pattern / shape is fine, but it needs to feel connected to the music, otherwise it is not a Uzume preset I will certify."*
 
 **The shape is settled** — WL.3's tumble fix holds and he confirmed it. This increment is only about connection.
 
@@ -4545,7 +4545,7 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 **Done when:** ✅ head-off-frame measured before changing anything · ✅ scale fit and camera aim separated · ✅ `viewScale` provably unchanged · ✅ distinctness and flash gates green · ✅ new gate holds the framing · ⏳ **Matt's live M7 — certification rides on "feels connected".**
 
-**Verify:** `swift test --package-path PhospheneEngine --filter Witchlight`
+**Verify:** `swift test --package-path UzumeEngine --filter Witchlight`
 
 ---
 
@@ -4579,7 +4579,7 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 **Done when:** ✅ measured before building · ✅ flare lands on the grid · ✅ trail blinks in unison · ✅ speed deepened to the legibility cap · ✅ flash budget re-verified *with the pulse firing* · ✅ all suites green · ⏳ **Matt's live M7.**
 
-**Verify:** `WITCHLIGHT_SESSION=<dir> swift test --package-path PhospheneEngine --filter WitchlightBeatAlignment`
+**Verify:** `WITCHLIGHT_SESSION=<dir> swift test --package-path UzumeEngine --filter WitchlightBeatAlignment`
 
 ---
 
@@ -4607,7 +4607,7 @@ Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95
 
 **Done when:** ✅ floors from measurement · ✅ 6 of 8 banded · ✅ every new band proved able to go red · ✅ the two unbandable routes documented with cause, not silence · ✅ suites green.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter "ResponseBand|WitchlightPathTests"`
+**Verify:** `swift test --package-path UzumeEngine --filter "ResponseBand|WitchlightPathTests"`
 
 ---
 
@@ -4633,7 +4633,7 @@ Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95
 
 **Done when:** ✅ rate error diagnosed and fixed · ✅ routing moved onto the stronger signal · ✅ §5 amended with measurements, not waived · ✅ safety gate proven to contain the hazard · ✅ all suites green · ⏳ **Matt's live M7.**
 
-**Verify:** `WITCHLIGHT_FLASH_BUDGET=1 swift test --package-path PhospheneEngine --filter WitchlightFlashBudget`
+**Verify:** `WITCHLIGHT_FLASH_BUDGET=1 swift test --package-path UzumeEngine --filter WitchlightFlashBudget`
 
 ---
 
@@ -4661,7 +4661,7 @@ Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95
 
 **Done when:** ✅ build identity verified before diagnosis · ✅ both wrong causes falsified by sweep · ✅ speed bounded · ✅ framing transient fixed and measured on real sessions · ✅ all suites green · ⏳ **Matt's live M7.**
 
-**Verify:** `WITCHLIGHT_SESSIONS=<dir1>:<dir2> swift test --package-path PhospheneEngine --filter WitchlightSpeedSweep`
+**Verify:** `WITCHLIGHT_SESSIONS=<dir1>:<dir2> swift test --package-path UzumeEngine --filter WitchlightSpeedSweep`
 
 ---
 
@@ -4688,7 +4688,7 @@ Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95
 
 **Done when:** ✅ recovery instrumented before any production change · ✅ windowed fit with a matching centroid · ✅ swept on four real sessions · ✅ hard-stop gates checked and one constraint overturned by measurement, not preference · ✅ no pumping · ⏳ **Matt's live M7.**
 
-**Verify:** `WITCHLIGHT_SESSIONS=<dirs> swift test --package-path PhospheneEngine --filter WitchlightSpeedSweep`
+**Verify:** `WITCHLIGHT_SESSIONS=<dirs> swift test --package-path UzumeEngine --filter WitchlightSpeedSweep`
 
 ---
 
@@ -4710,7 +4710,7 @@ Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95
 
 **Done when:** ✅ M7 sign-off · ✅ sidecar flag · ✅ ground-truth list · ✅ route manifest green · ✅ full suite green.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter "FidelityRubric|RouteCoverage|Witchlight"`
+**Verify:** `swift test --package-path UzumeEngine --filter "FidelityRubric|RouteCoverage|Witchlight"`
 
 ---
 
@@ -4732,7 +4732,7 @@ Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95
 
 **Done when:** ✅ drift reaches the preset without touching the GPU contract · ✅ sign verified against recorded sessions · ✅ bounded and dial-out-able · ✅ all gates green · ⏳ **Matt's live M7 — does "close but not exact" close?**
 
-**Verify:** `WITCHLIGHT_SESSION=<dir> swift test --package-path PhospheneEngine --filter WitchlightBeatAlignment`
+**Verify:** `WITCHLIGHT_SESSION=<dir> swift test --package-path UzumeEngine --filter WitchlightBeatAlignment`
 
 ---
 
@@ -4773,7 +4773,7 @@ Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95
 
 **Done when:** ✅ Scheduler defers dispatch when recent frames are over budget. ✅ Force-dispatch ceiling prevents stem freeze. ✅ 20 new tests (≥ 4 required). ✅ Zero dHash drift.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter "MLDispatchScheduler"`
+**Verify:** `swift test --package-path UzumeEngine --filter "MLDispatchScheduler"`
 
 ---
 
@@ -5000,7 +5000,7 @@ drivers soft-saturated and sized against the real ~3× range (`project_deviation
 Model + params pre-extracted in memory `project_flock2_reference`.
 
 **Key porting decisions (kickoff §"Porting decisions"):** quaternion bird state; ~7-topological-+-290°-FOV
-neighbour query; **unit/scale mapping** (Flock2 is metres / 5–18 m/s — must map to Phosphene's ±2 world,
+neighbour query; **unit/scale mapping** (Flock2 is metres / 5–18 m/s — must map to Uzume's ±2 world,
 keep the ratios); drop the roost leash for the boundary term + a soft framing containment (static wide
 camera, design §9); port the heading controller faithfully, simplify the full aero only if a term has
 no visible effect.
@@ -5220,11 +5220,11 @@ Targeted fixes to MIR signals where a documented "Failed Approach" mitigation ha
 
 **Files to touch:**
 
-- `PhospheneEngine/Sources/DSP/BeatDetector+Tempo.swift` — add `dumpHistogram`; replace `applyOctaveCorrection` with voting.
-- `PhospheneEngine/Sources/DSP/BeatDetector.swift` — only if the metadata-BPM injection point doesn't already exist on `BeatDetector` itself; reuse `BeatPredictor.setBootstrapBPM` pattern.
-- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/BeatDetectorTempoTests.swift` — new file for unit-level voting tests on synthetic histograms.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Regression/BeatDetectorRegressionTests.swift` — extend with reference-track regression cases (existing fixtures unchanged).
-- `PhospheneEngine/Tests/PhospheneEngineTests/Performance/DSPPerformanceTests.swift` — add voting-budget assertion.
+- `UzumeEngine/Sources/DSP/BeatDetector+Tempo.swift` — add `dumpHistogram`; replace `applyOctaveCorrection` with voting.
+- `UzumeEngine/Sources/DSP/BeatDetector.swift` — only if the metadata-BPM injection point doesn't already exist on `BeatDetector` itself; reuse `BeatPredictor.setBootstrapBPM` pattern.
+- `UzumeEngine/Tests/UzumeEngineTests/DSP/BeatDetectorTempoTests.swift` — new file for unit-level voting tests on synthetic histograms.
+- `UzumeEngine/Tests/UzumeEngineTests/Regression/BeatDetectorRegressionTests.swift` — extend with reference-track regression cases (existing fixtures unchanged).
+- `UzumeEngine/Tests/UzumeEngineTests/Performance/DSPPerformanceTests.swift` — add voting-budget assertion.
 - `docs/CLAUDE.md` — update Tempo section; amend Failed Approach #17 (octave error is no longer a passive limitation).
 - `docs/DECISIONS.md` — new D-073 entry: "Tempo octave disambiguation via IOI harmonic voting + metadata prior". Document why TempoCNN (AGPL) and Sound Analysis (orthogonal) were rejected.
 
@@ -5257,8 +5257,8 @@ Existing tests in `BeatDetectorRegressionTests.swift` must continue to pass with
 - [ ] All 6 unit tests in `BeatDetectorTempoTests.swift` pass.
 - [ ] Reference-track regression tests pass with the BPM bounds above.
 - [ ] Existing `BeatDetectorRegressionTests` pass unchanged.
-- [ ] `swift test --package-path PhospheneEngine` passes (full suite — same pre-existing env failures acceptable; no new failures).
-- [ ] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` passes.
+- [ ] `swift test --package-path UzumeEngine` passes (full suite — same pre-existing env failures acceptable; no new failures).
+- [ ] `xcodebuild -scheme UzumeApp -destination 'platform=macOS' build` passes.
 - [ ] `DSPPerformanceTests` confirms voting < 50 µs.
 - [ ] `CLAUDE.md` Tempo section updated; Failed Approach #17 amended.
 - [ ] `DECISIONS.md` D-073 added explaining voting policy and rejected alternatives.
@@ -5287,33 +5287,33 @@ Reference-track results: love_rehab 117/152→**122–126** (true 125), so_what 
 
 ### Increment DSP.2 — Beat This! transformer via MPSGraph (offline pre-analysis) + drift-tracker live path
 
-**2026-05-04 pivot.** Originally scoped as a BeatNet (CRNN + particle filter) port; pivoted to Beat This! (Foscarin et al., ISMIR 2024 — transformer encoder, MIT) after a Session-2 audit pass found paraphrased-spec drift in the BeatNet preprocessing stage and weak performance on irregular meters that are load-bearing for Phosphene (Pyramid Song 16/8, Money 7/4, Schism 7/8). The original BeatNet plan is preserved in `docs/diagnostics/DSP.2-beatnet-archive.md`. Decision: **D-077**. The vendored BeatNet GTZAN weights (Session 1 of the original plan, commit `3f5f652b`) are retained as a fallback; everything below describes the Beat This! port.
+**2026-05-04 pivot.** Originally scoped as a BeatNet (CRNN + particle filter) port; pivoted to Beat This! (Foscarin et al., ISMIR 2024 — transformer encoder, MIT) after a Session-2 audit pass found paraphrased-spec drift in the BeatNet preprocessing stage and weak performance on irregular meters that are load-bearing for Uzume (Pyramid Song 16/8, Money 7/4, Schism 7/8). The original BeatNet plan is preserved in `docs/diagnostics/DSP.2-beatnet-archive.md`. Decision: **D-077**. The vendored BeatNet GTZAN weights (Session 1 of the original plan, commit `3f5f652b`) are retained as a fallback; everything below describes the Beat This! port.
 
 **Goal:** Compute a high-quality beat / downbeat / time-signature grid once per track during pre-analysis (`SessionPreparer.prepareTrack` running on the cached 30 s preview clip), cache it on `TrackProfile` as a new `BeatGrid` value type, and drive `FeatureVector.beatPhase01` / `beatsUntilNext` analytically from `playbackTime + drift` against that grid. The live audio path runs no transformer; a small `LiveBeatDriftTracker` cross-correlates `BeatDetector`'s sub_bass onset stream against the cached grid in a ±50 ms phase window and emits a smooth drift estimate. Same MPSGraph + Accelerate idiom used by StemSeparator — no CoreML, no third-party C libs at runtime.
 
-**Why now:** DSP.1's diagnosis proved Phosphene's classical-pipeline tempo path is at the ~70% F1 floor. For "as flawless as possible" beat sync (Matt's stated bar) on the irregular-meter tracks the product cares about, a transformer with whole-bar self-attention is the smallest model class that closes the gap. Beat This! is the smallest such model with a stable, MIT-licensed reference implementation and shipped pre-trained weights.
+**Why now:** DSP.1's diagnosis proved Uzume's classical-pipeline tempo path is at the ~70% F1 floor. For "as flawless as possible" beat sync (Matt's stated bar) on the irregular-meter tracks the product cares about, a transformer with whole-bar self-attention is the smallest model class that closes the gap. Beat This! is the smallest such model with a stable, MIT-licensed reference implementation and shipped pre-trained weights.
 
 **Architecture mirrors `StemSeparator`:**
 
 ```
-PhospheneEngine/Sources/ML/
+UzumeEngine/Sources/ML/
   BeatThisModel.swift            → MPSGraph engine, pre-allocated UMA I/O (mirrors StemModel.swift)
   BeatThisModel+Graph.swift      → MPSGraph build: encoder block stack (mirrors StemModel+Graph)
   BeatThisModel+Weights.swift    → manifest + .bin loading; LN/BN fusion at init where applicable
   Weights/beat_this/             → vendored .bin weights via Git LFS pointers
 
-PhospheneEngine/Sources/DSP/
+UzumeEngine/Sources/DSP/
   BeatThisPreprocessor.swift     → vDSP resample + STFT + log-mel pipeline (parameters confirmed in Session 1)
   BeatGridResolver.swift         → probability → (beats, downbeats, BPM, meter); peak picking + meter inference
   LiveBeatDriftTracker.swift     → cross-correlation drift tracker; FeatureVector wiring
 
-PhospheneEngine/Sources/Session/
+UzumeEngine/Sources/Session/
   BeatGrid.swift                 → Sendable value type stored on CachedTrackData
 ```
 
 **Implementation order (sessions, each one PR / commit-chain):**
 
-1. **Session 1 — Architecture audit + weight vendoring. ✅ 2026-05-04.** Commit `9cd0efb8`. Repo cloned at commit `9d787b9797eaa325856a20897187734175467074`. MIT confirmed. `small0` variant chosen: 2,101,352 params, 8.4 MB FP32 (vs `final0`: 20.3 M params, 81 MB). 161 tensors vendored under `PhospheneEngine/Sources/ML/Weights/beat_this/` (Git LFS). Six reference JSON fixtures in `PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/beat_this_reference/`. `Scripts/convert_beatthis_weights.py` and `Scripts/dump_beatthis_reference.py` written. `docs/CREDITS.md` attribution block added. **Key S1 findings carried into S2/S3:** (a) inference timing measured at 415–530 ms on M1 CPU (`small0`); D-077's "~100–300 ms" estimate was optimistic — MPS will be faster, but S4 must measure and adjust S6's MLDispatchScheduler budget accordingly; (b) SumHead design: `beat_logits = beat_linear_out + downbeat_linear_out` (additive — beats are a *superset* of downbeats, not a separate class); (c) three MPSGraph workarounds required in S3: RMSNorm must be manual (no `layerNormalization` equivalent), SDPA must be manual matmul+softmax (macOS 14 target, `scaledDotProductAttention` is macOS 15+ only), RoPE must be manual cos/sin; (d) single `RotaryEmbedding(head_dim=32)` instance shared across all 9 blocks (3 frontend + 6 transformer) — precompute `freqs` tensor once in S3 and share; (e) 5 `num_batches_tracked` int64 BN buffers skipped at conversion (training-only, not used at inference); (f) torchaudio cannot load .m4a without `torchcodec` — use ffmpeg subprocess for audio decode (already handled in `dump_beatthis_reference.py`).
+1. **Session 1 — Architecture audit + weight vendoring. ✅ 2026-05-04.** Commit `9cd0efb8`. Repo cloned at commit `9d787b9797eaa325856a20897187734175467074`. MIT confirmed. `small0` variant chosen: 2,101,352 params, 8.4 MB FP32 (vs `final0`: 20.3 M params, 81 MB). 161 tensors vendored under `UzumeEngine/Sources/ML/Weights/beat_this/` (Git LFS). Six reference JSON fixtures in `UzumeEngine/Tests/UzumeEngineTests/Fixtures/beat_this_reference/`. `Scripts/convert_beatthis_weights.py` and `Scripts/dump_beatthis_reference.py` written. `docs/CREDITS.md` attribution block added. **Key S1 findings carried into S2/S3:** (a) inference timing measured at 415–530 ms on M1 CPU (`small0`); D-077's "~100–300 ms" estimate was optimistic — MPS will be faster, but S4 must measure and adjust S6's MLDispatchScheduler budget accordingly; (b) SumHead design: `beat_logits = beat_linear_out + downbeat_linear_out` (additive — beats are a *superset* of downbeats, not a separate class); (c) three MPSGraph workarounds required in S3: RMSNorm must be manual (no `layerNormalization` equivalent), SDPA must be manual matmul+softmax (macOS 14 target, `scaledDotProductAttention` is macOS 15+ only), RoPE must be manual cos/sin; (d) single `RotaryEmbedding(head_dim=32)` instance shared across all 9 blocks (3 frontend + 6 transformer) — precompute `freqs` tensor once in S3 and share; (e) 5 `num_batches_tracked` int64 BN buffers skipped at conversion (training-only, not used at inference); (f) torchaudio cannot load .m4a without `torchcodec` — use ffmpeg subprocess for audio decode (already handled in `dump_beatthis_reference.py`).
 
 2. **Session 2 — Preprocessor port (Swift).** Implement `BeatThisPreprocessor` in `Sources/DSP/`. **Parameters confirmed in S1** (all file:line cited in `docs/diagnostics/DSP.2-architecture.md §2`): n_fft=1024, hop=441, sr=22050 (source), n_mels=128, f_min=30 Hz, f_max=11000 Hz, mel_scale="slaney" (area-normalisation, `norm="slaney"`), power=1 (magnitude, not power), log formula = `log1p(1000 × mel)` (matches `beat_this/preprocessing.py:LogMelSpect.__call__`). **Per-stage golden tests against the Python reference**: synthetic impulse, sine, white noise, plus love_rehab first 1500 frames. Per-stage delta dashboard. Tolerance: float32 ULP per stage where mathematically possible; documented numerical bound where not (resampler — soxr in Python, vDSP in Swift). Key resampler note: Beat This! uses `soxr` for resampling, not librosa's `resample`; a vDSP sinc resampler is acceptable but the tolerance test must reflect the actual delta (not assume ULP). Pre-allocate MTLBuffers for the spectrogram output to avoid heap alloc in `process()`. **Done when:** Swift preprocessor matches Python within measured numerical bound on all test inputs; `BeatThisPreprocessorTests` pass (≥5 test cases incl. love_rehab first-1500-frame golden); no heap allocations in `process()` hot path.
 
@@ -5325,7 +5325,7 @@ PhospheneEngine/Sources/Session/
 
 6. **Session 6 — `SessionPreparer` integration.** Wire `BeatThisModel` into `prepareTrack`. One call per track during preparation; result cached. Extend `CachedTrackData` to include `BeatGrid`. Bump cache version key for invalidation. Respect `MLDispatchScheduler` (D-059): Beat This! is heavier than stem separation; per-call budget needs widening. Recompute Tier 1 / Tier 2 thresholds. Backfill: cached tracks predating Beat This! lazily compute on first access. **Done when:** all production-test playlists prepare with valid `BeatGrid`s; the 919-engine baseline holds; new `BeatGridIntegrationTests` cover preparation, cache hit, cache invalidation.
 
-7. **Session 7 — Live drift tracker + FeatureVector wiring.** `LiveBeatDriftTracker` consumes `BeatDetector.Result.onsets[0]` (sub_bass) and cross-correlates against the cached grid in ±50 ms phase window; smooth drift estimate (EMA, τ ≈ 200 ms). Replace `BeatPredictor` invocations in `MIRPipeline`. `FeatureVector.beatPhase01` and `beatsUntilNext` computed analytically: `phase01 = ((playbackTime + drift - lastBeat) / period).fract()`. Reactive-mode fallback: keep `BeatPredictor` only for the no-cached-grid case; mark deprecated. Visual regression: re-capture goldens for presets that read `beatPhase01` (Arachne, Gossamer, Stalker, VolumetricLithograph). Re-record `docs/quality_reel.mp4` on the user's three reference tracks + Pyramid Song + Money. **Done when:** Phosphene tracks the beat correctly on 5/4, 7/8, 16/8, swing fixtures (subjective + numerical against S1 ground truth); golden hashes regenerated for affected presets; quality reel rerecorded; user signs off.
+7. **Session 7 — Live drift tracker + FeatureVector wiring.** `LiveBeatDriftTracker` consumes `BeatDetector.Result.onsets[0]` (sub_bass) and cross-correlates against the cached grid in ±50 ms phase window; smooth drift estimate (EMA, τ ≈ 200 ms). Replace `BeatPredictor` invocations in `MIRPipeline`. `FeatureVector.beatPhase01` and `beatsUntilNext` computed analytically: `phase01 = ((playbackTime + drift - lastBeat) / period).fract()`. Reactive-mode fallback: keep `BeatPredictor` only for the no-cached-grid case; mark deprecated. Visual regression: re-capture goldens for presets that read `beatPhase01` (Arachne, Gossamer, Stalker, VolumetricLithograph). Re-record `docs/quality_reel.mp4` on the user's three reference tracks + Pyramid Song + Money. **Done when:** Uzume tracks the beat correctly on 5/4, 7/8, 16/8, swing fixtures (subjective + numerical against S1 ground truth); golden hashes regenerated for affected presets; quality reel rerecorded; user signs off.
 
 **Architectural placement (locked 2026-05-04):**
 
@@ -5347,24 +5347,24 @@ Five of the six fixtures actively stress non-stable-period behavior — only lov
 
 **Files to touch:**
 
-- `PhospheneEngine/Sources/ML/BeatThisModel.swift` — new MPSGraph engine.
-- `PhospheneEngine/Sources/ML/BeatThisModel+Graph.swift` — new graph construction.
-- `PhospheneEngine/Sources/ML/BeatThisModel+Weights.swift` — new weight loader.
-- `PhospheneEngine/Sources/ML/Weights/beat_this/*.bin` — vendored weights (Git LFS).
-- `PhospheneEngine/Sources/DSP/BeatThisPreprocessor.swift` — new preprocessor.
-- `PhospheneEngine/Sources/DSP/BeatGridResolver.swift` — new probability → grid resolver.
-- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — new drift tracker.
-- `PhospheneEngine/Sources/Session/BeatGrid.swift` — new value type.
-- `PhospheneEngine/Sources/Session/SessionPreparer.swift` — call BeatThisModel during prepareTrack; cache BeatGrid.
-- `PhospheneEngine/Sources/Session/StemCache.swift` (or equivalent) — extend `CachedTrackData` with `BeatGrid?`.
-- `PhospheneEngine/Sources/Audio/MIRPipeline.swift` — replace BeatPredictor invocations with LiveBeatDriftTracker; keep BeatPredictor for reactive-mode fallback.
-- `PhospheneEngine/Sources/DSP/BeatPredictor.swift` — deleted in Session 7 (superseded by analytic phase calc + drift tracker).
-- `PhospheneEngine/Tests/PhospheneEngineTests/ML/BeatThisModelTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/BeatThisPreprocessorTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/BeatGridResolverTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Integration/BeatGridIntegrationTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Performance/BeatThisPerformanceTests.swift` — new.
+- `UzumeEngine/Sources/ML/BeatThisModel.swift` — new MPSGraph engine.
+- `UzumeEngine/Sources/ML/BeatThisModel+Graph.swift` — new graph construction.
+- `UzumeEngine/Sources/ML/BeatThisModel+Weights.swift` — new weight loader.
+- `UzumeEngine/Sources/ML/Weights/beat_this/*.bin` — vendored weights (Git LFS).
+- `UzumeEngine/Sources/DSP/BeatThisPreprocessor.swift` — new preprocessor.
+- `UzumeEngine/Sources/DSP/BeatGridResolver.swift` — new probability → grid resolver.
+- `UzumeEngine/Sources/DSP/LiveBeatDriftTracker.swift` — new drift tracker.
+- `UzumeEngine/Sources/Session/BeatGrid.swift` — new value type.
+- `UzumeEngine/Sources/Session/SessionPreparer.swift` — call BeatThisModel during prepareTrack; cache BeatGrid.
+- `UzumeEngine/Sources/Session/StemCache.swift` (or equivalent) — extend `CachedTrackData` with `BeatGrid?`.
+- `UzumeEngine/Sources/Audio/MIRPipeline.swift` — replace BeatPredictor invocations with LiveBeatDriftTracker; keep BeatPredictor for reactive-mode fallback.
+- `UzumeEngine/Sources/DSP/BeatPredictor.swift` — deleted in Session 7 (superseded by analytic phase calc + drift tracker).
+- `UzumeEngine/Tests/UzumeEngineTests/ML/BeatThisModelTests.swift` — new.
+- `UzumeEngine/Tests/UzumeEngineTests/DSP/BeatThisPreprocessorTests.swift` — new.
+- `UzumeEngine/Tests/UzumeEngineTests/DSP/BeatGridResolverTests.swift` — new.
+- `UzumeEngine/Tests/UzumeEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — new.
+- `UzumeEngine/Tests/UzumeEngineTests/Integration/BeatGridIntegrationTests.swift` — new.
+- `UzumeEngine/Tests/UzumeEngineTests/Performance/BeatThisPerformanceTests.swift` — new.
 - `Scripts/convert_beatthis_weights.py` — one-shot converter (mirror of `convert_beatnet_weights.py`).
 - `Scripts/dump_beatthis_reference.py` — Python reference-dump script for Session 2 / 4 golden tests.
 - `docs/diagnostics/DSP.2-architecture.md` — new audit doc (replaces archived BeatNet version).
@@ -5435,8 +5435,8 @@ Five of the six fixtures actively stress non-stable-period behavior — only lov
 - [x] **S8 — BeatThisModel output matches PyTorch reference (2026-05-05):** Four bugs found and fixed: (1) frontend block order `partial → norm(wrong inDim) → conv` corrected to `partial → conv → norm(out_dim)` (pre-S8 norm used the wrong channel count); (2) stem reshape transposed `[T,F]→[F,T]` before NHWC reshape (pre-S8 was a byte-reinterpretation, scrambling the mel spectrogram); (3) BN1d-aware padding pads each mel bin with `−shift/scale` so the padded region maps to zero post-BN (pre-S8 naive zero-fill caused `BN1d(0)==shift` to produce non-zero values at time edges); (4) RoPE pairs adjacent elements `(x[2i], x[2i+1])` not half-and-half `(x[i], x[D/2+i])` (pre-S8 completely wrong attention dot products). Result: love_rehab.m4a max sigmoid 0.9999 vs Python ref 0.9999; 126 frames > 0.5 vs ref 124; 59 beats detected vs 59 in ground-truth fixture. `test_loveRehab_endToEnd_producesBeats` passes without `withKnownIssue`. S7's drift tracker is now live and active for every Spotify-prepared session. Commits `49315657..b9687cbc`. **2026-05-05.**
 - [x] **DSP.2 hardening — all four S8 bugs individually regression-locked (2026-05-05):** `test_loveRehab_endToEnd_producesBeats` thresholds raised to `maxProb > 0.99` / `aboveHalf >= 100` (reflecting confirmed post-S8 values). `BeatThisLayerMatchTests.swift` (new): loads `docs/diagnostics/DSP.2-S8-python-activations.json`, runs `predictDiagnostic` on love_rehab.m4a, asserts per-stage min/max/mean within two-tier tolerances — `preTfmTol=2e-3` for stem.bn1d + frontend.linear; `postTfmTol=1e-2` for transformer.norm + head.linear + output stages (covers ~0.3–0.9% delta from non-causal softmax over padded frames). Transformer blocks 0–5 excluded (Python hooks sub-block FFN output before residual; Swift captures full-block output — incompatible; end-to-end coverage via beat_logits/beat_sigmoid is sufficient). `BeatThisBugRegressionTests.swift` (new): Bug 1 gate (`frontendBlocks[N].norm.scale.count == out_dim`); Bug 3 gate (`|stem.bn1d[t,mel]| < 1e-3` for padded frames t∈[1497,1500) on zero input); Bugs 2+4 annotated as covered by layer-match (wrong reshape scrambles stem.bn1d by >50%; wrong RoPE pairing diverges output by >30%); reactive-mode test confirms `setBeatGrid(nil)` fallback returns finite FeatureVector. `LiveBeatDriftTrackerTests` extended with 7 tests (MARK 9–15) covering `currentBPM`, `currentLockState`, `relativeBeatTimes` public APIs. **975 engine tests / 103 suites; 0 SwiftLint violations.** Commits `286e67cf..4eaae5a7`. **2026-05-05.**
 - [x] **S9 — barPhase01/beatsPerBar propagation + live Beat This! for reactive mode (2026-05-05):** `FeatureVector` floats 37–38 promoted from padding to `barPhase01` (phrase-level 0→1 ramp, 0 in reactive mode) and `beatsPerBar` (time-signature numerator, default 4). Metal preamble struct updated to match; Swift `init()` seeds `barPhase01=0 / beatsPerBar=4`. `MIRPipeline.buildFeatureVector` writes drift-tracker values on the grid path and 0/4 on the reactive path. `BeatGrid.offsetBy(_ seconds:)` helper added for time-aligning buffer-relative beat grids to track-relative coordinates. `SpectralHistoryBuffer` ring 4 repurposed from `vocals_pitch_norm` to `bar_phase01`; dead `normalizePitch` method and three pitch constants deleted. `SpectralCartograph`: BR panel third row now plots `bar_phase01` (violet, "BAR φ" label). `runLiveBeatAnalysisIfNeeded()` added to `VisualizerEngine+Stems`: fires once per track after 10 s of buffered tap audio when `liveDriftTracker.hasGrid == false`; lazy-loads `DefaultBeatGridAnalyzer` on `stemQueue`; offsets the resulting grid by `(elapsedSeconds − 10)` to track-relative time; installs via `mirPipeline.setBeatGrid()` on `@MainActor`. Effect: ad-hoc / reactive sessions receive phrase-level beat tracking after ≈ 10 s of listening, same as Spotify-prepared sessions. **987 engine tests; 0 new SwiftLint violations; golden hashes unchanged.** Commit `b6a6095f`. **2026-05-05.**
-- [x] `swift test --package-path PhospheneEngine` passes (pre-existing flakes in `MetadataPreFetcher` / `MemoryReporter` acceptable).
-- [ ] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` passes.
+- [x] `swift test --package-path UzumeEngine` passes (pre-existing flakes in `MetadataPreFetcher` / `MemoryReporter` acceptable).
+- [ ] `xcodebuild -scheme UzumeApp -destination 'platform=macOS' build` passes.
 - [ ] No `import CoreML` anywhere in the engine.
 - [ ] CLAUDE.md Module Map updated; CREDITS.md Beat This! attribution present.
 
@@ -5476,7 +5476,7 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 
 **2026-05-05 audit.** Full architecture audit of the Beat This! BeatGrid lifecycle, live drift tracking, reactive-mode surface, Spectral Cartograph diagnostic coverage, FeatureVector product contract for complex meters, and test fixture gaps. Audit document: `docs/diagnostics/DSP.3-beat-sync-test-environment-audit.md`.
 
-**Root cause of observed "Phosphene shifts into Reactive mode" when switching to Spectral Cartograph:** The `SpectralCartographText` overlay labels `lockState=0` as "REACTIVE." When `LiveBeatDriftTracker` is in UNLOCKED state — either because `resetStemPipeline(for:)` has not yet fired (music not started) or because fewer than 4 tight-match onsets have been accumulated — the orb reads "REACTIVE" even though `livePlan` is non-nil and the engine is in planned mode. This is a display ambiguity, not a session mode regression. However, a second structural problem makes Spectral Cartograph unusable as a held diagnostic surface: `DefaultLiveAdapter` mood-override fires every ~60 seconds when the current preset scores 0.0 (diagnostic-excluded), switching the engine away from Spectral Cartograph.
+**Root cause of observed "Uzume shifts into Reactive mode" when switching to Spectral Cartograph:** The `SpectralCartographText` overlay labels `lockState=0` as "REACTIVE." When `LiveBeatDriftTracker` is in UNLOCKED state — either because `resetStemPipeline(for:)` has not yet fired (music not started) or because fewer than 4 tight-match onsets have been accumulated — the orb reads "REACTIVE" even though `livePlan` is non-nil and the engine is in planned mode. This is a display ambiguity, not a session mode regression. However, a second structural problem makes Spectral Cartograph unusable as a held diagnostic surface: `DefaultLiveAdapter` mood-override fires every ~60 seconds when the current preset scores 0.0 (diagnostic-excluded), switching the engine away from Spectral Cartograph.
 
 **Sub-increments:**
 
@@ -5533,7 +5533,7 @@ This increment is **the first one that requires Matt to explicitly approve scope
 **Proposed shape (subject to architect's pre-implementation pass):**
 
 ```
-PhospheneApp/
+UzumeApp/
   VisualizerEngine.swift              → 200-line composition root: owns the three hosts, wires publishers, exposes the public API
   AudioPipelineHost.swift             → router, FFT, MIR, stems, signal-state callbacks. Owns the audio-thread → analysis-queue boundary.
   RenderHost.swift                    → pipeline, presets, mesh/preset state, mvwarp, preset switching. Owns the render-pipeline lock surface.
@@ -5579,7 +5579,7 @@ Move `SoakTestHarness` into a `Tests/` target or a separate non-shipped SPM dev 
 
 Pick one source of truth (recommended: `Presets/Shaders/`). Remove the duplicate from the other target's `resources` declaration in `Package.swift`. Verify no `.metal` lookup silently fails.
 
-**Files to touch:** `PhospheneApp/VisualizerEngine*.swift` (split into 4+ files), `PhospheneEngine/Sources/Renderer/RenderPipeline*.swift` (RenderGraphState refactor), `PhospheneEngine/Sources/DSP/MIRPipeline.swift`, `PhospheneEngine/Package.swift`, related tests.
+**Files to touch:** `UzumeApp/VisualizerEngine*.swift` (split into 4+ files), `UzumeEngine/Sources/Renderer/RenderPipeline*.swift` (RenderGraphState refactor), `UzumeEngine/Sources/DSP/MIRPipeline.swift`, `UzumeEngine/Package.swift`, related tests.
 
 **Tests:**
 
@@ -5637,7 +5637,7 @@ QR.5's load-bearing invariant ("no behavior change, no golden-hash drift") forbi
 **Consumers to migrate** (verified during QR.5 audit; re-verify on session start in case of drift):
 
 - ~~GlassBrutalist.metal — 2× `perlin2D` calls~~ (moot: Glass Brutalist retired GBRETIRE.1 / D-186; the file is gone, so it drops out of any migration scope below).
-- [VolumetricLithograph.metal:382](PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal) — `fbm3D(noiseP, VL_FBM_OCTAVES)`. Plus 2 more sites in the volumetric march loop (`fbm3D(p * 0.5, 4)`, `fbm3D((p + lightDir * 0.3) * 0.5, 3)`).
+- [VolumetricLithograph.metal:382](UzumeEngine/Sources/Presets/Shaders/VolumetricLithograph.metal) — `fbm3D(noiseP, VL_FBM_OCTAVES)`. Plus 2 more sites in the volumetric march loop (`fbm3D(p * 0.5, 4)`, `fbm3D((p + lightDir * 0.3) * 0.5, 3)`).
 - ~~KineticSculpture.metal — 6× `sdRoundBox` calls~~ (moot: Kinetic Sculpture retired KSRETIRE.1 / D-188; the file is gone. **This removes the only `sdRoundBox` consumer, so Strategy B below is now moot** — `sdRoundBox` can simply be deleted as an unused keeper if this increment ever runs. The remaining migration scope is VolumetricLithograph's `perlin*`/`fbm*` only.)
 
 **Two strategy decisions to make at increment start.** (Strategy B is now moot — see the struck KineticSculpture line above.)
@@ -5693,7 +5693,7 @@ QR.5's load-bearing invariant ("no behavior change, no golden-hash drift") forbi
 
 ## Phase DASH — Telemetry Dashboard
 
-A dedicated HUD layer for Phosphene's diagnostic and operational telemetry. Renders floating monospace metrics cards over the live Metal view using a zero-alloc Core Text path backed by a shared-memory MTLTexture. Six increments; no Orchestrator or audio-pipeline changes — pure Renderer + Shared additions.
+A dedicated HUD layer for Uzume's diagnostic and operational telemetry. Renders floating monospace metrics cards over the live Metal view using a zero-alloc Core Text path backed by a shared-memory MTLTexture. Six increments; no Orchestrator or audio-pipeline changes — pure Renderer + Shared additions.
 
 **Goals:**
 - Real-time BPM, beat-lock state, stem energies, frame budget, and session-mode label without requiring Spectral Cartograph to be the active preset.
@@ -5757,7 +5757,7 @@ The pale-tone-share gate (≤ 0.30 of cells; pale = linear RGB `min(R, G, B) > 0
 
 **Done when.**
 
-- New file `PhospheneEngine/Sources/Presets/LumenMosaicPaletteLibrary.swift` defines 18 palettes as Swift structs carrying a `name: String`, a 12-entry `colors: [SIMD3<Float>]` (linear RGB), and an explicit `moodAnchor: SIMD2<Float>` in normalised mood-space coordinates `[-1, +1]` per axis (valence on x, arousal on y). Palettes named to match the design artifacts (Autumnal, Refn Glow, Glacier, Art Deco, Abyssal Bioluminescence, Kintsugi, Carnival, Holi, Geode, Rothko Chapel, Tropical Aviary, Persian Miniature, Ukiyo-e, Cathedral Lights, Cycladic, Ming Porcelain, Tenebrism, Obsidian). Hex values per `docs/VISUAL_REFERENCES/lumen_mosaic/palette_library/`.
+- New file `UzumeEngine/Sources/Presets/LumenMosaicPaletteLibrary.swift` defines 18 palettes as Swift structs carrying a `name: String`, a 12-entry `colors: [SIMD3<Float>]` (linear RGB), and an explicit `moodAnchor: SIMD2<Float>` in normalised mood-space coordinates `[-1, +1]` per axis (valence on x, arousal on y). Palettes named to match the design artifacts (Autumnal, Refn Glow, Glacier, Art Deco, Abyssal Bioluminescence, Kintsugi, Carnival, Holi, Geode, Rothko Chapel, Tropical Aviary, Persian Miniature, Ukiyo-e, Cathedral Lights, Cycladic, Ming Porcelain, Tenebrism, Obsidian). Hex values per `docs/VISUAL_REFERENCES/lumen_mosaic/palette_library/`.
 - Orchestrator selection model implemented: per-song weighted draw via Gaussian-over-distance from each palette's `moodAnchor` to the current track's `(valence, arousal)`, with the immediately previous song's palette removed from the candidate set. Draw seeded by track identity so it's reproducible. Per `D-LM-palette-library`: mood biases **selection probability**, never deterministic mapping; every eligible palette has non-zero probability everywhere in the mood plane.
 - `lm_cell_palette` (MSL) rewritten to index into the per-session palette via `palette_idx = lm_hash_u32(cell_id ^ step ^ track_seed ^ section_salt) % 12` and look up the corresponding palette entry. The pre-LM.4.7 hash → RGB-cube path is removed. The LM.7 per-track chromatic-projected tint path is removed (`kTintMagnitude` retires).
 - Slot-8 GPU ABI extended to carry the 12-colour palette as 36 floats (or equivalent per implementation choice — e.g. 12 × `float4` packed). `LumenPatternState` stride updated; Swift-side `CommonLayoutTest` regression-locks the new size. `directPresetFragmentBuffer3` setter wires the per-session palette into the binding.
@@ -5769,9 +5769,9 @@ The pale-tone-share gate (≤ 0.30 of cells; pale = linear RGB `min(R, G, B) > 0
 
 **Verify.**
 
-- `swift test --package-path PhospheneEngine --filter "LumenPalette|PresetLoaderCompileFailure|PresetRegression|PresetAcceptance|FidelityRubric"`
-- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` — 18-palette contact sheet at the standard 9-fixture set, plus per-palette mean / aggregate-character verification.
-- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+- `swift test --package-path UzumeEngine --filter "LumenPalette|PresetLoaderCompileFailure|PresetRegression|PresetAcceptance|FidelityRubric"`
+- `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview` — 18-palette contact sheet at the standard 9-fixture set, plus per-palette mean / aggregate-character verification.
+- `xcodebuild -scheme UzumeApp -destination 'platform=macOS' build`
 - `swiftlint lint --strict --config .swiftlint.yml`
 
 **Honest trade-offs documented.** Per-cell freedom is narrower than LM.4.6: each cell samples one of 12 colours, not from the full 16M-colour RGB cube. Matt explicitly accepted this trade-off in the 2026-05-17 conversation in exchange for palette character per session. Across the 18 palettes, the union of reachable colours covers a wide swath of the cube; what changes is that **within a given session**, only 12 colours appear, which is the property that makes the palette read as a coherent visual identity.
@@ -5797,7 +5797,7 @@ Motivation + per-audit closeout narratives: [`ENGINEERING_PLAN_HISTORY.md`](ENGI
 
 **Status.** Kickoff doc landed 2026-05-21 ([`docs/prompts/PHASE_CA_KICKOFF_CA_AUDIO_2026-05-21.md`](prompts/PHASE_CA_KICKOFF_CA_AUDIO_2026-05-21.md)). Audit itself pending Matt's scheduling — hand the kickoff to a fresh Claude Code session when ready. CA.7b closeout 2026-05-21 recommended CA-Audio as the natural next increment (closes the CA.3 Session ↔ Audio boundary-noted item; smaller than CA-Presets).
 
-**Scope.** `PhospheneEngine/Sources/Audio/` — 16 files / 3,294 LoC across capture pipeline (6 files: `SystemAudioCapture`, `AudioInputRouter`, `AudioInputRouter+SignalState`, `AudioBuffer`, `LookaheadBuffer`, `FFTProcessor`), signal-quality monitors (2 files: `SilenceDetector`, `InputLevelMonitor`), metadata fetcher cluster (6 files: `MetadataPreFetcher`, `MusicBrainzFetcher`, `SpotifyFetcher`, `SoundchartsFetcher`, `MusicKitBridge`, `StreamingMetadata`), protocols (1 file: `Protocols.swift`), module marker (1 file: `Audio.swift`).
+**Scope.** `UzumeEngine/Sources/Audio/` — 16 files / 3,294 LoC across capture pipeline (6 files: `SystemAudioCapture`, `AudioInputRouter`, `AudioInputRouter+SignalState`, `AudioBuffer`, `LookaheadBuffer`, `FFTProcessor`), signal-quality monitors (2 files: `SilenceDetector`, `InputLevelMonitor`), metadata fetcher cluster (6 files: `MetadataPreFetcher`, `MusicBrainzFetcher`, `SpotifyFetcher`, `SoundchartsFetcher`, `MusicKitBridge`, `StreamingMetadata`), protocols (1 file: `Protocols.swift`), module marker (1 file: `Audio.swift`).
 
 **Required verifications** carried forward from CA.3 / CA.5 / CA.7b observations: (1) CA.3 Session ↔ Audio boundary closure — `MetadataPreFetcher` producer-side traced against the Session consumer chain at `SessionPreparer.swift:86, 132, 299`; (2) D-079 sample-rate plumbing — cited literal-grep against `Scripts/check_sample_rate_literals.sh` allowlist + immutable-capture confirmation at `AudioInputRouter.installTap(...)`; (3) tap recovery state machine matches ARCH §68 (3 s → 10 s → 30 s backoff, three attempts); (4) SilenceDetector + InputLevelMonitor timings match ARCH §487-488 (.active → .suspect 1.5s → .silent 3s → .recovering → .active 0.5s hold; 21s peak-dBFS window + 30-frame hysteresis); (5) Failed Approach #21 + #22 verified at `SystemAudioCapture` source; (6) BUG-005 + BUG-013 producer-side handling characterised.
 
@@ -5820,7 +5820,7 @@ Verification narratives (CS.1 / CS.1.x / BSAudit series / CS.1.y): [`ENGINEERING
 
 **Sequencing.** Gated behind CS.1.y (BUG-017 fix) — CS.2–CS.5 all assume a correct cold-start grid (Matt-ratified reprioritization, 2026-05-22).
 
-**Scope.** Add a first-segment-of-track minimum duration constraint to `SessionPlanner.planOneSegment` (`PhospheneEngine/Sources/Orchestrator/SessionPlanner+Segments.swift:137`). Target 10-12 s. Handle: tracks shorter than the minimum (allow violation); section boundaries inside the minimum window (push to next bar boundary after the minimum). Regenerate golden session tests.
+**Scope.** Add a first-segment-of-track minimum duration constraint to `SessionPlanner.planOneSegment` (`UzumeEngine/Sources/Orchestrator/SessionPlanner+Segments.swift:137`). Target 10-12 s. Handle: tracks shorter than the minimum (allow violation); section boundaries inside the minimum window (push to next bar boundary after the minimum). Regenerate golden session tests.
 
 **Done-when.**
 - `planOneSegment` honors the new constraint for first segments only (subsequent segments unaffected).
@@ -6033,7 +6033,7 @@ A static-camera ray-march scene of a glowing geode interior — crystalline mate
 
 **Scope.** Cavern walls (4-plane intersection with `worley_fbm` displacement), central crystal cluster (5 hex-prism SDFs with hash-driven per-instance jitter), floor crystals, hanging tips. Default white-on-grey rendering. Static camera composition framing. No materials, no audio coupling.
 
-**Deliverables.** `PhospheneEngine/Sources/Presets/Shaders/CrystallineCavern.metal` (sceneSDF, sceneMaterial stubs returning matID only). `CrystallineCavern.json` (full rubric profile, certified: false). `PresetLoaderCompileFailureTest.expectedProductionPresetCount` bumped.
+**Deliverables.** `UzumeEngine/Sources/Presets/Shaders/CrystallineCavern.metal` (sceneSDF, sceneMaterial stubs returning matID only). `CrystallineCavern.json` (full rubric profile, certified: false). `PresetLoaderCompileFailureTest.expectedProductionPresetCount` bumped.
 
 **Done-when.** Composition reads correctly against geode reference photography (Matt eyeball, not a formal M7 yet). Engine + app builds clean. Visual harness emits a default-fixture PNG.
 
@@ -6155,7 +6155,7 @@ New preset in the Dragon Bloom lineage (D-135 / D-138): a Pollock-style poured /
 Reference set curated + Matt-approved; `docs/VISUAL_REFERENCES/skein/` populated, `CheckVisualReferences` green (commits `07a4a57b` / `52ebfe3d`). Anti-reference images + the V.6 rubric profile deferred per the Skein.0 closeout.
 
 ### Increment Skein.ENGINE.1 — Canvas-hold accumulation path ✅ (2026-06-05, D-142)
-Establishes the persistent, lossless paint canvas: **identity warp + no decay + no R→G→B transfer + marks-on-top**, the no-decay / identity **configuration** of the mv_warp brush-on-feedback paradigm (a sibling of Dragon Bloom — D-142). **Audit verdict: config-only — no PhospheneEngine source change, no new warp mode** (the four properties are reachable as per-preset config; `decayMul = (chromaticMix>0)?1.0:in.decay` proves no-decay is *not* bound to the colour transfer). Files: `Skein.metal` (identity `mvWarpPerFrame` decay=1.0 / `mvWarpPerVertex` returns `uv` + a `skein_fragment` toned-ground + fixed test stamp), `Skein.json` (`passes:["direct","mv_warp"]`, decay 1.0, uncertified, no `family` yet), `SkeinCanvasHoldTest.swift` (new), `PresetLoaderCompileFailureTest` count 19→20. **`SkeinCanvasHoldTest` proves whole-frame Hamming 0 across 130 hold frames** through the live scene→warp→blit→swap dispatch path (sRGB feedback; sRGB round-trip + identity-at-pixel-centers both exact → no linear-format / nearest-sampler override needed). **Gates:** 1388 engine tests green; `PresetRegressionTests` byte-identical for every other preset (no shared code touched); MVWarp/StagedComposition green; app build clean; SwiftLint `--strict` clean (424 files); contrast + acceptance gates pass for Skein. **Flagged for Skein.1+:** ~~app-wiring de-entanglement of "scene-geometry ⟹ Dragon Bloom chromatic+comp" + generalize `makeSceneGeometryPipeline` names~~ → **DONE in Skein.ENGINE.1.1 (D-143)**; the light-canvas-vs-white-chrome WCAG contrast tension (ENGINE.1 uses a darkened toned-ground placeholder — still deferred per D-142(b)); `family: painterly` + the `PresetCategory` case (still deferred per D-142(c)). **Pending Matt's sign-off (the increment gate).**
+Establishes the persistent, lossless paint canvas: **identity warp + no decay + no R→G→B transfer + marks-on-top**, the no-decay / identity **configuration** of the mv_warp brush-on-feedback paradigm (a sibling of Dragon Bloom — D-142). **Audit verdict: config-only — no UzumeEngine source change, no new warp mode** (the four properties are reachable as per-preset config; `decayMul = (chromaticMix>0)?1.0:in.decay` proves no-decay is *not* bound to the colour transfer). Files: `Skein.metal` (identity `mvWarpPerFrame` decay=1.0 / `mvWarpPerVertex` returns `uv` + a `skein_fragment` toned-ground + fixed test stamp), `Skein.json` (`passes:["direct","mv_warp"]`, decay 1.0, uncertified, no `family` yet), `SkeinCanvasHoldTest.swift` (new), `PresetLoaderCompileFailureTest` count 19→20. **`SkeinCanvasHoldTest` proves whole-frame Hamming 0 across 130 hold frames** through the live scene→warp→blit→swap dispatch path (sRGB feedback; sRGB round-trip + identity-at-pixel-centers both exact → no linear-format / nearest-sampler override needed). **Gates:** 1388 engine tests green; `PresetRegressionTests` byte-identical for every other preset (no shared code touched); MVWarp/StagedComposition green; app build clean; SwiftLint `--strict` clean (424 files); contrast + acceptance gates pass for Skein. **Flagged for Skein.1+:** ~~app-wiring de-entanglement of "scene-geometry ⟹ Dragon Bloom chromatic+comp" + generalize `makeSceneGeometryPipeline` names~~ → **DONE in Skein.ENGINE.1.1 (D-143)**; the light-canvas-vs-white-chrome WCAG contrast tension (ENGINE.1 uses a darkened toned-ground placeholder — still deferred per D-142(b)); `family: painterly` + the `PresetCategory` case (still deferred per D-142(c)). **Pending Matt's sign-off (the increment gate).**
 
 ### Increment Skein.ENGINE.1.1 — Per-preset marks-on-top + cream ground ✅ (2026-06-05, D-143)
 Clears the ENGINE.1 "flagged for Skein.1" de-entanglement (a) and makes **Skein render live for the first time** (cream ground + held test disc through the real pipeline). The D-138 marks-on-top half was hard-wired to Dragon Bloom in three places; generalising them touched SHARED mv_warp wiring (a D-137 beachball risk), so this lands as its own gated, golden-regression-locked infra patch **before** Skein.1. **Audit verdict: smallest additive change — existing presets resolve exactly as before, only a new per-preset path is added.** The three couplings → per-preset: (1) `PresetLoader.makeSceneGeometryPipeline` resolves `<prefix>_geometry_*` (legacy `dragon_bloom_strand_*` fallback; stale "additive blend" doc fixed → normal alpha); (2) a new optional **`marks` descriptor block** (`vertex_count`/`instance_count`/`primitive`/`chromatic`/`comp`/`beat_pulse`) drives draw params + chromatic + comp + the comp beat pump (gated by `marks.beat_pulse`, was `sceneGeometryState != nil`); (3) per-preset **canvas-clear colour** on `MVWarpPipelineBundle`/`MVWarpState` → `clearWarpTextures(to:)` from `marks.canvas_clear`. Dragon Bloom's block carries its exact literals (1536/3/lineStrip, chromatic 1.0, comp 1/0.5/1.07, beat on) → byte-identical. Skein: `skein_fragment` → flat cream GROUND; the fixed disc → `skein_geometry_*` fullscreen-triangle overlay (hard-edged so the per-frame redraw is idempotent), `chromatic=0`, black-free cream clear. Files: `PresetLoader.swift`, `PresetDescriptor.swift` (`MarksConfig`), `RenderPipeline+MVWarp.swift` / `+PresetSwitching.swift` / `RenderPipeline.swift` / `MVWarpTypes.swift`, `VisualizerEngine+Presets.swift`, `DragonBloom.json` (+`marks`), `Skein.metal` / `Skein.json` (+`marks`), `SkeinCanvasHoldTest.swift` (marks-on-top test), `PresetAcceptanceTests.swift` (Skein readable-form exemption). **Gates:** engine suite green except 7 pre-existing `love_rehab.m4a`-fixture-absent failures (git-ignored licensed clip, unrelated); `PresetRegressionTests` + `DragonBloomMVWarpAccumulationTest` + `FataMorganaMVWarpAccumulationTest` byte-identical; new marks-on-top test green (disc on cream, `chromatic=0` Hamming-0 over 130 frames, `chromatic=1.0` cycles) through the live scene→warp→overlay→blit→swap path; PresetAcceptance + PresetContrast green for Skein; app build clean; SwiftLint `--strict` clean. **Pending Matt's sign-off (the increment gate).**
@@ -6199,13 +6199,13 @@ The §1.3/§1.5 musicality layer on the working look — no new visual subject; 
 Matt M7 on session `2026-06-09T22-35-09Z`: "a different white line pattern showing on screen when the track starts… white disturbs the colour palette." Root cause: the Skein.1-era WHITE-BASELINE breakpoint — at canvas birth most of the 40-frame tail (incl. negative-ctau samples) resolved to the white era, baking a permanent tail-length white squiggle, displaced from the first coloured pour by its jump, different per track (the seed). **Fix (D-152 amendment):** the ring starts EMPTY (shader skips Layer A at `breakCount == 0` — no line until a pour commits); the FIRST commit waits `firstPourSettleTau = 0.25` τ (colour from ~¼ s of smoothed evidence, not one frame's argmax — D-150 decisiveness; a settle-window crash guard added for the −1 dominant index) and RETRO-COLOURS the pre-commit tail (`tauStart = 0`, no jump on the first pour) — the first stroke appears already in the lead stem's colour; the painter CLOCK pauses at true silence (`activity = max(stemMix, smoothstep(0.01, 0.04, fvEnergy))` — wetness-pause semantics; FV term keeps the clock running while stems converge). The Skein.1 "white line at silence" invariant is deliberately retired. **Gates:** `test_pourLine_accumulatesHoldsContinuous` redesigned — CALM real-stem drive (all devs below the onset threshold ⇒ line without splatter), accumulation/hold/continuity (corridor vs `finalPainterTau`) + `!hasWhiteTexel` + silence-run `painted == 0`; `!hasWhiteTexel` added to the real-stem gate (canvas birth + real stems = the defect scenario); colour-freeze gate re-green with the cleaner ring (`[ochre@τ0 off-0, oxblood@τ6.72 #1]` — the settle eliminates the spurious first-frame-argmax pour); breakpoint-ring diagnostic added to its print. Pour contact sheet re-pointed at calm stems (silence is now correctly empty cream); regenerated: line opens in colour, never white. PresetRegression/DB/FM + loader count green; SwiftLint `--strict` clean.
 
 ### Increment BUG-049 — Skein colour-freeze gate: feasibility-aware switch selection ✅ DONE (fix 2026-06-11; armed-path validation completed same evening — addendum at end of row)
-The colour-freeze cert gate (`test_lineColorFreeze_keepsColourAndStartsNewPour`) picked its dominant-stem switch on decisiveness alone and only discovered at sampling time that the switch was un-sample-able (pre/post windows < 3·dτ inside the pour's reign / probe extent) — `Issue.record` red on session-set content, not code, whenever a new capture changed the pick (the 19:49 RB.2-2 closeout battery hit this; the Skein.4.1 scan-all hardening had fixed the previous face of the same fragility). **Fix (commit `a6899893`, test-infrastructure only):** `switchSampleInfeasibility` — a CPU-only dry run replaying the candidate's exact tick sequence (SkeinState.tick has no GPU read-back, so it predicts the live run's painter clock / dominant stem / breakpoint ring exactly) — vets every candidate DURING selection; the scan walks candidates in decisiveness order and arms on the most decisive switch that is also sample-able; the in-run guard remains as a dry-run/live parity safety net (its firing now means parity divergence, with that diagnosis in its message). No-candidate session sets skip LOUDLY (counts + per-candidate rejection reasons printed; never red, never silent — BUG-049 criterion 1); the Skein.3 real-stem routing gate gained the same scan-all + loud-skip treatment (it hard-depended on the single LARGEST session and went red when that was a 602-byte recorder stub). Colour-freeze assertions (pre-switch X≫Y, post-switch Y≫X, jump magnitude, new-pour-not-on-old-path) untouched. **Done-when:** met for the unusable-set arm (SkeinCanvasHold 21/21 green on the current 11-stub session set, skip reasons printed); **armed-path arms (criteria 1a/1b + the criterion-2 adversarial colour-unfrozen A/B) BLOCKED** — the only real capture (`2026-06-11T13-10-42Z`, 2.98 MB) vanished from `~/Documents/phosphene_sessions` between the 19:49 filing and the fix session (unrecoverable: Trash TCC-denied, no quarantine copy, no snapshot). Next real listening session: expect `[skein_colorfreeze] picked …` + green, then run the A/B. KNOWN_ISSUES banner + release notes dev-2026-06-11-h. Capability registry untouched (no renderer/preset capability change). **Validation addendum (same evening, parallel session):** the block was cleared without waiting for a listening session — `FixtureSessionCaptureGenerator` (new, engine test target `Diagnostics/`, env-gated `PHOSPHENE_GEN_SESSION_DIR`) replays vendored tempo fixtures through the production pipeline (ffmpeg decode → StemSeparator 10 s chunks → StemAnalyzer per 1024-hop → `SessionRecorder.csvRow`) and wrote three real `fixturegen-*` captures (~1290 frames each; FA #27-compliant). Criteria 1a/1b: gate ARMED (`picked fixturegen-so_what`, bass→drums switch) and SkeinCanvasHold ran 21/21 green with recorder stubs simultaneously present; criterion 2: freeze deliberately broken in `skeinLineLookupAt` (latest-breakpoint colour for every τ — the literal Skein.4.1 defect) → gate RED on its headline assertion (PRE-switch X=0 Y=61), reverted → green (X=61 Y=0); empty-dir leg: loud skip, green. The captures stay in place (regenerable in ~7 s) so the armed path no longer depends on listening-session happenstance. Release notes dev-2026-06-11-i.
+The colour-freeze cert gate (`test_lineColorFreeze_keepsColourAndStartsNewPour`) picked its dominant-stem switch on decisiveness alone and only discovered at sampling time that the switch was un-sample-able (pre/post windows < 3·dτ inside the pour's reign / probe extent) — `Issue.record` red on session-set content, not code, whenever a new capture changed the pick (the 19:49 RB.2-2 closeout battery hit this; the Skein.4.1 scan-all hardening had fixed the previous face of the same fragility). **Fix (commit `a6899893`, test-infrastructure only):** `switchSampleInfeasibility` — a CPU-only dry run replaying the candidate's exact tick sequence (SkeinState.tick has no GPU read-back, so it predicts the live run's painter clock / dominant stem / breakpoint ring exactly) — vets every candidate DURING selection; the scan walks candidates in decisiveness order and arms on the most decisive switch that is also sample-able; the in-run guard remains as a dry-run/live parity safety net (its firing now means parity divergence, with that diagnosis in its message). No-candidate session sets skip LOUDLY (counts + per-candidate rejection reasons printed; never red, never silent — BUG-049 criterion 1); the Skein.3 real-stem routing gate gained the same scan-all + loud-skip treatment (it hard-depended on the single LARGEST session and went red when that was a 602-byte recorder stub). Colour-freeze assertions (pre-switch X≫Y, post-switch Y≫X, jump magnitude, new-pour-not-on-old-path) untouched. **Done-when:** met for the unusable-set arm (SkeinCanvasHold 21/21 green on the current 11-stub session set, skip reasons printed); **armed-path arms (criteria 1a/1b + the criterion-2 adversarial colour-unfrozen A/B) BLOCKED** — the only real capture (`2026-06-11T13-10-42Z`, 2.98 MB) vanished from `~/Documents/phosphene_sessions` between the 19:49 filing and the fix session (unrecoverable: Trash TCC-denied, no quarantine copy, no snapshot). Next real listening session: expect `[skein_colorfreeze] picked …` + green, then run the A/B. KNOWN_ISSUES banner + release notes dev-2026-06-11-h. Capability registry untouched (no renderer/preset capability change). **Validation addendum (same evening, parallel session):** the block was cleared without waiting for a listening session — `FixtureSessionCaptureGenerator` (new, engine test target `Diagnostics/`, env-gated `UZUME_GEN_SESSION_DIR`) replays vendored tempo fixtures through the production pipeline (ffmpeg decode → StemSeparator 10 s chunks → StemAnalyzer per 1024-hop → `SessionRecorder.csvRow`) and wrote three real `fixturegen-*` captures (~1290 frames each; FA #27-compliant). Criteria 1a/1b: gate ARMED (`picked fixturegen-so_what`, bass→drums switch) and SkeinCanvasHold ran 21/21 green with recorder stubs simultaneously present; criterion 2: freeze deliberately broken in `skeinLineLookupAt` (latest-breakpoint colour for every τ — the literal Skein.4.1 defect) → gate RED on its headline assertion (PRE-switch X=0 Y=61), reverted → green (X=61 Y=0); empty-dir leg: loud skip, green. The captures stay in place (regenerable in ~7 s) so the armed path no longer depends on listening-session happenstance. Release notes dev-2026-06-11-i.
 
 ### Increment BUG-048 — Canonical `xcodebuild test` un-broken: engine bundle removed from the app scheme's test action ✅ (2026-06-11; found by REVIEW.3's first three evidence blocks)
-The app scheme's test action had included `PhospheneEngineTests` since U.1; under xcodebuild's test-runner context the engine bundle fails on environment, not code — ffmpeg subprocess spawn and repo-relative file reads denied ("Operation not permitted"), the REVIEW.2 audio churn tests die in ~1 ms, `DocIntegrityTests` reads an empty DECISIONS.md, and only ~440 of 1439 engine tests load — so the canonical app-test invocation was permanently red (exit 65) while the pure app run inside it passed. Confirmed environment-class by three evidence blocks (sandboxed shell / unsandboxed shell / Matt's terminal — identical signature). **Fix (Matt's option-1 pick over making the engine bundle xcodebuild-compatible):** remove the engine `TestableReference` from `PhospheneApp.xcscheme`'s test action — the engine suite's canonical runner is `swift test --package-path PhospheneEngine` (where all of this passes); double-running 1439 tests in a broken environment added noise, not coverage. **Done-when (met):** `xcodebuild test` exits 0 / `** TEST SUCCEEDED **` / 382 app tests green with no engine-bundle run; `SchemeTestActionRegressionTests` (engine suite) regression-locks the test-action shape (engine bundle absent AND app target present); RUNBOOK §Build and Test documents the split; KNOWN_ISSUES BUG-048 resolved with commit `e110b1ca`; release notes dev-2026-06-11-g. P2 single fix increment (root cause documented before code). Capability registry untouched.
+The app scheme's test action had included `UzumeEngineTests` since U.1; under xcodebuild's test-runner context the engine bundle fails on environment, not code — ffmpeg subprocess spawn and repo-relative file reads denied ("Operation not permitted"), the REVIEW.2 audio churn tests die in ~1 ms, `DocIntegrityTests` reads an empty DECISIONS.md, and only ~440 of 1439 engine tests load — so the canonical app-test invocation was permanently red (exit 65) while the pure app run inside it passed. Confirmed environment-class by three evidence blocks (sandboxed shell / unsandboxed shell / Matt's terminal — identical signature). **Fix (Matt's option-1 pick over making the engine bundle xcodebuild-compatible):** remove the engine `TestableReference` from `UzumeApp.xcscheme`'s test action — the engine suite's canonical runner is `swift test --package-path UzumeEngine` (where all of this passes); double-running 1439 tests in a broken environment added noise, not coverage. **Done-when (met):** `xcodebuild test` exits 0 / `** TEST SUCCEEDED **` / 382 app tests green with no engine-bundle run; `SchemeTestActionRegressionTests` (engine suite) regression-locks the test-action shape (engine bundle absent AND app target present); RUNBOOK §Build and Test documents the split; KNOWN_ISSUES BUG-048 resolved with commit `e110b1ca`; release notes dev-2026-06-11-g. P2 single fix increment (root cause documented before code). Capability registry untouched.
 
 ### Increment REVIEW.3 — Closeout evidence script ✅ (2026-06-11)
-Eliminates the false-green closeout class (REVIEW.1 confirmed incident: CSP.3.4 claimed 1358/1358 green; the suite failed reproducibly the next day) by replacing hand-transcribed test claims with a script-generated evidence block closeouts paste verbatim — the cheap path is now the honest path. **`Scripts/closeout_evidence.sh`** (no arguments, one mode — no quick/tiered variants) wraps the canonical RUNBOOK §Build-and-Test verification set (engine SPM tests, app xcodebuild tests, `swiftlint --strict`) and emits one fenced markdown block: header (ISO-8601 timestamp, host, short HEAD + branch, dirty/clean tree with paths), per-step verbatim tool summary lines + exit code + wall time + failing-test identifiers (≤ 20, verbatim), and a footer recapping exit codes with the verdict line (`EVIDENCE: ALL GREEN` only when every step exited 0 AND parsed failure count is 0; otherwise `FAILURES PRESENT`). Honesty contract: step failures reported never fatal (script exits 0 when evidence was gathered; the verdict line carries truth); counts extracted from tool output only, never script arithmetic (`PARSE FAILED — raw output follows` on extraction failure); additive grep only (pull summaries/failures, never filter noise); missing tool → `STEP FAILED TO RUN`, never a silent skip; dirty tree reported not fatal. A byte-identical copy lands at `~/.phosphene/last_closeout_evidence.md` so a pasted block can be diffed against what was actually generated. CLAUDE.md closeout template item 2 now requires the pasted block (prose may annotate below it, never replace it; block missing or commit-hash mismatch ⇒ closeout incomplete on its face; RB.2 will relocate the prose — the script path is the stable interface, the prose location is not). **Done-when (met):** canary-verified un-greenwashable — a deliberate `REVIEW3CanaryTests` failure produced `FAILURES PRESENT` with the canary identifier listed verbatim; the canary was deleted (tree verified back to pre-canary state); the post-commit clean run produced the increment's own self-certifying block. Capability registry untouched (no renderer/shader/cert capability change).
+Eliminates the false-green closeout class (REVIEW.1 confirmed incident: CSP.3.4 claimed 1358/1358 green; the suite failed reproducibly the next day) by replacing hand-transcribed test claims with a script-generated evidence block closeouts paste verbatim — the cheap path is now the honest path. **`Scripts/closeout_evidence.sh`** (no arguments, one mode — no quick/tiered variants) wraps the canonical RUNBOOK §Build-and-Test verification set (engine SPM tests, app xcodebuild tests, `swiftlint --strict`) and emits one fenced markdown block: header (ISO-8601 timestamp, host, short HEAD + branch, dirty/clean tree with paths), per-step verbatim tool summary lines + exit code + wall time + failing-test identifiers (≤ 20, verbatim), and a footer recapping exit codes with the verdict line (`EVIDENCE: ALL GREEN` only when every step exited 0 AND parsed failure count is 0; otherwise `FAILURES PRESENT`). Honesty contract: step failures reported never fatal (script exits 0 when evidence was gathered; the verdict line carries truth); counts extracted from tool output only, never script arithmetic (`PARSE FAILED — raw output follows` on extraction failure); additive grep only (pull summaries/failures, never filter noise); missing tool → `STEP FAILED TO RUN`, never a silent skip; dirty tree reported not fatal. A byte-identical copy lands at `~/.uzume/last_closeout_evidence.md` so a pasted block can be diffed against what was actually generated. CLAUDE.md closeout template item 2 now requires the pasted block (prose may annotate below it, never replace it; block missing or commit-hash mismatch ⇒ closeout incomplete on its face; RB.2 will relocate the prose — the script path is the stable interface, the prose location is not). **Done-when (met):** canary-verified un-greenwashable — a deliberate `REVIEW3CanaryTests` failure produced `FAILURES PRESENT` with the canary identifier listed verbatim; the canary was deleted (tree verified back to pre-canary state); the post-commit clean run produced the increment's own self-certifying block. Capability registry untouched (no renderer/shader/cert capability change).
 
 ### Increment RB.1 — Rulebook audit (audit-only) ✅ (2026-06-11)
 Evidence-cited verdict (RETIRE / MECHANIZE / DEMOTE / KEEP) for every active rule in the four rulebook populations, driven by the REVIEW.1 rule-usage table (citation counts; never-cited lists; corpus-window caveat applied to pre-2026-05-08 rules). **Done-when (met):** mechanical inventory (49 FA + 63 Do-NOT + 21 sections + 161 active D entries = 294; cross-check found D-013/031/046/086/120 already pruned to history and 15 FA numbers already moved per the gap table; only the 6 unnumbered D-LM entries were unexpectedly unmatchable by REVIEW.1's extraction — 2 %, under the 15 % stop threshold); complete verdict table (294/294 rows, 0 missing verdicts — verification greps pass); summary + budget + flagged set + RB.2 sketch + ratchet proposal. **Headline:** rule-level KEEP collapses to 12 distinct always-loaded slots (< the ~15 expectation); CLAUDE.md measured at ~22,300 tokens; projected post-RB.2 core ≈ 7,000 tokens (**proposed hard cap: 7,000 tokens, one-in-one-out**); verdict mix 37 KEEP / 35 MECHANIZE / 128 DEMOTE / 94 RETIRE; 8 flagged questions for Matt (incl. the D-039/BUG-034 interaction and the Phase-MD planning-bloc retirements). Deliverable: [`docs/diagnostics/RB1_RULEBOOK_AUDIT.md`](diagnostics/RB1_RULEBOOK_AUDIT.md) (rule text + repo evidence + citation counts only — no transcript content; public-repo constraint honoured). Capability registry untouched (no renderer/shader/cert capability change). Docs-only; no rule was moved, deleted, reworded, or renumbered; no gate was built. **RB.1.1 follow-up (2026-06-11):** the audit's six numeric aliases (D-9xx range) for the unnumbered `D-LM-*` entries collided with the DOC.4.1 referential-integrity gate landed the same day in a parallel session — `DocIntegrityTests` treats every `D-###` token under docs/ as a citation that must resolve to a DECISIONS/HISTORY header, so the engine suite failed on six unresolvable aliases. Fixed by dropping the aliases and referencing the `D-LM-*` names directly throughout the audit tables (least-invasive option: no gate allowlist that would weaken the D-155/D-145 corruption coverage, no DECISIONS.md renumbering). Both increments' intent preserved; DocIntegrityTests suite green.
@@ -6317,9 +6317,9 @@ Three live rejections (R.2 flowing-field "slick wallpaper"; IFC.6 marks "lag + b
 
 ---
 
-## Phase PG — Psychedelic Geometry (Phosphene-native abstract-geometry preset set)
+## Phase PG — Psychedelic Geometry (Uzume-native abstract-geometry preset set)
 
-Five original abstract-geometry presets planned (design docs in `docs/presets/psychedelic_geometry/`), each proving a distinct music-response strategy. Phosphene-native (no `inspired_by`; D-119 brand-identity native minority). **PG.4 Truchet Loom was built (PG.4.1–4.3) and then RETIRED after its first live M7 (TLRETIRE.1 / D-194) — see below.** The other four (Mandala Engine, Droste Descent, Mandelbox Cathedral, Poincaré Bloom) remain design-doc-only. **A sixth, Cymatic Resonance (CR), was added 2026-07-22 — see below.**
+Five original abstract-geometry presets planned (design docs in `docs/presets/psychedelic_geometry/`), each proving a distinct music-response strategy. Uzume-native (no `inspired_by`; D-119 brand-identity native minority). **PG.4 Truchet Loom was built (PG.4.1–4.3) and then RETIRED after its first live M7 (TLRETIRE.1 / D-194) — see below.** The other four (Mandala Engine, Droste Descent, Mandelbox Cathedral, Poincaré Bloom) remain design-doc-only. **A sixth, Cymatic Resonance (CR), was added 2026-07-22 — see below.**
 
 ### CR — Cymatic Resonance ✅ CERTIFIED as vibrating sand (2026-07-22, D-199)
 Design doc: `docs/presets/psychedelic_geometry/PG_CR_CYMATIC_RESONANCE.md`. A resonant Chladni plate whose nodal figure is selected live by the music's brightness (spectral centroid → mode-complexity ladder; bass drop → snap to a simple figure). **Cleared the `preset-concept` gate look-spike-first** (before any shader), grounded against Matt's own real-Chladni-plate footage — the first PG-family preset to pass the moving-proof gate up front rather than discover a fidelity miss at M7 (KS D-188, Truchet D-194). The spike earned four corrections to the origin prose: **plus** eigenmode basis (not the Shadertoy minus — the minus forces a spurious diagonal), **brightness→single-dominant-mode** (not a 12-band superposition, which reads as squiggle-soup), **strong oblique tilt**, and **jewel/iridescent** palette (Matt's call). Motion clean (motion-gated) except the intentional drop-snap. **CR.1 LANDED (2026-07-22, D-196):** `direct` + `post_process` preset (`CymaticResonance.metal` + `.json` + `CymaticResonanceState`, slot-6 mode-ladder EMA); count 25 → 26; `certified: false`. Done-when all met — plus-basis field + centroid→ladder crossfade + `bassDev` snap-to-simple + D-019 warmup + derived-normal (§18.9) relief + GGX key highlight + jewel emissive + strong oblique tilt + non-black calm silence, through ACES + bloom. Perf 1080p full-chain p95 ≈ 1–2.6 ms (≪ 7 ms Tier-2). Motion-gated: one intentional snap spike, zero frozen frames. **★ Maquette-stage concept-gate correction #5:** the plus basis forces an anti-diagonal nodal line (η=1−ξ) for any OPPOSITE-parity (m,n) — so the design's adjacent-pair ladder `(1,2)(2,3)…` (and the fundamental) carried the very spurious diagonal the plus↔minus switch was meant to kill. Fixed by switching to the SAME-parity `(m,m+2)` family `(1,3)…(11,13)` (diagonal-free on both diagonals, monotonic complexity). **Engine capability added:** slot-6 per-preset state now reaches the `direct`+`post_process` scene pass (`PostProcessChain.runScenePass`, first consumer). **CR.1.1 LANDED (2026-07-22, D-197) — first live-M7 defect fixes** (track "Hummer"; captured on a `degraded` chain, so pending a clean-chain re-M7): (1) **hero "held its pattern"** — real `spectral_centroid` is ~0.08–0.18 (not 0–1), so the `centroid×(N−1)` map moved the ladder < 1 rung; fixed with a centroid-DEVIATION + absolute BLEND (Matt's call), regression-locked at 3.75 rungs of travel on the real band; (2) **palette read white** — emissive 2.6→1.5 + warm-gold key + widened sapphire→magenta→gold sweep; (3) **white space** — plate zoomed to fill the 16:9 canvas; (4) **ASH `.critical`-nudge gap folded in** — `PlaybackErrorBridge` now nudges on `.low` OR `.critical` (the degraded intro fired no toast because only `.low` was wired). **CR.2 REBUILD (2026-07-22, D-199):** Matt's 3rd M7 rejected the figure-shader at the concept level ("no clear music connection; the references are about resonance/vibration and I'm not seeing it; the dots look shoddy") — the preset rendered the RESULT of resonance, not the phenomenon. Rebuilt (Matt chose "vibrating sand") as a `feedback+particles` preset: ~400K glowing sand grains do the vibration-driven random walk (Zhou 2017, ported per FA #73) on the plate field — shimmer at antinodes, collect on nodal lines, scatter+re-collect on a mode change; loudness→vibration, beat→burst, brightness→mode, harmony→hue. New `CymaticSandGeometry`/`CymaticSand.metal`; CR.1 figure-shader + `CymaticResonanceState` retired. Look proven on a synthetic arc (Matt "shows promise"); pending live M7. Original CR.2 (materials) / CR.3 (cert) plan superseded by the rebuild. **ASH "degraded only after loud" gate LANDED (Matt approved):** both the live nudge (`hasSeenHealthyChain` latch) and the post-session verdict (`ChainAnalyzer.bandLowAfterHealthy`) now require a `band=healthy` window before a low/critical one reads as degraded, so a quiet song intro no longer false-flags. **CR.1.2 LANDED (2026-07-22, D-198) — second live-M7 fixes ("Cherub Rock", clean chain, which also validated the ASH gate):** (1) **top-down orthographic cover-fit** camera — the square plate fills the 16:9 frame edge-to-edge, no receding background (the oblique tilt is superseded by Matt's live call); (2) **more pattern variety** — centroid-dev gain 8→12 + a varied same-parity ladder (`m=n` concentric alternating with `m<n` cross-hatch) so rungs are distinct figures (peanut / concentric-ring / cloverleaf); (3) **colour responds to music** — a global jewel-hue offset from the smoothed harmonic phase (`tonal_phase_fifths`, D-178), brought forward from CR.3.
@@ -6363,7 +6363,7 @@ These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone C — Device-Aware Show Quality.** ✅ **MET (2026-04-25).** The same playlist produces an excellent show on M1 and a richer one on M4 without jank. *Requires: ~~Phase 6 complete~~ ✅.*
 
-**Milestone D — Library Depth.** ⏳ **IN PROGRESS — 21 / 27 production presets certified (recounted from the tree at RICERCAR-CERT.1, 2026-08-20).** Ground truth is `FidelityRubricTests.certifiedPresets` cross-checked against the sidecars: **29 JSON sidecars, 21 with `certified: true`**, of which 2 (StagedSandbox, SpectralCartograph) are diagnostics rather than roster presets → **27 production presets, 21 certified**. Uncertified roster presets: Arachne, Gossamer, Membrane, Nebula, Plasma, Waveform. *(This line read "16 / 26 (RECON.2, 2026-08-03)" and had missed five certifications since — Witchlight (WL.14), Stave (CHR.3k), Fractal Tree (FTR.5), Meniscus (MEN.5), and Ricercar (RICERCAR-CERT.1) — plus a sidecar count change 28→29. Recount from the sidecars, not from a dated survey.)* The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase AV + Phase CC complete (Aurora Veil + Crystalline Cavern shipped certified), Phase G-uplift complete (Gossamer + remaining catalog members M7-certified or explicitly retired), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.* **First certified preset: Lumen Mosaic** (Phase LM closed 2026-05-12; BUG-004 resolved).
+**Milestone D — Library Depth.** ⏳ **IN PROGRESS — 21 / 27 production presets certified (recounted from the tree at RICERCAR-CERT.1, 2026-08-20).** Ground truth is `FidelityRubricTests.certifiedPresets` cross-checked against the sidecars: **29 JSON sidecars, 21 with `certified: true`**, of which 2 (StagedSandbox, SpectralCartograph) are diagnostics rather than roster presets → **27 production presets, 21 certified**. Uncertified roster presets: Arachne, Gossamer, Membrane, Nebula, Plasma, Waveform. *(This line read "16 / 26 (RECON.2, 2026-08-03)" and had missed five certifications since — Witchlight (WL.14), Stave (CHR.3k), Fractal Tree (FTR.5), Meniscus (MEN.5), and Ricercar (RICERCAR-CERT.1) — plus a sidecar count change 28→29. Recount from the sidecars, not from a dated survey.)* The preset catalog is large enough, varied enough, and well-tagged enough for Uzume to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase AV + Phase CC complete (Aurora Veil + Crystalline Cavern shipped certified), Phase G-uplift complete (Gossamer + remaining catalog members M7-certified or explicitly retired), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.* **First certified preset: Lumen Mosaic** (Phase LM closed 2026-05-12; BUG-004 resolved).
 
 **Roster survey (2026-07-19) — the production presets (`FidelityRubricTests.certifiedPresets` = ground truth; 27 → 26 at Glass Brutalist's retirement GBRETIRE.1 / D-186, then 26 → 25 at Kinetic Sculpture's retirement KSRETIRE.1 / D-188, 2026-07-20):**
 - **Certified (14):** Lumen Mosaic, Ferrofluid Ocean, Dragon Bloom, Fata Morgana, Murmuration, Nimbus, Skein, Nacre, Floret, Glaze, Filigree, Mitosis, Cytokinesis (Mitosis gen-2), Aurora Veil (AV.7).
@@ -6381,7 +6381,7 @@ These milestones map to product-level outcomes, not implementation phases.
 
 **Matt's decisions (2026-07-19):** **retire Glass Brutalist** (✅ executed GBRETIRE.1 / D-186); **keep Arachne parked** (most-developed scaffold — not retired despite the gate lean); **next develop = Kinetic Sculpture, spike first** — a thin-strand ray-march feasibility spike gates any rebuild (strands render well → rebuild; else retire KS too). Volumetric Lithograph viable but not chosen this round. Teed-up increments: (a) Glass Brutalist retirement — **✅ executed GBRETIRE.1 / D-186** (catalog count 27 → 26, `expectedAutomatedGate` entry removed, Module Map row dropped, app dolly-speed case unwired, golden fixtures regenerated, full closeout battery); (b) the KS thin-strand feasibility spike — **✅ run 2026-07-19, verdict GREEN (viable-with-AA).** A standalone tracer replicating the exact production march loop (maxSteps=128, hit `d<0.001·t`, min-step 0.002) on a Lippold "Flight" bicone of 80 `sd_capsule` strands: the feared thin-SDF march-cost blowup **did not occur** (max 45–53/128 steps, 0% budget exhaustion; form renders cleanly down to ~0.65px — the relative hit-epsilon implicitly fattens sub-pixel features + the min-step floor prevents stalls). The one defect (foreshortened-strand shimmer <2px) is fully rescued by an **emissive glow core** (additive coverage ∝ ray-strand min-distance), which also reads as the tensioned-wire aesthetic. → **Kinetic Sculpture rebuild is viable** (replace the boxy `ks_rep` 3-axis grid with emissive-cored radiating capsules from hub points; matte/metal members ≥~2px via distance-fatten + existing bloom). Caveat: shimmer inferred from static frames — confirm via a rotating-camera pass through the full pipeline early in the rebuild. Spike is throwaway (not committed). **Next: Matt's go on the KS rebuild.**
 
-**Milestone E — Visual Identity.** Phosphene's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, Phase CC certified (the flagship demonstration piece), accessibility pass (U.9).*
+**Milestone E — Visual Identity.** Uzume's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, Phase CC certified (the flagship demonstration piece), accessibility pass (U.9).*
 
 ---
 
@@ -6394,13 +6394,13 @@ Fixture manifest, tap-capture CLI + reference-tool cross-check, BeatBench scorin
 
 - **GT.1 — fixture acquisition + manifest ✅ (2026-07-27; 13 tracks).** Suite tracks sourced hybrid — full-length audio lives at `BEATBENCH_FIXTURES_DIR`=`~/phosphene_beatbench_fixtures` (outside the repo): 9 pristine corpus rips + 4 segmented from a recorded live session's `raw_tap.wav` (Solsbury Hill / Bohemian Rhapsody / Bleed + YYZ, a 10/8 bonus). Committed: `tools/beatbench_find_fixtures.py` (corpus locator), `Scripts/beatbench_copy_fixtures.sh` (copies the 9), `tools/beatbench_manifest.py` (generator, records tap provenance), `Tests/Fixtures/beatbench/manifest.json` (13 tracks, all sha256+duration, suites 1–5), `BeatBenchFixturePresenceGate` (manifest-well-formed always-on + env-gated hash check: passes on Matt's machine, CI-safe, fails loud on missing/re-encoded — QR.3), and `docs/diagnostics/BEATBENCH_SESSION_2026-07-27.md` (session review + per-track tap-window map, which also seeds the GT.3 live-replay path). Done-when met: manifest committed (13/13 hashed), gate green on Matt's machine + CI-safe.
 
-- **GT.2 — tap ground truth + reference cross-check + reconciliation ✅ (2026-07-30).** Three artifacts. (1) **`TapCapture`** CLI: plays a fixture and timestamps keypresses on the audio timeline (`play(atTime:)` on the mach timebase, so the origin is deterministic); `--calibrate` measures latency through the SAME playback path and **pools rounds** — two real rounds minutes apart differed 29.5 ms while each was internally tight (MAD ~12 ms), so a single round understates uncertainty; `--self-test` validates the arithmetic in-memory (the interactive path needs a TTY). Matt's pooled calibration: −13.9 ms over 3 rounds, spread 19.4 ms. (2) **Reference annotations** (`tools/beatbench/`): madmom 0.17.dev0 (RNN+DBN, own venv — install needs four specific flags, see README) + librosa, both offline annotation tools only. **Beat This! is deliberately NOT a backend** — it *is* Phosphene's grid model (D-077), so annotating with it would be circular. (3) **`reconcile.py`**: taps (primary) vs references at ±70 ms, metrical relationships classified rather than "corrected", and a reference that agrees on the tapped span is trusted for the rest of the track so a ~100 s tap yields full-length ground truth. **9 tracks reconciled, every suite covered** (3 confirmed / 5 metrical review / 1 arbitration). Meters derived from Matt's taps alone: Take Five **5**, Solsbury Hill **7**, Money **7**, Billie Jean/Bleed/Bohemian Rhapsody **4**. **Honestly undetermined:** Pyramid Song (meter unresolvable by human *or* tool), YYZ (ratio 15.39), Clair de Lune (rubato — the correct suite-5 answer). **Yielded BUG-076** (Bleed grid at a 3:2 mis-lock, triangulated four ways). **No behavioral change to beat sync** — tooling and ground truth only. Report: [`docs/diagnostics/BEATBENCH_GT2_RECONCILIATION.md`](diagnostics/BEATBENCH_GT2_RECONCILIATION.md).
+- **GT.2 — tap ground truth + reference cross-check + reconciliation ✅ (2026-07-30).** Three artifacts. (1) **`TapCapture`** CLI: plays a fixture and timestamps keypresses on the audio timeline (`play(atTime:)` on the mach timebase, so the origin is deterministic); `--calibrate` measures latency through the SAME playback path and **pools rounds** — two real rounds minutes apart differed 29.5 ms while each was internally tight (MAD ~12 ms), so a single round understates uncertainty; `--self-test` validates the arithmetic in-memory (the interactive path needs a TTY). Matt's pooled calibration: −13.9 ms over 3 rounds, spread 19.4 ms. (2) **Reference annotations** (`tools/beatbench/`): madmom 0.17.dev0 (RNN+DBN, own venv — install needs four specific flags, see README) + librosa, both offline annotation tools only. **Beat This! is deliberately NOT a backend** — it *is* Uzume's grid model (D-077), so annotating with it would be circular. (3) **`reconcile.py`**: taps (primary) vs references at ±70 ms, metrical relationships classified rather than "corrected", and a reference that agrees on the tapped span is trusted for the rest of the track so a ~100 s tap yields full-length ground truth. **9 tracks reconciled, every suite covered** (3 confirmed / 5 metrical review / 1 arbitration). Meters derived from Matt's taps alone: Take Five **5**, Solsbury Hill **7**, Money **7**, Billie Jean/Bleed/Bohemian Rhapsody **4**. **Honestly undetermined:** Pyramid Song (meter unresolvable by human *or* tool), YYZ (ratio 15.39), Clair de Lune (rubato — the correct suite-5 answer). **Yielded BUG-076** (Bleed grid at a 3:2 mis-lock, triangulated four ways). **No behavioral change to beat sync** — tooling and ground truth only. Report: [`docs/diagnostics/BEATBENCH_GT2_RECONCILIATION.md`](diagnostics/BEATBENCH_GT2_RECONCILIATION.md).
   - *Two harness defects found and fixed in-flight, both of the same class — a metric that flatters itself:* least-squares tempo/meter made genuinely steady tapping (IOI CoV 0.02–0.06) read as "loose" because one dropped tap shifts every later index → replaced with median-IOI statistics; and an under-specified meter candidate list `[3,4,5,7]` made Pyramid Song read as a confident **7** purely because 8 and 12 were never offered → widened to the plan's `{3,4,5,6,7,9,12}`, whereupon madmom answers **12**. A candidate not offered cannot be reported.
 
 ### Phase DBN — Sequence decoding replaces peak-picking
 Bar-pointer-model decoder over Beat This! activations (odd meters, tempo-state), env-flagged A/B vs peak-pick, piecewise-tempo BeatGrid v2. 5–7 sessions. spec: BEAT_SYNC_PROGRAM_PLAN.md §4. **IN FLIGHT — Matt 2026-07-30 (D-206), after phase TRK was parked.** DBN now also carries category 4, which the plan's leverage table had assigned to TRK.2 before that increment's premise was falsified.
 
-- **DBN.1 — desk research + spec doc ✅ (2026-07-30).** Done-when met: [`docs/design/DBN_DECODER_SPEC.md`](design/DBN_DECODER_SPEC.md) committed with every constant cited to a paper equation (Krebs et al. 2015 Eq. 1–10, CC BY 4.0; Böck et al. 2014 Eq. 3) or marked a Phosphene tunable with a default, range and rationale. No decoder code written. **The premise was tested, not assumed** — Beat This! is titled "accurate beat tracking *without* DBN postprocessing", and its authors' own A/B on the model we ship shows a DBN *lowers* F1 (beat 89.1→88.1, downbeat 78.3→77.4) while raising CMLt downbeat 67.3→73.3 by "correcting some of the (wrongly) non-periodic outputs". That one benefit is exactly our failure mode, so the premise holds on narrower grounds than the plan assumed, and DBN.3 must now gate on no-regression to the clean 4/4 tracks. **Task-7 measurement** (`DownbeatStreamDiagnosticTests`, env-gated) located where the signal dies: not in post-processing — 100 % of downbeat candidates survive the resolver's ±40 ms snap gate — but in the model's own stream, which emits a confident downbeat on **69–90 % of beats** on money/solsbury_hill vs 24 % on the working billie_jean. Design consequence: decode each meter hypothesis separately over a narrow tempo band around the existing BPM estimate (tempo is not the broken axis), dropping the per-meter state space from 6,703 states / 28.2 M Viterbi ops to 1,351 / 2.8 M and making the < 50 ms budget reachable. Two DECISION-NEEDED items open (guess-vs-decline on unclear bars; whether {6,9,12} join the meter set).
+- **DBN.1 — desk research + spec doc ✅ (2026-07-30).** Done-when met: [`docs/design/DBN_DECODER_SPEC.md`](design/DBN_DECODER_SPEC.md) committed with every constant cited to a paper equation (Krebs et al. 2015 Eq. 1–10, CC BY 4.0; Böck et al. 2014 Eq. 3) or marked a Uzume tunable with a default, range and rationale. No decoder code written. **The premise was tested, not assumed** — Beat This! is titled "accurate beat tracking *without* DBN postprocessing", and its authors' own A/B on the model we ship shows a DBN *lowers* F1 (beat 89.1→88.1, downbeat 78.3→77.4) while raising CMLt downbeat 67.3→73.3 by "correcting some of the (wrongly) non-periodic outputs". That one benefit is exactly our failure mode, so the premise holds on narrower grounds than the plan assumed, and DBN.3 must now gate on no-regression to the clean 4/4 tracks. **Task-7 measurement** (`DownbeatStreamDiagnosticTests`, env-gated) located where the signal dies: not in post-processing — 100 % of downbeat candidates survive the resolver's ±40 ms snap gate — but in the model's own stream, which emits a confident downbeat on **69–90 % of beats** on money/solsbury_hill vs 24 % on the working billie_jean. Design consequence: decode each meter hypothesis separately over a narrow tempo band around the existing BPM estimate (tempo is not the broken axis), dropping the per-meter state space from 6,703 states / 28.2 M Viterbi ops to 1,351 / 2.8 M and making the < 50 ms budget reachable. Two DECISION-NEEDED items open (guess-vs-decline on unclear bars; whether {6,9,12} join the meter set).
 - **DBN.2 — `BeatActivationDecoder` implementation ✅ (2026-07-30).** Done-when met: 14-case unit suite green on synthetic activations; budget test in `DSPPerformanceTests`. Pure Swift, offline-path only, **not yet wired into `BeatGridResolver`** (that is DBN.3). D-207's decline path ships rather than deferring: the result is "a meter **or** no confident bar", `beatsPerBar` is `Optional`, and declining withholds downbeats while keeping beats.
   - *Two tunables moved off their spec defaults, both from measurement.* `downbeatWeight` 1.0 → **5.0**: at the spec's 1.0 the decoder picks the **wrong** meter on the degenerate fixture (Böck Eq. 3's beat/non-beat terms swamp the downbeat evidence; margin 0.0012 = indistinguishable). `meterMarginThreshold` 0 → **0.10**, set from the measured distribution across all 9 ground-truthed tracks per D-207 — but **the correct and wrong margin distributions OVERLAP** (correct min 0.1439, wrong max 0.2677), so the margin is necessary-but-not-sufficient and 0.10 is a tradeoff, not a boundary.
   - *Performance:* 17,067 → **1,350 ms** for a 30 s window (debug) via precomputed observation classes, per-frame terms, a flattened transition table and unsafe buffers. **The plan's 50 ms budget is MET — 17.9 ms measured in release** (BUG079.1, 2026-08-07, once BUG-079 unblocked the release test build). The gate asserts 50 ms under release and keeps the debug regression ceiling; the 78× config gap confirms no debug/release constant should ever have been invented.
@@ -6416,7 +6416,7 @@ Beat This! sliding-window tiling over the full track + local-file integration; t
 - **FT.3 tasks 1–3 — measurement only, PORT NOT STARTED ⏸ (2026-07-31).** Report: [`docs/diagnostics/FT3_BARLINE_TASKS_1_3_2026-07-31.md`](diagnostics/FT3_BARLINE_TASKS_1_3_2026-07-31.md); tool `tools/barline_combine.py`. Ran the spec's §10 default (tasks 1–3, stop before the Swift port) and stopped further by task 2's own hard rule. **Task 1 — unseen tracks: 8/8.** The probe's 6/6 on meter does not degrade on eight tracks that played no part in designing it (around_the_world, dance_yrself_clean, giorgio_by_moroder, girl_from_ipanema, so_what, stayin_alive, superstition, there_there), margins +0.29 to +3.56. Two limits: all eight are in 4, so this only tests the false-positive side and puts no new evidence under the odd-meter recoveries; so_what and there_there are 30 s clips (1 tiler window), not full tracks. **Task 2 — PHASE, never measured before: 3/6 correct where the meter is correct, and this is the finding that stops the increment.** billie_jean 100 %, take_five 85 %, bohemian_rhapsody 68 % ✓; money **0 %** (off by exactly one beat against a 79 % tap-consistency ceiling — a real error a port would have shipped), bleed 16 % (ceiling 37 %), solsbury_hill 14 % (ceiling 16 % against a 14 % uniform floor — no phase evidence either way). **Root cause is upstream of the method:** bar length measured in *engine grid beats* is 3.95 / 4.86 / 4.58 / 7.57 / 2.08 / 12.12 for the six, and only billie_jean and take_five land on an integer in {3,4,5,7} — exactly two of the three tracks where phase is right. The grid runs at half the tapped rate on bleed and yyz, roughly double on money and clair_de_lune. Meter search tolerates a wrong metrical level (a period-8 pattern still shows period-4 structure); **phase cannot**. Suite-1 F 0.97 says the beats are in the right *places*, not that the grid is at the right *level*. bleed's "4 ✓" is a period-2 signal winning at its own multiple — its bar is 2 grid beats, deliberately outside D-207's set. **Task 3 — combination rule: sum the four features' null-corrected margins per meter**, the only one of three candidates both unbiased under a no-bar-information control (200 trials × 2 generators) and retaining 6/6 + 8/8. **The probe's own max-over-features rule FAILS that control** — no-information picks skew to meter 7 under both generators (33 %, 36 %) with mean margin rising monotonically with meter, i.e. the DBN.2 bias (D-208 §9.6/§9.7) is present in this method's first published number; the 6/6 is not void (the summed rule reproduces it clean) but the headline was measured with a statistic leaning the way two of its six correct answers lie. **No behavioral change to beat sync** — measurement only, no engine source touched. Recommendation: re-scope FT.3 to the grid-metrical-level question before any port; `beatsPerBar` without a trustworthy bar line ships nothing a user sees. Also flagged: solsbury_hill's ground truth is internally inconsistent (`meter_from_taps` 7, but downbeat taps ~12 tapped beats apart).
 - **FT.3 tasks 4–6 — `BarLineEstimator` ported, thresholded, A/B'd ✅ (2026-08-19).** Report: [`docs/diagnostics/FT3_BARLINE_PORT_2026-08-19.md`](diagnostics/FT3_BARLINE_PORT_2026-08-19.md); reference `tools/barline_parity.py`. **Matt answered the §10 DECISION-NEEDED "build it"**, which overrides the FT.3.1 row's recorded "supersedes FT.3's unbuilt tasks 4–7" — that superseding claim is now wrong and FT.3.1 remains open on its own question. **Task 4 — parity is exact: worst |Δmargin| 1.6e-7 across all 17 tracks** (gate 1e-3), meter agreeing 17/17 and phase on every undeclined track, both arms decoding through the identical ffmpeg invocation. **The gate as specified was unachievable and the fix is the load-bearing part:** the reference's permutation null is a 200-draw Monte-Carlo estimate off one numpy PCG64 stream, and its margins move by up to **0.029 across seeds — 29× the 1e-3 gate** — so the null was made deterministic on both sides (SplitMix64 + Fisher–Yates, known-answer tested in Swift) and both languages now compute the *same* null rather than two samples of it. That jitter does **not** mean the method was unstable: within a seed the noise is correlated across meters, and over 25 seeds under the original stochastic null money picks 7 **25/25**, bohemian 4 **25/25**, solsbury 7 **25/25**. **Task 5 — the threshold is 1.24, and the finding is the overlap it cannot remove.** Labelled by *meter*, the six truthed margins separate trivially (0 incorrect). Labelled by **bar** (meter AND phase — FT.3's own standard, since a right meter on the wrong phase is visually identical to being wrong) they **OVERLAP**: incorrect reaches +0.226 (money), correct starts at +0.136 (bohemian). That is DBN.2's situation, stated rather than hidden. The objective *(correct kept − incorrect admitted)* has two equal maxima, (0.106, 0.136] and (0.226, 2.254]; D-207's "decline when unsure" breaks the tie toward the zero-confident-wrong interval, and 1.24 is its midpoint — the nine tracks put **no** observation between 0.226 and 2.254, so it is the middle of an empty region, not a tuned value. Decline rate 7/9 on the (deliberately hard) truthed catalogue, 2/8 on the unseen set. **Task 6 — local-path A/B, both arms on the SAME full-track grid** so FT.1's window change is not folded in: meter correct **incumbent 1/6 → 2/6**, bar correct (meter AND phase) **2/6**, wrong meters emitted **5 → 0**. **Reported as a regression per the beatbench claim rules: mean downbeat F over all six truthed tracks drops 0.459 → 0.298**, every point of it a decline scoring 0.00; on the two tracks the estimator answers it is **0.895 vs 0.651**. One deviation from `Metrics.fMeasure`, applied to both arms: it trims only the *reference* to the grid's span, which mis-scores a full-track grid against partial-span taps (billie_jean scores 0.37 with a **perfect** bar line), so both sides are trimmed to the tapped span. **No behavioral change to beat sync — nothing calls `BarLineEstimator`**; `BeatGridResolver`, `BeatActivationDecoder` and every playback path are untouched, so no five-suite BeatBench table is owed. Wiring is FT.2's after its re-scope. **What it does not establish:** 7 of 9 truthed tracks still decline, and the reason is the wrong-metrical-level gap D-210 already records — no accent-feature work closes it, which is FT.3.1's question.
 - **FT.3 — bar position from beat-synchronous accents (local files) ✅ COMPLETE (tasks 1–3 2026-07-31, tasks 4–6 2026-08-19; see the two rows above).** Prompt: [`docs/prompts/FT3_BARLINE_FROM_ACCENTS.md`](prompts/FT3_BARLINE_FROM_ACCENTS.md). **The changed premise D-208 asked for.** A probe (`tools/barline_probe.py`, [`docs/diagnostics/BARLINE_PROBE_2026-07-31.md`](diagnostics/BARLINE_PROBE_2026-07-31.md)) scored **6/6** on the ground-truthed catalogue against **2/6** for both the incumbent resolver and the DBN.2 decoder, recovering all three odd meters that four prior levers missed — by scoring beat-synchronous accent features (low-band energy, RMS, spectral flux, harmonic change) at the *known beat times* rather than reading the downbeat activation stream. Premise: beats are already good (suite-1 F 0.97), so on a local file the question is only *which* of 400–1000 reliable beats are bar lines. **Three caveats gate it:** the meter set was restricted to D-207's {3,4,5,7} *after* seeing the first table (2/6 → 6/6), margins are wildly uneven (+1.167 to +0.052), and no single feature works alone. **Phase was never measured** — a correct meter on the wrong phase is visually identical to being wrong. **Structurally local-file-only**, the same scope limit that sank D-170. DECISION-NEEDED in §10: build the engine component, build only the measurement, or don't — recommendation is measurement-only (tasks 1–3) then re-decide, because the 6/6 was measured on the same nine tracks that shaped the method.
-- **FT.3.1 — grid metrical level ⏸ STOPPED AT THE PREMISE (2026-08-19).** Report: [`docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`](diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md); tool `tools/metrical_level_probe.py`. Tasks 1–3, 5, 6 done; **task 4 (the Swift detector) deliberately NOT built** under the two-strikes rule. **The increment's two positives do not survive contact with their own ground truth.** On both `money` and `bleed` the two independent GT.2 reference annotators (librosa AND madmom) say the **taps** are the octave-off side — verbatim "reference is double the tapped pulse (×2.01)" and "reference is half the tapped pulse (×0.51)" — and Phosphene's grid sits in the backends' octave, not the taps' (bleed 115.00 against backends 114.80/115.38). Both carry `status: metrical_review`, and `money.groundtruth.json`'s own `meter_note` says "beats tapped at HALF the bar pulse". **The confound is total: across all 9 ground-truthed tracks every large AMLt−CMLt gap is a `metrical_review` track and every `confirmed` track has gap 0.00**, so the label set is a restatement of the ground truth's own unresolved-disagreement flag. **Consequence: `AMLt − CMLt` is a grid-vs-tap DISAGREEMENT metric, not a grid-error metric — it is silent about which side is wrong**, and D-210's evidence table (which reads it as the grid being wrong) needs that correction; D-210's decline-the-bar *decision* is unaffected. Second corroboration: re-gridding money cannot reach the notated beat at all — its grid already covers 94 % of tapped beats within ±70 ms and the halving its label demands drops that to **32 %** (ratio 2.139, not 2). **What was built and is worth keeping:** a synthetic re-grid control (audio untouched, level known by construction) on which the within-track detector scores **11/12 on verified bases** / 25/34 on all, with named confounds (girl_from_ipanema 0/3 — bossa's genuine two-beat surdo pattern; around_the_world 0/3 — four-on-the-floor house; there_there 0/2 — 30 s clip); and the finding that **no absolute threshold works** (both signals overlap on every pair) while within-track ordering holds 9/10. **D-210's open clause is settled negatively:** level correction "returns only if task 5 shows a near-zero confident-wrong rate" — the confusion matrix's margin carries no correctness information at all (incorrect margins median +2.910 vs correct +1.741; confident-wrong is 11 at threshold 0 and still 4 at threshold 3.0), so correction stays off the table. **No behavioral change to beat sync** — no engine source touched. **✅ DECISION ANSWERED — Matt 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** So there are **zero** established real wrong-level tracks: FT.3.1 has no positives to detect and **CLOSES**. Filed as **BUG-102** (P1, `test.groundtruth / dsp.beat`) with the list of contaminated numbers — suite 2, *all* of suite 4 (bleed is its only track), FT.3's phase result, the FT.3 tasks 4–6 bar labels and the 1.24 threshold derived from them, and D-208/MDL.1's bleed judgment. ⚠ Distrusting the taps is **not** the same as the backends being right — the correct status is *unknown* pending re-annotation, and ground truth changes only through tap + reconcile (no JSON edited). Also still open from FT.3: solsbury_hill's internally inconsistent ground truth.
+- **FT.3.1 — grid metrical level ⏸ STOPPED AT THE PREMISE (2026-08-19).** Report: [`docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`](diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md); tool `tools/metrical_level_probe.py`. Tasks 1–3, 5, 6 done; **task 4 (the Swift detector) deliberately NOT built** under the two-strikes rule. **The increment's two positives do not survive contact with their own ground truth.** On both `money` and `bleed` the two independent GT.2 reference annotators (librosa AND madmom) say the **taps** are the octave-off side — verbatim "reference is double the tapped pulse (×2.01)" and "reference is half the tapped pulse (×0.51)" — and Uzume's grid sits in the backends' octave, not the taps' (bleed 115.00 against backends 114.80/115.38). Both carry `status: metrical_review`, and `money.groundtruth.json`'s own `meter_note` says "beats tapped at HALF the bar pulse". **The confound is total: across all 9 ground-truthed tracks every large AMLt−CMLt gap is a `metrical_review` track and every `confirmed` track has gap 0.00**, so the label set is a restatement of the ground truth's own unresolved-disagreement flag. **Consequence: `AMLt − CMLt` is a grid-vs-tap DISAGREEMENT metric, not a grid-error metric — it is silent about which side is wrong**, and D-210's evidence table (which reads it as the grid being wrong) needs that correction; D-210's decline-the-bar *decision* is unaffected. Second corroboration: re-gridding money cannot reach the notated beat at all — its grid already covers 94 % of tapped beats within ±70 ms and the halving its label demands drops that to **32 %** (ratio 2.139, not 2). **What was built and is worth keeping:** a synthetic re-grid control (audio untouched, level known by construction) on which the within-track detector scores **11/12 on verified bases** / 25/34 on all, with named confounds (girl_from_ipanema 0/3 — bossa's genuine two-beat surdo pattern; around_the_world 0/3 — four-on-the-floor house; there_there 0/2 — 30 s clip); and the finding that **no absolute threshold works** (both signals overlap on every pair) while within-track ordering holds 9/10. **D-210's open clause is settled negatively:** level correction "returns only if task 5 shows a near-zero confident-wrong rate" — the confusion matrix's margin carries no correctness information at all (incorrect margins median +2.910 vs correct +1.741; confident-wrong is 11 at threshold 0 and still 4 at threshold 3.0), so correction stays off the table. **No behavioral change to beat sync** — no engine source touched. **✅ DECISION ANSWERED — Matt 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** So there are **zero** established real wrong-level tracks: FT.3.1 has no positives to detect and **CLOSES**. Filed as **BUG-102** (P1, `test.groundtruth / dsp.beat`) with the list of contaminated numbers — suite 2, *all* of suite 4 (bleed is its only track), FT.3's phase result, the FT.3 tasks 4–6 bar labels and the 1.24 threshold derived from them, and D-208/MDL.1's bleed judgment. ⚠ Distrusting the taps is **not** the same as the backends being right — the correct status is *unknown* pending re-annotation, and ground truth changes only through tap + reconcile (no JSON edited). Also still open from FT.3: solsbury_hill's internally inconsistent ground truth.
 - **FT.3.1 — original spec (superseded by the row above; kept for its rationale).** Prompt: [`docs/prompts/FT31_GRID_METRICAL_LEVEL.md`](prompts/FT31_GRID_METRICAL_LEVEL.md). ~~**Supersedes FT.3's unbuilt tasks 4–7** (the Swift port), which FT.3 task 2's result blocked.~~ **CORRECTED 2026-08-19:** Matt answered FT.3's §10 with "build it", the port shipped (see the FT.3 tasks 4–6 row), and FT.3.1 supersedes nothing — it remains open on its own question, which the port's 7/9 decline rate makes *more* live, not less. Premise: the two tracks whose bar-line *phase* failed with the meter right — money and bleed — are exactly the two with a large **AMLt−CMLt gap** in [`BEATBENCH_BASELINE_2026-07-30.md`](diagnostics/BEATBENCH_BASELINE_2026-07-30.md) (money CMLt 0.00 / AMLt 0.88, grid 116.19 vs truth 60.97; bleed CMLt 0.03 / AMLt 0.84, grid 115.00 vs truth 226.72), while the three right-level tracks have gap 0.00 and phase works. **BeatBench already names a wrong metrical level where ground truth exists; the open question is whether it can be named blind.** Not a fifth swing at D-208 — a different object, not the activation stream. **The obvious fix is ruled out up front:** money wants halving at 116 BPM and bleed wants doubling at 115 — same BPM, opposite corrections — so no global threshold separates them, and moving `BeatGrid.halvingThresholdBPM` (175, halving-only since QR.1) re-opens BUG-009 on fast rock. Whatever decides the level must come from audio content. **Methodological guard:** only 2 real positives and 3 real negatives exist, so the spec lands a *synthetic* wrong-level generator (task 2) **before** any detector (task 3). Task 7 forbids wiring. **DECISION-NEEDED in §10** surfaces a tension already inside D-205 — it gates beat feel on AMLt because a half/double grid "still reads as locked", while making bar position a hard gate because Nacre and Glaze consume it; FT.3 measured those as incompatible. **✅ ANSWERED — D-210 (Matt 2026-07-31): "decline the bar, keep the beat."** On a wrong-level track presets get no bar position and fall back to energy-driven behaviour; the beat layer is untouched; Nacre's and Glaze's downbeat pushes simply don't fire. Extends D-207's decline contract with a second reason ("the meter may be right and the bar line is still not locatable"). **Correction explicitly not chosen** — it returns only if task 5's confusion matrix shows a near-zero confident-wrong rate. This sets FT.3.1's target: a detector that declines correctly is a win even if it never corrects anything.
 - **FT.2 — local-file integration.** Value is now **narrower than the plan assumed**: FT.1 shows full-track context does not fix meter, so FT.2's case rests on category 3 (tempo changes) alone — and bohemian_rhapsody, the suite-3 track, regressed under tiling. Re-scope before opening.
 
@@ -6424,9 +6424,9 @@ Beat This! sliding-window tiling over the full track + local-file integration; t
 RLG.0 offline reproducibility study with a numeric GO bar (D-C), then RollingBeatTracker engine component on GO only. 2–3 + 4–6 sessions. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
 
 ### Phase TRK — Live tracker tightens, not bounds
-PLL/Kalman phase-period controller (replay-first), drums-stem onset evidence upgrade, BUG-065 closure. 3–4 sessions, independent of DBN. spec: BEAT_SYNC_PROGRAM_PLAN.md §4. **Phase status: ⏸️ PARKED (D-206, Matt 2026-07-30).** Both levers — controller topology and evidence source — were measured against the same frozen single-BPM grid and neither closes BUG-065; the evidence layer has no headroom left (~15–25 % of onsets from any band or stem land within ±50 ms of a beat). BUG-065 stays open and bounded, `PHOSPHENE_BEAT_PLL` default-off. **Next beat-sync session opens phase DBN.** Do not reopen TRK without a changed premise about the *grid*, not the tracker.
+PLL/Kalman phase-period controller (replay-first), drums-stem onset evidence upgrade, BUG-065 closure. 3–4 sessions, independent of DBN. spec: BEAT_SYNC_PROGRAM_PLAN.md §4. **Phase status: ⏸️ PARKED (D-206, Matt 2026-07-30).** Both levers — controller topology and evidence source — were measured against the same frozen single-BPM grid and neither closes BUG-065; the evidence layer has no headroom left (~15–25 % of onsets from any band or stem land within ±50 ms of a beat). BUG-065 stays open and bounded, `UZUME_BEAT_PLL` default-off. **Next beat-sync session opens phase DBN.** Do not reopen TRK without a changed premise about the *grid*, not the tracker.
 
-- **TRK.1 — period controller ⚠️ ROOT CAUSE PROVEN, FIX NOT VALIDATED (2026-07-30, `07dd3bd9`).** Done-when NOT met. The drift is a ramp (−1.493 ms/s, R² 0.844) ⇒ a 0.149 % cached-grid period error the proportional-only EMA cannot null. The type-2 (PI) controller behind `PHOSPHENE_BEAT_PLL` **regressed the real fixture** — `LiveDriftValidationTests` maxAbsDrift 101.5 ms (limit 50), alignment 0.05 (limit 0.80). Ships default-off. Strike 1 on the gain-tuning premise (two-strikes rule).
+- **TRK.1 — period controller ⚠️ ROOT CAUSE PROVEN, FIX NOT VALIDATED (2026-07-30, `07dd3bd9`).** Done-when NOT met. The drift is a ramp (−1.493 ms/s, R² 0.844) ⇒ a 0.149 % cached-grid period error the proportional-only EMA cannot null. The type-2 (PI) controller behind `UZUME_BEAT_PLL` **regressed the real fixture** — `LiveDriftValidationTests` maxAbsDrift 101.5 ms (limit 50), alignment 0.05 (limit 0.80). Ships default-off. Strike 1 on the gain-tuning premise (two-strikes rule).
 - **TRK.2 — drums-stem onset evidence ❌ PREMISE FALSIFIED, STOPPED AT THE EVIDENCE GATE (2026-07-30).** Done-when ("suite-4 live matching improves on replay") NOT met and not attemptable. Measured on four captures with the production `StemSeparator` + a separate `BeatDetector` instance (D-075), bias-corrected — share of onsets within ±50 ms of a grid beat, drums-stem sub_bass vs full-mix sub_bass: love_rehab 16.9 % vs 42.2 %, Hummer 11.0 % vs 14.4 %, `bleed.wav` 22.4 % vs 22.3 %, billie_jean 25.5 % vs 24.5 %. Worse on two, a wash on two — including Bleed, the category-4 track the increment's argument rested on. **No production code changed.** New durable finding: across every capture, band and stem only ~15–25 % of detected onsets land within ±50 ms of a beat, so FA #68 generalises to the whole spectral-onset family. Second blocker: the live stem path carries a deliberate 5–10 s latency, so drums onsets cannot be timestamped by the tracker as-is. Instrument: `DrumsOnsetEvidenceTests` (env-gated). Evidence: [`docs/diagnostics/TRK2_DRUMS_STEM_EVIDENCE_2026-07-30.md`](diagnostics/TRK2_DRUMS_STEM_EVIDENCE_2026-07-30.md).
 - **TRK.3 — live validation + M7 ⛔ NOT SCHEDULED.** Nothing to validate live: TRK.1 failed replay validation and TRK.2's premise is falsified, and Matt parked the phase (D-206). The GT.3 live baseline (`docs/diagnostics/BEATBENCH_LIVE_BASELINE_2026-07-30.md`) has since measured BUG-065's drift curve across 15 tracks and corroborates the diagnosis — drift grows monotonically on most of them (billie_jean 26→118 ms, stayin_alive 60→285 ms, money 20→241 ms), so this is systemic to the frozen-grid premise rather than a property of one capture.
 
@@ -7270,7 +7270,7 @@ and remain unstarted; `docs/presets/WHITNEY_PROGRAM.md` still governs them.
 
 ### Increment WHIT.0 — Rosette look spike: does the morph read? ✅ GO (2026-08-25)
 
-**Done-when:** a rendered, motion-gated answer to whether Phosphene can draw *Arabesque*'s
+**Done-when:** a rendered, motion-gated answer to whether Uzume can draw *Arabesque*'s
 morphing emblem at the film's quality, with frames, so Matt can say go/re-scope. Throwaway spike —
 no sidecar, no registration, `certified` unset, preset count unchanged (verified: `29`,
 `PresetLoaderCompileFailureTest`). Prompt: `docs/prompts/WHIT0_LOOK_SPIKE.md`.
@@ -7298,7 +7298,7 @@ topology changes of the same family rather than as separate named states.
 **Task 3 — engine realization, and three real bugs found live.** Ported to a fullscreen-triangle
 marks overlay (Skein's SDF-in-fragment pattern, not Dragon Bloom's raw `line_strip` — see task 4)
 on the **real** `PresetLoader` compile path, loaded via its `watchDirectory` scratch-dir mechanism
-(`PresetLoaderTests` precedent) pointed at `Tests/PhospheneEngineTests/Presets/Fixtures/Rosette/`
+(`PresetLoaderTests` precedent) pointed at `Tests/UzumeEngineTests/Presets/Fixtures/Rosette/`
 — never the shipped `Sources/Presets/Shaders/` directory, so nothing here is a sidecar or a
 registration. A hand-rolled harness (`RosetteLookSpikeTests.swift`, adapted from
 `AuroraVeilMVWarpAccumulationTest` per `PRESET_SESSION_CHECKLIST` Part 2) drives the identical
@@ -7420,8 +7420,8 @@ than task 1's "3–5× core width" guess — closer to 1.5–2×. WHIT.0's engin
 oversized against this corrected number; flagged as a WHIT.1c tuning target, not fixed here.
 
 **`CheckVisualReferences --strict` does not currently see this folder.** `discoverPresets`
-(`PhospheneTools/Sources/CheckVisualReferences/main.swift:99`) only scans
-`PhospheneEngine/Sources/Presets/Shaders/` for registered `.metal` files and validates the matching
+(`UzumeTools/Sources/CheckVisualReferences/main.swift:99`) only scans
+`UzumeEngine/Sources/Presets/Shaders/` for registered `.metal` files and validates the matching
 `docs/VISUAL_REFERENCES/<name>/` folder — Rosette is deliberately unregistered until WHIT.1c, so the
 tool has nothing to check yet. `rosette/`'s naming and required lightweight README sections were
 hand-verified against the tool's own regex/section-list instead (both pass). **Incidental finding,
@@ -7492,7 +7492,7 @@ figure, the white stroke, the coloured frame elements. No audio coupling yet. Ga
    an M2 Pro, comfortably inside the 16.67ms @60fps total budget. Resolved; `complexity_cost.tier1`
    in the sidecar is this measured number (`tier2` is an unverified ~0.6x estimate, not measured).
 2. Moved `Rosette.metal`/`.json` from the WHIT.0 spike's throwaway location into
-   `PhospheneEngine/Sources/Presets/Shaders/`. `family: "geometric"`, `rubric_profile:
+   `UzumeEngine/Sources/Presets/Shaders/`. `family: "geometric"`, `rubric_profile:
    "lightweight"`, `certified: false`, `audio_routes: []` (WHIT.1d).
 3. **Retuned halation** from WHIT.0's thumbnail-derived ~4.4x core width down to ~1.75x, against
    `docs/VISUAL_REFERENCES/rosette/06_specular_stroke_core_halo.jpg` — visibly tighter, crisper
@@ -7642,7 +7642,7 @@ verify `complexity_cost.tier2` on real M3+ hardware (still an unverified estimat
 **Done-when:** `tonalPhaseFifths` → rotation and `harmonicFlux` → symmetry-order step both land,
 backed by real per-frame state; `RouteCoverageTests` green on all five declared routes.
 
-**Built `RosetteState`** (`PhospheneEngine/Sources/Presets/Rosette/RosetteState.swift`) —
+**Built `RosetteState`** (`UzumeEngine/Sources/Presets/Rosette/RosetteState.swift`) —
 Skein/Gossamer's minimal per-preset-state shape (one `storageModeShared` `MTLBuffer`, a
 `tick(deltaTime:features:)` that updates internal state then flushes a fixed-stride GPU mirror
 struct). Rosette needed neither Skein's onset-burst ring nor its per-track palette, so this is much
@@ -7668,7 +7668,7 @@ smaller: two pieces of held state, both D-219 already scoped exactly.
 bytes) travel at fragment buffer(6) — Skein's per-preset-uniforms convention.
 
 **The first WHIT increment to touch the app layer.** WHIT.1c/1d stayed entirely inside the engine
-SPM package; wiring `RosetteState`'s per-frame tick required `PhospheneApp` changes: a
+SPM package; wiring `RosetteState`'s per-frame tick required `UzumeApp` changes: a
 `var rosetteState: RosetteState?` on `VisualizerEngine`, a `bindRosetteRuntime` in
 `VisualizerEngine+Presets.swift` (mirrors `bindGossamerRuntime` — allocate, bind `rosetteBuffer` at
 fragment slot 6, wire `setMeshPresetTick`), a `case "Rosette"` in the
@@ -7710,7 +7710,7 @@ first pass were the known `SessionLifecycleChurn`/`LocalFilePlaybackStartRace` C
 contention flake class, re-confirmed clean in isolation. `swiftlint --strict` clean (one
 large-tuple violation found and fixed in `RosetteState.tick`'s lock-scoped snapshot — reduced 3
 members to 2 by computing `atan2` inside the lock rather than passing `re`/`im` back out).
-`xcodebuild -scheme PhospheneApp build` and `test` both green (417 app tests) — the first WHIT
+`xcodebuild -scheme UzumeApp build` and `test` both green (417 app tests) — the first WHIT
 increment to exercise the app-layer build/test surface, not just the engine SPM package.
 
 **Remaining before certification:** Matt's live M7 review against the curated references
@@ -8105,20 +8105,20 @@ either one.
 
 ### Increment CLEAN.9.1 — Xcode build warnings cleared ✅ (2026-08-28)
 
-**Trigger.** Matt's Xcode issue navigator showed four warnings under the `PhospheneApp` scheme; a
+**Trigger.** Matt's Xcode issue navigator showed four warnings under the `UzumeApp` scheme; a
 fifth surfaced in the same build once those were fixed. Warnings-as-errors is enforced per-target
-via `PhospheneApp/Phosphene.xcconfig`, so warnings that persist are ones no target promotes — they
+via `UzumeApp/Uzume.xcconfig`, so warnings that persist are ones no target promotes — they
 accumulate silently and train the eye to ignore the navigator.
 
 **Fixed.**
 
 | File | Warning | Fix |
 |---|---|---|
-| `PhospheneEngine/Sources/Presets/Arachnid/ArachneState.swift` | `beatsDt` never used | `advanceBeatIndex` is already `@discardableResult` and mutates `globalBeatIndex`; the binding was vestigial. Call it for the side effect. |
-| `PhospheneEngine/Sources/Presets/Arachnid/ArachneState.swift` | `stemMix` never used | Deleted `stemMix` and its sole input `totalStemEnergy`. The D-019 warmup blend they were computed for no longer has a consumer in `_tick` — `updateSpider`/`advanceBuildState` take `stems` directly. |
-| `PhospheneEngine/Sources/Renderer/Geometry/RicercarEchoGeometry+Sizing.swift` | redundant `public` on an instance method in a `public extension` | Dropped the modifier. |
-| `PhospheneEngine/Sources/Renderer/RenderPipeline+CustomWarp.swift` | forming `UnsafeRawPointer` to a generic `Uniforms` value | `&uni` on an unconstrained generic is only valid if the type is POD, which Swift cannot prove. Replaced with `withUnsafeBytes(of: uniforms)`. Length is now `size` rather than `stride`; the trailing stride padding is never read by the comp shader. |
-| `PhospheneEngine/Sources/ML/InstrumentFamilyAnalyzer.swift` | result of `withUnsafeBufferPointer` unused | The single-expression closure was returning `memcpy`'s pointer, which made the whole call value-returning. `_ = memcpy(...)`. |
+| `UzumeEngine/Sources/Presets/Arachnid/ArachneState.swift` | `beatsDt` never used | `advanceBeatIndex` is already `@discardableResult` and mutates `globalBeatIndex`; the binding was vestigial. Call it for the side effect. |
+| `UzumeEngine/Sources/Presets/Arachnid/ArachneState.swift` | `stemMix` never used | Deleted `stemMix` and its sole input `totalStemEnergy`. The D-019 warmup blend they were computed for no longer has a consumer in `_tick` — `updateSpider`/`advanceBuildState` take `stems` directly. |
+| `UzumeEngine/Sources/Renderer/Geometry/RicercarEchoGeometry+Sizing.swift` | redundant `public` on an instance method in a `public extension` | Dropped the modifier. |
+| `UzumeEngine/Sources/Renderer/RenderPipeline+CustomWarp.swift` | forming `UnsafeRawPointer` to a generic `Uniforms` value | `&uni` on an unconstrained generic is only valid if the type is POD, which Swift cannot prove. Replaced with `withUnsafeBytes(of: uniforms)`. Length is now `size` rather than `stride`; the trailing stride padding is never read by the comp shader. |
+| `UzumeEngine/Sources/ML/InstrumentFamilyAnalyzer.swift` | result of `withUnsafeBufferPointer` unused | The single-expression closure was returning `memcpy`'s pointer, which made the whole call value-returning. `_ = memcpy(...)`. |
 
 **Non-obvious one, worth keeping.** The `UnsafeRawPointer` warning is not cosmetic — `&value` on
 an unconstrained generic passed to `setFragmentBytes` is undefined behaviour the moment a caller
@@ -8135,4 +8135,4 @@ full engine suite green.
 
 **Capability registry:** no rows changed. No renderer capability was added, promoted, or blocked.
 
-**Remaining:** nothing. `PhospheneApp` builds clean from a fresh `xcodebuild`.
+**Remaining:** nothing. `UzumeApp` builds clean from a fresh `xcodebuild`.

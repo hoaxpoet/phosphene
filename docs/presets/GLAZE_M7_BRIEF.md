@@ -35,7 +35,7 @@ big misses are obvious:
 Regenerate the side-by-side:
 ```sh
 GLAZE_MVWARP_DIAG=1 GLAZE_W=600 GLAZE_H=450 GLAZE_FRAMES=600 GLAZE_ENERGY=0 \
-  swift test --package-path PhospheneEngine --filter test_glazeRender_diag    # writes a PNG (path in the log)
+  swift test --package-path UzumeEngine --filter test_glazeRender_diag    # writes a PNG (path in the log)
 # then hstack it with docs/VISUAL_REFERENCES/glaze/02_contour_striation_field.png
 ```
 
@@ -45,14 +45,14 @@ GLAZE_MVWARP_DIAG=1 GLAZE_W=600 GLAZE_H=450 GLAZE_FRAMES=600 GLAZE_ENERGY=0 \
 primary/canonical app (on `main`) has no Glaze, which is why cycling showed nothing. A fresh worktree build
 is kept current (rebuilt each increment; the bundle below is fresh).
 
-**⚠️⚠️ QUIT every running Phosphene first.** The worktree build and your canonical app share the bundle ID
-`io.uzume.mac`, so if a Phosphene is already running, `open <worktree path>` just re-focuses the RUNNING
+**⚠️⚠️ QUIT every running Uzume first.** The worktree build and your canonical app share the bundle ID
+`io.uzume.mac`, so if a Uzume is already running, `open <worktree path>` just re-focuses the RUNNING
 one (your canonical, no Glaze) — it will NOT launch the worktree build. ⌘Q all of them (check Force-Quit), THEN:
 
 ```sh
-open ~/Library/Developer/Xcode/DerivedData/PhospheneApp-fjevhlmowimaxjdcdeahnfybpseg/Build/Products/Debug/Uzume.app
+open ~/Library/Developer/Xcode/DerivedData/UzumeApp-fjevhlmowimaxjdcdeahnfybpseg/Build/Products/Debug/Uzume.app
 ```
-(Or open *this worktree's* `PhospheneApp.xcodeproj` in Xcode → ⌘R — it uses the same DerivedData.) It's a
+(Or open *this worktree's* `UzumeApp.xcodeproj` in Xcode → ⌘R — it uses the same DerivedData.) It's a
 Debug build, so the preset-cycle shortcuts are live. *(Worktree builds can't do Spotify — use a local file.)*
 
 1. Play a **local audio file** (the app's local-file feature). The base is time-driven, so it renders alive.
@@ -63,7 +63,7 @@ Debug build, so the preset-cycle shortcuts are live. *(Worktree builds can't do 
 
 ## Tuning levers (so your feedback maps to a knob)
 
-All in `PhospheneEngine/Sources/Presets/Shaders/Glaze.metal` unless noted. After any edit, re-render with the
+All in `UzumeEngine/Sources/Presets/Shaders/Glaze.metal` unless noted. After any edit, re-render with the
 command above (no app rebuild needed for the headless look).
 
 | What you see | Lever | Now | Direction |

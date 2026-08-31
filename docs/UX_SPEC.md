@@ -74,7 +74,7 @@ Local-file playback is a parallel source path that joins the streaming-path stat
 4. **Drag-and-drop** onto the window (LF.4 single file; LF.5 multi-file, folder, M3U, mixed combinations — flattened in drop order).
 5. **Finder double-click** on a registered audio or M3U file after the user opts into Uzume via the macOS "Open With…" panel (LF.5 file-association).
 6. **Terminal:** `open -a Uzume path/to/file.m4a` (LF.5 file-association).
-7. **`PHOSPHENE_LOCAL_FILE_PLAYBACK=<path>`** env-var hook at launch (dev/CI — single file only; loops forever for debugging).
+7. **`UZUME_LOCAL_FILE_PLAYBACK=<path>`** env-var hook at launch (dev/CI — single file only; loops forever for debugging).
 
 All seven dispatch through the LF.5 canonical API `SessionManager.startLocalFiles(at:origin:)`, which transitions:
 
@@ -89,11 +89,11 @@ All seven dispatch through the LF.5 canonical API `SessionManager.startLocalFile
 
 **Source labels.** `SessionOrigin` distinguishes `.localFile(URL)` / `.localFiles([URL])` / `.localFolder(URL, expanded: [URL])` / `.localPlaylist(URL, expanded: [URL])` so the chrome can show source-aware labels ("Playing 12 tracks from ~/Music/2026 Mix" vs filename vs M3U name). The `SessionOrigin == ` operator compares root + expanded list so the same-origin no-op detection works across all four shapes.
 
-**Cache hygiene UI.** `Uzume → Clear Local-File Cache (67.4 MB)` (size label dynamic per `engine.localFileCacheBytes`). One click empties the persistent disk cache and shows a confirmation alert with the bytes freed. Automatic LRU eviction (500 MB cap by default; UserDefaults override at `phosphene.cache.localFile.maxBytes`) runs after every successful preparation write so the user-facing footprint stays bounded.
+**Cache hygiene UI.** `Uzume → Clear Local-File Cache (67.4 MB)` (size label dynamic per `engine.localFileCacheBytes`). One click empties the persistent disk cache and shows a confirmation alert with the bytes freed. Automatic LRU eviction (500 MB cap by default; UserDefaults override at `uzume.cache.localFile.maxBytes`) runs after every successful preparation write so the user-facing footprint stays bounded.
 
 **Folder cap.** Folders + multi-file drops > 200 audio files truncate to the first 200 (alphabetical) with a localized NSAlert ("Uzume queued the first 200 of N tracks"). The 200 cap balances against the 500 MB cache cap (~70 cached tracks) so larger folders don't thrash eviction mid-queue. Larger folders need smaller subsets for full coverage.
 
-**Recents menu behavior.** `File → Open Recent ▸` lists the last 10 opens, newest first. Entries are uniquely identified by `(URL, kind)` — opening the folder `/tmp/Music` and the file `/tmp/Music/song.m4a` are distinct. Re-opening an entry already in the list moves it to position 1 (LRU). Stale entries (file no longer at the recorded path) render disabled with `(missing)` suffix; clicking removes them from the list rather than attempting to open. `Clear Recents` empties the list. Persistence is `phosphene.lf.recents` UserDefaults (JSON-encoded `[RecentItem]` — defensive load truncates oversized state on read).
+**Recents menu behavior.** `File → Open Recent ▸` lists the last 10 opens, newest first. Entries are uniquely identified by `(URL, kind)` — opening the folder `/tmp/Music` and the file `/tmp/Music/song.m4a` are distinct. Re-opening an entry already in the list moves it to position 1 (LRU). Stale entries (file no longer at the recorded path) render disabled with `(missing)` suffix; clicking removes them from the list rather than attempting to open. `Clear Recents` empties the list. Persistence is `uzume.lf.recents` UserDefaults (JSON-encoded `[RecentItem]` — defensive load truncates oversized state on read).
 
 **ID3 / Vorbis / MP4-atom metadata.** Title / artist / album extracted via `AVAsset.commonMetadata` at preparation time, persisted alongside the cached analysis in `PersistentStemCache` schema v2. Surfaces as the `TrackIdentity` title in `PlaybackView` chrome post-preparation. Album artwork is captured + stored in an optional sibling `artwork.bin` file but is not displayed at LF.5 scope (UI is LF.6).
 
@@ -597,7 +597,7 @@ This is the canonical mapping from internal error states to user-facing language
 | Spotify private playlist (HTTP 403) | "That playlist is private. Uzume needs a public Spotify playlist." | "Paste a different link" | — |
 | Spotify playlist not found (HTTP 404) | "Couldn't find that playlist. The link may be wrong or the playlist may have been deleted." | "Paste again" | — |
 | Spotify auth failure (missing/bad credentials) | "Uzume couldn't reach Spotify right now. Check your network or try Apple Music." | "Try again" | "Use Apple Music" |
-| Spotify Client ID absent from the build (**DEBUG builds only** — developer-setup failure, not an end-user one; Release falls back to the generic auth-failure row above) | "No Spotify Client ID in this build. Create PhospheneApp/Phosphene.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again." | (developer action) | — |
+| Spotify Client ID absent from the build (**DEBUG builds only** — developer-setup failure, not an end-user one; Release falls back to the generic auth-failure row above) | "No Spotify Client ID in this build. Create UzumeApp/Uzume.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again." | (developer action) | — |
 | Empty playlist | "That playlist doesn't have any tracks yet." | "Pick a different playlist" | — |
 
 ### 9.3 Preparation errors (state: `.preparing`)
@@ -744,10 +744,10 @@ The debug overlay uses distinctly-shaped icons alongside colors for status (✓ 
 
 ## 13. Proposed View Hierarchy
 
-Initial recommendation; adjust in implementation (Increment U.1). `PhospheneApp/` grows these files:
+Initial recommendation; adjust in implementation (Increment U.1). `UzumeApp/` grows these files:
 
 ```
-PhospheneApp/
+UzumeApp/
   Views/
     ContentView.swift              → switch on SessionManager.state
     Idle/

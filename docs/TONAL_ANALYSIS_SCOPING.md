@@ -59,7 +59,7 @@ Normalization constant for magnitudes: `‖T‖_max = √(Σ_{k=1}^{6} w(k)²)` 
 
 A reusable 12-bin chroma vector already exists and is already computed once per frame:
 
-- `ChromaExtractor.process(magnitudes:)` (`PhospheneEngine/Sources/DSP/ChromaExtractor.swift:246`) returns `Result.chroma` (`:299`); `MIRPipeline` exposes it as `latestChroma` (`MIRPipeline.swift:39`) and **already feeds it to a second consumer**, `StructuralAnalyzer.addFrame(chroma:)` (`StructuralAnalyzer.swift:174`).
+- `ChromaExtractor.process(magnitudes:)` (`UzumeEngine/Sources/DSP/ChromaExtractor.swift:246`) returns `Result.chroma` (`:299`); `MIRPipeline` exposes it as `latestChroma` (`MIRPipeline.swift:39`) and **already feeds it to a second consumer**, `StructuralAnalyzer.addFrame(chroma:)` (`StructuralAnalyzer.swift:174`).
 - **Plug-in point:** register a `TonalAnalyzer` in `MIRPipeline` beside `structuralAnalyzer` (`MIRPipeline.swift:20`), call it in `process(...)` right after `let chroma = chromaExtractor.process(...)` (`:193`), passing `chroma.chroma`. No FFT recompute, no new fold.
 - **STFT it inherits:** 1024-pt / 512-bin FFT, 46.875 Hz bin resolution (`FFTProcessor.swift:35`; `ChromaExtractor` constructed at `MIRPipeline.swift:159`), **~94 Hz frame cadence** (512-sample hop @ 48 kHz, `VisualizerEngine+Audio.swift:272`). Deterministic given identical magnitude input.
 - **Free synergy:** `DSP_MIR.md:19` records that the per-frame chroma→novelty chain currently has **no live runtime consumer** (`production-orphan`). A live TIV path gives that already-running work its first reader.

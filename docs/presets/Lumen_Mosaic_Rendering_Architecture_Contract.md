@@ -479,7 +479,7 @@ The `lumen_mosaic` namespace is for preset-specific tunables read into `LumenPat
 
 ## Shader file structure
 
-`PhospheneEngine/Sources/Presets/Shaders/LumenMosaic.metal`:
+`UzumeEngine/Sources/Presets/Shaders/LumenMosaic.metal`:
 
 ```
 // 1. Header: includes (preamble forward declarations are handled by PresetLoader+Preamble).

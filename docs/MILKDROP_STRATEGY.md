@@ -9,7 +9,7 @@ phase).
 
 This document answers the *strategic* questions Phase MD has had
 unspecified since 2026-04 — how the work tracks port / evolve / hybrid
-relate, which Phosphene capabilities are mandatory per tier, how
+relate, which Uzume capabilities are mandatory per tier, how
 ray-march hybrid candidates are picked, how big the transpiler scope
 is, what the licensing posture is, and how the catalog presents this
 material to the user. It does **not** implement anything — every
@@ -25,9 +25,9 @@ down. The mechanics are documented (grammar audit, transpiler CLI,
 HLSL conversion, runtime adapter, 10 ports, 20 evolved, 5 hybrids),
 but Phase MD as currently written cannot answer:
 
-1. Is Phosphene shipping Milkdrop *clones* or Milkdrop-*influenced*
+1. Is Uzume shipping Milkdrop *clones* or Milkdrop-*influenced*
    originals — and how does that vary across the three sub-phases?
-2. Which Phosphene-specific capabilities (mv\_warp, deviation
+2. Which Uzume-specific capabilities (mv\_warp, deviation
    primitives, stem routing, beat phase, pitch tracking, mood,
    structural prediction) are *mandatory* per tier vs. *opt-in*?
 3. What makes a Milkdrop preset a good ray-march hybrid candidate vs.
@@ -70,7 +70,7 @@ viable pick.
   Evolved, and Hybrid alike. Transpiled `.milk` files that drive on
   raw `bass` get re-bound to `bassRel`-equivalent semantics during
   conversion.
-* **D-027 — `mv_warp` pass is opt-in per preset.** Phosphene's
+* **D-027 — `mv_warp` pass is opt-in per preset.** Uzume's
   `mv_warp` is the per-vertex feedback pass that implements Milkdrop-
   style feedback motion. It is already wired and **has two production
   consumers** (Gossamer, Volumetric Lithograph — see audit §0.3).
@@ -84,7 +84,7 @@ viable pick.
   Lightweight vs full profile choice per preset (D-067(b)). Milkdrop
   ports are not exempt; they go through M7 and rubric verification
   before `certified: true`.
-* **License — Phosphene is MIT.** The cream-of-crop pack is curated
+* **License — Uzume is MIT.** The cream-of-crop pack is curated
   by ISOSCELES with a stated "public-domain-by-convention with
   takedown" posture (audit §0.2). Individual preset authors
   technically retain copyright. Deciding the legal posture for the
@@ -105,7 +105,7 @@ picks become D-### entries before MD.1 starts.
 
 * **A.1 — Three tiers** (Classic Port / Evolved / Hybrid). Matches the
   existing MD.5 / MD.6 / MD.7 split. Three distinct catalog
-  experiences: faithful Milkdrop, Milkdrop-with-Phosphene-music-data,
+  experiences: faithful Milkdrop, Milkdrop-with-Uzume-music-data,
   Milkdrop-warp-plus-3D-world.
 * **A.2 — Two tiers** (Port / Evolved). Drop MD.7. Recognize that
   ray-march + feedback-warp + static-camera is a thin architectural
@@ -118,7 +118,7 @@ picks become D-### entries before MD.1 starts.
 provides clear catalog story; MD.7 hybrids are exactly the right
 home for the mv\_warp + ray-march composition that has no production
 proof yet but is architecturally supported. A.2 forfeits the most
-distinctive part of the strategy (a tier where Phosphene's 3D
+distinctive part of the strategy (a tier where Uzume's 3D
 infrastructure stacks on Milkdrop's warp accumulation). A.3 adds
 fractal-style sub-tiers without adding clarity — "light evolved" vs
 "heavy evolved" is hard to render as a catalog distinction.
@@ -161,7 +161,7 @@ rationale below.
   §0.5). Evolved and Hybrid inherit; both have additional reasons to
   use it.
 * **Stem-driven routing** is the cheapest way to make a Milkdrop preset
-  feel like a *Phosphene* preset. Classic ports skip it (they're
+  feel like a *Uzume* preset. Classic ports skip it (they're
   trying to be faithful to the source's audio-coupling) but Evolved
   and Hybrid must use it. Evolved minimum: route at least one stem to
   at least one visual parameter. Hybrid minimum: at least two stems
@@ -191,9 +191,9 @@ rationale below.
 * **SSGI / PBR** are perf-expensive; opt-in only and gated by
   `complexity_cost` (D-067).
 * **V.6 rubric profile** — Classic Ports' visual identity is the
-  Milkdrop warp, not Phosphene's detail cascade. The lightweight
+  Milkdrop warp, not Uzume's detail cascade. The lightweight
   rubric (D-067(b)) is the right fit. Evolved and Hybrid both have
-  enough Phosphene-specific surface — stem routing, beat phase
+  enough Uzume-specific surface — stem routing, beat phase
   anticipation, ray-march geometry — to be evaluated on the full
   rubric.
 
@@ -220,7 +220,7 @@ rationale below.
 Naming convention (filesystem):
 
 ```
-PhospheneEngine/Sources/Presets/Shaders/Milkdrop/<preset_name>.{metal,json}
+UzumeEngine/Sources/Presets/Shaders/Milkdrop/<preset_name>.{metal,json}
 ```
 
 with the `family` JSON field disambiguating. Optional prefix for
@@ -240,7 +240,7 @@ catalog scale. The existing MD.5 spec already commits to
 
 **Recommendation: D.2** with disclosure-row UX. A user who wants
 warm-nostalgia-only Milkdrop-style should be able to turn off Evolved
-and Hybrid. A user who wants Phosphene-only-modern should be able to
+and Hybrid. A user who wants Uzume-only-modern should be able to
 turn off Classic. D.1 is acceptable as a fallback if Settings UI
 real-estate is tight, but the tiers are different enough that
 treating them uniformly is a thin compromise. D.3 over-rotates on
@@ -248,7 +248,7 @@ orchestrator trust; users with strong tier preferences need an out.
 
 **Locks in:** Settings UI gains three new toggles under "Visuals"
 section; `SettingsStore` gains three persisted keys (e.g.
-`phosphene.settings.visuals.milkdrop.classic`, `.evolved`, `.hybrid`).
+`uzume.settings.visuals.milkdrop.classic`, `.evolved`, `.hybrid`).
 The `PresetScoringContext.excludedFamilies` already supports per-
 family exclusion (D-053), so wiring is shallow.
 
@@ -263,16 +263,16 @@ family exclusion (D-053), so wiring is shallow.
   cost.
 * **E.3 — Architectural fit + thematic fit + brand fit.** As E.2,
   plus the resulting hybrid must sit at an aesthetic register the
-  Phosphene catalog actively wants (rather than reproducing what
-  Phosphene already has via Glass Brutalist / Kinetic Sculpture / VL).
+  Uzume catalog actively wants (rather than reproducing what
+  Uzume already has via Glass Brutalist / Kinetic Sculpture / VL).
 
 **Recommendation: E.3.** D-029 is non-negotiable, so E.1 is a floor,
 not a strategy. Beyond that floor, Phase MD has 5 hybrid slots
-budgeted (MD.7); picking 5 that *fit Phosphene's architecture and
+budgeted (MD.7); picking 5 that *fit Uzume's architecture and
 fill catalog gaps* is the maximum-value use of those slots.
 Architectural fit (no moving camera in source), thematic fit
 (ray-march pass adds real depth rather than gilding), and brand fit
-(register Phosphene doesn't already cover) compound.
+(register Uzume doesn't already cover) compound.
 
 Specific candidate criteria for Matt to apply per preset:
 
@@ -289,7 +289,7 @@ Specific candidate criteria for Matt to apply per preset:
    abstract terrain horizon under a warp grid. Each candidate should
    come with a one-sentence answer to "what does the ray-march
    backdrop *do*?"
-4. **Register gap.** Does Phosphene already have this aesthetic? If
+4. **Register gap.** Does Uzume already have this aesthetic? If
    yes, the hybrid is competing internally rather than expanding.
 
 Three plausible candidates surfaced in the audit (these are starting
@@ -297,8 +297,8 @@ points, not commitments — Matt picks 5 from MD.6 onward):
 
 | Source preset (theme) | Why a hybrid candidate |
 |---|---|
-| Geiss — *3D - Luz* (Supernova / Radiate) | Static-framed; canonical "particle nova" register; ray-march backdrop could add depth-fog and a horizon line that Phosphene's catalog lacks. |
-| Rovastar — *Northern Lights* (Supernova / Radiate) | Static-framed; aurora register Phosphene doesn't have (Aurora Veil is direct-fragment + mv\_warp, not ray-march); ray-march sky volume could carry the sustained-bass IBL breath that AV uses. |
+| Geiss — *3D - Luz* (Supernova / Radiate) | Static-framed; canonical "particle nova" register; ray-march backdrop could add depth-fog and a horizon line that Uzume's catalog lacks. |
+| Rovastar — *Northern Lights* (Supernova / Radiate) | Static-framed; aurora register Uzume doesn't have (Aurora Veil is direct-fragment + mv\_warp, not ray-march); ray-march sky volume could carry the sustained-bass IBL breath that AV uses. |
 | EvilJim — *Travelling backwards in a Tunnel of Light* (Fractal / Nested Square) | Tunnel composition naturally maps to a static-camera ray-march receding-tunnel SDF; warp accumulation adds the Milkdrop pulse on top. |
 
 ### Decision F — Per-stem hue affinity for Evolved tier
@@ -354,7 +354,7 @@ HLSL.
   free presets (~16 % of pack). Cheap, fast, fully covered grammar.
 * **H.2 — Expression language + bring in HLSL→MSL cross-compiler.**
   Use SPIRV-Cross or naga to translate the HLSL pixel-shader portion
-  into MSL. Materially larger scope; introduces a non-Phosphene
+  into MSL. Materially larger scope; introduces a non-Uzume
   build dependency.
 * **H.3 — Expression language + hand-port HLSL per preset.** Transpile
   expressions automatically; treat HLSL as a manual conversion step
@@ -398,7 +398,7 @@ no SPDX-identifiable licence.
 * **I.1 — Treat transpiled output as MIT-derivative.** Document the
   ISOSCELES / projectM provenance and each source-preset's original
   author + filename in `docs/CREDITS.md` (mirroring the pattern for
-  Open-Unmix HQ and Beat This! ML weights). Ship under Phosphene's
+  Open-Unmix HQ and Beat This! ML weights). Ship under Uzume's
   MIT licence. Commit to honoring takedown requests routed through
   projectM.
 * **I.2 — Dual-license** transpiled output as MIT + a separately-
@@ -432,9 +432,9 @@ tension:
   (Fractal / Geometric / Waveform / Reaction / Dancer / Drawing /
   Sparkle / Particles / Supernova / Hypnotic / ! Transition). Spread
   the 10 ports across the theme dimension.
-* **J.2 — By Phosphene catalog gap-filling.** Pick presets whose
-  visual register is *underserved* in Phosphene's existing catalog
-  (e.g. Phosphene has nothing in the Reaction-diffusion register;
+* **J.2 — By Uzume catalog gap-filling.** Pick presets whose
+  visual register is *underserved* in Uzume's existing catalog
+  (e.g. Uzume has nothing in the Reaction-diffusion register;
   prioritize one Reaction port).
 * **J.3 — By transpiler-proof simplicity.** Pick the simplest 10 to
   surface transpiler bugs early before MD.6 / MD.7's complexity.
@@ -447,7 +447,7 @@ tension:
 * J.1 is the *coverage check* — the final 10 must span at least 6 of
   the 11 themes so MD.5 doesn't ship as "10 Fractal presets."
 * J.2 is the tiebreaker — when multiple simple HLSL-free presets are
-  viable in a theme, pick the one whose register Phosphene lacks.
+  viable in a theme, pick the one whose register Uzume lacks.
 
 Concrete candidate list for Matt to walk (drawn from the audit's
 HLSL-free smallest-20 list, filtered for theme diversity):
@@ -456,7 +456,7 @@ HLSL-free smallest-20 list, filtered for theme diversity):
 |---|---|---:|---|
 | Supernova | Geiss — *3D - Luz* | 949 B | Smallest in the pack; canonical Geiss-3D register. |
 | Waveform | Rovastar — *Voyage* | 959 B | Classic wire-tangle motion; canonical wire-3D primitive. |
-| Reaction | Sjadoh — *Fortune Teller* | 969 B | Reaction-diffusion blob register Phosphene lacks. |
+| Reaction | Sjadoh — *Fortune Teller* | 969 B | Reaction-diffusion blob register Uzume lacks. |
 | Waveform | Geiss — *3D Shockwaves* | 1.0 KB | Pulsing wireframe sphere; covers wave-shockwave register. |
 | Fractal | EvilJim — *Travelling backwards in a Tunnel of Light* | 1.0 KB | Tunnel-of-nested-squares register (also a hybrid candidate per Decision E). |
 | Supernova | Pithlit — *Nova* | 1.0 KB | Gaseous-nova register. |
@@ -483,7 +483,7 @@ similar if AV ships first. Matt's call at MD.5 authoring.
 ## §4. Architecture proposal — per-preset workflow
 
 Conditional on Matt's picks above. The workflow per Milkdrop preset
-brought into Phosphene:
+brought into Uzume:
 
 1. **Pick** from cream-of-crop pack (per Decision J for MD.5; per
    Decision E for MD.7; per the broader pack for MD.6).
@@ -515,11 +515,11 @@ brought into Phosphene:
 8. **V.6 rubric verification** at the profile assigned in step 7.
 9. **Matt M7 review** on a real-music session. Acceptance criteria:
    does it feel like Milkdrop (Classic Port)? Like Milkdrop + stem
-   awareness (Evolved)? Like Milkdrop + Phosphene-3D (Hybrid)? No
+   awareness (Evolved)? Like Milkdrop + Uzume-3D (Hybrid)? No
    anti-references hit. Quality floor cleared.
 10. **Cert flip** → `certified: true` in JSON sidecar.
 
-**Folder layout.** `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/`
+**Folder layout.** `UzumeEngine/Sources/Presets/Shaders/Milkdrop/`
 holds the .metal and .json files. The directory is enumerated by
 `PresetLoader` like any other; no special handling. Preset names
 follow `<theme>_<source_name>.{metal,json}` (theme prefix avoids
@@ -545,13 +545,13 @@ candidate-list rationale.
 
 ### Theme-by-theme overview
 
-| Theme | Total | HLSL-free | Strongest MD.5 candidate | Phosphene catalog gap status |
+| Theme | Total | HLSL-free | Strongest MD.5 candidate | Uzume catalog gap status |
 |---|---:|---:|---|---|
-| Fractal | 1,354 | 492 | EvilJim — *Travelling backwards in a Tunnel of Light* | Underserved (Phosphene has Fractal Tree, no nested-square or Sierpinski register). |
+| Fractal | 1,354 | 492 | EvilJim — *Travelling backwards in a Tunnel of Light* | Underserved (Uzume has Fractal Tree, no nested-square or Sierpinski register). |
 | Geometric | 1,027 | 265 | TBD per MD.5 authoring | Partially served (Glass Brutalist, Kinetic Sculpture). |
 | Dancer | 1,351 | 262 | Most "Dancer" presets are HLSL-heavy; one HLSL-free Hatch preset would suffice. | Largely unserved. |
-| Waveform | 1,279 | 180 | Rovastar — *Voyage* / Geiss — *Bipolar X* | Unserved (Phosphene's `Waveform.metal` is the static spectrum primitive, not the Milkdrop wire-tangle register). |
-| Reaction | 1,791 | 133 | Sjadoh — *Fortune Teller* | Unserved (reaction-diffusion register entirely missing from Phosphene). |
+| Waveform | 1,279 | 180 | Rovastar — *Voyage* / Geiss — *Bipolar X* | Unserved (Uzume's `Waveform.metal` is the static spectrum primitive, not the Milkdrop wire-tangle register). |
+| Reaction | 1,791 | 133 | Sjadoh — *Fortune Teller* | Unserved (reaction-diffusion register entirely missing from Uzume). |
 | Supernova | 380 | 120 | Geiss — *3D - Luz* | Unserved (no "explosive radial" register; closest is Nebula). |
 | Particles | 389 | 64 | One pure-expression particle preset (audit §0.6, yin — Ocean of Light) | Partially served (Murmuration is the canonical particle preset). |
 | Drawing | 1,143 | 23 | Mostly HLSL-heavy; weak MD.5 fit. | Unserved. |
@@ -572,7 +572,7 @@ Deferred until MD.5 lands. The MD.5 process surfaces which evolved
 capabilities (stems / pitch / beat phase) feel "right" in real
 playback; MD.6 candidate list draws from that evidence. Pre-MD.5
 guess: 5 each from Reaction / Fractal / Dancer / Geometric — the
-themes where Phosphene's catalog gap is largest and where stem-
+themes where Uzume's catalog gap is largest and where stem-
 driven motion would most amplify the source preset's identity.
 
 ### 5 MD.7 candidates (hybrid tier)
@@ -643,7 +643,7 @@ Per-increment scope revisions conditional on Matt's picks:
   drive the visual?" alongside the rubric. Author-personality
   presets that don't bend to music are excluded.
 * **Catalog story coherence.** 35 Milkdrop-origin presets (MD.5 +
-  MD.6 + MD.7) is a meaningful share of the catalog. Risk: Phosphene
+  MD.6 + MD.7) is a meaningful share of the catalog. Risk: Uzume
   starts to *feel* like "Milkdrop with a frontend" rather than a
   distinct product. Mitigation: D.2 per-tier settings toggles let
   the user dial down Milkdrop content; orchestrator scoring weights
@@ -776,19 +776,19 @@ by the work that shipped between 2026-05-13 and 2026-08-07.
 ### §12.1 Reframe summary + why
 
 The base strategy (§§1–11) was authored under a "derivative work"
-posture: mechanically transpile `.milk` → Phosphene `.metal`, ship
+posture: mechanically transpile `.milk` → Uzume `.metal`, ship
 the output as MIT-derivative with provenance + attribution, treat
 each port as a faithful reproduction with audio-coupling uplifts.
 Matt's 2026-05-12 post-sign-off review reframed the work as
-**"inspired by"** — every Milkdrop-influenced Phosphene preset is a
+**"inspired by"** — every Milkdrop-influenced Uzume preset is a
 **new creation that takes inspiration from a source preset's concept
-and aesthetic**, implemented from scratch on Phosphene's primitives.
+and aesthetic**, implemented from scratch on Uzume's primitives.
 The transpiler / mechanical-port framing is retired.
 
 **Why it matters.** The reframe is operative on three axes
 simultaneously:
 
-1. **Legal posture.** "Inspired by" is the framing Phosphene asserts
+1. **Legal posture.** "Inspired by" is the framing Uzume asserts
    externally; the file enumerates source concepts honored, not
    source code copied. The CREDITS.md attribution stays; the
    substantial-similarity discipline rule (§12.5 / D-116) becomes
@@ -797,8 +797,8 @@ simultaneously:
    (§5) to **~200 inspired-by uplifts**. At ~2–3 days per preset
    authored to certification, this is a multi-year work stream, not
    a finite phase.
-3. **Release model.** Phosphene's *first* release ships at **20
-   presets** (a mix of Phosphene-native + Milkdrop-inspired; §12.4
+3. **Release model.** Uzume's *first* release ships at **20
+   presets** (a mix of Uzume-native + Milkdrop-inspired; §12.4
    / D-114). Ongoing uplift batches ship at weekly / monthly /
    quarterly cadence after first release (cadence is a
    release-management decision deferred to release planning, not
@@ -807,8 +807,8 @@ simultaneously:
 The base strategy's nine-step per-preset workflow (§4) is
 substantially obsoleted. The replacement workflow is straightforward:
 read the source `.milk` file as reference material, understand its
-aesthetic intent, author a new Phosphene preset from scratch using
-Phosphene's primitives (V.1–V.4 utilities, mv_warp, ray_march, stem
+aesthetic intent, author a new Uzume preset from scratch using
+Uzume's primitives (V.1–V.4 utilities, mv_warp, ray_march, stem
 routing, MV-3 capabilities), apply the substantial-similarity
 discipline rule, pass M7 review, certify. The transpiler-and-uplift
 workflow assumed in §§4 / 6 is no longer how the work happens.
@@ -823,13 +823,13 @@ below.
 | Decision | Original (§3 / §10) | Revised (§12) | Mechanism |
 |---|---|---|---|
 | **D-103 — Tier structure** | Three tiers: Classic Port / Evolved / Hybrid. | **Single tier: `milkdrop_inspired`.** Every uplift is a new creation; tiering on fidelity-to-source re-introduces "derivative" connotation. Authoring fidelity is governed by the discipline rule (§12.5), not by tier. | Amendment block on D-103. |
-| **D-105 — Catalog presentation** | Three `family` values (`milkdrop_classic` / `_evolved` / `_hybrid`). | **One `family` value: `milkdrop_inspired`.** Filesystem path stays `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/<theme>_<source_name>.{metal,json}`. | Amendment block on D-105. |
-| **D-106 — Settings toggle exposure** | Three per-tier toggles in disclosure row. | **One toggle:** `phosphene.settings.visuals.milkdrop.inspired`. Defaults to `true` once first inspired-by preset ships. | Amendment block on D-106. |
+| **D-105 — Catalog presentation** | Three `family` values (`milkdrop_classic` / `_evolved` / `_hybrid`). | **One `family` value: `milkdrop_inspired`.** Filesystem path stays `UzumeEngine/Sources/Presets/Shaders/Milkdrop/<theme>_<source_name>.{metal,json}`. | Amendment block on D-105. |
+| **D-106 — Settings toggle exposure** | Three per-tier toggles in disclosure row. | **One toggle:** `uzume.settings.visuals.milkdrop.inspired`. Defaults to `true` once first inspired-by preset ships. | Amendment block on D-106. |
 | **D-110 — Transpiler scope** | Expression sub-languages only; HLSL excluded. | **Transpiler retired.** Source `.milk` files become *reference material*, read by authors. HLSL-bearing presets are no longer excluded by tooling — every preset in the 9,795-pack is a viable inspiration source. MD.1 grammar audit is preserved but reframed (§12.7 / §12.9). | Amendment block on D-110. |
 | **D-111 — License / attribution** | MIT-derivative with `milkdrop_source` provenance block; pre-release notification protocol. | **Inspired-by posture.** Provenance schema renamed `inspired_by` (see below); notification protocol retired (§12.8 / D-113 / amendment block on D-111). CREDITS.md "Milkdrop preset attribution" section becomes a "Milkdrop-inspired preset attribution" section. | Amendment block on D-111. |
 | **D-112 — MD.5 candidate list** | 9 named + 1 TBD Geometric, HLSL-free subset only. | **HLSL-free constraint dissolves** (all 9,795 presets become viable inspiration sources). The 10-preset list reframes as the **initial inspiration batch for the 20-preset first-release bundle** (§12.4 / D-114). Specific candidates remain operative as inspiration sources unless substituted at authoring. | Amendment block on D-112. |
 
-**`inspired_by` provenance schema (revises D-111's `milkdrop_source`).** Each Milkdrop-inspired Phosphene preset's JSON sidecar carries:
+**`inspired_by` provenance schema (revises D-111's `milkdrop_source`).** Each Milkdrop-inspired Uzume preset's JSON sidecar carries:
 
 ```json
 "inspired_by": {
@@ -854,19 +854,19 @@ preset).
 |---|---|---|
 | **D-113** | Phase MD posture reframe — inspired-by, not derivative-of. Operative legal framing. | Filed 2026-05-12. |
 | **D-114** | Phase MD release model — 20-preset first-release bundle. Post-release cadence deferred to release planning. | Filed 2026-05-12. |
-| **D-115** | Phase MD release-bundle composition — Phosphene-native vs Milkdrop-inspired split. Question framed; Matt's call. | Filed 2026-05-12 with proposal pending sign-off. |
+| **D-115** | Phase MD release-bundle composition — Uzume-native vs Milkdrop-inspired split. Question framed; Matt's call. | Filed 2026-05-12 with proposal pending sign-off. |
 | **D-116** | Phase MD substantial-similarity discipline rule. Authoring-time constraint; lives in `SHADER_CRAFT.md §12.6`. | Filed 2026-05-12. |
-| **D-117** | Phase MD catalog-ratio framing — steady-state Phosphene-native vs Milkdrop-inspired fraction. Question framed; explicit decision deferred. | Filed 2026-05-12 (deferred). |
+| **D-117** | Phase MD catalog-ratio framing — steady-state Uzume-native vs Milkdrop-inspired fraction. Question framed; explicit decision deferred. | Filed 2026-05-12 (deferred). |
 | **D-118** | Phase MD read-only analysis tool — ship vs skip. Recommend skip; MD.1 grammar audit doc covers the use case. | Filed 2026-05-12. |
 
 Full text for each lives in `docs/DECISIONS.md`.
 
 ### §12.4 Release model — the 20-preset first-release bundle
 
-**Threshold.** Phosphene's first release ships when the production
+**Threshold.** Uzume's first release ships when the production
 catalog reaches **20 presets** that are all M7-certified and pass
 the full V.6 rubric (`rubric_profile` matched per preset). Mix of
-Phosphene-native + Milkdrop-inspired (composition framed in §12.4.1
+Uzume-native + Milkdrop-inspired (composition framed in §12.4.1
 / D-115).
 
 **Why 20.** Enough breadth that a 60–90 minute listening session
@@ -897,28 +897,28 @@ deferred to release planning. Not in this addendum's scope. The
 The 20 presets in the first release are a mix. The question is the
 mix.
 
-* **Proposal A — 10 + 10.** Ten Phosphene-native (mostly already
+* **Proposal A — 10 + 10.** Ten Uzume-native (mostly already
   authored, awaiting M7 + cert) + ten Milkdrop-inspired (new
   authoring against the §12.3 candidate batch). Balanced register;
-  the catalog reads as "Phosphene's own work" *and* "Phosphene
+  the catalog reads as "Uzume's own work" *and* "Uzume
   honoring the Milkdrop tradition" at equal weight.
-* **Proposal B — 5 + 15.** Five Phosphene-native + fifteen
+* **Proposal B — 5 + 15.** Five Uzume-native + fifteen
   Milkdrop-inspired. Honoring-the-tradition reads louder at
   first-release; sets a clear expectation that the catalog is
   Milkdrop-inspired in character.
-* **Proposal C — 15 + 5.** Fifteen Phosphene-native + five
-  Milkdrop-inspired. Phosphene's own identity reads louder; the
+* **Proposal C — 15 + 5.** Fifteen Uzume-native + five
+  Milkdrop-inspired. Uzume's own identity reads louder; the
   Milkdrop-inspired register is a clear minority at first.
 
 **Recommendation (Claude Code session, not Matt's call):**
-**Proposal A (10 + 10).** Reasons: (a) ~14 production Phosphene-
+**Proposal A (10 + 10).** Reasons: (a) ~14 production Uzume-
 native presets already authored — getting 10 of them through M7 +
 cert in the release-bundle work window is feasible; (b) 10
 Milkdrop-inspired uplifts at 2–3 days each is ~3–4 weeks of
 sustained authoring, large but bounded; (c) the 50/50 balance
 matches the inspired-by framing — the catalog is *new creations*
-that *honor* Milkdrop, not a Milkdrop pack with a Phosphene minority
-or a Phosphene catalog with a Milkdrop garnish. Matt picks; the
+that *honor* Milkdrop, not a Milkdrop pack with a Uzume minority
+or a Uzume catalog with a Milkdrop garnish. Matt picks; the
 pick lands as the operative form of D-115.
 
 ### §12.5 Substantial-similarity discipline rule (D-116)
@@ -928,32 +928,32 @@ derived from." Lives in `SHADER_CRAFT.md §12.6` as a new subsection
 of the Fidelity Rubric chapter. Cross-references Failed Approach #48
 ("§10.1-faithful but reference-divergent visual outputs") and D-116.
 
-**Rule (short form).** A Milkdrop-inspired Phosphene preset must be
+**Rule (short form).** A Milkdrop-inspired Uzume preset must be
 a **new creation**, not a reproduction. Specifically:
 
-1. **No source equations copy-pasted into Phosphene shader code.**
+1. **No source equations copy-pasted into Uzume shader code.**
    The author reads the `.milk` file to understand the aesthetic
-   intent; the Phosphene `.metal` is written from scratch.
+   intent; the Uzume `.metal` is written from scratch.
 2. **No source shader logic ported line-for-line.** Where the source
-   `.milk` carries HLSL `warp_1=…warp_NN=` blocks, the Phosphene
-   equivalent is authored against Phosphene's `mv_warp` /
+   `.milk` carries HLSL `warp_1=…warp_NN=` blocks, the Uzume
+   equivalent is authored against Uzume's `mv_warp` /
    `mvWarpPerVertex` primitives, not by mechanically translating
    the HLSL surface. The shape of the motion may resemble the
-   source's; the implementation is Phosphene-native.
+   source's; the implementation is Uzume-native.
 3. **The visual structure may differ from the source.** A
-   Milkdrop-inspired Phosphene preset can honor a source's concept
+   Milkdrop-inspired Uzume preset can honor a source's concept
    (e.g. "kaleidoscope of tessellating triangles") while
    substituting a different visual structure (e.g. SDF-based
    tessellation rather than per-pixel-grid feedback warp) if that
-   produces a stronger Phosphene-native result.
+   produces a stronger Uzume-native result.
 4. **Source `.milk` files are not redistributed.** They are read
    from a developer-local checkout of the cream-of-crop pack; the
-   pack stays at its source URL. Phosphene ships only the new
-   Phosphene-native creations (`.metal` + `.json`) that took the
+   pack stays at its source URL. Uzume ships only the new
+   Uzume-native creations (`.metal` + `.json`) that took the
    `.milk` files as inspiration.
 
 Full rubric text in `SHADER_CRAFT.md §12.6`. The rule applies to
-Milkdrop-inspired uplifts specifically — Phosphene-native presets
+Milkdrop-inspired uplifts specifically — Uzume-native presets
 (Aurora Veil, Crystalline Cavern, Phase G-uplift catalog members)
 are unaffected.
 
@@ -961,18 +961,18 @@ are unaffected.
 
 **Question:** at steady state — call it ~200 inspired-by uplifts
 plus the ongoing Phase G-uplift / Phase AV / Phase CC / Phase MV
-work — what fraction of the catalog is Phosphene-native vs
+work — what fraction of the catalog is Uzume-native vs
 Milkdrop-inspired?
 
 **Why it matters.** Three forces compound:
 
 1. **Authoring economics.** Milkdrop-inspired uplifts are typically
-   faster than from-scratch Phosphene-native presets — the source
+   faster than from-scratch Uzume-native presets — the source
    `.milk` provides aesthetic anchor and audio-coupling skeleton,
    reducing the design surface the author has to invent. Default
    gravity pulls toward higher Milkdrop-inspired share.
 2. **Brand identity.** If the steady-state catalog is, say, 80 %
-   Milkdrop-inspired, Phosphene's brand identity becomes "the
+   Milkdrop-inspired, Uzume's brand identity becomes "the
    Milkdrop renderer with modern fidelity" rather than "a new
    music-visualization product that takes inspiration from
    Milkdrop." Pulls toward lower Milkdrop-inspired share.
@@ -1008,7 +1008,7 @@ question is whether a *replacement* read-only analysis tool ships.
   parser + AST + pretty-print. Optional: per-`.milk`-file frequency
   analysis (which variables, functions, audio bands the source
   uses) to help authors understand the source's audio-coupling
-  fingerprint before drafting the Phosphene-native uplift.
+  fingerprint before drafting the Uzume-native uplift.
 * **D-118.2 — Skip; rely on MD.1 grammar audit + author manual
   reading.** Authors read `.milk` files manually (they are small,
   1–20 KB, C-like syntax). The MD.1 grammar audit doc serves as
@@ -1022,7 +1022,7 @@ musical role before authoring anything" + Failed Approach #39
 that work without adding signal. (b) MD.1's grammar audit already
 catalogs the variable / function / operator surface across the
 full pack. A second tool is unnecessary infrastructure. (c) The
-authoring sessions that produce inspired-by Phosphene presets are
+authoring sessions that produce inspired-by Uzume presets are
 the Phase MD work; spending one of those sessions on tool-building
 is opportunity cost against actual catalog growth.
 
@@ -1039,26 +1039,26 @@ takedown requests routed through projectM (per the pack's stated
 posture). It did *not* commit to a pre-release notification
 protocol — but iterative-design discussion under the derivative
 posture had suggested "notify original Milkdrop preset authors of
-each Phosphene port before public release."
+each Uzume port before public release."
 
 **Resolution under inspired-by:** notification protocol is
 **retired for the pre-community phase**. Rationale:
 
-1. **Pre-community: no third-party authors.** Until Phosphene opens
+1. **Pre-community: no third-party authors.** Until Uzume opens
    preset development to community contributors, all
-   Milkdrop-inspired Phosphene presets are authored by Matt + Claude
+   Milkdrop-inspired Uzume presets are authored by Matt + Claude
    Code. Notification before any third-party-authoring infrastructure
    exists is a checkbox exercise, not a community protocol.
 2. **Pack takedown path covers the response surface.** The pack's
    stated takedown protocol (preset authors contact projectM team)
-   routes through the upstream curator. Phosphene honors takedowns
+   routes through the upstream curator. Uzume honors takedowns
    per that path (per D-111).
 3. **Inspired-by framing reduces the surface anyway.** A new
    creation that honors a source concept is materially different
    from a faithful port; the "did you know we ported your preset?"
    communication shape no longer fits the work.
 
-**Trigger to reopen:** when Phosphene opens preset development to
+**Trigger to reopen:** when Uzume opens preset development to
 community contributors. At that point a notification protocol
 becomes load-bearing community infrastructure (community submissions
 that derive heavily from named source presets warrant pre-publication
@@ -1073,12 +1073,12 @@ inspired-by reframe restructures the increment scopes:
 | Increment | Pre-reframe scope (§6) | Post-reframe scope (§12) |
 |---|---|---|
 | **MD.1 grammar audit** | Empirical grammar audit unblocking MD.2 transpiler. | **Retained, reframed.** Audit becomes a read-only *author's reference* for understanding `.milk` source files. Coverage is no longer load-bearing (no transpiler to feed). HLSL-free / HLSL-bearing split dissolves (no transpiler-input filter). MD.1 prompt revised at §4 of this session. |
-| **MD.2 transpiler CLI** | Lex `.milk`, emit Swift AST, reject HLSL-bearing. | **Retired entirely.** No transpiler. No `PhospheneTools/MilkdropTranspiler` SPM target. |
+| **MD.2 transpiler CLI** | Lex `.milk`, emit Swift AST, reject HLSL-bearing. | **Retired entirely.** No transpiler. No `UzumeTools/MilkdropTranspiler` SPM target. |
 | **MD.3 JSON emission + HLSL hand-port playbook** | Transpiler emits `PresetDescriptor` JSON; separate hand-port doc for HLSL. | **Retired entirely.** Hand-port playbook obsolete; inspired-by authoring replaces both translation modes. |
 | **MD.4 Per-vertex Metal emission** | Transpiler emits `mvWarpPerVertex` bodies. | **Retired entirely.** Authors write `mvWarpPerVertex` bodies directly per the per-preset session. |
-| **MD.5 First 10 cream-of-crop ports** | 10 Classic Port presets via transpiler. | **Reframed as "first inspired-by batch."** 10 Milkdrop-inspired Phosphene presets, hand-authored under the substantial-similarity discipline rule (§12.5 / D-116). Source candidates from D-112 list (HLSL-free constraint dissolves; substitutions encouraged where a better inspiration source surfaces). This batch contributes to the 20-preset first-release bundle (§12.4 / D-114). |
+| **MD.5 First 10 cream-of-crop ports** | 10 Classic Port presets via transpiler. | **Reframed as "first inspired-by batch."** 10 Milkdrop-inspired Uzume presets, hand-authored under the substantial-similarity discipline rule (§12.5 / D-116). Source candidates from D-112 list (HLSL-free constraint dissolves; substitutions encouraged where a better inspiration source surfaces). This batch contributes to the 20-preset first-release bundle (§12.4 / D-114). |
 | **MD.6 Next 20 evolved-tier** | 20 Evolved-tier presets via transpiler + stem uplift. | **Reframed as "ongoing inspired-by uplifts."** No tier distinction; each preset hand-authored. Stem routing is per-preset authoring choice, not tier-mandated. Composition of this batch is part of the multi-year work stream, not the 20-preset first-release bundle. |
-| **MD.7 Hybrid ray-march + warp** | 5 Hybrid-tier presets with ray-march backdrop. | **Reframed as "inspired-by uplifts that compose mv_warp + ray_march."** Architectural composition is per-preset authoring choice. The MD.7.0 spike (Geiss *3D-Luz* recommended) is still a valuable proof-of-composition increment under inspired-by — but the deliverable is one Phosphene-native preset that takes Geiss *3D-Luz* as inspiration, not a port. |
+| **MD.7 Hybrid ray-march + warp** | 5 Hybrid-tier presets with ray-march backdrop. | **Reframed as "inspired-by uplifts that compose mv_warp + ray_march."** Architectural composition is per-preset authoring choice. The MD.7.0 spike (Geiss *3D-Luz* recommended) is still a valuable proof-of-composition increment under inspired-by — but the deliverable is one Uzume-native preset that takes Geiss *3D-Luz* as inspiration, not a port. |
 
 ENGINEERING_PLAN.md is revised in §6 of this session (separate commit).
 
@@ -1100,23 +1100,23 @@ left to drift; (d) the D-111 amendment retired the counsel-review gate
 without a replacement checkpoint. Four new decisions land:
 
 * **D-119 — Brand identity: Milkdrop-influenced modern platform.**
-  Phosphene is a music-visualization product whose catalog is
+  Uzume is a music-visualization product whose catalog is
   intentionally majority-Milkdrop-inspired, drawing on the 25-year
-  Milkdrop preset tradition as Phosphene's primary aesthetic well,
-  layered with Phosphene's modern capabilities (stems, beat phase,
+  Milkdrop preset tradition as Uzume's primary aesthetic well,
+  layered with Uzume's modern capabilities (stems, beat phase,
   ray-march, mv\_warp, PBR, MV-3 audio analysis). This is the
   committed product identity going forward — replaces the §12.6
   / D-117 "defer until ~40 presets" framing. Implications:
   steady-state catalog ratio ≥ 50% inspired-by (target ~60–70%,
-  upper bound ~80% to preserve Phosphene-native distinctiveness);
+  upper bound ~80% to preserve Uzume-native distinctiveness);
   the 20-preset first-release bundle composition (D-115) reweights
-  toward inspired-by-forward; Phosphene marketing copy names
+  toward inspired-by-forward; Uzume marketing copy names
   Milkdrop influence explicitly.
 
 * **D-120 — Property taxonomy (concept tags + motion paradigm).**
-  Every Phosphene preset's JSON sidecar gains two metadata fields
+  Every Uzume preset's JSON sidecar gains two metadata fields
   beyond `family`: (1) `concept_tags: [String]` — controlled-vocab
-  array drawn from the cream-of-crop pack themes + Phosphene-native
+  array drawn from the cream-of-crop pack themes + Uzume-native
   extensions (`fractal`, `geometric`, `waveform`, `reaction_diffusion`,
   `dancer`, `drawing`, `sparkle`, `particles`, `supernova`,
   `hypnotic`, `kaleidoscope`, `aurora`, `cavern`, `web`, etc. —
@@ -1126,7 +1126,7 @@ without a replacement checkpoint. Four new decisions land:
   (`feedback_warp` | `particles` | `camera_flight` |
   `mesh_animation` | `direct_time_modulation` | `mv_warp` |
   `ray_march_static` | `staged_composition`). Applies to all
-  Phosphene presets, not just Milkdrop-inspired — existing
+  Uzume presets, not just Milkdrop-inspired — existing
   catalog members get retroactively tagged. Replaces the
   adversarial-review's `fidelity` field proposal. Restores
   orchestrator scheduling information lost by the D-103 tier
@@ -1140,11 +1140,11 @@ without a replacement checkpoint. Four new decisions land:
   bullet 3; lives in SHADER\_CRAFT.md §12.6).** Bullet 3 of the
   substantial-similarity discipline rule is rewritten from
   permissive ("visual structure may differ") to load-bearing: the
-  Phosphene preset's rendered output **must** differ measurably
+  Uzume preset's rendered output **must** differ measurably
   from the source on at least one of: dominant motion model,
   palette character, primary feature stack, or compositional
   structure. M7 review adds a side-by-side render comparison —
-  the Phosphene preset rendered on a shared test track next to
+  the Uzume preset rendered on a shared test track next to
   the source `.milk` rendered in projectM (or comparable); Matt
   writes a one-paragraph divergence rationale in the closeout
   naming which axis diverges and how. A preset that cannot
@@ -1162,7 +1162,7 @@ without a replacement checkpoint. Four new decisions land:
   character against brand commitment, orchestrator scheduling on
   D-120 taxonomy, and any community signal; (2) takedown signal
   — first takedown notice or substantive copyright complaint
-  routed through projectM or directly to Phosphene; (3)
+  routed through projectM or directly to Uzume; (3)
   discipline-rule failure — first M7 review that rejects an
   inspired-by preset for substantive-similarity reasons; (4)
   catalog-ratio drift — inspired-by share falls below ~50% or
@@ -1172,12 +1172,12 @@ without a replacement checkpoint. Four new decisions land:
   gate that D-111 amendment retired without a replacement.
 
 **D-115 amendment under D-119 brand commitment.** The §12.4.1
-recommendation of 10+10 (Phosphene-native + Milkdrop-inspired) is
+recommendation of 10+10 (Uzume-native + Milkdrop-inspired) is
 revised toward inspired-by-forward to match the brand commitment.
 Updated proposal table:
 
-* **A' — 7+13.** Seven Phosphene-native + thirteen
-  Milkdrop-inspired. New default recommendation. Phosphene-native
+* **A' — 7+13.** Seven Uzume-native + thirteen
+  Milkdrop-inspired. New default recommendation. Uzume-native
   side draws from the ~14 already-authored production presets;
   cert-review window is bounded. Milkdrop-inspired side lands the
   first-release inspired-by batch (the D-112 amended candidate
@@ -1194,7 +1194,7 @@ operative form of D-115 in a follow-up amendment block.
 **D-117 amendment under D-119 brand commitment.** The catalog-ratio
 question is no longer deferred. The target is **≥ 50% inspired-by
 at steady state, ~60–70% expected**, upper bound ~80% to preserve
-Phosphene-native distinctiveness. Phase 4 orchestrator weighting
+Uzume-native distinctiveness. Phase 4 orchestrator weighting
 remains the mechanism if the ratio drifts outside the band (D-053
 `excludedFamilies` floor + family / concept / paradigm-repeat
 penalties from D-120).
@@ -1250,7 +1250,7 @@ directory and a Settings toggle that D-123 deleted the day after
 `family: "milkdrop_inspired"` and no `.milkdropInspired`
 `PresetCategory` case. Milkdrop-inspired uplifts file into the same
 11-case cream-of-crop `PresetCategory` enum as every other
-Phosphene preset (`waveform`, `fractal`, `geometric`, `particles`,
+Uzume preset (`waveform`, `fractal`, `geometric`, `particles`,
 `hypnotic`, `supernova`, `reaction`, `drawing`, `dancer`,
 `sparkle`, `transition`). The seven shipped uplifts file as
 `hypnotic` ×6 and `particles` ×1.
@@ -1270,18 +1270,18 @@ an open carry-forward, not a decision this addendum makes.)
 
 *Amends:* §12.2's D-105 row, §12.9's MD.5 / MD.6 rows.
 
-### §13.2 Layout — flat, and named for the Phosphene preset
+### §13.2 Layout — flat, and named for the Uzume preset
 
-**Never adopted.** `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/`
+**Never adopted.** `UzumeEngine/Sources/Presets/Shaders/Milkdrop/`
 does not exist and will not. All 28 sidecars are flat in
-`Shaders/`. Presets are named for the Phosphene preset, not the
+`Shaders/`. Presets are named for the Uzume preset, not the
 source: `Witchlight.metal`, not
 `sparkle_witchcraft_reloaded.metal`.
 
 *Why.* Moving 7 of 28 presets into a subdirectory changes
 `PresetLoader` enumeration and every golden path for no
 user-visible gain. The `<theme>_<source_name>` convention is also
-in direct tension with D-113 — a Phosphene preset named after the
+in direct tension with D-113 — a Uzume preset named after the
 `.milk` it was inspired by reads as a port of that `.milk`, which
 is exactly the framing the reframe retired.
 
@@ -1344,15 +1344,15 @@ the only criterion that has produced certified presets.
 ### §13.5 Settings exposure — deleted (Matt 2026-08-07)
 
 **There is no Milkdrop toggle, and there will not be one.**
-`phosphene.settings.visuals.milkdrop.inspired` was never adopted;
+`uzume.settings.visuals.milkdrop.inspired` was never adopted;
 the QR.4 / D-091 `#if DEBUG` stub that stood in its place —
-`phosphene.settings.visuals.includeMilkdropPresets`, reading
+`uzume.settings.visuals.includeMilkdropPresets`, reading
 "Coming in a future update," `.disabled(true)` — was **removed at
 MD.0** along with its store property, persistence key, view-model
 flag, view row, two strings and three tests.
 
 **Why deleted rather than shipped (Matt's pick, MD.0
-DECISION-NEEDED #1).** D-119 commits Phosphene's identity to being
+DECISION-NEEDED #1).** D-119 commits Uzume's identity to being
 Milkdrop-influenced; a switch that removes the majority of the
 catalog contradicts the brand call. The per-category exclusions
 (`excludedPresetCategories` → `PresetScoringContext.excludedFamilies`)
@@ -1367,10 +1367,10 @@ nothing else, while `PresetScoringContextProvider` builds
 `excludedFamilies` from a different key, so flipping it changed
 nothing about preset selection. Wiring it honestly could not go
 through `family`: under D-123 the seven uplifts sit in `hypnotic`
-and `particles` **alongside seven Phosphene-native presets** —
+and `particles` **alongside seven Uzume-native presets** —
 Aurora Veil, Plasma, Filigree, Mitosis, Cytokinesis, Murmuration,
 Nebula, five of them certified — so a family-based exclusion would
-have removed Phosphene's own work. The only honest wiring is a
+have removed Uzume's own work. The only honest wiring is a
 per-preset `inspired_by` check, which needs `PresetDescriptor`
 decoding that does not exist (§13.1).
 
@@ -1419,7 +1419,7 @@ produce a certified uplift:
    discipline rule and the `preset-session` / `shader-authoring`
    skills. Nothing about this step is Milkdrop-specific.
 5. **M7 plus the D-121 side-by-side** before `certified: true`.
-   The side-by-side renders the Phosphene preset and the source
+   The side-by-side renders the Uzume preset and the source
    oracle on a shared track; Matt writes the divergence rationale
    naming which of D-121's four axes diverges.
 
@@ -1438,7 +1438,7 @@ all untouched and still operative.
 
 **D-115 is now resolved: C' (10 + 10)**, Matt 2026-08-07, closing a
 question open since 2026-05-12. The first-release bundle is ten
-Phosphene-native + ten Milkdrop-inspired; at 18 certified (11
+Uzume-native + ten Milkdrop-inspired; at 18 certified (11
 native, 7 inspired-by) that is **three more uplifts** to the
 threshold, against six under the superseded A' (7+13) default.
 D-119's ≥ 50 % inspired-by is thereby a **steady-state target, not

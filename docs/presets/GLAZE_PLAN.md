@@ -2,7 +2,7 @@
 
 **Status:** GLAZE.1 ✅ — design + reference curation (this increment); **name + scope greenlit by Matt 2026-06-26.**
 No shader code yet (faithful-port discipline: references + plan before `.metal`, NACRE.1 pattern).
-**Target:** faithful Phosphene uplift of the Milkdrop preset `Flexi + stahlregen - jelly showoff parade`
+**Target:** faithful Uzume uplift of the Milkdrop preset `Flexi + stahlregen - jelly showoff parade`
 (cream-of-the-crop legends; butterchurn built-in — renders faithfully).
 **Substrate:** `direct + mv_warp` (same family as Nacre / Dragon Bloom / Fata Morgana).
 **References:** `docs/VISUAL_REFERENCES/glaze/` — `source_preset.json`, `source_shaders.txt`
@@ -88,14 +88,14 @@ when the music drops out.
 jitter becomes smooth organic overshoot/settle — it sidesteps the "never drive primary motion from raw
 onsets" failure (FA #4/#31) *by construction*, not by tuning. The routing is **inherited from the source**
 (its own frame-eqs drive the spring anchor from bass/treble/energy EMAs), which happens to align with
-Phosphene's Audio Data Hierarchy (continuous energy primary; the spring is a physical low-pass on it).
+Uzume's Audio Data Hierarchy (continuous energy primary; the spring is a physical low-pass on it).
 Distinct from every certified preset: this is the catalog's first **physics-of-the-beat** preset.
 
 ## 2. Temporal contract (behaviour over time)
 
 | When | What the field does |
 |---|---|
-| **Silence / warmup (D-019)** | Field present + **alive**: palette rotation continues, the spring idles with a slow gravity-sway, contour structure visible. Never black/frozen. (Source seeds only from a volume-gated waveform → a literal port is black at silence; Phosphene adds a silence-floor seed, exactly as Nacre did.) |
+| **Silence / warmup (D-019)** | Field present + **alive**: palette rotation continues, the spring idles with a slow gravity-sway, contour structure visible. Never black/frozen. (Source seeds only from a volume-gated waveform → a literal port is black at silence; Uzume adds a silence-floor seed, exactly as Nacre did.) |
 | **Bass / treble transient** | The spring anchor jumps → the whole field **lurches and wobbles** (momentum + overshoot), then settles. Bounded, physical, ~1–3 beats of decay. |
 | **Sustained energy** | Anchor swings **wide and lively**; contours flow fast; sheen flares — without white-out. |
 | **Full slow cycle (~10–14 s)** | Palette **rotates** red→green→teal→violet; feedback **accretes** the nested contour rings inward (decay 1.0 + zoomexp). |
@@ -106,7 +106,7 @@ Distinct from every certified preset: this is the catalog's first **physics-of-t
 1. **Iconic visual subject deliverable at fidelity — YES, with one infra extension.** The glossy contour-gel
    is feedback+warp+comp math (texture taps, Sobel-of-blur emboss, multi-scale unsharp, hue mix, contrast
    curve) — all portable MSL, mv_warp certified 3×. **The one dependency: a 3-level blur pyramid**
-   (`blur1/2/3`) drives the sheen in *both* shaders. Phosphene already has Fata Morgana's blur machinery —
+   (`blur1/2/3`) drives the sheen in *both* shaders. Uzume already has Fata Morgana's blur machinery —
    `blurState`/`blurTexture`, a 1/4-res separable gaussian (= `blur1`), **already wired into `MVWarpState`**
    (`RenderPipeline+MVWarp.swift:62`). The port **extends** it to 2–3 levels (wider/more-downsampled), reusing
    the existing blur pass. Extension of known infra, not a new category — this is the main (bounded) build.
@@ -129,10 +129,10 @@ Distinct from every certified preset: this is the catalog's first **physics-of-t
 - **Comp shader (the gel sheen):** multi-scale unsharp/bandpass from `blur1/2/3` + dual-direction
   gradient-displaced sampling + `pow(hue_shader,·)` palette mix + `ret*ret`/`sqrt` contrast curve.
 - **Seed:** a single **volume-gated waveform** (the whole image builds from it under decay 1.0).
-- **Butterchurn-only uniforms** (`hue_shader`, `scale*/bias*`, `texsize`) → substituted with a Phosphene
+- **Butterchurn-only uniforms** (`hue_shader`, `scale*/bias*`, `texsize`) → substituted with a Uzume
   palette, fixed scale/bias, and our texel sizes. Documented per-symbol at port time.
 
-## 5. Port plan onto Phosphene mv_warp (dedicated branch, Nacre/FM pattern)
+## 5. Port plan onto Uzume mv_warp (dedicated branch, Nacre/FM pattern)
 
 - **Per-frame uniforms** (`GlazeUniforms`, CPU-side, integrated each frame): the spring state (anchor ←
   audio EMAs; 3 masses; tail pos/speed) + palette phase + texel sizes. Mirrors `NacreUniforms`/FM.

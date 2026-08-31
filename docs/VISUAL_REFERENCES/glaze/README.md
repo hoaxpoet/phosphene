@@ -5,7 +5,7 @@
 **Rubric:** lightweight — stylized 2D feedback (exempt from full detail-cascade + material-count requirements)
 **Last curated:** 2026-06-26 (rendered by Claude Code from the faithful butterchurn built-in; name **Glaze** + scope greenlit by Matt — design increment GLAZE.1; live M7 confirms the port at GLAZE.2b+)
 
-**Target:** a faithful Phosphene uplift of the Milkdrop preset `Flexi + stahlregen - jelly showoff parade`
+**Target:** a faithful Uzume uplift of the Milkdrop preset `Flexi + stahlregen - jelly showoff parade`
 (cream-of-the-crop legends set; butterchurn built-in, renders faithfully). Distinct from Nacre
 (`$$$ Royal (431)`, translucent *cells*): this one is **glossy concentric contour "jelly,"** built from a
 **spring-physics warp** rather than a lens-cell field.
@@ -44,7 +44,7 @@ What DOES matter for this preset (substitute for the full rubric):
 - [ ] **Readability at silence (D-019 warmup):** the field is present and **alive** — slow time-driven roam +
   palette rotation continue, the spring idles with a gentle gravity sway, structure visible. Never black,
   never frozen. (NB: the source seeds only from a volume-gated waveform, so a literal port goes black at
-  silence — Phosphene must add a silence-floor seed, exactly as Nacre did.)
+  silence — Uzume must add a silence-floor seed, exactly as Nacre did.)
 - [ ] **Readability at peak energy:** the spring swings wide, contours flow fast, sheen flares — but the
   field must **not white-out** (accumulator stays sub-saturated; cf. Dragon Bloom / Nacre test gates).
 

@@ -13,7 +13,7 @@ visibly divide (mitosis) and merge in time with the music (Matt's locked look,
 
 Mitosis is an **original-look** preset — the cell *form* is canonical Gray–Scott
 (grounded, below), but the cyan-on-dark grade + the audio coupling are
-Phosphene-original, grounded empirically by the sketch's rendered evidence rather
+Uzume-original, grounded empirically by the sketch's rendered evidence rather
 than a single prior-art demo (same situation as Filigree's web-dominant grade).
 The **palette is not yet locked** — it's a curation step with Matt (MITOSIS.3).
 
@@ -31,7 +31,7 @@ The **palette is not yet locked** — it's a curation step with Matt (MITOSIS.3)
 
 ## Rendered evidence (the trustable in-engine reference for now)
 
-Regenerate with `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter MitosisSketchRenderTests`.
+Regenerate with `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter MitosisSketchRenderTests`.
 Frames land under `tools/mitosis_sketch/frames/` (gitignored):
 
 - `mito_0_quiet_merged.png` — sparse resting state (few cells, a colony dividing into a dot-grid).

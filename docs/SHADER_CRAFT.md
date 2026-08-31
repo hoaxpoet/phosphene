@@ -1,6 +1,6 @@
-# Phosphene — Shader Craft Handbook
+# Uzume — Shader Craft Handbook
 
-**Status:** Draft v0.1. Canonical authoring guide for Phosphene preset shaders. Primary audience: Claude Code sessions authoring new presets or uplifting existing ones. Secondary audience: Matt reviewing the output.
+**Status:** Draft v0.1. Canonical authoring guide for Uzume preset shaders. Primary audience: Claude Code sessions authoring new presets or uplifting existing ones. Secondary audience: Matt reviewing the output.
 
 **Scope:** Fidelity. Specifically: how to write Metal shaders that look like they were made in 2026, not 2006. Covers detail cascades, material recipes, lighting recipes, volume and SDF craft, texturing beyond single-octave noise, performance guidance, and a per-preset uplift playbook.
 
@@ -12,7 +12,7 @@
 
 ### 1.1 The fidelity problem
 
-Phosphene's engine is modern: Metal 3.1+, deferred G-buffer ray march, IBL, SSGI, MetalFX-upscaling-capable, mesh shaders on M3+, hardware ray tracing via BVH. The engine can render AAA-quality output.
+Uzume's engine is modern: Metal 3.1+, deferred G-buffer ray march, IBL, SSGI, MetalFX-upscaling-capable, mesh shaders on M3+, hardware ray tracing via BVH. The engine can render AAA-quality output.
 
 The preset shaders authored so far do not. Six iterations of Volumetric Lithograph, three of Arachne, three of Gossamer. Each iteration fixed a specific bug but none reached the quality bar of a modern ShaderToy top-hit, let alone a shipping game.
 
@@ -64,7 +64,7 @@ If you cannot write the sentence cleanly, *stop and bring the gap to Matt before
 
 **Gate 2 — Iconic visual subject deliverable at fidelity.** From a comparable past preset, demonstrate that the visual style is reachable. Honest self-assessment: if Matt has flagged a fidelity gap on a similar preset before, default to "I cannot deliver this" until proven otherwise. *"B or C will be botched by you because you won't be able to achieve the level of visual fidelity needed. I have literally watched this happen for the last several preset designs"* (Matt 2026-05-11) is a binding constraint, not a debate prompt.
 
-**Gate 3 — Infrastructure-feasible.** Does not require render passes / engine surfaces / GPU contracts Phosphene lacks. If the answer is "we can add the infrastructure," check whether Matt agrees the infrastructure-adding increment is worth doing as a precondition.
+**Gate 3 — Infrastructure-feasible.** Does not require render passes / engine surfaces / GPU contracts Uzume lacks. If the answer is "we can add the infrastructure," check whether Matt agrees the infrastructure-adding increment is worth doing as a precondition.
 
 Pitches that pass two of three gates and require Matt to spot the missing third are not acceptable. Surface concerns *before* the pitch, not when cornered. The pattern of pitching a concept whose problems you can see but haven't surfaced is what produced *"This is exactly what I'm fearing... If you have concerns, I will most likely have greater concerns"* (2026-05-11).
 
@@ -117,12 +117,12 @@ Session prompts reference images directly: "Implement strand specular per `04_sp
 
 The carve-out does not extend to any other slot. Real photography or controlled in-engine capture remains mandatory for `01_macro_*` through `04_specular_*`, `06_palette_*`, `07_atmosphere_*`, `08_lighting_*`, and `09_*`.
 
-The lint check at `PhospheneTools/Sources/CheckVisualReferences` (Increment V.5)
+The lint check at `UzumeTools/Sources/CheckVisualReferences` (Increment V.5)
 verifies that every registered preset has a populated VISUAL_REFERENCES folder and
 that filenames follow `docs/VISUAL_REFERENCES/_NAMING_CONVENTION.md`. Run via:
 
 ```bash
-swift run --package-path PhospheneTools CheckVisualReferences
+swift run --package-path UzumeTools CheckVisualReferences
 ```
 
 Session prompts SHOULD cite specific reference filenames inline
@@ -1879,7 +1879,7 @@ Current rule: 400 lines. Good shaders run 800–2000. `.swiftlint.yml` gets a pa
 
 ```yaml
 included:
-  - PhospheneEngine/Sources
+  - UzumeEngine/Sources
 excluded:
   - "**/Shaders/**/*.metal"
 
@@ -1897,7 +1897,7 @@ file_length:
 From the improvement plan Increment V.1–V.3:
 
 ```
-PhospheneEngine/Sources/Renderer/Shaders/Utilities/
+UzumeEngine/Sources/Renderer/Shaders/Utilities/
   Noise/
     Perlin.metal         (~200 lines)
     Worley.metal         (~200 lines)
@@ -2009,7 +2009,7 @@ The rubric is enforced by `DefaultFidelityRubric` in `Sources/Presets/Certificat
 **To read the current rubric report for all presets:**
 
 ```bash
-swift test --package-path PhospheneEngine --filter "FidelityRubricReportTests/rubricReport_allPresetsLoad" 2>&1 | grep -A 3 "\[✓\]\|\[✗\]"
+swift test --package-path UzumeEngine --filter "FidelityRubricReportTests/rubricReport_allPresetsLoad" 2>&1 | grep -A 3 "\[✓\]\|\[✗\]"
 ```
 
 **To certify a preset** after a fidelity uplift session:
@@ -2017,7 +2017,7 @@ swift test --package-path PhospheneEngine --filter "FidelityRubricReportTests/ru
 1. Verify `meetsAutomatedGate == true` in the rubric report (Suite 1 output above).
 2. Review the preset against `docs/VISUAL_REFERENCES/<preset>/README.md` reference images.
 3. Set `"certified": true` in the preset's JSON sidecar.
-4. Run `swift test --package-path PhospheneEngine --filter FidelityRubricTests` — Suite 2 gate dict must be updated (change `false → true` for the newly certified preset).
+4. Run `swift test --package-path UzumeEngine --filter FidelityRubricTests` — Suite 2 gate dict must be updated (change `false → true` for the newly certified preset).
 
 **Lightweight presets** (Plasma, Waveform, Nebula, SpectralCartograph) use a 4-item ladder (L1–L4) instead of the full 15. Add `"rubric_profile": "lightweight"` to the sidecar. Detail-cascade and material-count requirements are waived for stylized 2D / diagnostic presets. See D-067(b).
 
@@ -2025,16 +2025,16 @@ swift test --package-path PhospheneEngine --filter "FidelityRubricReportTests/ru
 
 ### 12.6 Substantial-similarity discipline rule (Milkdrop-inspired presets only)
 
-**Applies to:** any Phosphene preset that carries an `inspired_by`
+**Applies to:** any Uzume preset that carries an `inspired_by`
 provenance block in its JSON sidecar (per D-111 amendment). Filed as
 D-116 and operative under the inspired-by reframe (D-113 /
 `docs/MILKDROP_STRATEGY.md` §12.5). Does **not** apply to
-Phosphene-native presets (Aurora Veil, Crystalline Cavern, the Phase
+Uzume-native presets (Aurora Veil, Crystalline Cavern, the Phase
 G-uplift catalog members) — those are unaffected.
 
 **Why it exists.** "Inspired by" is a framing label, not a legal
 shield. Substantive similarity is a content test, not a metadata
-test. A Phosphene preset that names a Milkdrop source as inspiration
+test. A Uzume preset that names a Milkdrop source as inspiration
 in its JSON sidecar but reproduces the source's specific protectable
 expression — its shader logic, its per-frame equation surface, its
 visual structure — does not become a new work by virtue of the
@@ -2046,25 +2046,25 @@ time.
 
 **The rule.**
 
-1. **No source equations copy-pasted into Phosphene shader code.**
+1. **No source equations copy-pasted into Uzume shader code.**
    The author reads the `.milk` file end-to-end to understand the
    aesthetic intent and the audio-coupling fingerprint; the
-   Phosphene `.metal` is written from scratch against Phosphene's
+   Uzume `.metal` is written from scratch against Uzume's
    primitives (V.1–V.4 utilities, mv\_warp, ray\_march, MV-3
-   capabilities). Re-expressing the source's idea in Phosphene-
+   capabilities). Re-expressing the source's idea in Uzume-
    native code is the work; mechanically transposing the source's
    code into Metal syntax is not.
 
 2. **No source shader logic ported line-for-line.** Where the source
-   `.milk` carries HLSL `warp_1=…warp_NN=` blocks, the Phosphene
+   `.milk` carries HLSL `warp_1=…warp_NN=` blocks, the Uzume
    equivalent is authored against `mv_warp` / `mvWarpPerVertex`,
    not by mechanically translating the HLSL surface. The *shape* of
    the motion may resemble the source's; the *implementation* is
-   Phosphene-native. The same applies to per-pixel-grid expressions
+   Uzume-native. The same applies to per-pixel-grid expressions
    in the source's `per_pixel_NN` blocks — those are aesthetic
    reference, not transpiler input.
 
-3. **The Phosphene preset's rendered output must differ measurably
+3. **The Uzume preset's rendered output must differ measurably
    from the source on at least one of: dominant motion model,
    palette character, primary feature stack, or compositional
    structure.** *(Strengthened by D-121; originally permissive.)*
@@ -2077,32 +2077,32 @@ time.
    - **Dominant motion model** — the source's primary motion source
      (per-vertex feedback warp / particle swarm / camera flight /
      SDF march / time-modulation) maps onto a different motion source
-     in the Phosphene preset. Honoring concept while changing the
+     in the Uzume preset. Honoring concept while changing the
      mechanism is the canonical example.
    - **Palette character** — the source's hue / saturation / value
-     distribution diverges meaningfully from the Phosphene preset's.
+     distribution diverges meaningfully from the Uzume preset's.
      "Same colours, different motion" doesn't pass on this axis;
      "Different colours, same motion" does.
    - **Primary feature stack** — the load-bearing visual features
      differ (the source's hero element is a kaleidoscope mirror
-     plane; the Phosphene preset's hero element is something else
+     plane; the Uzume preset's hero element is something else
      reachable from the same concept).
    - **Compositional structure** — frame composition (radial vs grid
      vs free-flow), foreground / background relationship, viewport
      framing.
 
    Faithful structural reproduction is not a virtue under inspired-by;
-   honoring the source's *intent* in Phosphene's voice is. A preset
+   honoring the source's *intent* in Uzume's voice is. A preset
    that cannot articulate divergence on at least one axis is by
    definition reproducing the source's expression, even if its code
    shares zero lines with the source.
 
 4. **Source `.milk` files are not redistributed.** They are read
    from a developer-local checkout of the cream-of-crop pack; the
-   pack stays at its source URL. Phosphene ships only the new
-   Phosphene-native creations (`.metal` + `.json`) that took the
+   pack stays at its source URL. Uzume ships only the new
+   Uzume-native creations (`.metal` + `.json`) that took the
    `.milk` files as inspiration. No `.milk` content goes into the
-   Phosphene repository, the Phosphene binary, or any redistributed
+   Uzume repository, the Uzume binary, or any redistributed
    artifact.
 
 **M7 review checklist (Milkdrop-inspired presets only).** Each
@@ -2116,7 +2116,7 @@ this scale the failure is structural, not parametric.
 
 **Mandatory side-by-side render test (D-121).** As part of M7 review:
 
-1. Render the Phosphene preset on a chosen test track at 1920×1080
+1. Render the Uzume preset on a chosen test track at 1920×1080
    (use the standard `RENDER_VISUAL=1 swift test --filter
    PresetVisualReview` harness or a representative live-music
    capture from `~/Documents/phosphene_sessions/<timestamp>/`).
@@ -2138,13 +2138,13 @@ substantive-similarity level.
 
 * *OK*: Reading Geiss — *3D - Luz* end-to-end to understand its
   particle-nova aesthetic + audio coupling fingerprint, then
-  authoring a new Phosphene preset using `mv_warp` + a Phosphene-
+  authoring a new Uzume preset using `mv_warp` + a Uzume-
   native particle-render path + V.3 palette utilities. The
-  Phosphene preset's particle count, dispersion model, palette
-  generation, and audio routing are all Phosphene-native; the
+  Uzume preset's particle count, dispersion model, palette
+  generation, and audio routing are all Uzume-native; the
   *concept* (a radiating particle nova that breathes with bass) is
   the inspiration. The `inspired_by` block names Geiss *3D - Luz*;
-  the M7 review checks that the Phosphene preset's shader contains
+  the M7 review checks that the Uzume preset's shader contains
   no recognizable Geiss equations or structural patterns.
 * *Not OK*: Reading the same Geiss source, hand-transposing each
   of its `per_pixel_NN` equations into Metal syntax, wrapping the
@@ -2156,7 +2156,7 @@ substantive-similarity level.
   squared drives radial expansion exponent" — is a small,
   general-purpose mathematical relationship reasonably found in
   any radial-expansion shader. Re-using *the same relationship*
-  in a Phosphene-native uplift is OK; substantial similarity is
+  in a Uzume-native uplift is OK; substantial similarity is
   about specific protectable expression, not about general
   mathematical patterns. The M7 review applies common sense here;
   document the call in the preset closeout if it's marginal.
@@ -2182,7 +2182,7 @@ substantive-similarity level.
 
 ### 12.7 Pale-tone-share ceiling (palette-driven presets only)
 
-**Applies to:** any Phosphene preset whose primary colour source is a
+**Applies to:** any Uzume preset whose primary colour source is a
 discrete per-cell, per-shard, per-tile, or per-particle palette
 register — Lumen Mosaic (LM.4.7+) is the load-bearing consumer.
 **Does not apply to** continuous-colour presets (ray-march scenes,
@@ -2329,7 +2329,7 @@ PRE-AUTHORING GATE — before opening a .metal file (§2.0):
     preset cited. If Matt has flagged a fidelity gap on a similar
     preset, default to "I cannot deliver this" until proven otherwise.
 [ ] Infrastructure-feasible — does not require render passes / GPU
-    contracts Phosphene lacks (or Matt has approved adding them).
+    contracts Uzume lacks (or Matt has approved adding them).
 
 If any pre-authoring gate fails, STOP. Bring the gap to Matt before
 scoping the increment. See §2.0 and Failed Approaches #48–#50.
@@ -2541,7 +2541,7 @@ Every route the preset's code actually consumes, declared so the route-coverage 
 
 - `route` — short snake_case name of the **visual behaviour** driven (what a viewer would see change).
 - `primitive` — the **Swift-side field name** of `FeatureVector` / `StemFeatures` the code reads (camelCase: `bassDev`, `drumsEnergyDev`, `barPhase01`, `pulseAmp01`, …). Validated against the session-CSV-recordable primitive allowlist by `AudioRouteSchemaTests` — an unknown primitive fails the suite.
-- `kind` — the floor class `RouteCoverageTests` applies over the canonical fixture set (`Tests/PhospheneEngineTests/Fixtures/route_coverage/`): `continuous` = non-constant + variance floor; `accent` = ≥ 1 firing per fixture; `structural` = ≥ 1 section event on a fixture that contains one; `gate` = peak ≥ 0.9 on every fixture. **Declare an enable as `gate`, never `continuous`** — a silence gate (`pulseAmp01`) or confidence gate sits pinned open through music, which is correct behaviour but reads as a driver under `continuous` and clears that floor only because the fixtures open in silence (BUG-088, measured on Aurora Veil: pinned 1.000 through music, p5–p95 range 0.000). The only failure a gate has is never opening.
+- `kind` — the floor class `RouteCoverageTests` applies over the canonical fixture set (`Tests/UzumeEngineTests/Fixtures/route_coverage/`): `continuous` = non-constant + variance floor; `accent` = ≥ 1 firing per fixture; `structural` = ≥ 1 section event on a fixture that contains one; `gate` = peak ≥ 0.9 on every fixture. **Declare an enable as `gate`, never `continuous`** — a silence gate (`pulseAmp01`) or confidence gate sits pinned open through music, which is correct behaviour but reads as a driver under `continuous` and clears that floor only because the fixtures open in silence (BUG-088, measured on Aurora Veil: pinned 1.000 through music, p5–p95 range 0.000). The only failure a gate has is never opening.
 
 Rules: **audit before declaring** — a declared route the code doesn't read is as wrong as an unread route left undeclared; enumerate from the `.metal` (snake_case fields) *and* the preset's CPU driver (`RenderPipeline+<Preset>.swift` / `<Preset>State.swift` / `<Preset>Geometry.swift` — mv_warp and geometry presets consume most primitives on the CPU). One row per (behaviour × primitive); a stem-summed drive declares each contributing primitive. A red route in `RouteCoverageTests` is a **defect to file, not a floor to tune** (QG.1: "red route = the gate working").
 

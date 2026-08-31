@@ -6,7 +6,7 @@
 **Status:** design authored 2026-08-03 (prep seat). No implementation yet.
 **Visual references:** [`docs/VISUAL_REFERENCES/meniscus/README.md`](../VISUAL_REFERENCES/meniscus/README.md)
 **Increment series:** MEN.1 (design + references) → MEN.2a (spike + wired stub) →
-**MEN.2b (faithful base)** → MEN.3 (Phosphene uplift) → MEN.4 (polish + cert)
+**MEN.2b (faithful base)** → MEN.3 (Uzume uplift) → MEN.4 (polish + cert)
 
 > **Authoring-seat note.** This document was authored in the prep seat and is settled
 > **before** MEN.2a opens, per the `session-prompt-author` invariant. It reaches the repo
@@ -43,7 +43,7 @@ Secondary routes, subordinate by construction:
 
 ## §2. Why this preset, and why now
 
-**Catalog gap.** Phosphene has no 3D line-drawing register at all. `Waveform` is a
+**Catalog gap.** Uzume has no 3D line-drawing register at all. `Waveform` is a
 static spectrum primitive; the entire Milkdrop-inspired family to date (Nacre, Glaze,
 Floret, Dragon Bloom, Fata Morgana) lives in the `mv_warp` feedback register. Meniscus
 is the first `mesh_animation` member of that family and the first preset in the
@@ -78,7 +78,7 @@ author the dense sheet as a material. See §7 risk R2.
 ### Sequencing — faithful base first, uplift second (Matt, 2026-08-03)
 
 **The first draft of this plan got this wrong** and went from a no-audio skeleton
-straight to the Phosphene-native stem routing, with no increment in between where the
+straight to the Uzume-native stem routing, with no increment in between where the
 preset behaves the way the source behaves. Matt corrected it. The corrected sequence
 inserts **MEN.2b, the faithful base**, and defers every deviation to MEN.3.
 
@@ -166,7 +166,7 @@ with volume, so the re-aim is snappier when the music is loud. Camera distance
 oscillates on a slow sine, which is what sweeps between the open raster and the dense
 sheet. The source's beat detector is the classic Milkdrop idiom: `bass+mid+treb`
 against a slow running average with a 200 ms refractory — an absolute-ratio threshold
-that Phosphene replaces with deviation primitives per D-026 / FA #31.
+that Uzume replaces with deviation primitives per D-026 / FA #31.
 
 **Composite.** Three layers over the drawn lines: (a) a max-dilation along screen-space
 X only, whose radius scales with camera proximity — that one-dimensionality is why the
@@ -219,7 +219,7 @@ drops from **stem separation**: each separated instrument owns a region of the w
 surface and strikes it on its own onsets. This is a different feature stack end to end
 (Open-Unmix HQ stems + deviation primitives vs. a hand-rolled DFT-of-FFT), it produces
 visibly different behaviour (impacts cluster by instrument rather than wandering with
-harmonic content), and it is the thing that makes Meniscus a Phosphene preset rather
+harmonic content), and it is the thing that makes Meniscus a Uzume preset rather
 than a reproduction.
 
 **Region layout (proposal — MEN.3 authoring choice, and explicitly provisional).** The
@@ -280,7 +280,7 @@ where marked as Matt's.
   colours are open, and non-source references should be curated before this is locked
   (see the reference README's "What this set is missing").
 - **Grid resolution.** 45×45 ≈ 2,000 vertices is the source's figure and is chosen for
-  a 2001-era CPU. Phosphene can afford considerably more, but the undersampling
+  a 2001-era CPU. Uzume can afford considerably more, but the undersampling
   visible in reference `07` is partly *why* the lines read as discrete. Raise it, but
   measure the point at which the raster stops reading as a raster.
 - **Sim on CPU or GPU (settled at MEN.2a task 1c).** The wave step is trivially parallel
@@ -298,10 +298,10 @@ where marked as Matt's.
 
 **R1 — One-dimensional line glow has no existing consumer. (Grounding level 1; medium
 risk.)** The sideways-only spread is what keeps the raster open in Y while soft in X.
-Phosphene's post-process chain has bloom, which is isotropic and will close the gaps
+Uzume's post-process chain has bloom, which is isotropic and will close the gaps
 (reference README anti-reference 5). Grounding is level 1 (working code reference — the
 source's own comp stage, decoded above, plus the standard separable-dilation form). It
-is nonetheless the one pass surface without a Phosphene precedent, so **MEN.2a spikes it
+is nonetheless the one pass surface without a Uzume precedent, so **MEN.2a spikes it
 and chooses, at task 1, before any shader work begins.**
 
 Two things are open and must be decided from a render, not from reasoning: **which
@@ -339,7 +339,7 @@ uplift genuinely fails at M7, the answer is a different uplift — not shipping 
 
 **R6 — The standing-swell silence state has no empirical grounding. (Grounding level
 3. Surfaced explicitly.)** The source has no silence state at all — it renders black
-(anti-reference `06`), which is why this is a Phosphene invention rather than an
+(anti-reference `06`), which is why this is a Uzume invention rather than an
 inherited behaviour. There is no reference image for it in the curated set and no
 published demo to point at. **There is no empirical grounding for the standing-swell
 silence state.** It is judged from a rendered contact sheet only. The failure mode is

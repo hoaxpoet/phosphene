@@ -8,11 +8,11 @@ Round 32 (commit `f3fe9ed1`) is the latest visual change. Visual review pending.
 
 End-of-session calibration:
 
-- **Mesh G-buffer path** (since round 12, Phase 1 step B): tessellated 256×256 quad mesh + vertex displacement from a pre-baked height texture. NOT the SDF path. See [FerrofluidMesh.metal](../../PhospheneEngine/Sources/Renderer/Shaders/FerrofluidMesh.metal) and [FerrofluidMesh.swift](../../PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift).
-- **Density**: 3025 particles in a 55 × 55 isotropic grid over the 20 × 20 wu world patch. Spike base radius 0.17 wu, bases nearly touch. Cone profile is `(max(0, 1 - r/R))²` (squared) — sharp pointed tips, smooth flare to substrate. See [FerrofluidParticles.swift](../../PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift) and the `ferrofluid_height_bake` kernel in [FerrofluidParticles.metal](../../PhospheneEngine/Sources/Renderer/Shaders/FerrofluidParticles.metal).
-- **Spike strength**: constant `kFerrofluidSpikeStrength = 2.0` in [FerrofluidMesh.metal](../../PhospheneEngine/Sources/Renderer/Shaders/FerrofluidMesh.metal). NO per-frame audio coupling (round 20 design pivot — waves carry music response, not spikes).
+- **Mesh G-buffer path** (since round 12, Phase 1 step B): tessellated 256×256 quad mesh + vertex displacement from a pre-baked height texture. NOT the SDF path. See [FerrofluidMesh.metal](../../UzumeEngine/Sources/Renderer/Shaders/FerrofluidMesh.metal) and [FerrofluidMesh.swift](../../UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift).
+- **Density**: 3025 particles in a 55 × 55 isotropic grid over the 20 × 20 wu world patch. Spike base radius 0.17 wu, bases nearly touch. Cone profile is `(max(0, 1 - r/R))²` (squared) — sharp pointed tips, smooth flare to substrate. See [FerrofluidParticles.swift](../../UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift) and the `ferrofluid_height_bake` kernel in [FerrofluidParticles.metal](../../UzumeEngine/Sources/Renderer/Shaders/FerrofluidParticles.metal).
+- **Spike strength**: constant `kFerrofluidSpikeStrength = 2.0` in [FerrofluidMesh.metal](../../UzumeEngine/Sources/Renderer/Shaders/FerrofluidMesh.metal). NO per-frame audio coupling (round 20 design pivot — waves carry music response, not spikes).
 - **Wave motion**: Gerstner waves bar-locked to musical tempo. 4 superposed waves, amplitudes summing 0.60 wu, one full cycle per `kGerstnerBarsPerCycle = 6.0` bars. `tempoScale = bpm / 60` passed via `MeshUniforms` from `mirPipeline.liveDriftTracker.currentBPM`. Time source is `features.time` (pure wall-clock — NOT `accumulated_audio_time`, which is energy-weighted and produced the 20-30s AGC-settling jerk fixed in round 24). `amplitudeMul = presenceGate × 0.85` constant (round 23 dropped arousal coupling). At Love Rehab (4/4 @ 118 BPM): 12.2 s/cycle. At Money (currently meter=2/X per ML detection): 5.85 s/cycle.
-- **Material composition** in `fluid_shading` ([RayMarch.metal](../../PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal) line ~592):
+- **Material composition** in `fluid_shading` ([RayMarch.metal](../../UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal) line ~592):
   - Layer 1 (specular): `kFluidSpecularWeight = 0.0` — disabled per Matt's "no white tips, aurora is the only color source"
   - Layer 2 (ambient): `rm_ferrofluidSky(Rview, features, stems, scene) × kFluidAmbientWeight (0.3)` — the substrate mirror-reflects the aurora-carrying procedural sky
   - Layer 3 (fresnel): `kFluidFresnelWeight = 0.0` — disabled per Matt's "gray at peak tops doesn't belong" (round 32)
@@ -33,7 +33,7 @@ Two coupled changes for the next session.
 
 Matt's `2026-05-15T18-12-04Z`: "if the sky is going to be visible in the scene, shouldn't it be night sky with aurora curtain(s) visible? Otherwise, my desire is to change the camera angle so none of the sky is visible." With the aurora-as-reflection mechanic (rounds 27-32), the sky function `rm_ferrofluidSky` is generating audio-reactive aurora content but it's only visible through the mirror reflection. Direct sky-above-horizon view shows the pale base sky gradient that doesn't match the substrate's reflected aurora content. References `01_macro_*` / `02_meso_*` / `04_specular_*` all frame close-up with no horizon visible — they're the hero substrate references and the right composition target.
 
-**Current camera** (in [FerrofluidOcean.json](../../PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.json) `scene_camera`):
+**Current camera** (in [FerrofluidOcean.json](../../UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.json) `scene_camera`):
 - Position: `(0, 2.5, -4.0)`
 - Target: `(0, 0.3, 3.0)`
 - FOV: 55°
@@ -107,7 +107,7 @@ Before authoring anything in the next session:
 1. `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` — the curated reference set + per-image annotations (mandatory trait checklist + anti-references). Failed Approach #63 — don't author from prompt text alone; READ THE README.
 2. This file (you're reading it)
 3. The last few rounds' commit messages: `git log --oneline f3fe9ed1~10..f3fe9ed1` — round-by-round narrative
-4. `git diff bea09bc8 f3fe9ed1 -- PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — the material reflectivity arc (rounds 29-32)
+4. `git diff bea09bc8 f3fe9ed1 -- UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal` — the material reflectivity arc (rounds 29-32)
 5. Round 32's commit `f3fe9ed1` — current state of constants
 
 ## Discipline reminders

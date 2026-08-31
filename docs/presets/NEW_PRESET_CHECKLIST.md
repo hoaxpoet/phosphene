@@ -12,14 +12,14 @@ Jargon: [docs/GLOSSARY.md](../GLOSSARY.md). Authoring discipline (read first):
 
 - [ ] `~/Library/Application Support/Uzume/Presets/<Name>.metal` + `<Name>.json`
       — hot-reload dev loop, zero repo edits (CONTRIBUTING §dev loop).
-      Or in-repo from the start: `PhospheneEngine/Sources/Presets/Shaders/`
+      Or in-repo from the start: `UzumeEngine/Sources/Presets/Shaders/`
       (auto-discovered at build; no pbxproj edit — the Shaders directory is a
       bundled SPM resource).
 
 ## 2. Land in-repo (2 files + references)
 
-- [ ] `PhospheneEngine/Sources/Presets/Shaders/<Name>.metal`
-- [ ] `PhospheneEngine/Sources/Presets/Shaders/<Name>.json` — schema:
+- [ ] `UzumeEngine/Sources/Presets/Shaders/<Name>.metal`
+- [ ] `UzumeEngine/Sources/Presets/Shaders/<Name>.json` — schema:
       [SHADER_CRAFT §17](../SHADER_CRAFT.md#17-preset-metadata-format-json-sidecar).
       `certified: false`; non-empty `audio_routes`; mv_warp presets need
       `fragment_function`; Milkdrop-inspired presets need `inspired_by`.

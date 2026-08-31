@@ -321,7 +321,7 @@ Real orb-weaver spiders construct webs in this sequence (Foelix, *Biology of Spi
 
 **The 2026-05-02 spec inverted step 7.** That version had the capture spiral winding outward, which is geometrically simpler but biologically wrong. This rewrite corrects the direction: the capture spiral winds INWARD from the outer frame to the hub. This direction is non-trivial — when the user watches the build, the visual character of "winding inward" (the spiral closing around the hub) is fundamentally different from "winding outward" (the spiral expanding into emptiness). Inward winding is what real spiders do, and what the BBC time-lapse footage shows.
 
-### 5.2 Phosphene's 60-second compressed cycle
+### 5.2 Uzume's 60-second compressed cycle
 
 Compress steps 1–8 into a 60-second build cycle, eliding biology that wouldn't read at this scale (auxiliary spiral, distinct frame-thread vs bridge phases):
 
@@ -340,7 +340,7 @@ Build pace audio-modulated per §7. Average music: ~50–55s (within the 60s cei
 
 **Not a circle.** Real orb webs are bounded by an irregular polygon whose vertices are the anchor points the spider could find. Reference 11 shows the principle even though the V.7.7B–C.4 forest spec that depended on it has been retired (V.7.7C.5).
 
-For Phosphene: 4–7 frame anchor points, distributed irregularly around the visible canvas. The polygon is computed when the segment begins from `kBranchAnchors[]` (the constants live in `Arachne.metal` line ~153 + `ArachneState.swift`); `selectPolygon(rng:)` Fisher-Yates picks a 4–6 subset and orders them angularly around the centroid; adjacent anchors connect with frame threads.
+For Uzume: 4–7 frame anchor points, distributed irregularly around the visible canvas. The polygon is computed when the segment begins from `kBranchAnchors[]` (the constants live in `Arachne.metal` line ~153 + `ArachneState.swift`); `selectPolygon(rng:)` Fisher-Yates picks a 4–6 subset and orders them angularly around the centroid; adjacent anchors connect with frame threads.
 
 > **V.7.7C.5 update (2026-05-09).** Two additional constraints from Matt's reference image (`docs/VISUAL_REFERENCES/arachne/20_macro_backlit_purple_canvas_filling_web.jpg`):
 >
@@ -414,7 +414,7 @@ Drops do 80% of the visual work. Threads are connective tissue between drop chai
 
 **Placement.** Drops appear on capture spiral chords ONLY. Real adhesive silk is only on the capture spiral; radials and frame threads are smooth (no glue, no drops). This is biology and matches refs 03 and 04. It's also a meaningful design constraint — drops on radials would wash out the radial structure, and the radial structure is what makes the web read as a web.
 
-**Spacing.** Plateau-Rayleigh instability makes real drops uniform-spaced (§13 citations). Surface tension breaks a continuous water film into regular beads at characteristic spacing of about 4–5 drop-diameters. For Phosphene: along each chord, place drops at 4–5 drop-diameter spacing with ±5% hash-jitter (NOT the V.7.5 ±25% — that was wrong; refs 03 confirm real drops are nearly-uniform). Drop-count-per-chord scales with chord length so spacing stays even.
+**Spacing.** Plateau-Rayleigh instability makes real drops uniform-spaced (§13 citations). Surface tension breaks a continuous water film into regular beads at characteristic spacing of about 4–5 drop-diameters. For Uzume: along each chord, place drops at 4–5 drop-diameter spacing with ±5% hash-jitter (NOT the V.7.5 ±25% — that was wrong; refs 03 confirm real drops are nearly-uniform). Drop-count-per-chord scales with chord length so spacing stays even.
 
 **Size.** Each drop's radius is ~0.008 UV (≈ 8.6 px at 1080p — continuing V.7.5's 8.6 px target, which was correct as a goal even though V.7.5 didn't make drops the visual hero). ±5% per-drop variation from `hash_f01`. Drops near the hub are slightly smaller (older silk, more drainage); drops near the frame are slightly larger.
 
@@ -454,7 +454,7 @@ The V.7.5/V.7.7B–C.4 commentary on bark-vs-twig anchor scale (Matt's empirical
 
 Silk threads themselves are barely visible in refs 01, 02, 03. Drops do the visual work; silk is the line the drops hang on.
 
-For Phosphene: silk threads are rendered as thin (1–2 px) lines with a subtle axial highlight when the `kL` direction grazes them at low angle (`abs(dot(strandDir, kL.xy)) < 0.3`). Color: `mix(botCol, topCol, 0.5) * silkTint` where `silkTint ≈ 0.5–0.7` (V.7.5's 0.32 was correct in spirit but Marschner-lite was over-spec).
+For Uzume: silk threads are rendered as thin (1–2 px) lines with a subtle axial highlight when the `kL` direction grazes them at low angle (`abs(dot(strandDir, kL.xy)) < 0.3`). Color: `mix(botCol, topCol, 0.5) * silkTint` where `silkTint ≈ 0.5–0.7` (V.7.5's 0.32 was correct in spirit but Marschner-lite was over-spec).
 
 The Marschner-lite fiber BRDF specified in earlier versions of the spec is **removed as a v8 implementation priority.** Ref 04 (the silk close-up) is preserved as a reference for restrained axial glints, but not as the primary silk recipe — ref 04 represents the silk material at extreme zoom; at typical Arachne frame scale, threads read as faint translucent lines plus drops, not as silk fibers with axial Marschner highlights. The earlier choice to make Marschner-lite mandatory was a misreading of ref 04's role: it's an edge case in the reference set, not the dominant visual goal.
 
@@ -508,7 +508,7 @@ The spider is rendered as a 3D SDF on a small screen-space patch (full resolutio
 - **Abdomen (rear body segment).** Larger rounded ellipsoid behind cephalothorax, ~1.4 long × 1.1 wide × 0.95 tall. Connected to cephalothorax by a narrow petiole — a smooth-union neck region with negative blend (`op_smooth_subtract` with small radius creates the visible neck).
 - **Legs (eight, articulated).** Each leg has 7 anatomical segments (coxa-trochanter-femur-patella-tibia-metatarsus-tarsus); the visible articulation needs only 3 in the SDF: a "hip" where the leg joins the cephalothorax, a knee bend, and a tip. Per ref 13, the knee bends OUTWARD (away from the body in the leg's plane), not downward — this is the orb-weaver-specific posture. Two-segment IK to compute knee position from hip + tip + segment lengths. The IK solver lives in the spider state (CPU side), not the SDF — the SDF receives knee positions per frame.
 - **Eye cluster.** 8 small eyes in a tight forward cluster on the cephalothorax. Most orb-weavers have 4 prominent eyes in a 2x2 anterior arrangement plus 4 smaller posterior eyes; per-eye count is barely discriminable at typical zoom — render as a small `worley_fbm`-thresholded patch of 6–8 dark dots within an oval area (NOT the two large forward-facing eyes of a jumping spider — ref 19 is the eye-specular technique reference, not the eye-anatomy reference; the README annotation on ref 19 is explicit about this).
-- **Abdominal pattern.** Per ref 12, garden orb-weavers have a distinctive cream-and-brown striped or spotted dorsal pattern. For Phosphene: render a 2-band dorsal pattern (lighter median stripe + darker flanking bands) using `worley_fbm` thresholded against a body-space y-coordinate. Subtle — doesn't dominate the body color, but readable as "this is a real species."
+- **Abdominal pattern.** Per ref 12, garden orb-weavers have a distinctive cream-and-brown striped or spotted dorsal pattern. For Uzume: render a 2-band dorsal pattern (lighter median stripe + darker flanking bands) using `worley_fbm` thresholded against a body-space y-coordinate. Subtle — doesn't dominate the body color, but readable as "this is a real species."
 
 ### 6.2 Material
 
@@ -655,7 +655,7 @@ The near-frame branches (§4.2.4) also shake by a smaller amplitude (`amplitude 
 
 If `(satScale × valScale) < 0.05` (silence-state mood signal), the WORLD pass clears to black; gradient + foliage + fog + shafts + motes all suppressed. Background webs stay rendered (drops still sample the now-black world; refraction returns black, drops read as dim outlines plus their fresnel rim and specular). Foreground web continues drawing-itself; threads and drops render against black. The palette fades back in as audio resumes.
 
-This is the calibration anchor (ref 08). Phosphene's silence state is *deliberate* black, not styled darkness.
+This is the calibration anchor (ref 08). Uzume's silence state is *deliberate* black, not styled darkness.
 
 ---
 

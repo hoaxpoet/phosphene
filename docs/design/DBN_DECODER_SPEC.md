@@ -5,7 +5,7 @@
 
 This document specifies a bar-pointer-model decoder that replaces `BeatGridResolver`'s
 independent peak-picking with a jointly-decoded metrical path. Every constant below is either
-cited to a paper equation or explicitly marked as a Phosphene tunable with a default.
+cited to a paper equation or explicitly marked as a Uzume tunable with a default.
 
 ---
 
@@ -15,7 +15,7 @@ cited to a paper equation or explicitly marked as a Phosphene tunable with a def
 |---|---|---|
 | Krebs, Böck & Widmer, *An Efficient State-Space Model for Joint Tempo and Meter Tracking*, ISMIR 2015 | **CC BY 4.0** (stated on the paper's first page) | **Yes** — implement from the paper with attribution. This is the primary source. |
 | Böck, Krebs & Widmer, *A Multi-model Approach to Beat Tracking Considering Heterogeneous Music Styles*, ISMIR 2014 | ISMIR proceedings paper | **Yes** — implement the published equations with attribution. Source of the observation model. |
-| Foscarin, Schlüter & Widmer, *Beat this! Accurate beat tracking without DBN postprocessing*, ISMIR 2024 (arXiv 2407.21658) | arXiv preprint | **Yes** — already Phosphene's grid model (MIT, D-077). Used here for its DBN A/B evidence. |
+| Foscarin, Schlüter & Widmer, *Beat this! Accurate beat tracking without DBN postprocessing*, ISMIR 2024 (arXiv 2407.21658) | arXiv preprint | **Yes** — already Uzume's grid model (MIT, D-077). Used here for its DBN A/B evidence. |
 | madmom implementation | Restricted; CC-NC model weights | **No.** Offline annotation tool only, per `reference-port` §1 and the precedent already recorded in `tools/beatbench/README.md`. No madmom code is read to port; no madmom weights ship. |
 
 Clean-room from the papers. Nothing in DBN.2 may be derived by reading madmom source.
@@ -60,7 +60,7 @@ DBN.1's task-7 measurement shows that is exactly, and only, our failure mode.
 
 ### 2.1 Task-7 measurement — where the downbeat signal actually dies
 
-`DownbeatStreamDiagnosticTests` (env-gated, `PHOSPHENE_DBN1_DOWNBEAT=1`) peak-picks the model's
+`DownbeatStreamDiagnosticTests` (env-gated, `UZUME_DBN1_DOWNBEAT=1`) peak-picks the model's
 raw beat and downbeat streams with the reference's own rule (±3-frame max-pool, prob > 0.5):
 
 | track | truth meter | downbeat:beat ratio | mean peak prob | median downbeat gap | → `beatsPerBar` |
@@ -170,7 +170,7 @@ Consequences, all favourable:
   backpointers — the naive design, and it does not fit a 50 ms budget.
 
 **Tunable — `dbnTempoBandFraction`.** Default **0.10** (±10 % around the incumbent BPM estimate).
-Phosphene tunable, no paper source. Range [0.05, 0.30]. Wider bands re-admit tempo error that the
+Uzume tunable, no paper source. Range [0.05, 0.30]. Wider bands re-admit tempo error that the
 incumbent does not currently make; narrower bands risk excluding the true tempo when the
 incumbent's estimate is itself wrong (yyz 233.61 vs 272.27 truth is the cautionary case, and is
 also a track whose beats already fail — see §7).
@@ -258,7 +258,7 @@ Eq. 3. **We need the bar-pointer state space with Böck's observation form appli
 
 Böck Eq. 3 assumes a **single** activation. Beat This! gives us **two** (beat and downbeat), and
 neither paper specifies how to combine them for a bar-pointer state space. The following is a
-Phosphene derivation, not a ported equation, and is flagged accordingly:
+Uzume derivation, not a ported equation, and is flagged accordingly:
 
 - At bar position **1** (the downbeat), the state is simultaneously a beat and a downbeat. Its
   likelihood uses the downbeat activation `d_k` in the beat branch of Böck Eq. 3.
@@ -278,7 +278,7 @@ range but not the tuned value. Range [2, 64]. Higher λ_o narrows the beat windo
 placement at the risk of missing slightly-off beats.
 
 **Tunable — `dbnDownbeatWeight`.** Default **1.0** (downbeat evidence weighted equally with beat
-evidence). Phosphene tunable, no source. This is the direct control on §2.1's failure mode and the
+evidence). Uzume tunable, no source. This is the direct control on §2.1's failure mode and the
 first thing DBN.2 should sweep.
 
 ---

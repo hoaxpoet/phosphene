@@ -24,7 +24,7 @@
 **Gate 1 — Musical role (the sentence):**
 > *Each separated stem drives a different motion of curved space — the bass slides the whole hyperbolic tiling along a geodesic, the vocal melody spins it about the center, a drum hit ripples a wave from the center out to the boundary, and the 'other' stem tints the tiles — so the listener sees the band pulled apart, each instrument visibly moving its own aspect of the infinitely nested tiling.*
 
-Four specific features (the four stems, with vocal *pitch* specifically) each paired with a specific behaviour (geodesic slide / spin / radial ripple / tint). It passes, and it is the phase's **stem-separated spatial routing** strategy — Phosphene's stem-separation superpower put directly on screen, a music-response idea none of the other four use.
+Four specific features (the four stems, with vocal *pitch* specifically) each paired with a specific behaviour (geodesic slide / spin / radial ripple / tint). It passes, and it is the phase's **stem-separated spatial routing** strategy — Uzume's stem-separation superpower put directly on screen, a music-response idea none of the other four use.
 
 **Gate 2 — Iconic subject deliverable at fidelity:** Reachable. Hyperbolic {p,q} tiling in the Poincaré disk is a solved register — M.C. Escher's *Circle Limit* series is the cultural touchstone, and there are published mathematical treatments (Coxeter) and canonical shader implementations (Vladimir Bulatov, Roice Nelson, multiple Shadertoy examples). It renders as crisp 2D vector art (like Truchet Loom), so photoreal fidelity risk is low. The *math* risk (getting the {p,q} reflection fold and Möbius flow stable) is the real risk — mitigated by porting a reference and a boundary guard, not deriving.
 
@@ -118,7 +118,7 @@ Populate `docs/VISUAL_REFERENCES/poincare_bloom/` and write its `README.md`. Sho
 
 ## Increment PG.5.1 — Poincaré Bloom scaffold + per-stem Möbius routing (preset increment)
 
-**Objective:** After this session, Phosphene has a new `direct` preset "Poincaré Bloom" that renders a stable hyperbolic {p,q} Poincaré-disk tiling (tiles nesting toward the boundary); the four separated stems each drive one channel — bass → Möbius geodesic translation, vocals(pitch, gated) → Möbius rotation, drums → a decaying radial ripple, other → per-tile tint — with the D-019 FeatureVector-proxy warmup; a slow-drifting dim tiling renders at silence; the Möbius flow is boundary-stable over a long run. Registered, compiling, loading, golden-hashed, perf-profiled. `certified` stays `false`. This is the reviewable v1 of the PG.5 arc in `PG_5_POINCARE_BLOOM.md §A9`.
+**Objective:** After this session, Uzume has a new `direct` preset "Poincaré Bloom" that renders a stable hyperbolic {p,q} Poincaré-disk tiling (tiles nesting toward the boundary); the four separated stems each drive one channel — bass → Möbius geodesic translation, vocals(pitch, gated) → Möbius rotation, drums → a decaying radial ripple, other → per-tile tint — with the D-019 FeatureVector-proxy warmup; a slow-drifting dim tiling renders at silence; the Möbius flow is boundary-stable over a long run. Registered, compiling, loading, golden-hashed, perf-profiled. `certified` stays `false`. This is the reviewable v1 of the PG.5 arc in `PG_5_POINCARE_BLOOM.md §A9`.
 
 ## 1. Skills to invoke (in order)
 - **`preset-session`** — before any `.metal` / sidecar edit. Study the audio hierarchy §Layer 5 (stems) and the D-019 stem-warmup crossfade.
@@ -130,12 +130,12 @@ Populate `docs/VISUAL_REFERENCES/poincare_bloom/` and write its `README.md`. Sho
 2. `docs/VISUAL_REFERENCES/poincare_bloom/README.md` and every image; the cited hyperbolic-tiling porting references (Bulatov/Nelson + the Shadertoy DE).
 3. `docs/ARCHITECTURE.md §GPU Contract Details` — the direct-pass fragment binding (`buffer(0)=FeatureVector`, `buffer(3)=StemFeatures`) and the `StemFeatures` layout (per-stem `*_energy_dev`, `vocals_pitch_hz`/`vocals_pitch_confidence`).
 4. `docs/SHADER_CRAFT.md §14` (esp. §14.1 signal liveness) and `§3` (grain octave floor).
-5. `PhospheneEngine/Sources/Presets/Shaders/Plasma.metal` / `Nebula.metal` — reference `direct`-pass fragment presets.
-6. `PhospheneEngine/Sources/Presets/Shaders/Murmuration.metal` + `Tests/Presets/MurmurationStemRoutingTests` — the reference for *per-stem routing* + the `smoothstep(0.02,0.06,totalStemEnergy)` warmup pattern (D-019).
-7. `PhospheneEngine/Sources/Presets/Nimbus/NimbusState.swift` (or `Skein`) — reference slot-6 CPU-accumulator state (for the bounded Möbius transform + ripple envelope, with a long-accumulator/renormalize guard).
+5. `UzumeEngine/Sources/Presets/Shaders/Plasma.metal` / `Nebula.metal` — reference `direct`-pass fragment presets.
+6. `UzumeEngine/Sources/Presets/Shaders/Murmuration.metal` + `Tests/Presets/MurmurationStemRoutingTests` — the reference for *per-stem routing* + the `smoothstep(0.02,0.06,totalStemEnergy)` warmup pattern (D-019).
+7. `UzumeEngine/Sources/Presets/Nimbus/NimbusState.swift` (or `Skein`) — reference slot-6 CPU-accumulator state (for the bounded Möbius transform + ripple envelope, with a long-accumulator/renormalize guard).
 
 ## 3. Pre-flight invariants (a failed check stops the session)
-- `git status` clean on `main`; `swift test --package-path PhospheneEngine` green.
+- `git status` clean on `main`; `swift test --package-path UzumeEngine` green.
 - `docs/VISUAL_REFERENCES/poincare_bloom/` populated per `§A7` + `README.md` written (and the Escher plates are *referenced by name only*, not shipped). **If not, curate first (Matt-owned) or stop.**
 - `docs/ENGINEERING_PLAN.md` has a Phase PG / PG.5.1 row.
 - A fixture with **separable stems** (clear drums/bass/vocals/other) is available for the per-stem routing test; and a fixture to exercise the pre-10 s FeatureVector-proxy warmup.
@@ -157,7 +157,7 @@ Populate `docs/VISUAL_REFERENCES/poincare_bloom/` and write its `README.md`. Sho
 - **No absolute thresholds** (D-026 / FA #31); **gate `vocals_pitch_hz` at confidence ≥ 0.6** with the `vocals_energy_dev` fallback.
 - **No feedback / `mv_warp`** — crisp `direct` only (D-029; feedback would smear the sub-pixel boundary tiles).
 - **Do not let the Möbius transform accumulate unbounded** — the re-anchor/renormalize guard is mandatory (the anti-reference is tiles freezing at the boundary).
-- **Do not ship or reproduce Escher's copyrighted plates** — reference by name only; the shipped tiling is Phosphene-authored from the {p,q} math.
+- **Do not ship or reproduce Escher's copyrighted plates** — reference by name only; the shipped tiling is Uzume-authored from the {p,q} math.
 - Do not route two channels to the same primitive/timescale (FA #67) — the per-stem table is clean by construction (each stem is its own primitive); keep it that way and don't collapse two stems onto one channel.
 - Do not flip `certified`; do not regenerate other goldens; do not commit out-of-scope files.
 - Do not build the deeper boundary AA / {p,q}-per-track selection here — those are PG.5.2/PG.5.3.
@@ -165,10 +165,10 @@ Populate `docs/VISUAL_REFERENCES/poincare_bloom/` and write its `README.md`. Sho
 ## 6. Verification commands
 ```
 swiftlint lint --strict --config .swiftlint.yml
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
-swift test --package-path PhospheneEngine 2>&1
-swift test --package-path PhospheneEngine --filter "PresetLoaderCompileFailureTest|PoincareBloom|PresetRegressionTests"
-RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview 2>&1
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' build 2>&1
+swift test --package-path UzumeEngine 2>&1
+swift test --package-path UzumeEngine --filter "PresetLoaderCompileFailureTest|PoincareBloom|PresetRegressionTests"
+RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview 2>&1
 ```
 
 ## 7. Commit message templates (small commits; local `main`; push only on Matt's "yes, push")

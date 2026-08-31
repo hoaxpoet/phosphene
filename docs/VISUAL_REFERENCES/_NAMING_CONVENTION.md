@@ -38,7 +38,7 @@ runs ≈ 250–400 KB — that is fine. Do not commit uncompressed PNGs.
 
 ## Validation
 
-The lint check (`swift run --package-path PhospheneTools CheckVisualReferences`)
+The lint check (`swift run --package-path UzumeTools CheckVisualReferences`)
 validates that every image in every preset folder matches this regex:
 
 ```

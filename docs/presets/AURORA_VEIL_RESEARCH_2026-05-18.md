@@ -58,9 +58,9 @@ This document is the durable artifact that drove the 2026-05-18 amendment to `AU
 
 **What we can borrow without paying the fluid-solver cost.**
 
-- **Curl-noise on the advection vector field** instead of straight time-panning the noise sample coordinate. `triNoise2d(p + curl_noise(p, time * 0.1).xy * k)` gives vortical evolution at a fraction of the cost. Phosphene's V.1 noise tree already has `curl_noise`.
+- **Curl-noise on the advection vector field** instead of straight time-panning the noise sample coordinate. `triNoise2d(p + curl_noise(p, time * 0.1).xy * k)` gives vortical evolution at a fraction of the cost. Uzume's V.1 noise tree already has `curl_noise`.
 - **Two ribbons drifting at slightly non-parallel velocities.** Mimics the multi-ribbon parallax of NeverSeenTheSky's volume integration without rendering a true second column.
-- **Radial pre-blur from camera direction.** Wittens' core optimisation — compresses depth complexity by smearing the volume along perspective. Probably not worth implementing for AV (Phosphene's fragment budget is tight enough already), but flag it for AV.3 polish if motion still feels "snappy" after the other fixes.
+- **Radial pre-blur from camera direction.** Wittens' core optimisation — compresses depth complexity by smearing the volume along perspective. Probably not worth implementing for AV (Uzume's fragment budget is tight enough already), but flag it for AV.3 polish if motion still feels "snappy" after the other fixes.
 
 ### 1.4 Roy Theunissen breakdown (the cheap baseline)
 
@@ -76,7 +76,7 @@ This document is the durable artifact that drove the 2026-05-18 amendment to `AU
 
 **Why relevant.** Not aurora-themed, but the closest mainstream music visualizer in spirit — luminous bands of moving light driven by per-particle attendance to specific FFT frequency bands. The visual reading is "aurora-adjacent."
 
-**Audio-coupling lesson.** Continuous spectral coupling (one band → one population) is the proven idiom. Beat onsets are *not* the primary driver. The Phosphene audio routing (vocals_pitch → hue, sustained bass → brightness, drums → lateral kink) is a stem-aware refinement of the same architecture.
+**Audio-coupling lesson.** Continuous spectral coupling (one band → one population) is the proven idiom. Beat onsets are *not* the primary driver. The Uzume audio routing (vocals_pitch → hue, sustained bass → brightness, drums → lateral kink) is a stem-aware refinement of the same architecture.
 
 ### 1.6 Sigur Rós tour visuals (the aspirational ambient model)
 
@@ -104,7 +104,7 @@ Sourced from NASA, NOAA, Canadian Space Agency, atmospheric-physics literature, 
 | 300–400+ km | O atomic ¹D state (long-lifetime) | Red crown | Only at very high altitude where collisional quenching is rare. **ALWAYS sits above green, never beside, never below.** |
 | > 600 km | — | (atmosphere too diffuse to emit) | |
 
-**Operational consequence.** Colour gradient runs **vertically and only vertically**. Green at the body, magenta sometimes at the bottom edge during high activity, red at the crown only at very high altitudes. Horizontal rainbow gradients across a curtain are physically impossible. Phosphene's IQ-palette evaluation by march-step (= world-y) is correct; evaluating by uv.x or by per-frame phase is wrong.
+**Operational consequence.** Colour gradient runs **vertically and only vertically**. Green at the body, magenta sometimes at the bottom edge during high activity, red at the crown only at very high altitudes. Horizontal rainbow gradients across a curtain are physically impossible. Uzume's IQ-palette evaluation by march-step (= world-y) is correct; evaluating by uv.x or by per-frame phase is wrong.
 
 **Shape characteristics (Störmer 1955 taxonomy).** Arc → band → curtain/drapery → corona → rays/pillars → diffuse patch → pulsating patch. The defining dimensional fact: **aurora is a thin sheet seen edge-on** — ~10s of km front-to-back but hundreds of km tall. Edges read crisp from the side; diffuse from below.
 
@@ -118,9 +118,9 @@ Sourced from NASA, NOAA, Canadian Space Agency, atmospheric-physics literature, 
 | 0.1–0.2 s (5–10 Hz) | Ray brightness flicker within bright pillars | Fast but localised to active rays |
 | < 0.02 s (50–80 Hz) | Sub-flicker on the brightest filaments only | Edge case |
 
-**Continuous "ribbon flow" at a single speed is the music-viz failure mode.** Real aurora's dominant mode is "mostly stationary, occasional bursts." The substrate is mostly still; the dramatic stuff is fast-but-rare. Phosphene's mv_warp at `decay = 0.945` handles the substrate timescale; we need additional mechanisms for the sub-second ray flicker and the multi-second pulsation.
+**Continuous "ribbon flow" at a single speed is the music-viz failure mode.** Real aurora's dominant mode is "mostly stationary, occasional bursts." The substrate is mostly still; the dramatic stuff is fast-but-rare. Uzume's mv_warp at `decay = 0.945` handles the substrate timescale; we need additional mechanisms for the sub-second ray flicker and the multi-second pulsation.
 
-**Fine structure — vertical rays.** Spacing ~100 m (filament limit) to several km in coarser bundles. **Sharp edges, not Gaussian-blurred.** ≥ 4 octaves of noise needed to capture the multi-scale structure. Phosphene's V.1 noise tree provides `fbm4` and `fbm8`.
+**Fine structure — vertical rays.** Spacing ~100 m (filament limit) to several km in coarser bundles. **Sharp edges, not Gaussian-blurred.** ≥ 4 octaves of noise needed to capture the multi-scale structure. Uzume's V.1 noise tree provides `fbm4` and `fbm8`.
 
 **Sky context.** Dark sky required for visibility (Kp ≥ 3 in dark-sky locations). **Aurora is emissive, not opaque — stars punch through bright aurora regions.** Compositing rule is **additive emission over the sky**, not alpha-blend. Foreground is silhouette (black or near-black mountain/forest/lake), aurora is the only chromatic emission in frame.
 
@@ -146,7 +146,7 @@ A render that exhibits any of these reads as "stylized" rather than photographic
 | 14 | **Beam reflections / hard "lasers"** | Discrete colored beams angled from a sky point toward the ground, visible cones | Confusion with god-ray rendering or "point light + directional cone" import | Rays follow vertical (magnetic field-line) only; no convergence to a focal point |
 | 15 | **Foreground over-illuminated by aurora ground-bounce** | Landscape bathed in green light at moonlight-brightness | Aurora treated as point/area light source for Cook-Torrance pipeline | Foreground is silhouette; aurora's surface brightness is far too low to meaningfully illuminate ground |
 
-**Phosphene-specific failure modes worth flagging on top of the 15:**
+**Uzume-specific failure modes worth flagging on top of the 15:**
 
 - **Beat-coupled saturation** (catalog Failed Approach #4): `saturation = base + bass_dev * k` reads as festival-flashing.
 - **Free-running `sin(time)`** (Failed Approach #33): primary motion via `sin(time * k)` cycles at a fixed rate regardless of music; feels mechanical. Aurora's fold modulation must be `fbm`-driven, mv_warp-accumulated, or audio-anchored — not raw `sin(time)`.
@@ -172,7 +172,7 @@ If the rendered output answers **YES to all of these**, it reads as authentic au
 
 ### 3.1 What works (validated by Magnetosphere + projectM + TouchDesigner aurorae)
 
-- **Continuous spectral coupling to slow-changing visual parameters.** Sustained bass → ribbon brightness. Matches Phosphene Audio Data Hierarchy Layer 1 (continuous energy bands primary).
+- **Continuous spectral coupling to slow-changing visual parameters.** Sustained bass → ribbon brightness. Matches Uzume Audio Data Hierarchy Layer 1 (continuous energy bands primary).
 - **High-information-rate continuous coupling to colour.** Vocals_pitch → ribbon hue is Sigur-Rós-grade IF smoothed. Pitch tracking on vocals is noisy; raw per-frame jitters. Use a 5-frame smoothing window or read smoothed-attack envelopes.
 - **Beat onset as RARE accent, never primary.** Failed Approach #4 is the project's standing rule; Aurora Veil is the most exposed to violating it.
 
@@ -194,7 +194,7 @@ Verification: `AuroraVeilContinuousDominanceTest` (planned AV.2) asserts brightn
 
 ## Part 4 — Licensing & attribution
 
-**nimitz Shadertoy "Auroras" license.** Shadertoy default license is CC-BY-NC-SA, incompatible with Phosphene's MIT license. Verbatim adoption of the source GLSL is therefore not permitted. **Algorithms are not copyrightable; only specific code expressions are.** Phosphene's adoption strategy is **clean-room reimplementation** of the algorithm in Metal MSL from the published descriptions (this document + Roy Theunissen's blog breakdown + Toni Sagristà's Gaia Sky writeup). The shader header cites nimitz + Lawlor-Genetti as algorithmic prior art:
+**nimitz Shadertoy "Auroras" license.** Shadertoy default license is CC-BY-NC-SA, incompatible with Uzume's MIT license. Verbatim adoption of the source GLSL is therefore not permitted. **Algorithms are not copyrightable; only specific code expressions are.** Uzume's adoption strategy is **clean-room reimplementation** of the algorithm in Metal MSL from the published descriptions (this document + Roy Theunissen's blog breakdown + Toni Sagristà's Gaia Sky writeup). The shader header cites nimitz + Lawlor-Genetti as algorithmic prior art:
 
 ```
 // AuroraVeil.metal — clean-room MSL implementation of the procedural-aurora

@@ -24,7 +24,7 @@
 
 Two specific features (the beat/tempo grid; the sustained bass envelope) each paired with a specific behaviour (one ring of forward descent per beat; the throat widening/closing). It passes.
 
-**Gate 2 — Iconic subject deliverable at fidelity:** Yes. The log-polar/Droste tunnel is a *solved* register — the Escher "Droste effect" has published conformal-mapping mathematics and multiple canonical Shadertoy implementations. Volumetric Lithograph already demonstrates that Phosphene can render crisp receding geometry with feedback accumulation. We build within the bar: crisp self-similar rings + jewel palette + feedback depth, not photoreal volumetrics.
+**Gate 2 — Iconic subject deliverable at fidelity:** Yes. The log-polar/Droste tunnel is a *solved* register — the Escher "Droste effect" has published conformal-mapping mathematics and multiple canonical Shadertoy implementations. Volumetric Lithograph already demonstrates that Uzume can render crisp receding geometry with feedback accumulation. We build within the bar: crisp self-similar rings + jewel palette + feedback depth, not photoreal volumetrics.
 
 **Gate 3 — Infrastructure-feasible:** Yes. `mv_warp` is shipped; the log-polar zoom *is* a `mvWarpPerVertex` displacement (the feedback loop generates the infinite recursion). Cached-BeatGrid `beat_phase01` is available from `FeatureVector`. A small slot-6 state buffer holds the descent phase accumulator and cold-start/irregular-track fallback flags. No new passes or contract.
 
@@ -119,7 +119,7 @@ Populate `docs/VISUAL_REFERENCES/droste_descent/` and write its `README.md`. Sho
 
 ## Increment PG.2.1 — Droste Descent scaffold + beat-locked descent (preset increment)
 
-**Objective:** After this session, Phosphene has a new `mv_warp` preset "Droste Descent" that renders a crisp self-similar log-polar tunnel; descends one ring inward per beat via cached-grid `beat_phase01` (with an `arousal` free-fall fallback when no grid is installed); widens/closes its throat with the bass envelope; twists slowly; renders a non-black drifting tunnel at silence; and is registered, compiling, loading, and covered by a multi-frame harness test. `certified` stays `false`. This is the reviewable v1 of the PG.2 arc in `PG_2_DROSTE_DESCENT.md §A9`.
+**Objective:** After this session, Uzume has a new `mv_warp` preset "Droste Descent" that renders a crisp self-similar log-polar tunnel; descends one ring inward per beat via cached-grid `beat_phase01` (with an `arousal` free-fall fallback when no grid is installed); widens/closes its throat with the bass envelope; twists slowly; renders a non-black drifting tunnel at silence; and is registered, compiling, loading, and covered by a multi-frame harness test. `certified` stays `false`. This is the reviewable v1 of the PG.2 arc in `PG_2_DROSTE_DESCENT.md §A9`.
 
 ## 1. Skills to invoke (in order)
 - **`preset-session`** — before any `.metal` / sidecar edit. Pay special attention to the audio-data hierarchy §Layer 4 (beat-locked motion on the cached grid) and the FFO beat-sync pattern (D-153 → D-158).
@@ -132,11 +132,11 @@ Populate `docs/VISUAL_REFERENCES/droste_descent/` and write its `README.md`. Sho
 3. `docs/CAPABILITY_REGISTRY/BEAT_SYNC.md §Cold-Start Phase Contract` (what `beat_phase01` can/can't claim at track start) and the FFO beat-sync narrative (D-153 → D-158) — the pattern for beat-locked motion.
 4. `docs/ARCHITECTURE.md §GPU Contract Details` and `§Presets` (mv_warp three-pass).
 5. `docs/SHADER_CRAFT.md §2.2`, `§3`, `§14` (esp. §14.1 signal liveness).
-6. `PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` (mv_warp reference) and `PresetLoader+WarpPreamble.swift`.
-7. `PhospheneEngine/Sources/Presets/Nimbus/NimbusState.swift` (reference slot-6 state buffer for the descent-phase accumulator + fallback flags).
+6. `UzumeEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` (mv_warp reference) and `PresetLoader+WarpPreamble.swift`.
+7. `UzumeEngine/Sources/Presets/Nimbus/NimbusState.swift` (reference slot-6 state buffer for the descent-phase accumulator + fallback flags).
 
 ## 3. Pre-flight invariants (a failed check stops the session)
-- `git status` clean on `main`; `swift test --package-path PhospheneEngine` green.
+- `git status` clean on `main`; `swift test --package-path UzumeEngine` green.
 - `docs/VISUAL_REFERENCES/droste_descent/` populated per `§A7` + `README.md` written. **If not, curate first (Matt-owned) or stop** — do not author blind.
 - `docs/ENGINEERING_PLAN.md` has a Phase PG / PG.2.1 row (add it in the docs task if absent).
 - A test fixture *with a cached BeatGrid* (e.g. Love Rehab 125 BPM) is available for the beat-lock test, and a *no-grid / reactive* fixture is available for the fallback test.
@@ -165,10 +165,10 @@ Populate `docs/VISUAL_REFERENCES/droste_descent/` and write its `README.md`. Sho
 ## 6. Verification commands
 ```
 swiftlint lint --strict --config .swiftlint.yml
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
-swift test --package-path PhospheneEngine 2>&1
-swift test --package-path PhospheneEngine --filter "PresetLoaderCompileFailureTest|DrosteDescent|PresetRegressionTests"
-RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview 2>&1
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' build 2>&1
+swift test --package-path UzumeEngine 2>&1
+swift test --package-path UzumeEngine --filter "PresetLoaderCompileFailureTest|DrosteDescent|PresetRegressionTests"
+RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview 2>&1
 ```
 
 ## 7. Commit message templates (small commits; local `main`; push only on Matt's "yes, push")
@@ -183,5 +183,5 @@ Invoke `closeout`; 8-part report with the verbatim `Scripts/closeout_evidence.sh
 
 ## 9. DECISION-NEEDED (surface to Matt at review, product-level)
 - **Descent feel.** *Options:* **Locked-and-crisp** — one clear ring per beat, reads as riding the pulse (recommended); **Continuous-with-a-nudge** — always falling, the beat just accelerates it briefly (gentler, less "steppy," better on syncopated music). *Recommendation:* Locked-and-crisp on regular tracks, auto-fallback to continuous on irregular ones (D-154). *Default if silent:* that hybrid.
-- **Provenance framing.** This tunnel overlaps the Milkdrop register "Travelling backwards in a Tunnel of Light" (a named MD candidate). Keep **Phosphene-native** (recommended — our mechanic is conformal-math + beat-lock, distinct) or reframe as `milkdrop_inspired` (adds `inspired_by` + the D-116/D-121 side-by-side divergence check). *Default if silent:* Phosphene-native.
+- **Provenance framing.** This tunnel overlaps the Milkdrop register "Travelling backwards in a Tunnel of Light" (a named MD candidate). Keep **Uzume-native** (recommended — our mechanic is conformal-math + beat-lock, distinct) or reframe as `milkdrop_inspired` (adds `inspired_by` + the D-116/D-121 side-by-side divergence check). *Default if silent:* Uzume-native.
 - **Rubric profile:** `lightweight` (recommended) vs `full`. *Default:* lightweight.

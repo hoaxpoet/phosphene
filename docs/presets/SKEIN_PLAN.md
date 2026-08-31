@@ -12,7 +12,7 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 2. **Wet sheen ships in V1** (Skein.4) — but Skein.4 + Skein.ENGINE.2 are the **explicit cut-line**: if Skein.2 overruns, they defer to V2 and the preset certifies matte-only. ✅ **Cut-line NOT invoked (2026-06-08, D-149):** the ENGINE.2 audit found a gated additive signal (canvas-alpha wetness + Skein-owned warp/comp fragments) — no shared format change, no new pass — so both landed in V1. Skein certifies *with* the sheen.
 3. **Visible painter locus** — implemented behind an off-by-default flag in Skein.5.
 4. **In-flight paint** — deferred to V2 (not in this plan).
-5. **Explicit canvas-hold mode** in the mv_warp family (Skein.ENGINE.1), not an overload of the narrower `feedback` path. ⚠️ **AMENDED by the Skein.ENGINE.1 audit (D-142):** canvas-hold needed **no new engine "mode"** — it is reachable as pure per-preset config of the existing mv_warp machinery (identity `mvWarpPerVertex` + `decay=1.0` + `chromaticMix=0`), and (as this decision intended) did NOT overload the `feedback`/Membrane path. Verdict: config-only, no PhospheneEngine source change; every other mv_warp preset byte-identical. See DECISIONS D-142.
+5. **Explicit canvas-hold mode** in the mv_warp family (Skein.ENGINE.1), not an overload of the narrower `feedback` path. ⚠️ **AMENDED by the Skein.ENGINE.1 audit (D-142):** canvas-hold needed **no new engine "mode"** — it is reachable as pure per-preset config of the existing mv_warp machinery (identity `mvWarpPerVertex` + `decay=1.0` + `chromaticMix=0`), and (as this decision intended) did NOT overload the `feedback`/Membrane path. Verdict: config-only, no UzumeEngine source change; every other mv_warp preset byte-identical. See DECISIONS D-142.
 6. **Family `painterly`; name Skein.**
 7. **8-bit canvas** (RGB is the lossless permanent record); revisit only if soak surfaces banding.
 
@@ -60,7 +60,7 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 **Key files.** `Sources/Presets/Skein/VISUAL_REFERENCES/*`, `Sources/Presets/Skein/DESIGN.md` (seeded from the architecture doc).
 
 **Done-when.**
-- `swift run --package-path PhospheneTools CheckVisualReferences` green for the Skein folder.
+- `swift run --package-path UzumeTools CheckVisualReferences` green for the Skein folder.
 - Trait matrix + anti-references reviewed and approved by you.
 
 ---

@@ -3,7 +3,7 @@
 **Audit increment:** CA.7b
 **Date:** 2026-05-21
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneEngine/Sources/Renderer/Dashboard/` (8 files / 766 LoC) + `Geometry/` (4 files / 727 LoC) + `RayTracing/` (3 files / 748 LoC) — **15 files / 2,241 LoC**.
+**Scope:** `UzumeEngine/Sources/Renderer/Dashboard/` (8 files / 766 LoC) + `Geometry/` (4 files / 727 LoC) + `RayTracing/` (3 files / 748 LoC) — **15 files / 2,241 LoC**.
 **Methodology:** Phase CA scoping document (CA.7b kickoff, 2026-05-21).
 **Reads relied on:**
 - `CLAUDE.md` (full — D-097 ban surface; Failed Approach #58; §What NOT To Do)
@@ -19,7 +19,7 @@
 
 ## Summary
 
-Renderer/Dashboard/ is the **DASH.7 producer side** that pairs with CA.6's view-side audit; all 8 files are production-active, the producer chain matches CA.6's 16 line-anchored DASH.7 view-side confirmations byte-for-byte, and the D-087 / D-088 / D-089 brand-and-contrast contract is honoured everywhere it shows up in the builders. Renderer/Geometry/ is the home of the D-097 particle-geometry siblings-not-subclasses architecture; all 4 files are production-active and `ProceduralGeometry` shows no parameterisation to host a non-Murmuration preset (the CLAUDE.md §What NOT To Do invariant). `MeshGenerator`'s D-051 dispatch (Apple silicon family 8+ → native mesh, M1/M2 → vertex fallback) matches the spec line-by-line — `device.supportsFamily(.apple8)` gates the branch at init and at every draw call. **The most consequential finding is in `RayTracing/`** — all 3 files (`BVHBuilder`, `RayIntersector`, `RayIntersector+Internal`) are **production-orphan**: zero production consumers across the entire `PhospheneApp/` + `PhospheneEngine/Sources/` tree; test-active via `BVHBuilderTests` + `RayIntersectorTests`; the only planned consumer is `Arachne3D` (D-096, V.8.0-spec filed 2026-05-08 + V.8.x deferred indefinitely per Matt's sequencing call). The audit recommends `keep-by-design` analogous to CA.7-FU-3's ICB resolution, registered as **CA.7b-FU-3** for Matt's keep/retire decision. **Two doc-drift items** in ARCHITECTURE.md §Module Map need correction: `DashboardTextLayer` and `DashboardCardRenderer` are still listed (lines 564 + 566) despite DASH.7 retirement (D-087). **One missing entry**: `ParticleGeometryRegistry` is absent from §Module Map Geometry/ block. **Zero broken-but-claimed; zero new BUG entries filed.**
+Renderer/Dashboard/ is the **DASH.7 producer side** that pairs with CA.6's view-side audit; all 8 files are production-active, the producer chain matches CA.6's 16 line-anchored DASH.7 view-side confirmations byte-for-byte, and the D-087 / D-088 / D-089 brand-and-contrast contract is honoured everywhere it shows up in the builders. Renderer/Geometry/ is the home of the D-097 particle-geometry siblings-not-subclasses architecture; all 4 files are production-active and `ProceduralGeometry` shows no parameterisation to host a non-Murmuration preset (the CLAUDE.md §What NOT To Do invariant). `MeshGenerator`'s D-051 dispatch (Apple silicon family 8+ → native mesh, M1/M2 → vertex fallback) matches the spec line-by-line — `device.supportsFamily(.apple8)` gates the branch at init and at every draw call. **The most consequential finding is in `RayTracing/`** — all 3 files (`BVHBuilder`, `RayIntersector`, `RayIntersector+Internal`) are **production-orphan**: zero production consumers across the entire `UzumeApp/` + `UzumeEngine/Sources/` tree; test-active via `BVHBuilderTests` + `RayIntersectorTests`; the only planned consumer is `Arachne3D` (D-096, V.8.0-spec filed 2026-05-08 + V.8.x deferred indefinitely per Matt's sequencing call). The audit recommends `keep-by-design` analogous to CA.7-FU-3's ICB resolution, registered as **CA.7b-FU-3** for Matt's keep/retire decision. **Two doc-drift items** in ARCHITECTURE.md §Module Map need correction: `DashboardTextLayer` and `DashboardCardRenderer` are still listed (lines 564 + 566) despite DASH.7 retirement (D-087). **One missing entry**: `ParticleGeometryRegistry` is absent from §Module Map Geometry/ block. **Zero broken-but-claimed; zero new BUG entries filed.**
 
 **Verdict counts:**
 
@@ -76,11 +76,11 @@ All 12 Dashboard + Geometry files have ≥1 production consumer cited at file:li
 **Grep evidence (cited per CA.2-carry-forward rule):**
 
 ```bash
-$ grep -rn "BVHBuilder\|RayIntersector" PhospheneApp PhospheneEngine/Sources --include="*.swift"
-PhospheneEngine/Sources/Renderer/RayTracing/BVHBuilder.swift:1: …  (self)
-PhospheneEngine/Sources/Renderer/RayTracing/RayIntersector.swift:1: … (self)
-PhospheneEngine/Sources/Renderer/RayTracing/RayIntersector+Internal.swift:1: … (self)
-PhospheneEngine/Sources/Shared/AudioFeatures+SceneUniforms.swift:9: // …documented in RayIntersector+Internal.swift.
+$ grep -rn "BVHBuilder\|RayIntersector" UzumeApp UzumeEngine/Sources --include="*.swift"
+UzumeEngine/Sources/Renderer/RayTracing/BVHBuilder.swift:1: …  (self)
+UzumeEngine/Sources/Renderer/RayTracing/RayIntersector.swift:1: … (self)
+UzumeEngine/Sources/Renderer/RayTracing/RayIntersector+Internal.swift:1: … (self)
+UzumeEngine/Sources/Shared/AudioFeatures+SceneUniforms.swift:9: // …documented in RayIntersector+Internal.swift.
 ```
 
 Plus `Renderer/Shaders/RayTracing.metal` (the MSL counterpart, hosts `rt_nearest_hit_kernel` + `rt_shadow_kernel` — only the test path consumes them via `RayIntersector`).
@@ -88,15 +88,15 @@ Plus `Renderer/Shaders/RayTracing.metal` (the MSL counterpart, hosts `rt_nearest
 **Test consumers (test-only — not production):**
 
 ```bash
-$ grep -rn "BVHBuilder\|RayIntersector" PhospheneEngine/Tests --include="*.swift"
-PhospheneEngine/Tests/PhospheneEngineTests/Renderer/BVHBuilderTests.swift     # 4 tests, dedicated suite
-PhospheneEngine/Tests/PhospheneEngineTests/Renderer/RayIntersectorTests.swift # 4 functional + 1 perf test
+$ grep -rn "BVHBuilder\|RayIntersector" UzumeEngine/Tests --include="*.swift"
+UzumeEngine/Tests/UzumeEngineTests/Renderer/BVHBuilderTests.swift     # 4 tests, dedicated suite
+UzumeEngine/Tests/UzumeEngineTests/Renderer/RayIntersectorTests.swift # 4 functional + 1 perf test
 ```
 
 **Indirect ray-tracing references (no live consumer):**
 
 ```bash
-$ grep -rn "supportsRaytracing\|MTLAccelerationStructure" PhospheneApp PhospheneEngine/Sources --include="*.swift"
+$ grep -rn "supportsRaytracing\|MTLAccelerationStructure" UzumeApp UzumeEngine/Sources --include="*.swift"
 # Returns only RayTracing/ self-references.
 ```
 
@@ -119,23 +119,23 @@ $ grep -rn "supportsRaytracing\|MTLAccelerationStructure" PhospheneApp Phosphene
 
 | File | LoC | Public surface | Verdict | Notes |
 |---|---|---|---|---|
-| `BeatCardBuilder.swift` | 156 | `BeatCardBuilder` (struct, Sendable) — `init()`, `build(from:width:)` | `production-active` | Consumed at `PhospheneApp/Views/Dashboard/DashboardOverlayViewModel.swift:29` (`private let beatBuilder = BeatCardBuilder()`) + `:70` (`.build(from: snapshot.beat, width: cardWidth)`). 4-row layout (MODE / BPM / BAR / BEAT), D-088 colour palette (`textBody` / `coral` / `teal` / `purple`), D-089 dark-surface contrast. BEAT phase derivation `barPhase01 × beatsPerBar − (beatInBar − 1)` matches doc-comment lines 21-26. Test suite: `BeatCardBuilderTests` (6 tests). |
+| `BeatCardBuilder.swift` | 156 | `BeatCardBuilder` (struct, Sendable) — `init()`, `build(from:width:)` | `production-active` | Consumed at `UzumeApp/Views/Dashboard/DashboardOverlayViewModel.swift:29` (`private let beatBuilder = BeatCardBuilder()`) + `:70` (`.build(from: snapshot.beat, width: cardWidth)`). 4-row layout (MODE / BPM / BAR / BEAT), D-088 colour palette (`textBody` / `coral` / `teal` / `purple`), D-089 dark-surface contrast. BEAT phase derivation `barPhase01 × beatsPerBar − (beatInBar − 1)` matches doc-comment lines 21-26. Test suite: `BeatCardBuilderTests` (6 tests). |
 | `DashboardCardLayout.swift` | 116 | `DashboardCardLayout` (struct, Sendable) — title/rows/width/padding/titleSize/rowSpacing + `Row` enum (4 variants `.singleValue` / `.bar` / `.progressBar` / `.timeseries`) + height constants (`singleHeight=39`, `barHeight=32`, `progressBarHeight=32`, `timeseriesHeight=47`, `labelToValueGap=4`) + computed `height` | `production-active` | Consumed by all three Builders (`Beat/Stems/PerfCardBuilder`) as output type; by `DashboardOverlayViewModel.swift:25` (`@Published var layouts: [DashboardCardLayout]`); by `DashboardCardView.swift:19` + `DashboardRowView.swift:25-26` (View-side renderers). |
-| `DashboardFontLoader.swift` | 151 | `DashboardFontLoader` (enum) — `FontResolution` (struct, Sendable, Equatable; 5 fields) + `resolveFonts(in:)` (idempotent, OSAllocatedUnfairLock-guarded) + `resetCacheForTesting()` (test seam) | `production-active` | Consumed at `PhospheneApp/PhospheneApp.swift:44` (`_ = DashboardFontLoader.resolveFonts(in: nil)` — one-shot resolution at app launch) + `PhospheneApp/Views/Dashboard/DashboardCardView.swift:23-24` (per-view resolution via cache). Test seam used by `DashboardFontLoaderTests` (3 tests). Fonts: Epilogue-Regular + Epilogue-Medium (TTF) + ClashDisplay-Medium (OTF/TTF) registered from bundle `Fonts/` subdir, system fallbacks documented at lines 105 + 123. |
-| `DashboardSnapshot.swift` | 39 | `DashboardSnapshot` (struct, Sendable, Equatable; beat/stems/perf fields) + private `bytewiseEqual<T>` helper for `BeatSyncSnapshot` + `StemFeatures` (which lack `Equatable`) | `production-active` | Produced at `PhospheneApp/VisualizerEngine+Dashboard.swift:21` (`dashboardSnapshot = DashboardSnapshot(beat:stems:perf:)`); published at `VisualizerEngine.swift:62` (`@Published var dashboardSnapshot: DashboardSnapshot?`); consumed at `PhospheneApp/Views/Dashboard/DashboardOverlayViewModel.swift:42` (`init(snapshotPublisher:)`). Per-frame contract between Renderer (writes) and App (reads via Combine). Doc-comment "Throttled there to ~30 Hz" matches `DashboardOverlayViewModel.throttleInterval = .milliseconds(33)` line 37. |
-| `PerfCardBuilder.swift` | 131 | `PerfCardBuilder` (struct, Sendable) — `init()`, `build(from:width:)`, `warningRatio: Float = 0.70` (static) | `production-active` | Consumed at `PhospheneApp/Views/Dashboard/DashboardOverlayViewModel.swift:31` (`private let perfBuilder = PerfCardBuilder()`) + `:72` (`.build(from: snapshot.perf, width: cardWidth)`). Dynamic row count (1-3 rows): FRAME always present; QUALITY hides when governor is `full` + warmed up (line 92-94); ML hides on idle / dispatchNow (line 109, default branch returns nil). `warningRatio = 0.70` matches the DASH.7.1 spec (PerfCardBuilder.swift:42-44 + D-088 line 2049). Test discriminator: not currently a dedicated `PerfCardBuilderTests` suite — covered transitively by `DashboardOverlayViewModelTests` (5 tests in `PhospheneAppTests/`). |
-| `PerfSnapshot.swift` | 78 | `PerfSnapshot` (struct, Sendable, Equatable; 7 fields: `recentMaxFrameMs`/`recentFramesObserved`/`targetFrameMs`/`qualityLevelRawValue`/`qualityLevelDisplayName`/`mlDecisionCode`/`mlDeferRetryMs`) + `.zero` static | `production-active` | Produced at `PhospheneApp/VisualizerEngine+Dashboard.swift:41-49` (`assemblePerfSnapshot(pipeline:)` reads `pipe.frameBudgetManager?` + `self.mlDispatchScheduler?.lastDecision`); consumed by `PerfCardBuilder.build(from:)`. Decision-encoding `Int` (0=no decision, 1=dispatchNow, 2=defer, 3=forceDispatch) matches doc-comment lines 38-43 + the switch at `VisualizerEngine+Dashboard.swift:33-40`. **Minor doc-drift in ARCH §569** (see Cross-references). |
-| `StemEnergyHistory.swift` | 38 | `StemEnergyHistory` (struct, Sendable, Equatable; 4 stem arrays + `capacity: 240` static + `.empty` static) | `production-active` | Held privately by `DashboardOverlayViewModel` (`PhospheneApp/Views/Dashboard/DashboardOverlayViewModel.swift:33` `private var stemHistory = MutableStemHistory()` + `:88` `private let capacity = StemEnergyHistory.capacity`); snapshotted into immutable form at `:104-106` (`func snapshot() -> StemEnergyHistory`). 240 samples ≈ 8 s at 30 Hz redraw cadence (doc-comment line 9). |
-| `StemsCardBuilder.swift` | 57 | `StemsCardBuilder` (struct, Sendable) — `init()`, `build(from:width:)` | `production-active` | Consumed at `PhospheneApp/Views/Dashboard/DashboardOverlayViewModel.swift:30` (`private let stemsBuilder = StemsCardBuilder()`) + `:71` (`.build(from: history, width: cardWidth)`). 4 `.timeseries` rows in percussion-first order (DRUMS / BASS / VOCALS / OTHER) per D-088. Range `-1.0 ... 1.0` (line 52). `valueText: ""` (sparkline IS the readout, Sakamoto-liner-note discipline per D-088). Fill colour `DashboardTokens.Color.teal` (stem indicators are MIR-data-class per D-088). Test suite: `StemsCardBuilderTests` (3 tests). |
+| `DashboardFontLoader.swift` | 151 | `DashboardFontLoader` (enum) — `FontResolution` (struct, Sendable, Equatable; 5 fields) + `resolveFonts(in:)` (idempotent, OSAllocatedUnfairLock-guarded) + `resetCacheForTesting()` (test seam) | `production-active` | Consumed at `UzumeApp/UzumeApp.swift:44` (`_ = DashboardFontLoader.resolveFonts(in: nil)` — one-shot resolution at app launch) + `UzumeApp/Views/Dashboard/DashboardCardView.swift:23-24` (per-view resolution via cache). Test seam used by `DashboardFontLoaderTests` (3 tests). Fonts: Epilogue-Regular + Epilogue-Medium (TTF) + ClashDisplay-Medium (OTF/TTF) registered from bundle `Fonts/` subdir, system fallbacks documented at lines 105 + 123. |
+| `DashboardSnapshot.swift` | 39 | `DashboardSnapshot` (struct, Sendable, Equatable; beat/stems/perf fields) + private `bytewiseEqual<T>` helper for `BeatSyncSnapshot` + `StemFeatures` (which lack `Equatable`) | `production-active` | Produced at `UzumeApp/VisualizerEngine+Dashboard.swift:21` (`dashboardSnapshot = DashboardSnapshot(beat:stems:perf:)`); published at `VisualizerEngine.swift:62` (`@Published var dashboardSnapshot: DashboardSnapshot?`); consumed at `UzumeApp/Views/Dashboard/DashboardOverlayViewModel.swift:42` (`init(snapshotPublisher:)`). Per-frame contract between Renderer (writes) and App (reads via Combine). Doc-comment "Throttled there to ~30 Hz" matches `DashboardOverlayViewModel.throttleInterval = .milliseconds(33)` line 37. |
+| `PerfCardBuilder.swift` | 131 | `PerfCardBuilder` (struct, Sendable) — `init()`, `build(from:width:)`, `warningRatio: Float = 0.70` (static) | `production-active` | Consumed at `UzumeApp/Views/Dashboard/DashboardOverlayViewModel.swift:31` (`private let perfBuilder = PerfCardBuilder()`) + `:72` (`.build(from: snapshot.perf, width: cardWidth)`). Dynamic row count (1-3 rows): FRAME always present; QUALITY hides when governor is `full` + warmed up (line 92-94); ML hides on idle / dispatchNow (line 109, default branch returns nil). `warningRatio = 0.70` matches the DASH.7.1 spec (PerfCardBuilder.swift:42-44 + D-088 line 2049). Test discriminator: not currently a dedicated `PerfCardBuilderTests` suite — covered transitively by `DashboardOverlayViewModelTests` (5 tests in `UzumeAppTests/`). |
+| `PerfSnapshot.swift` | 78 | `PerfSnapshot` (struct, Sendable, Equatable; 7 fields: `recentMaxFrameMs`/`recentFramesObserved`/`targetFrameMs`/`qualityLevelRawValue`/`qualityLevelDisplayName`/`mlDecisionCode`/`mlDeferRetryMs`) + `.zero` static | `production-active` | Produced at `UzumeApp/VisualizerEngine+Dashboard.swift:41-49` (`assemblePerfSnapshot(pipeline:)` reads `pipe.frameBudgetManager?` + `self.mlDispatchScheduler?.lastDecision`); consumed by `PerfCardBuilder.build(from:)`. Decision-encoding `Int` (0=no decision, 1=dispatchNow, 2=defer, 3=forceDispatch) matches doc-comment lines 38-43 + the switch at `VisualizerEngine+Dashboard.swift:33-40`. **Minor doc-drift in ARCH §569** (see Cross-references). |
+| `StemEnergyHistory.swift` | 38 | `StemEnergyHistory` (struct, Sendable, Equatable; 4 stem arrays + `capacity: 240` static + `.empty` static) | `production-active` | Held privately by `DashboardOverlayViewModel` (`UzumeApp/Views/Dashboard/DashboardOverlayViewModel.swift:33` `private var stemHistory = MutableStemHistory()` + `:88` `private let capacity = StemEnergyHistory.capacity`); snapshotted into immutable form at `:104-106` (`func snapshot() -> StemEnergyHistory`). 240 samples ≈ 8 s at 30 Hz redraw cadence (doc-comment line 9). |
+| `StemsCardBuilder.swift` | 57 | `StemsCardBuilder` (struct, Sendable) — `init()`, `build(from:width:)` | `production-active` | Consumed at `UzumeApp/Views/Dashboard/DashboardOverlayViewModel.swift:30` (`private let stemsBuilder = StemsCardBuilder()`) + `:71` (`.build(from: history, width: cardWidth)`). 4 `.timeseries` rows in percussion-first order (DRUMS / BASS / VOCALS / OTHER) per D-088. Range `-1.0 ... 1.0` (line 52). `valueText: ""` (sparkline IS the readout, Sakamoto-liner-note discipline per D-088). Fill colour `DashboardTokens.Color.teal` (stem indicators are MIR-data-class per D-088). Test suite: `StemsCardBuilderTests` (3 tests). |
 
 ### Renderer/Geometry/ (4 files, 727 LoC)
 
 | File | LoC | Public surface | Verdict | Notes |
 |---|---|---|---|---|
-| `MeshGenerator.swift` | 283 | `MeshGeneratorConfiguration` (struct, Sendable; 4 fields with defaults `maxVerticesPerMeshlet=256`, `maxPrimitivesPerMeshlet=512`, `meshThreadCount=3`, `objectThreadCount=1`) + `MeshGenerator` (final class, @unchecked Sendable) — `configuration`/`usesMeshShaderPath`/`pipelineState`/`densityMultiplier` (var), 2 inits (library / pipelineState), `draw(encoder:features:)` + `MeshGeneratorError` enum (functionNotFound / pipelineCreationFailed) | `production-active` | Consumed at `PhospheneApp/VisualizerEngine+Presets.swift:88-99` (`case .meshShader:` constructs `MeshGeneratorConfiguration(maxVerticesPerMeshlet: 256, maxPrimitivesPerMeshlet: 512, meshThreadCount: desc.meshThreadCount)` + wraps `preset.pipelineState` via the second init + attaches via `pipeline.setMeshGenerator(gen)`). Drawn at `PhospheneEngine/Sources/Renderer/RenderPipeline+MeshDraw.swift:77` (`meshGenerator.draw(encoder: encoder, features: features)`). D-051 dispatch verified clean — see §Verification of MeshGenerator D-051 dispatch. Only mesh-shader-using preset today: **Fractal Tree** (`PhospheneEngine/Sources/Presets/Shaders/FractalTree.json:7` `"passes": ["mesh_shader"]`). Test suite: `MeshGeneratorTests` (6 tests). |
-| `ParticleGeometry.swift` | 79 | `ParticleGeometry` (protocol; AnyObject + Sendable) — 3 required members: `var activeParticleFraction: Float { get set }`, `func update(features:stemFeatures:commandBuffer:)`, `func render(encoder:features:)` | `production-active` | Storage on `PhospheneEngine/Sources/Renderer/RenderPipeline.swift:31` (`var particleGeometry: (any ParticleGeometry)?`). Setter API at `RenderPipeline+PresetSwitching.swift:61` (`public func setParticleGeometry(_ geometry: (any ParticleGeometry)?)`). Threaded through `RenderPipeline+Draw.swift:26 + :280` (`particles: (any ParticleGeometry)?`) and `RenderPipeline+FeedbackDraw.swift:84`. App-layer typing matches: `VisualizerEngine.swift:190` (`var murmurationGeometry: (any ParticleGeometry)?`) + `:730` + `:754` (`resolveParticleGeometry(forPresetName:) -> (any ParticleGeometry)?`). D-097 protocol surface clean — see §Verification of D-097. |
-| `ParticleGeometryRegistry.swift` | 32 | `ParticleGeometryRegistry` (enum) — `knownPresetNames: Set<String> = ["Murmuration"]` (static) | `production-active` | Consumed by `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ParticleDispatchRegistryTests.swift:38` (`#expect(ParticleGeometryRegistry.knownPresetNames.contains(name)`) + `:52` (`#expect(ParticleGeometryRegistry.knownPresetNames.contains("Murmuration"))`). The test walks the production preset catalog and asserts every preset whose `passes` contains `.particles` is listed in the registry — closes the silent-fall-through hole where a JSON-side typo in the preset name would render an audio-driven backdrop with no particles (doc-comment lines 14-18). Sole entry is `"Murmuration"`. **Built-but-undocumented**: file is missing from ARCH §Module Map (see Cross-references). |
-| `ProceduralGeometry.swift` | 333 | `Particle` (struct, Sendable, @frozen; 16 Floats = 64 bytes incl. 2 pad fields) + `ParticleConfiguration` (struct, Sendable; 5 fields w/ defaults `particleCount=65_536`, `decayRate=1.8`, `burstThreshold=0.15`, `burstVelocity=3.5`, `drag=2.5`) + `ProceduralGeometry` (final class, @unchecked Sendable; conforms `ParticleGeometry`) — `particleBuffer`/`configuration`/`activeParticleFraction` public, plus `update(features:stemFeatures:commandBuffer:)` + `render(encoder:features:)` D-097 protocol members + `ProceduralGeometryError` enum (bufferAllocationFailed / functionNotFound) | `production-active` | Constructed at `PhospheneApp/VisualizerEngine.swift:731-741` (`makeMurmurationGeometry` — `particleCount: 5_000`, `decayRate: 0.0` ["birds don't die"], `burstThreshold: 0.4`, `burstVelocity: 1.0` [unused for flocking], `drag: 0.8`). Resolved at `:754-759` (`resolveParticleGeometry(forPresetName:)` switch — only `"Murmuration"` returns geometry). Attached at `VisualizerEngine+Presets.swift:296` (`pipeline.setParticleGeometry(geometry)`). D-097 verified clean — see §Verification of D-097. `Particle` struct layout (line 18-63) is 64 bytes; matches MSL `Particle` per doc-comment line 14 ("matching the MSL `Particle` struct layout (64 bytes)") + ARCH §576. Test suites: `ProceduralGeometryTests` (5 tests) + `MurmurationStemRoutingTests` (8 tests via direct `ProceduralGeometry.update()` calls). |
+| `MeshGenerator.swift` | 283 | `MeshGeneratorConfiguration` (struct, Sendable; 4 fields with defaults `maxVerticesPerMeshlet=256`, `maxPrimitivesPerMeshlet=512`, `meshThreadCount=3`, `objectThreadCount=1`) + `MeshGenerator` (final class, @unchecked Sendable) — `configuration`/`usesMeshShaderPath`/`pipelineState`/`densityMultiplier` (var), 2 inits (library / pipelineState), `draw(encoder:features:)` + `MeshGeneratorError` enum (functionNotFound / pipelineCreationFailed) | `production-active` | Consumed at `UzumeApp/VisualizerEngine+Presets.swift:88-99` (`case .meshShader:` constructs `MeshGeneratorConfiguration(maxVerticesPerMeshlet: 256, maxPrimitivesPerMeshlet: 512, meshThreadCount: desc.meshThreadCount)` + wraps `preset.pipelineState` via the second init + attaches via `pipeline.setMeshGenerator(gen)`). Drawn at `UzumeEngine/Sources/Renderer/RenderPipeline+MeshDraw.swift:77` (`meshGenerator.draw(encoder: encoder, features: features)`). D-051 dispatch verified clean — see §Verification of MeshGenerator D-051 dispatch. Only mesh-shader-using preset today: **Fractal Tree** (`UzumeEngine/Sources/Presets/Shaders/FractalTree.json:7` `"passes": ["mesh_shader"]`). Test suite: `MeshGeneratorTests` (6 tests). |
+| `ParticleGeometry.swift` | 79 | `ParticleGeometry` (protocol; AnyObject + Sendable) — 3 required members: `var activeParticleFraction: Float { get set }`, `func update(features:stemFeatures:commandBuffer:)`, `func render(encoder:features:)` | `production-active` | Storage on `UzumeEngine/Sources/Renderer/RenderPipeline.swift:31` (`var particleGeometry: (any ParticleGeometry)?`). Setter API at `RenderPipeline+PresetSwitching.swift:61` (`public func setParticleGeometry(_ geometry: (any ParticleGeometry)?)`). Threaded through `RenderPipeline+Draw.swift:26 + :280` (`particles: (any ParticleGeometry)?`) and `RenderPipeline+FeedbackDraw.swift:84`. App-layer typing matches: `VisualizerEngine.swift:190` (`var murmurationGeometry: (any ParticleGeometry)?`) + `:730` + `:754` (`resolveParticleGeometry(forPresetName:) -> (any ParticleGeometry)?`). D-097 protocol surface clean — see §Verification of D-097. |
+| `ParticleGeometryRegistry.swift` | 32 | `ParticleGeometryRegistry` (enum) — `knownPresetNames: Set<String> = ["Murmuration"]` (static) | `production-active` | Consumed by `UzumeEngine/Tests/UzumeEngineTests/Presets/ParticleDispatchRegistryTests.swift:38` (`#expect(ParticleGeometryRegistry.knownPresetNames.contains(name)`) + `:52` (`#expect(ParticleGeometryRegistry.knownPresetNames.contains("Murmuration"))`). The test walks the production preset catalog and asserts every preset whose `passes` contains `.particles` is listed in the registry — closes the silent-fall-through hole where a JSON-side typo in the preset name would render an audio-driven backdrop with no particles (doc-comment lines 14-18). Sole entry is `"Murmuration"`. **Built-but-undocumented**: file is missing from ARCH §Module Map (see Cross-references). |
+| `ProceduralGeometry.swift` | 333 | `Particle` (struct, Sendable, @frozen; 16 Floats = 64 bytes incl. 2 pad fields) + `ParticleConfiguration` (struct, Sendable; 5 fields w/ defaults `particleCount=65_536`, `decayRate=1.8`, `burstThreshold=0.15`, `burstVelocity=3.5`, `drag=2.5`) + `ProceduralGeometry` (final class, @unchecked Sendable; conforms `ParticleGeometry`) — `particleBuffer`/`configuration`/`activeParticleFraction` public, plus `update(features:stemFeatures:commandBuffer:)` + `render(encoder:features:)` D-097 protocol members + `ProceduralGeometryError` enum (bufferAllocationFailed / functionNotFound) | `production-active` | Constructed at `UzumeApp/VisualizerEngine.swift:731-741` (`makeMurmurationGeometry` — `particleCount: 5_000`, `decayRate: 0.0` ["birds don't die"], `burstThreshold: 0.4`, `burstVelocity: 1.0` [unused for flocking], `drag: 0.8`). Resolved at `:754-759` (`resolveParticleGeometry(forPresetName:)` switch — only `"Murmuration"` returns geometry). Attached at `VisualizerEngine+Presets.swift:296` (`pipeline.setParticleGeometry(geometry)`). D-097 verified clean — see §Verification of D-097. `Particle` struct layout (line 18-63) is 64 bytes; matches MSL `Particle` per doc-comment line 14 ("matching the MSL `Particle` struct layout (64 bytes)") + ARCH §576. Test suites: `ProceduralGeometryTests` (5 tests) + `MurmurationStemRoutingTests` (8 tests via direct `ProceduralGeometry.update()` calls). |
 
 ### Renderer/RayTracing/ (3 files, 748 LoC)
 
@@ -154,13 +154,13 @@ CA.6 (`APP_VIEWS.md`) verified the View-side (`DashboardOverlayView` + `Dashboar
 **1. Per-frame snapshot pump (Renderer → App-layer publisher):**
 
 - `RenderPipeline` per-frame timing → `pipe.onFrameRendered` hook
-- `PhospheneApp/VisualizerEngine+InitHelpers.swift:59-65` `setupDashboardSnapshotPump(pipe:)` subscribes:
+- `UzumeApp/VisualizerEngine+InitHelpers.swift:59-65` `setupDashboardSnapshotPump(pipe:)` subscribes:
   ```swift
   pipe.stemSnapshotPublisher.sink { [weak self] stems in
       self?.publishDashboardSnapshot(stems: stems)
   }
   ```
-- `PhospheneApp/VisualizerEngine+Dashboard.swift:18-22`:
+- `UzumeApp/VisualizerEngine+Dashboard.swift:18-22`:
   ```swift
   func publishDashboardSnapshot(stems: StemFeatures) {
       let beat = beatSyncLock.withLock { latestBeatSyncSnapshot }
@@ -168,11 +168,11 @@ CA.6 (`APP_VIEWS.md`) verified the View-side (`DashboardOverlayView` + `Dashboar
       dashboardSnapshot = DashboardSnapshot(beat: beat, stems: stems, perf: perf)
   }
   ```
-- `PhospheneApp/VisualizerEngine.swift:62` `@Published var dashboardSnapshot: DashboardSnapshot?`
+- `UzumeApp/VisualizerEngine.swift:62` `@Published var dashboardSnapshot: DashboardSnapshot?`
 
 **2. PerfSnapshot assembly (FrameBudgetManager + MLDispatchScheduler → PerfSnapshot):**
 
-`PhospheneApp/VisualizerEngine+Dashboard.swift:27-50`:
+`UzumeApp/VisualizerEngine+Dashboard.swift:27-50`:
 
 ```swift
 @MainActor
@@ -206,8 +206,8 @@ Maps cleanly into `PerfSnapshot.swift:14-78` 7-field struct. **`PerfSnapshot.zer
 
 **3. View-side consumption (Combine throttle → Builders → SwiftUI layouts):**
 
-- `PhospheneApp/Views/Playback/PlaybackView.swift:80` injects `dashboardSnapshotPublisher: AnyPublisher<DashboardSnapshot?, Never>` (default `engine.$dashboardSnapshot.eraseToAnyPublisher()` per the conventional pattern).
-- `PhospheneApp/Views/Dashboard/DashboardOverlayViewModel.swift:42-54` `init(snapshotPublisher:)`:
+- `UzumeApp/Views/Playback/PlaybackView.swift:80` injects `dashboardSnapshotPublisher: AnyPublisher<DashboardSnapshot?, Never>` (default `engine.$dashboardSnapshot.eraseToAnyPublisher()` per the conventional pattern).
+- `UzumeApp/Views/Dashboard/DashboardOverlayViewModel.swift:42-54` `init(snapshotPublisher:)`:
   ```swift
   snapshotPublisher
       .compactMap { $0 }
@@ -277,7 +277,7 @@ Maps cleanly into `PerfSnapshot.swift:14-78` 7-field struct. **`PerfSnapshot.zer
 
 **Throttle = 33 ms (~30 Hz):** confirmed at `DashboardOverlayViewModel.swift:37` matches `DashboardSnapshot.swift:5` doc-comment ("Throttled there to ~30 Hz") + CA.6 #6.
 
-**`ingestForTest(_:)` test seam:** `DashboardOverlayViewModel.swift:59-61` — matches CA.6 #7. Used by `PhospheneAppTests/DashboardOverlayViewModelTests.swift` (5 tests).
+**`ingestForTest(_:)` test seam:** `DashboardOverlayViewModel.swift:59-61` — matches CA.6 #7. Used by `UzumeAppTests/DashboardOverlayViewModelTests.swift` (5 tests).
 
 **Verdict:** DASH.7 producer-side **clean against D-087 / D-088 / D-089 + CA.6's 16 line-anchored confirmations**. No drift.
 
@@ -319,7 +319,7 @@ public protocol ParticleGeometry: AnyObject, Sendable {
 **Parameterisation check (the CLAUDE.md ban):**
 
 ```bash
-$ grep -nE "presetName|presetKind|kernelName|kernelOverride|computeKernelName|fragmentName|vertexFunction.*[^=]$|let kernel|preset:.*String" PhospheneEngine/Sources/Renderer/Geometry/ProceduralGeometry.swift
+$ grep -nE "presetName|presetKind|kernelName|kernelOverride|computeKernelName|fragmentName|vertexFunction.*[^=]$|let kernel|preset:.*String" UzumeEngine/Sources/Renderer/Geometry/ProceduralGeometry.swift
 ```
 
 Returns no parameterisation hits. The compute kernel name `"particle_update"` is hardcoded at line 212; the render functions `"particle_vertex"` + `"particle_fragment"` are hardcoded at line 219-220. `ParticleConfiguration` exposes 5 tunables (`particleCount` / `decayRate` / `burstThreshold` / `burstVelocity` / `drag`) — all are numerical knobs within Murmuration's design space, not preset-name-dependent or pluggable-kernel overrides.
@@ -340,7 +340,7 @@ public enum ParticleGeometryRegistry {
 
 Sole entry is `"Murmuration"` (post-Drift Motes retirement at D-102, 2026-05-11). The comment at line 28-29 explicitly notes "Murmuration" is a literal because `ProceduralGeometry` is part of DM.0's frozen surface (D-097) — matches the architecture.
 
-**Catalog gate test:** `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ParticleDispatchRegistryTests.swift`:
+**Catalog gate test:** `UzumeEngine/Tests/UzumeEngineTests/Presets/ParticleDispatchRegistryTests.swift`:
 
 ```swift
 @Test("every .particles-pass preset is registered in ParticleGeometryRegistry")
@@ -416,8 +416,8 @@ if let fragBuf = meshPresetFragmentBufferLock.withLock({ meshPresetFragmentBuffe
 Only one preset declares the mesh-shader pass:
 
 ```bash
-$ find PhospheneEngine/Sources/Presets -name "*.json" -exec grep -l '"passes".*"mesh_shader"' {} \;
-PhospheneEngine/Sources/Presets/Shaders/FractalTree.json
+$ find UzumeEngine/Sources/Presets -name "*.json" -exec grep -l '"passes".*"mesh_shader"' {} \;
+UzumeEngine/Sources/Presets/Shaders/FractalTree.json
 ```
 
 `FractalTree.json:7` `"passes": ["mesh_shader"]` + `:13` `"mesh_thread_count": 64` + `:8` `"vertex_function": "fractal_tree_fallback_vertex"` (vertex fallback function for M1/M2). The preset's MSL shader is at `Renderer/Shaders/FractalTree.metal` (out of CA.7b scope; CA-Presets territory).
@@ -446,7 +446,7 @@ encoder.setMeshBytes(&density, length: MemoryLayout<Float>.stride, index: 1)
 
 Dispatch order: RenderPipeline+MeshDraw line 66-67 binds first (preset buffer), then `meshGenerator.draw()` (line 77) is called which **overwrites slot 1 with `densityMultiplier`** (last write wins).
 
-**Today this is a latent issue, not a live bug:** `setMeshPresetBuffer(_:)` has zero non-nil production callers — the only call site in the entire `PhospheneApp/` + `PhospheneEngine/Sources/` tree is `VisualizerEngine+Presets.swift:55` (`pipeline.setMeshPresetBuffer(nil)` — the reset). So `meshPresetBuffer` is always nil, the slot-1 collision never manifests, FractalTree (the only mesh-shader preset) doesn't use `meshPresetBuffer`, and there's no symptomatic bug. But if a future mesh-shader preset DID set the buffer non-nil expecting to use it from MSL object/mesh shaders, `densityMultiplier` would silently clobber it.
+**Today this is a latent issue, not a live bug:** `setMeshPresetBuffer(_:)` has zero non-nil production callers — the only call site in the entire `UzumeApp/` + `UzumeEngine/Sources/` tree is `VisualizerEngine+Presets.swift:55` (`pipeline.setMeshPresetBuffer(nil)` — the reset). So `meshPresetBuffer` is always nil, the slot-1 collision never manifests, FractalTree (the only mesh-shader preset) doesn't use `meshPresetBuffer`, and there's no symptomatic bug. But if a future mesh-shader preset DID set the buffer non-nil expecting to use it from MSL object/mesh shaders, `densityMultiplier` would silently clobber it.
 
 This finding lives in CA.7a-scope files (`RenderPipeline+MeshDraw.swift` + `RenderPipeline+PresetSwitching.swift`'s `setMeshPresetBuffer`/`setMeshPresetFragmentBuffer` setters). CA.7a audited them as `production-active` without flagging this. Surface as `boundary-noted` cross-reference; register **CA.7b-FU-4** for either (a) renaming `setMeshPresetBuffer` to bind a different slot, (b) deprecating + removing the setters since they have zero non-nil callers (similar to CA.7-FU-4 `setRayMarchPresetComputeDispatch` retirement precedent), or (c) leaving the latent collision documented with a `// TODO: slot-1 collision with densityMultiplier` comment if Matt decides the API surface should stay for a future caller.
 
@@ -458,36 +458,36 @@ This finding lives in CA.7a-scope files (`RenderPipeline+MeshDraw.swift` + `Rend
 
 ```bash
 # All production-tree usages
-$ grep -rn "BVHBuilder\|RayIntersector" PhospheneApp PhospheneEngine/Sources --include="*.swift"
-PhospheneEngine/Sources/Renderer/RayTracing/BVHBuilder.swift                  # 17 self-references
-PhospheneEngine/Sources/Renderer/RayTracing/RayIntersector.swift              # 19 self-references
-PhospheneEngine/Sources/Renderer/RayTracing/RayIntersector+Internal.swift     # 4 self-references
-PhospheneEngine/Sources/Shared/AudioFeatures+SceneUniforms.swift:9            # documentation comment only
-# Zero PhospheneApp/ hits.
-# Zero PhospheneEngine/Sources/Presets/ hits.
-# Zero PhospheneEngine/Sources/Renderer/ hits outside RayTracing/ self-references.
+$ grep -rn "BVHBuilder\|RayIntersector" UzumeApp UzumeEngine/Sources --include="*.swift"
+UzumeEngine/Sources/Renderer/RayTracing/BVHBuilder.swift                  # 17 self-references
+UzumeEngine/Sources/Renderer/RayTracing/RayIntersector.swift              # 19 self-references
+UzumeEngine/Sources/Renderer/RayTracing/RayIntersector+Internal.swift     # 4 self-references
+UzumeEngine/Sources/Shared/AudioFeatures+SceneUniforms.swift:9            # documentation comment only
+# Zero UzumeApp/ hits.
+# Zero UzumeEngine/Sources/Presets/ hits.
+# Zero UzumeEngine/Sources/Renderer/ hits outside RayTracing/ self-references.
 
 # Indirect ray-tracing API usage (in case RayTracing types are wrapped)
-$ grep -rn "supportsRaytracing\|MTLAccelerationStructure\|primitive_acceleration_structure" PhospheneApp PhospheneEngine/Sources --include="*.swift"
+$ grep -rn "supportsRaytracing\|MTLAccelerationStructure\|primitive_acceleration_structure" UzumeApp UzumeEngine/Sources --include="*.swift"
 # Returns only Renderer/RayTracing/BVHBuilder.swift self-references.
 
 # MSL counterpart consumers
-$ grep -rn "rt_nearest_hit_kernel\|rt_shadow_kernel" PhospheneApp PhospheneEngine/Sources --include="*.swift"
+$ grep -rn "rt_nearest_hit_kernel\|rt_shadow_kernel" UzumeApp UzumeEngine/Sources --include="*.swift"
 # Returns only Renderer/RayTracing/RayIntersector.swift (the Swift-side init that compiles the kernels).
-$ grep -rn "rt_nearest_hit_kernel\|rt_shadow_kernel" PhospheneEngine/Sources/Renderer/Shaders --include="*.metal"
-PhospheneEngine/Sources/Renderer/Shaders/RayTracing.metal:82  kernel void rt_nearest_hit_kernel(
-PhospheneEngine/Sources/Renderer/Shaders/RayTracing.metal:127 kernel void rt_shadow_kernel(
+$ grep -rn "rt_nearest_hit_kernel\|rt_shadow_kernel" UzumeEngine/Sources/Renderer/Shaders --include="*.metal"
+UzumeEngine/Sources/Renderer/Shaders/RayTracing.metal:82  kernel void rt_nearest_hit_kernel(
+UzumeEngine/Sources/Renderer/Shaders/RayTracing.metal:127 kernel void rt_shadow_kernel(
 # No other .metal file imports or invokes these kernels.
 
 # Test consumers (test-only — not production)
-$ grep -rn "BVHBuilder\|RayIntersector" PhospheneEngine/Tests --include="*.swift"
-PhospheneEngine/Tests/PhospheneEngineTests/Renderer/BVHBuilderTests.swift     # 4 tests
-PhospheneEngine/Tests/PhospheneEngineTests/Renderer/RayIntersectorTests.swift # 4 functional + 1 perf test
+$ grep -rn "BVHBuilder\|RayIntersector" UzumeEngine/Tests --include="*.swift"
+UzumeEngine/Tests/UzumeEngineTests/Renderer/BVHBuilderTests.swift     # 4 tests
+UzumeEngine/Tests/UzumeEngineTests/Renderer/RayIntersectorTests.swift # 4 functional + 1 perf test
 ```
 
 ### Result
 
-**Zero production consumers across PhospheneApp/ + PhospheneEngine/Sources/.** The only non-self reference is a pure documentation cross-reference at `Sources/Shared/AudioFeatures+SceneUniforms.swift:9` (commenting on packed_float3 vs SIMD3<Float> alignment — references `RayIntersector+Internal.swift` because that file documents the same alignment trick).
+**Zero production consumers across UzumeApp/ + UzumeEngine/Sources/.** The only non-self reference is a pure documentation cross-reference at `Sources/Shared/AudioFeatures+SceneUniforms.swift:9` (commenting on packed_float3 vs SIMD3<Float> alignment — references `RayIntersector+Internal.swift` because that file documents the same alignment trick).
 
 ### Architectural intent verification
 
@@ -579,7 +579,7 @@ The audit format continues to produce actionable findings at this scale. Three o
 
 2. **The "is there a non-nil caller?" production-orphan check at setter granularity is a new pattern.** CA.7a verified `setMeshGenerator` / `setParticleGeometry` / `setMeshGBufferEncoder` etc. as production-active because the setters had non-nil call sites somewhere. CA.7b's slot-1 collision discovery happened because the audit grepped for non-nil call sites specifically — and `setMeshPresetBuffer`'s only call site is `pipeline.setMeshPresetBuffer(nil)` (the reset). This is a finer-grained check than CA.7a applied. Recommend adopting this pattern in CA-Audio / CA-Presets: for any setter API, grep for non-nil callers, not just `setX\(` callers; a setter with only nil-reset callers is a production-orphan API surface even if it appears `production-active` at the file level.
 
-3. **Doc-drift in ARCH §Module Map is a recurring systemic finding.** CA.5 + CA.6 + CA.7a + CA.7b all surfaced one or more ARCH §Module Map drift items (stale-file entries / missing-file entries / typo'd field references). This is now 4-in-a-row. Suggest the next App-adjacent or doc-pruning increment audits the entire ARCH §Module Map cohesively against `find PhospheneEngine/Sources -name "*.swift"` + `find PhospheneApp -name "*.swift"` and fixes drift in one bulk pass rather than continuing to find one or two items per CA increment.
+3. **Doc-drift in ARCH §Module Map is a recurring systemic finding.** CA.5 + CA.6 + CA.7a + CA.7b all surfaced one or more ARCH §Module Map drift items (stale-file entries / missing-file entries / typo'd field references). This is now 4-in-a-row. Suggest the next App-adjacent or doc-pruning increment audits the entire ARCH §Module Map cohesively against `find UzumeEngine/Sources -name "*.swift"` + `find UzumeApp -name "*.swift"` and fixes drift in one bulk pass rather than continuing to find one or two items per CA increment.
 
 The format **does not need redesign** for CA-Audio / CA-Presets. Per-Builder verification tables (used in §DASH.7 producer-side) are a useful pattern when a section has many small contracts to verify; carry forward where applicable.
 

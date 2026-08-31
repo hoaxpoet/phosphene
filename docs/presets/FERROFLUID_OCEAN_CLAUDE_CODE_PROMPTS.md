@@ -76,7 +76,7 @@ Defer all of the above with `// TODO(V.9 Session N):` markers in the code.
 9. [`docs/DECISIONS.md D-021`](../DECISIONS.md) — `sceneSDF` / `sceneMaterial` signature contract.
 10. `CLAUDE.md` Failed Approaches §31, §32, §33, §35, §42, §43, §44 — relevant gotchas (absolute thresholds, single-octave noise, free-running `sin(time)`, fbm8 threshold calibration, Metal type-name shadowing).
 
-The current shader at `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` is the v1 **glass-dish** baseline (723 lines: petri-dish geometry with thick glass walls, central spike + ring-1 (6 spikes) + ring-2 (8 spikes), eye-level side-view camera, glass-base with crack patterns). Read it once to understand what's being replaced; do NOT preserve its geometry, audio routing, camera, lighting, or post-process composition — the V.9 redirect is a full visual concept replacement.
+The current shader at `UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` is the v1 **glass-dish** baseline (723 lines: petri-dish geometry with thick glass walls, central spike + ring-1 (6 spikes) + ring-2 (8 spikes), eye-level side-view camera, glass-base with crack patterns). Read it once to understand what's being replaced; do NOT preserve its geometry, audio routing, camera, lighting, or post-process composition — the V.9 redirect is a full visual concept replacement.
 
 ### Macro framing (load-bearing)
 
@@ -224,7 +224,7 @@ Crossfade FeatureVector fallbacks via D-019 pattern when total stem energy < 0.0
 
 Per Matt 2026-05-13: retire `FerrofluidOceanDiagnosticTests` wholesale at Session 1. Concrete actions:
 
-1. **Delete** `PhospheneEngine/Tests/PhospheneEngineTests/Visual/FerrofluidOceanDiagnosticTests.swift` (642 LOC). Replacement tests are authored session-by-session against the V.9 implementation as it lands; Session 1 itself adds no new diagnostic tests.
+1. **Delete** `UzumeEngine/Tests/UzumeEngineTests/Visual/FerrofluidOceanDiagnosticTests.swift` (642 LOC). Replacement tests are authored session-by-session against the V.9 implementation as it lands; Session 1 itself adds no new diagnostic tests.
 2. **Rewrite** `FerrofluidOceanVisualTests.swift` to a minimal shape:
    - One `testFerrofluidOceanShaderCompiles` test (preset loads, shader compiles via `PresetLoaderCompileFailureTest`-style mechanism).
    - One `testFerrofluidOceanRendersFourFixtures` test (silence / steady-mid / beat-heavy / quiet — produces non-black, non-clipped output via the `PresetVisualReviewTests RENDER_VISUAL=1` harness). Visual quality is NOT a Session 1 gate; the render just needs to complete without errors.
@@ -273,7 +273,7 @@ Per CLAUDE.md Increment Completion Protocol:
 - `MaxDurationFrameworkTests.swift` — Ferrofluid `expectedSeconds: 49 → 55` (matches new formula output: 90 − 50·0.05 − 30·1 − 15·0.15 = 55.25).
 - `FerrofluidBeatSyncTests.swift`, `FerrofluidLiveAudioTests.swift`, `PresetAcceptanceTests.swift` — each received a small Ferrofluid-scoped skip-guard with a Session 5 carry-forward note. These three tests' assumptions about `preset.pipelineState` being a single-attachment scene fragment (BeatSync / LiveAudio) or about silence-vs-steady producing measurably different output (Acceptance "beat-bounded" invariant) no longer hold for the ray-march redirect; Session 5 either rewrites them against the deferred path or adjusts the invariant.
 
-Visual harness output for the closeout: 4-fixture PNGs at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/fixtures/`, independence demo at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/independence/`. Visual quality is **not** a Session 1 gate — fixtures verify the pipeline completes and shows distinguishable output. Final visual review lives at Session 5.
+Visual harness output for the closeout: 4-fixture PNGs at `$TMPDIR/UzumeFerrofluidOceanV9Session1/fixtures/`, independence demo at `$TMPDIR/UzumeFerrofluidOceanV9Session1/independence/`. Visual quality is **not** a Session 1 gate — fixtures verify the pipeline completes and shows distinguishable output. Final visual review lives at Session 5.
 
 ---
 
@@ -283,11 +283,11 @@ Visual harness output for the closeout: 4-fixture PNGs at `$TMPDIR/PhospheneFerr
 
 This session implements ONLY the material and atmosphere layers of the V.9 redirect:
 
-1. **A new lighting matID** (`matID == 3` — "metallic thin-film Cook-Torrance") in `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`'s `raymarch_lighting_fragment`. Wraps the existing single-light Cook-Torrance path but replaces the standard F0 (`mix(0.04, albedo, metallic)`) with `thinfilm_rgb(VdotH, thickness_nm, ior_thin, ior_base)` from [`PhospheneEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal`](../../PhospheneEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal). Thin-film thickness encoded as a fixed constant in the branch (Session 4 may modulate it from audio later). matID == 2 is reserved for Session 3 (stage-rig per D-125); matID == 3 is the next free slot.
+1. **A new lighting matID** (`matID == 3` — "metallic thin-film Cook-Torrance") in `UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal`'s `raymarch_lighting_fragment`. Wraps the existing single-light Cook-Torrance path but replaces the standard F0 (`mix(0.04, albedo, metallic)`) with `thinfilm_rgb(VdotH, thickness_nm, ior_thin, ior_base)` from [`UzumeEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal`](../../UzumeEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal). Thin-film thickness encoded as a fixed constant in the branch (Session 4 may modulate it from audio later). matID == 2 is reserved for Session 3 (stage-rig per D-125); matID == 3 is the next free slot.
 
 2. **`FerrofluidOcean.metal` material update**: `sceneMaterial` emits `outMatID = 3`. Albedo / roughness / metallic stay at §4.6 baseline (`albedo = (0.02, 0.03, 0.05)`, `roughness = 0.08`, `metallic = 1.0`); the thin-film color modulation happens in the lighting branch with the V / N data sceneMaterial doesn't have access to.
 
-3. **Atmosphere fog**: set `scene_far_plane` in `FerrofluidOcean.json` so fog reads across the ocean-portion expanse (the current default of 30 m is too tight for the new camera framing); confirm the existing per-frame `lightColor` mood-tint path ([RenderPipeline+RayMarch.swift:185–193](../../PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift:185)) feeds through `scene.lightColor.rgb` multiplication on both `iblAmbient` and `fogColor` in RayMarch.metal — both lines already exist (lines 406 and 417), so verification is "render two fixtures at valence -1 and +1 and confirm fog tint visibly differs."
+3. **Atmosphere fog**: set `scene_far_plane` in `FerrofluidOcean.json` so fog reads across the ocean-portion expanse (the current default of 30 m is too tight for the new camera framing); confirm the existing per-frame `lightColor` mood-tint path ([RenderPipeline+RayMarch.swift:185–193](../../UzumeEngine/Sources/Renderer/RenderPipeline+RayMarch.swift:185)) feeds through `scene.lightColor.rgb` multiplication on both `iblAmbient` and `fogColor` in RayMarch.metal — both lines already exist (lines 406 and 417), so verification is "render two fixtures at valence -1 and +1 and confirm fog tint visibly differs."
 
 4. **Visual harness update**: extend `FerrofluidOceanVisualTests.swift` with a third gate — `testFerrofluidOceanMoodTintAtmosphereShifts` — that renders the silence fixture twice (valence -0.9 → cool fog; valence +0.9 → warm fog) and asserts the average channel difference is large enough to read as a palette shift.
 
@@ -308,12 +308,12 @@ Defer all of the above with `// TODO(V.9 Session N):` markers in the code where 
 ### Prerequisites — read in order
 
 1. [`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`](FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md) — the "Session 1 landed (2026-05-13)" block above this prompt, so you know exactly what Session 1 shipped.
-2. [`PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal`](../../PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal) — current shader (Session 1 macro layer; `sceneMaterial` is the placeholder you'll replace).
+2. [`UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.metal`](../../UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.metal) — current shader (Session 1 macro layer; `sceneMaterial` is the placeholder you'll replace).
 3. [`docs/SHADER_CRAFT.md §4.6`](../SHADER_CRAFT.md) — Ferrofluid (Rosensweig spikes) recipe + the thin-film promotion paragraph immediately below the §4.6 heading.
 4. [`docs/SHADER_CRAFT.md §10.3`](../SHADER_CRAFT.md) — V.9 redirect spec, specifically §10.3.4 (specular character) and §10.3.5 (atmosphere).
-5. [`PhospheneEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal`](../../PhospheneEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal) — both `thinfilm_rgb` and `thinfilm_hue_rotate` are available. Use `thinfilm_rgb` per spec — moderate cost is acceptable for the ferrofluid hero specular.
-6. [`PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`](../../PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal) — read `raymarch_lighting_fragment` end-to-end (the `matID == 1` Lumen branch at line 332 is your structural reference) and `rm_skyColor` (line 149).
-7. [`PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift`](../../PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift) — `applyAudioModulation` at line 170, specifically the valence → lightColor tint at lines 185–193 and the arousal → fogFar scaling at lines 194–198.
+5. [`UzumeEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal`](../../UzumeEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal) — both `thinfilm_rgb` and `thinfilm_hue_rotate` are available. Use `thinfilm_rgb` per spec — moderate cost is acceptable for the ferrofluid hero specular.
+6. [`UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal`](../../UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal) — read `raymarch_lighting_fragment` end-to-end (the `matID == 1` Lumen branch at line 332 is your structural reference) and `rm_skyColor` (line 149).
+7. [`UzumeEngine/Sources/Renderer/RenderPipeline+RayMarch.swift`](../../UzumeEngine/Sources/Renderer/RenderPipeline+RayMarch.swift) — `applyAudioModulation` at line 170, specifically the valence → lightColor tint at lines 185–193 and the arousal → fogFar scaling at lines 194–198.
 8. [`docs/DECISIONS.md D-022`](../DECISIONS.md) — IBL ambient tinted by `scene.lightColor.rgb` so mood valence shifts visible scene-wide.
 9. [`docs/DECISIONS.md D-124`](../DECISIONS.md) — V.9 redirect framing.
 10. CLAUDE.md Failed Approaches §24 (light-only mood modulation insufficient on indoor scenes — fixed in D-022; the matID == 3 branch must honor this by tinting IBL ambient via the existing `scene.lightColor.rgb` multiply, not by tinting only the direct light), §44 (Metal type-name shadowing — watch for any new helper functions).
@@ -322,8 +322,8 @@ Defer all of the above with `// TODO(V.9 Session N):` markers in the code where 
 
 **Where the work lands.** Two files:
 
-- `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — add the new matID branch.
-- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — switch `sceneMaterial`'s `outMatID` from 0 to 3.
+- `UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal` — add the new matID branch.
+- `UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — switch `sceneMaterial`'s `outMatID` from 0 to 3.
 
 **The matID == 3 branch** sits between the `matID == 1` Lumen block (RayMarch.metal:332) and the existing default Cook-Torrance lighting (RayMarch.metal:360 onward). Recipe:
 
@@ -477,7 +477,7 @@ If the gate fails (i.e. tint doesn't propagate), the likely cause is that `apply
 2. **Four-fixture render still completes.** Session 1's `testFerrofluidOceanRendersFourFixtures` produces non-black non-clipped output at all four fixtures. The thin-film shift should be subtly visible at the spike-tip highlights in the beat-heavy fixture (manual eyeball; not a programmatic gate).
 3. **Independence still holds.** Session 1's `testFerrofluidOceanIndependenceStatesReachable` still differentiates calm-with-spikes vs agitated-without-spikes (avg diff > 0.5).
 4. **NEW: Mood-tint atmosphere shift.** `testFerrofluidOceanMoodTintAtmosphereShifts` — silence fixture at valence -0.9 vs +0.9 produces an avg channel diff > 1.0 (cool fog vs warm fog).
-5. **Engine suite green.** Full `swift test --package-path PhospheneEngine` passes except for the same two pre-existing flakes called out in Session 1 closeout (`SoakTestHarness.cancel`, `MetadataPreFetcher.fetch_networkTimeout`). The three Session-1 skip-guards stay in place — Session 5 still owns those rewrites.
+5. **Engine suite green.** Full `swift test --package-path UzumeEngine` passes except for the same two pre-existing flakes called out in Session 1 closeout (`SoakTestHarness.cancel`, `MetadataPreFetcher.fetch_networkTimeout`). The three Session-1 skip-guards stay in place — Session 5 still owns those rewrites.
 6. **No anti-pattern grep regressions.** Grep new code for `f.bass [<>]`, `stems.bass_energy [<>]` — none. Grep for the literal `44100` — none (Session 2 shouldn't touch sample-rate paths but the grep is cheap).
 7. **`thinfilm_rgb` is the call.** Don't substitute `thinfilm_hue_rotate` "because it's cheaper" — the spec calls for the wavelength-sampled approximation. Hue-rotate is reserved for inner-loop use; the matID == 3 branch is once per hit pixel, not per-step, so the moderate cost is fine.
 8. **SwiftLint clean** on touched files.
@@ -498,12 +498,12 @@ Per CLAUDE.md Increment Completion Protocol:
 
 ### Session 2 landed (2026-05-13)
 
-- `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — added renderer-private `rm_fresnel_dielectric` + `rm_thinfilm_rgb` helpers (ports of `Utilities/PBR/{Fresnel,Thin}.metal`; the preset utility tree is concatenated only into per-preset preambles, so RayMarch.metal cannot call them directly). Added `rm_brdf_with_F0` helper next to existing `rm_brdf` so the matID==3 branch can supply a thin-film-derived F0 while keeping the matID==0 path byte-identical. New `if (matID == 3) { ... }` block between the Lumen `matID == 1` branch and the default Cook-Torrance path — thin-film F0 at 220 nm / IOR 1.45 over IOR-1.0 substrate; direct light, IBL ambient, and fog all multiplied by `scene.lightColor.rgb` for D-022 propagation; same screen-space soft-shadow + IBL prefiltered / BRDF-LUT path as matID==0.
-- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `sceneMaterial` now emits `outMatID = 3`; Session 1 TODO retired; Session 3 stage-rig TODO and Session 4 detail-layer TODO added in its place.
-- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.json` — `scene_fog` widened 0.02 → 0.04 (fogFar 50 → 25 m fits the ocean-portion expanse); `scene_far_plane: 40.0` added so the camera's far frustum extends past the visible surface without saturating depth.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Visual/FerrofluidOceanVisualTests.swift` — added `testFerrofluidOceanMoodTintAtmosphereShifts` gate. Production `applyAudioModulation` mood-tint formula (warm/cool tint multiplier on base.lightColor) is mirrored inline in the test render helper since the harness drives `RayMarchPipeline.render` directly and bypasses the production frame loop. **Important note for future sessions:** the test also overrides `sceneUniforms.sceneParamsB.x = 0` (fogNear) when applying the valence tint — the `SceneUniforms()` initializer defaults `fogNear = 20.0` and there is no JSON-level override, so the Ferrofluid Ocean camera's 4–14 m surface depth would have `fogFactor = 0` across the whole frame and the fog-tinted path could not be verified. In production this preset will rely primarily on IBL ambient (also tinted via `scene.lightColor.rgb`) to carry mood for surface pixels < 20 m; the test override isolates the matID==3 branch's D-022 propagation contract from the engine-wide fog-near default.
+- `UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal` — added renderer-private `rm_fresnel_dielectric` + `rm_thinfilm_rgb` helpers (ports of `Utilities/PBR/{Fresnel,Thin}.metal`; the preset utility tree is concatenated only into per-preset preambles, so RayMarch.metal cannot call them directly). Added `rm_brdf_with_F0` helper next to existing `rm_brdf` so the matID==3 branch can supply a thin-film-derived F0 while keeping the matID==0 path byte-identical. New `if (matID == 3) { ... }` block between the Lumen `matID == 1` branch and the default Cook-Torrance path — thin-film F0 at 220 nm / IOR 1.45 over IOR-1.0 substrate; direct light, IBL ambient, and fog all multiplied by `scene.lightColor.rgb` for D-022 propagation; same screen-space soft-shadow + IBL prefiltered / BRDF-LUT path as matID==0.
+- `UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `sceneMaterial` now emits `outMatID = 3`; Session 1 TODO retired; Session 3 stage-rig TODO and Session 4 detail-layer TODO added in its place.
+- `UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.json` — `scene_fog` widened 0.02 → 0.04 (fogFar 50 → 25 m fits the ocean-portion expanse); `scene_far_plane: 40.0` added so the camera's far frustum extends past the visible surface without saturating depth.
+- `UzumeEngine/Tests/UzumeEngineTests/Visual/FerrofluidOceanVisualTests.swift` — added `testFerrofluidOceanMoodTintAtmosphereShifts` gate. Production `applyAudioModulation` mood-tint formula (warm/cool tint multiplier on base.lightColor) is mirrored inline in the test render helper since the harness drives `RayMarchPipeline.render` directly and bypasses the production frame loop. **Important note for future sessions:** the test also overrides `sceneUniforms.sceneParamsB.x = 0` (fogNear) when applying the valence tint — the `SceneUniforms()` initializer defaults `fogNear = 20.0` and there is no JSON-level override, so the Ferrofluid Ocean camera's 4–14 m surface depth would have `fogFactor = 0` across the whole frame and the fog-tinted path could not be verified. In production this preset will rely primarily on IBL ambient (also tinted via `scene.lightColor.rgb`) to carry mood for surface pixels < 20 m; the test override isolates the matID==3 branch's D-022 propagation contract from the engine-wide fog-near default.
 - Engine suite: 1226 pass / 1 known pre-existing flake (`MemoryReporter.residentBytes`, environment-dependent — already on the project memory list). All four `FerrofluidOceanVisualTests` gates pass: shader compile, four-fixture render, independence states (avg diff 0.98), mood-tint atmosphere shift (avg diff 31.8 — well above the 1.0 threshold).
-- Visual harness output: 4-fixture PNGs at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/fixtures/`, mood-tint PNGs at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/mood_tint/` (cool valence: clear blue-purple cast over the gentle Gerstner surface; warm valence: amber/beige cast — both clearly distinguishable). Independence frames at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/independence/`.
+- Visual harness output: 4-fixture PNGs at `$TMPDIR/UzumeFerrofluidOceanV9Session1/fixtures/`, mood-tint PNGs at `$TMPDIR/UzumeFerrofluidOceanV9Session1/mood_tint/` (cool valence: clear blue-purple cast over the gentle Gerstner surface; warm valence: amber/beige cast — both clearly distinguishable). Independence frames at `$TMPDIR/UzumeFerrofluidOceanV9Session1/independence/`.
 - Carry-forward to Sessions 3–5 unchanged. The Session 1 skip-guards on `FerrofluidBeatSyncTests` / `FerrofluidLiveAudioTests` / `PresetAcceptanceTests` and the commented-out golden hash in `PresetRegressionTests` remain in place — Session 5 still owns those rewrites.
 
 ---
@@ -547,12 +547,12 @@ Implement [`docs/DECISIONS.md` D-125](../DECISIONS.md) end to end. Twelve concre
 
 1. **Add slot-9 binding API to `RenderPipeline`** — `var directPresetFragmentBuffer4: MTLBuffer?` + lock + `setDirectPresetFragmentBuffer4(_:)` setter, mirroring the existing slot-8 (`directPresetFragmentBuffer3`) pattern. Thread through every render-path file (`+Draw.swift`, `+RayMarch.swift`, `+Staged.swift`, `+MVWarp.swift`, `+PresetSwitching.swift`).
 2. **MSL struct `StageRigState` in the ray-march preamble** (`PresetLoader+Preamble.swift`). Exact layout per D-125(c): 4-byte `activeLightCount` + 12 bytes padding + 6 × 32-byte `StageRigLight` records (`positionAndIntensity: float4` + `color: float4`). Total stride 208 bytes, 16-byte aligned.
-3. **Swift `StageRigState` mirror** (new file `PhospheneEngine/Sources/Shared/StageRigState.swift`). Byte-identical to the MSL struct. `@frozen` struct, `Sendable`. Same pattern as `LumenPatternState` (see `PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`). Include a `MemoryLayout<StageRigState>.stride == 208` assertion at init.
+3. **Swift `StageRigState` mirror** (new file `UzumeEngine/Sources/Shared/StageRigState.swift`). Byte-identical to the MSL struct. `@frozen` struct, `Sendable`. Same pattern as `LumenPatternState` (see `UzumeEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`). Include a `MemoryLayout<StageRigState>.stride == 208` assertion at init.
 4. **`stageRigPlaceholderBuffer` on `RayMarchPipeline`** — zero-filled UMA buffer sized to 208 bytes, allocated in `RayMarchPipeline.init`. Bound at slot 9 by both `runGBufferPass` and `runLightingPass` whenever the active preset's `directPresetFragmentBuffer4` is nil (same dispatch pattern as the existing `lumenPlaceholderBuffer` at slot 8). Both passes declare `[[buffer(9)]] constant StageRigState&` per D-125(b) — Metal validation requires every ray-march preset to receive a bound slot 9.
 5. **`PresetDescriptor.stageRig` field** — new optional `StageRig` struct per D-125(e). Decode `light_count` (clamp to [3, 6], log warning + fallback to 4 on out-of-range), `orbit_altitude`, `orbit_radius`, `orbit_speed_baseline`, `orbit_speed_arousal_coef`, `palette_phase_offsets: [Float]` (must equal `light_count` length; warn + truncate/pad otherwise), `intensity_baseline`, `intensity_floor_coef`, `intensity_swing_coef`, `intensity_smoothing_tau_ms`. Add a memberwise default for back-compat (existing presets with no `stage_rig` block decode to `stageRig: nil`).
 6. **Ferrofluid Ocean JSON `stage_rig` block** — exact values per D-125(e) sample plus the four `palette_phase_offsets: [0.0, 0.33, 0.67, 0.17]`. `scene_lights` array drops to a single zero-intensity placeholder (the matID==2 path ignores it). Bump `complexity_cost.tier2` to ~5.5 (Session 5 perf capture will validate).
 7. **`matID == 2` branch in `raymarch_lighting_fragment`** (RayMarch.metal). Sits between matID==1 (Lumen) and the matID==3 (thin-film, Session 2) branches. Loop `for (uint i = 0; i < stageRig.activeLightCount; i++)`: compute per-light L/H/VdotH/attenuation, accumulate `rm_brdf_with_F0(...) * lightColor[i] * intensity[i] * attenuation` using `rm_thinfilm_rgb(VdotH, 220, 1.45, 1.0)` for F0 (same thin-film constants as matID==3 — the ferrofluid substrate is the same; only the light count differs). Sum per-light direct contributions, then call **`rm_finishLightingPass(...)`** (the helper extracted in P3-A) to add IBL ambient + fog. Skip screen-space shadow march entirely per D-125(d). Return `float4(finalColor, 1.0)`.
-8. **`FerrofluidStageRig` Swift class** at `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift`. Owns its slot-9 `MTLBuffer` (208 bytes, `storageModeShared`). Public API:
+8. **`FerrofluidStageRig` Swift class** at `UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift`. Owns its slot-9 `MTLBuffer` (208 bytes, `storageModeShared`). Public API:
    - `init?(device: MTLDevice, descriptor: PresetDescriptor.StageRig)`
    - `func tick(features: FeatureVector, stems: StemFeatures, dt: TimeInterval)` — recompute orbital positions, per-light colors, per-light intensities; memcpy into `buffer.contents()`.
    - `public var buffer: MTLBuffer { get }` — for binding to slot 9.
@@ -562,7 +562,7 @@ Implement [`docs/DECISIONS.md` D-125](../DECISIONS.md) end to end. Twelve concre
    - Silence state per D-019: at `totalStemEnergy == 0`, `drums_energy_dev = 0` and the smoothing decays to 0, so intensity → `baseline * floor_coef` (0.4 * 5.0 = 2.0 nominal — visible idling rig per `10_silence_calm_body.jpg`).
 9. **`applyPreset` wiring** — when the active preset's descriptor has a non-nil `stageRig`, instantiate `FerrofluidStageRig` (preset-specific, hard-wired by name for the V.9 first consumer per D-125(f); generic `StageRigEngine` extraction deferred to second consumer), tick it per frame from the existing per-preset tick path (analogous to `LumenPatternEngine.tick`), and call `pipeline.setDirectPresetFragmentBuffer4(stageRig.buffer)` on preset apply. On preset switch to a non-stage-rig preset, clear the binding (returns to the placeholder buffer).
 10. **`sceneMaterial` in `FerrofluidOcean.metal`** — change `outMatID = 3` (Session 2) to `outMatID = 2`. The matID==3 thin-film branch in RayMarch.metal is retained for future single-light thin-film presets but is no longer the Ferrofluid Ocean dispatch target. Update both `TODO(V.9 Session 3)` comments to retire / point at Session 4.
-11. **Stride regression test** at `PhospheneEngine/Tests/PhospheneEngineTests/Shared/CommonLayoutTests.swift` (or wherever the existing `LumenPatternState_strideIs376` test lives — colocate). Asserts `MemoryLayout<StageRigState>.stride == 208` and `MemoryLayout<StageRigLight>.stride == 32`. Same shape as the existing Lumen stride test.
+11. **Stride regression test** at `UzumeEngine/Tests/UzumeEngineTests/Shared/CommonLayoutTests.swift` (or wherever the existing `LumenPatternState_strideIs376` test lives — colocate). Asserts `MemoryLayout<StageRigState>.stride == 208` and `MemoryLayout<StageRigLight>.stride == 32`. Same shape as the existing Lumen stride test.
 12. **§5.8 clarifying note in `SHADER_CRAFT.md`** — one-line pointer at the §5.8 heading: "Implementation contract: see D-125. JSON schema in D-125(e) is authoritative; the §5.8 example below is illustrative."
 
 ### DO NOT author in this session
@@ -583,12 +583,12 @@ Defer all of the above with `// TODO(V.9 Session N):` markers in code where you'
 1. [`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`](FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md) — the Session 1 + Session 2 "landed" blocks above this prompt.
 2. [`docs/DECISIONS.md` D-125](../DECISIONS.md) — the implementation contract. Read every clause; this prompt assumes you know D-125(a)–(g).
 3. [`docs/SHADER_CRAFT.md §5.8`](../SHADER_CRAFT.md) — the §5.8 spec (light configuration, color rotation, intensity envelope, silence state, IBL coordination, failure modes).
-4. [`PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`](../../PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal) — current state after Session 2 + P3-A. The `rm_finishLightingPass` helper is the thing matID==2 calls after its per-light direct accumulation. matID==3 is the structural reference for "how a non-default lighting branch is laid out."
-5. [`PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`](../../PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift) — the per-preset Swift state class pattern. Mirror its shape for `FerrofluidStageRig`.
-6. [`PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift`](../../PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift) `lumenPlaceholderBuffer` allocation (lines ~255–270) — the structural reference for `stageRigPlaceholderBuffer`.
-7. [`PhospheneEngine/Sources/Renderer/RayMarchPipeline+Passes.swift`](../../PhospheneEngine/Sources/Renderer/RayMarchPipeline+Passes.swift) `runGBufferPass` + `runLightingPass` — the slot-8 binding sites you'll add slot-9 binding next to.
-8. [`PhospheneEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift`](../../PhospheneEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift) — the existing `setDirectPresetFragmentBuffer3` API. Mirror its shape for the new `Buffer4` API.
-9. [`PhospheneEngine/Sources/Shared/Common.metal`](../../PhospheneEngine/Sources/Renderer/Shaders/Common.metal) `LumenPatternState` Swift mirror — the byte-identical Swift struct pattern.
+4. [`UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal`](../../UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal) — current state after Session 2 + P3-A. The `rm_finishLightingPass` helper is the thing matID==2 calls after its per-light direct accumulation. matID==3 is the structural reference for "how a non-default lighting branch is laid out."
+5. [`UzumeEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`](../../UzumeEngine/Sources/Presets/Lumen/LumenPatternEngine.swift) — the per-preset Swift state class pattern. Mirror its shape for `FerrofluidStageRig`.
+6. [`UzumeEngine/Sources/Renderer/RayMarchPipeline.swift`](../../UzumeEngine/Sources/Renderer/RayMarchPipeline.swift) `lumenPlaceholderBuffer` allocation (lines ~255–270) — the structural reference for `stageRigPlaceholderBuffer`.
+7. [`UzumeEngine/Sources/Renderer/RayMarchPipeline+Passes.swift`](../../UzumeEngine/Sources/Renderer/RayMarchPipeline+Passes.swift) `runGBufferPass` + `runLightingPass` — the slot-8 binding sites you'll add slot-9 binding next to.
+8. [`UzumeEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift`](../../UzumeEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift) — the existing `setDirectPresetFragmentBuffer3` API. Mirror its shape for the new `Buffer4` API.
+9. [`UzumeEngine/Sources/Shared/Common.metal`](../../UzumeEngine/Sources/Renderer/Shaders/Common.metal) `LumenPatternState` Swift mirror — the byte-identical Swift struct pattern.
 10. [`docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md`](../VISUAL_REFERENCES/ferrofluid_ocean/README.md) — re-read the `04_*` and `08_*` annotations. Session 3 closes one half of `04`'s dual-anchor (the lighting half); Session 4 closes `08`'s aurora-quality light over dark surface.
 11. CLAUDE.md Failed Approaches §24 (light-only mood tint insufficient; now mitigated by `rm_finishLightingPass`), §4 (beat-onset as primary motion driver banned — applies to beam intensity), §58 (Drift Motes — musical role must be load-bearing).
 
@@ -611,7 +611,7 @@ Defer all of the above with `// TODO(V.9 Session N):` markers in code where you'
 5. **Mood-tint atmosphere gate carries forward.** `testFerrofluidOceanMoodTintAtmosphereShifts` and `testFerrofluidOceanMoodTintIBLPropagation` continue to pass with matID==2. (Both gates verify `rm_finishLightingPass` propagates `scene.lightColor.rgb`; the helper hasn't changed, so both should pass without test edits. If they fail, the matID==2 branch is bypassing the helper.)
 6. **New gate — multi-light dispatch.** Add `testFerrofluidOceanStageRigDispatchActive` to `FerrofluidOceanVisualTests`. Renders the steady-mid fixture with a `FerrofluidStageRig` whose `activeLightCount = 4` and a *placeholder-only* version (matID==2 dispatched but slot-9 buffer empty), asserts the two frames are measurably distinct (avg channel diff > 5.0) — proves the slot-9 buffer is reaching the shader and the loop is running.
 7. **Silence state preserved.** Render the silence fixture with `FerrofluidStageRig`; manual eyeball check via `RENDER_VISUAL=1`: beams visibly idle at low intensity, palette evolves slowly via the `audio_time * 0.05` base rotation, no spike lattice (matches `10_silence_calm_body.jpg`).
-8. **Engine suite green.** Full `swift test --package-path PhospheneEngine` passes except the same three pre-existing flakes (`MemoryReporter.residentBytes`, `MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`).
+8. **Engine suite green.** Full `swift test --package-path UzumeEngine` passes except the same three pre-existing flakes (`MemoryReporter.residentBytes`, `MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`).
 9. **No anti-pattern grep regressions.** Grep new code for `drums_beat` (anti for intensity envelope), `f.bass [<>]`, `stems.bass_energy [<>]`, literal `44100`. None should appear.
 10. **SwiftLint clean** on every touched file.
 
@@ -662,7 +662,7 @@ Three-phase landing across nine commits (`[V.9-session-4 P0]` / `[V.9-session-4 
 
 **Acceptance gates:** all pass. P0 (4 gates): SwiftLint strict clean on touched files; 20 new tests pass; silence-state visual snapshot fires the new avg-channel assertion (avg ≈ 12–15); grep gate exits 0 on clean tree + non-zero on manual violation injection. PA (8 gates): preset count remains 15 (Failed Approach #44 silent-drop gate passes); all 6 `FerrofluidOceanVisualTests` pass with new layers visible in contact sheet; `testFerrofluidOceanStageRigDispatchActive` still passes (matID == 2 dispatch unaffected by sceneSDF additions); `FerrofluidParamsDecoderTests` (7 new). PB (7 gates): full 1256-test engine suite passes; `check_drums_beat_intensity.sh` + `check_sample_rate_literals.sh` both clean; mood-tint atmosphere + IBL gates carry forward through thickness-modulated matID == 2 (avg diff ~32 / ~20, well above 1.0 threshold); SwiftLint strict clean on touched files.
 
-**Visual harness output paths:** `/var/folders/.../PhospheneFerrofluidOceanV9Session1/fixtures/` (Phase A + Phase B 4-fixture contact sheet); `/var/folders/.../PhospheneFerrofluidOceanV9Session1/mood_tint/` (cool/warm valence pair); `.../stage_rig_dispatch/`, `.../mood_tint_ibl/`, `.../independence/` (carry-forward from prior sessions). All renders observed in-neighbourhood of the references; pixel-match cert is Session 5's job per the §10.3.5 / Failed Approach #49 anti-tuning rule.
+**Visual harness output paths:** `/var/folders/.../UzumeFerrofluidOceanV9Session1/fixtures/` (Phase A + Phase B 4-fixture contact sheet); `/var/folders/.../UzumeFerrofluidOceanV9Session1/mood_tint/` (cool/warm valence pair); `.../stage_rig_dispatch/`, `.../mood_tint_ibl/`, `.../independence/` (carry-forward from prior sessions). All renders observed in-neighbourhood of the references; pixel-match cert is Session 5's job per the §10.3.5 / Failed Approach #49 anti-tuning rule.
 
 **Audio data hierarchy compliance:** every new audio coupling uses a D-026 deviation primitive (`mid_att_rel`, `bass_att_rel`) or a smoothed scalar (`arousal`). No `*_beat` onset edges; no raw AGC arithmetic (Failed Approach #31); no impossible AGC gate combinations (Failed Approach #57). CI grep gates enforce both `drumsBeat`-in-intensity (the new gate) and the existing literal-`44100` + raw-AGC-band patterns.
 
@@ -881,7 +881,7 @@ Conceptual change: matID == 2 becomes a **mirror-reflects-procedural-sky** path.
    - The 4 standard fixtures (silence / steady-mid / beat-heavy / quiet) at 1920×1080.
    - The cool/warm valence pair (D-022 mood-tint propagation check).
    - A "live music" reconstruction: replay FV / Stems values from a real session capture (current candidate: `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T01-20-28Z/features.csv` + `stems.csv`) at multiple time points across the playthrough.
-   - Save outputs to a documented path under `/var/folders/.../PhospheneFerrofluidOceanV9Session4.5C/` and link the path in the closeout report.
+   - Save outputs to a documented path under `/var/folders/.../UzumeFerrofluidOceanV9Session4.5C/` and link the path in the closeout report.
 
 2. **Per-image annotation match.** For each of the 12 images in `docs/VISUAL_REFERENCES/ferrofluid_ocean/`, document whether the rendered output matches the **trait the README's annotation calls out** (per the stylization caveat — not the literal photograph). Document matches / gaps in the closeout report.
    - Anti-reference (`05_*`) must NOT match — explicitly verify this.
@@ -942,10 +942,10 @@ Defer with `// TODO(V.9 Session 5):` markers.
 5. **CLAUDE.md "Authoring Discipline"** — the entire section. The next response to pushback must change the answer, not justify it. Three-part bar for any new concept. Treat fidelity warnings as constraints.
 6. **CLAUDE.md "Failed Approaches"** — especially #4 (beat-onset not primary), #24 (D-022 IBL ambient tint mechanic), #39 (read references before authoring), #44 (no Metal type-name shadow), #49 (tuning vs structural failure), #58 (visual subject without musical role), and the two new entries this session will add about §5.8 paradigm + README-reading discipline.
 7. **`docs/DECISIONS.md` D-124** (V.9 redirect) and **D-125** (stage-rig contract). Note: D-125's "4–6 point lights with inverse-square falloff" implementation framing is **amended by this rescue**. The §5.8 musical contract is preserved; the GPU consumption paradigm changes from Cook-Torrance per-light loop to procedural sky function sampled at reflection vector. Document this amendment in the Phase C closeout commit (CLAUDE.md or a new DECISIONS.md entry).
-8. **`PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`** — current matID == 2 / matID == 3 lighting paths. Note `rm_skyColor` at line ~217 (current IBL sky source — near-white horizon → blue zenith).
-9. **`PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift`** — current per-frame state class. Stays alive; consumption changes.
-10. **`PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal`** — current sceneSDF + sceneMaterial.
-11. **`PhospheneEngine/Sources/Renderer/IBLManager.swift`** — the IBL cubemap source (currently rendered from `rm_skyColor`). Verify the matID == 2 branch's existing `iblPrefiltered` sample is what's producing the "gray wash" — it's the cubemap of the near-white horizon gradient.
+8. **`UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal`** — current matID == 2 / matID == 3 lighting paths. Note `rm_skyColor` at line ~217 (current IBL sky source — near-white horizon → blue zenith).
+9. **`UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift`** — current per-frame state class. Stays alive; consumption changes.
+10. **`UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.metal`** — current sceneSDF + sceneMaterial.
+11. **`UzumeEngine/Sources/Renderer/IBLManager.swift`** — the IBL cubemap source (currently rendered from `rm_skyColor`). Verify the matID == 2 branch's existing `iblPrefiltered` sample is what's producing the "gray wash" — it's the cubemap of the near-white horizon gradient.
 
 ### Failed-approach guards (must satisfy)
 
@@ -982,11 +982,11 @@ Per CLAUDE.md Increment Completion Protocol.
 **Phase A ✅ (2026-05-14).** Rebuilt matID == 2 lighting paradigm from Cook-Torrance per-light loop to **mirror-reflects-procedural-sky** + replaced regular Voronoi with Quilez **smooth Voronoi** for spike geometry. Closeout report:
 
 *Files changed:*
-- `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — new `rm_ferrofluidBaseSky(R, scene)` (three-stop dark-purple gradient × D-022 lightColor) + `rm_ferrofluidSky(R, rig, scene)` (anisotropic aurora-stripe bands via `vertFalloff × azim_falloff`); matID == 2 branch rewritten to sample sky at reflection vector, multiply by thin-film F0, mix toward fog at zenith; `rm_finishLightingPass` bypassed for matID == 2.
-- `PhospheneEngine/Sources/Presets/Shaders/Utilities/Texture/Voronoi.metal` — new `voronoi_smooth(p, scale, k)` utility (Quilez exp/log soft-min, k=32 default).
-- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `fo_ferrofluid_field` switched to `voronoi_smooth` + linear cone profile (kSpikeRadius = 0.6 in scaled-space units, > 0.577 hex circumradius → wall-to-wall pyramid coverage); cellHash variation dropped (smooth Voronoi doesn't expose discrete IDs); temporal sin oscillation dropped (Failed Approach #33 echo).
-- `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift` — doc-comment updated to reflect the buffer's new role as aurora-sky parameter source (the §5.8 musical contract preserved at the rig boundary; only GPU consumption changed).
-- `PhospheneEngine/Tests/PhospheneEngineTests/Visual/FerrofluidOceanVisualTests.swift` — renamed `testFerrofluidOceanStageRigDispatchActive` → `testFerrofluidOceanSkyReflectionDispatchActive`; renamed `testFerrofluidOceanMoodTintIBLPropagation` → `testFerrofluidOceanMoodTintSkyBaseShift` (matID == 2 no longer reads IBL textures); `testFerrofluidOceanMoodTintAtmosphereShifts` adapted; 4-fixture render ticks a per-fixture rig (not silence-only); test render resolution bumped 384×216 → 1920×1080 (production-target — low-res renders were hiding artifacts).
+- `UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal` — new `rm_ferrofluidBaseSky(R, scene)` (three-stop dark-purple gradient × D-022 lightColor) + `rm_ferrofluidSky(R, rig, scene)` (anisotropic aurora-stripe bands via `vertFalloff × azim_falloff`); matID == 2 branch rewritten to sample sky at reflection vector, multiply by thin-film F0, mix toward fog at zenith; `rm_finishLightingPass` bypassed for matID == 2.
+- `UzumeEngine/Sources/Presets/Shaders/Utilities/Texture/Voronoi.metal` — new `voronoi_smooth(p, scale, k)` utility (Quilez exp/log soft-min, k=32 default).
+- `UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `fo_ferrofluid_field` switched to `voronoi_smooth` + linear cone profile (kSpikeRadius = 0.6 in scaled-space units, > 0.577 hex circumradius → wall-to-wall pyramid coverage); cellHash variation dropped (smooth Voronoi doesn't expose discrete IDs); temporal sin oscillation dropped (Failed Approach #33 echo).
+- `UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift` — doc-comment updated to reflect the buffer's new role as aurora-sky parameter source (the §5.8 musical contract preserved at the rig boundary; only GPU consumption changed).
+- `UzumeEngine/Tests/UzumeEngineTests/Visual/FerrofluidOceanVisualTests.swift` — renamed `testFerrofluidOceanStageRigDispatchActive` → `testFerrofluidOceanSkyReflectionDispatchActive`; renamed `testFerrofluidOceanMoodTintIBLPropagation` → `testFerrofluidOceanMoodTintSkyBaseShift` (matID == 2 no longer reads IBL textures); `testFerrofluidOceanMoodTintAtmosphereShifts` adapted; 4-fixture render ticks a per-fixture rig (not silence-only); test render resolution bumped 384×216 → 1920×1080 (production-target — low-res renders were hiding artifacts).
 
 *Test gates (all green):*
 - 6/6 `FerrofluidOceanVisualTests` pass
@@ -997,7 +997,7 @@ Per CLAUDE.md Increment Completion Protocol.
 - SwiftLint strict clean on touched Swift files
 - `check_drums_beat_intensity.sh` + `check_sample_rate_literals.sh` clean for touched files (pre-existing Gossamer warning unrelated)
 
-*Visual harness output:* `/var/folders/.../PhospheneFerrofluidOceanV9Session1/{fixtures, mood_tint, mood_tint_sky_base, sky_reflection_dispatch, independence}/`. At 1920×1080: silence reads as dark-purple ocean with subtle iridescent reflection (no spikes); steady-mid / beat-heavy / quiet show wall-to-wall hex-pack spike texture with aurora colors playing across the slope reflections; cool/warm valence pair shifts substrate cleanly (navy ↔ purple-magenta); dispatch test shows vivid aurora stripes across the substrate (200× test intensity confirms slot-9 buffer reaches the shader). The Phase 0 dot-pattern artifact is gone — replaced by a continuous spike texture per the smooth Voronoi insight from Robert Leitl's published WebGL ferrofluid project.
+*Visual harness output:* `/var/folders/.../UzumeFerrofluidOceanV9Session1/{fixtures, mood_tint, mood_tint_sky_base, sky_reflection_dispatch, independence}/`. At 1920×1080: silence reads as dark-purple ocean with subtle iridescent reflection (no spikes); steady-mid / beat-heavy / quiet show wall-to-wall hex-pack spike texture with aurora colors playing across the slope reflections; cool/warm valence pair shifts substrate cleanly (navy ↔ purple-magenta); dispatch test shows vivid aurora stripes across the substrate (200× test intensity confirms slot-9 buffer reaches the shader). The Phase 0 dot-pattern artifact is gone — replaced by a continuous spike texture per the smooth Voronoi insight from Robert Leitl's published WebGL ferrofluid project.
 
 *Documentation:* `docs/ENGINEERING_PLAN.md`, `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`, `CLAUDE.md` (new Failed Approaches #64 + #65 capturing the discipline learnings from the iteration cycle), this prompt doc (above).
 
@@ -1033,7 +1033,7 @@ Phase A delivered the lighting paradigm (mirror-reflects-procedural-sky + smooth
 
 ### Goal
 
-Replace the static smooth-Voronoi grid with **audio-reactive GPU particles + per-frame height-map bake**. Particles drift organically driven by audio forces; peaks rise/fall and translate with the music; the visual reading matches the "alive ferrofluid" character of Leitl's demo. Density tuned for **medium coverage** of Phosphene's ocean-portion scene (~2000 spikes — peaks touch base-to-base, surface reads as covered in ferrofluid without blurring into a continuous textured field).
+Replace the static smooth-Voronoi grid with **audio-reactive GPU particles + per-frame height-map bake**. Particles drift organically driven by audio forces; peaks rise/fall and translate with the music; the visual reading matches the "alive ferrofluid" character of Leitl's demo. Density tuned for **medium coverage** of Uzume's ocean-portion scene (~2000 spikes — peaks touch base-to-base, surface reads as covered in ferrofluid without blurring into a continuous textured field).
 
 ### Reference implementation
 
@@ -1045,14 +1045,14 @@ Robert Leitl's WebGL ferrofluid:
   - `src/app/shader/height-map.frag.glsl` — iterative IQ smooth-min over all particles produces the height field. Includes `almostIdentity` apex smoothing.
   - `src/app/shader/integrate.frag.glsl`, `force.frag.glsl`, `pressure.frag.glsl`, `sort.frag.glsl` — SPH-style 2D particle simulation chain.
 
-**Adopt the parts that produce his visual character verbatim** (Failed Approach #65); adapt only what differs in *context* (audio routing, ocean scale, integration with Phosphene's render pipeline).
+**Adopt the parts that produce his visual character verbatim** (Failed Approach #65); adapt only what differs in *context* (audio routing, ocean scale, integration with Uzume's render pipeline).
 
 ### Locked-in parameters
 
 | Parameter | Value | Rationale |
 |---|---|---|
 | Particle count | **N = 2048** | "Medium density" per Matt — peaks touch base-to-base; surface reads as covered in ferrofluid. Densely-packed (~4000) deemed too dense; sparse (~1000) deemed too sparse. |
-| Update location | **GPU compute kernel** | CPU can't keep up at N=2048 + 1920×1080 rendering at 60 fps. Wire through Phosphene's render-pipeline framework (same pattern as the slot-9 stage-rig buffer). |
+| Update location | **GPU compute kernel** | CPU can't keep up at N=2048 + 1920×1080 rendering at 60 fps. Wire through Uzume's render-pipeline framework (same pattern as the slot-9 stage-rig buffer). |
 | Height-map texture | **512×512 r16Float** | Covers visible ocean area at ~1.5 cm per pixel — sharp enough for crisp spike tips, no overkill. |
 | Smooth-min `w` | **0.1** | Leitl's default. Produces distinct peaks with smooth gradients between them. Revisit only if rendering shows peaks merging or staying too discrete. |
 | Particle reset on track change | **Yes** | Reset to equilibrium positions on `applyPreset`. |
@@ -1231,9 +1231,9 @@ Three phases. Each has its own STOP gate; do not advance without Matt's visual a
 2. The Love Rehab session capture: `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T18-17-51Z` — particularly `features.csv` (frame timing + arousal + accumulatedAudioTime) and `stems.csv` (per-stem energies + deviations + vocals pitch). This is the artifact that flagged Phase 2c.
 3. `docs/DECISIONS.md` D-127 (rig retirement, added this session).
 4. CLAUDE.md Authoring Discipline section.
-5. `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — current state of `rm_ferrofluidSky` (returns base sky only; aurora to come back here).
-6. `PhospheneEngine/Sources/Renderer/Shaders/FerrofluidOcean.metal` — `fo_swell_scale` + `fo_spike_strength` audio routing (will be reworked in Phase 2).
-7. `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift` + Renderer Shaders/FerrofluidParticles.metal — current Phase 2c force model (will be reworked in Phase 3).
+5. `UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal` — current state of `rm_ferrofluidSky` (returns base sky only; aurora to come back here).
+6. `UzumeEngine/Sources/Renderer/Shaders/FerrofluidOcean.metal` — `fo_swell_scale` + `fo_spike_strength` audio routing (will be reworked in Phase 2).
+7. `UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift` + Renderer Shaders/FerrofluidParticles.metal — current Phase 2c force model (will be reworked in Phase 3).
 
 ### Closeout
 

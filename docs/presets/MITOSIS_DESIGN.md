@@ -209,7 +209,7 @@ the *mechanism*, only listening confirms the *feel*.
   (http://mrob.com/pub/comp/xmorphia/) for the regime map.
 - **License:** Gray–Scott is public-domain math; algorithm re-implemented in our own
   MSL, no source copied.
-- The abstract cyan grade + the audio coupling are Phosphene-original, empirically
+- The abstract cyan grade + the audio coupling are Uzume-original, empirically
   grounded by the sketch's rendered evidence.
 
 ## Module-Map history

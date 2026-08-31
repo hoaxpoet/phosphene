@@ -64,7 +64,7 @@ Whitney is unusually well-placed against that bar, for four reasons:
    failed (D-195). The luminous stroke on black *is* the differential law made visible; there is
    no gap between "the mechanic" and "the reference" for a still to hide. The 2 s-interval
    sequence (`rosette_build.png`) confirms this in motion rather than in stills.
-4. **The musical claim is Whitney's own thesis, and Phosphene already computes the signal.**
+4. **The musical claim is Whitney's own thesis, and Uzume already computes the signal.**
    *Digital Harmony*'s argument is that visual consonance and musical consonance are the same
    phenomenon — whole-number ratios. TONAL (D-178) shipped a continuous harmonic-state vector
    in 2026-07-10, calibrated over a 1000-track pilot, and today only three presets read it as a
@@ -196,7 +196,7 @@ produced a clean Archimedean spiral.
 
 Revised 2026-08-19 against the film. The axis that moves is **tightness**, not arm count (F2).
 
-| Whitney's term | Phosphene primitive | Visual consequence |
+| Whitney's term | Uzume primitive | Visual consequence |
 |---|---|---|
 | Consonance | `tonalConsonance` | **how tight and closed the figure is** — loose open tangle ↔ crisp closed emblem with straight edges. The film's central move. |
 | Where in the harmonic sweep the figure sits | `tonalPhaseFifths` | **where in the morph family** — which of petals / star / ring / polygon the figure currently reads as |
@@ -250,7 +250,7 @@ worked."
 
 ---
 
-## 6. Port plan onto Phosphene — zero engine touch
+## 6. Port plan onto Uzume — zero engine touch
 
 Every claim below carries its evidence. Verified 2026-08-19 against the working tree.
 
@@ -578,7 +578,7 @@ to build.
 - **A — full cartouche.** Mirrored arcs left and right, carrying the saturated hue, animated on
   their own slower clock. Closest to the film. The frame becomes part of the composition.
 - **B — figure only.** Just the central emblem on black. Cleaner, more modern, more obviously
-  Phosphene's own. Risks reading as a plot rather than as a drawing.
+  Uzume's own. Risks reading as a plot rather than as a drawing.
 - **C — cartouche that responds.** The frame elements carry the harmony colour while the central
   figure carries the shape, so the two halves of the coupling are visually separated.
 
@@ -615,7 +615,7 @@ the Orchestrator schedule this on any track rather than only at the classical an
 
 Now **Rosette** / **Frieze** / **Unison**. Rosette is the rose curve and the rosette window —
 accurate to what is on screen. Frieze is the ornamental border repeat, which is exactly what the
-modulo-wrap section reads as, and it fits the Phosphene one-evocative-word register (Skein,
+modulo-wrap section reads as, and it fits the Uzume one-evocative-word register (Skein,
 Nacre, Floret, Glaze, Stave, Meniscus). Runners-up: **Meander**, **Cartouche**, **Fret** for
 Frieze; **Emblem**, **Quatrefoil** for Rosette.
 
@@ -677,7 +677,7 @@ would misattribute the other two, which come from the same film.
   reading. Do not anchor on it.
 - `IMAGINARY ?showLines=1` — motion-dependent; stills are ordinary star polygons (§8).
 - Music Box var. 0 — motion-dependent, **and the audio is load-bearing**: muted, it reads as a
-  rotating rainbow spiral. Worth knowing, because Phosphene supplies different audio.
+  rotating rainbow spiral. Worth knowing, because Uzume supplies different audio.
 
 **Biography / theory**
 

@@ -26,7 +26,7 @@
 
 Two specific features (sustained bass envelope; vocal pitch contour) each paired with a specific behaviour (chambers unfolding; the structure rotating). It passes. The camera is fixed — **the geometry itself is the motion**, which is the whole point of this preset and the reason it belongs to the harmonic-morph strategy rather than to a fly-through.
 
-**Gate 2 — Iconic subject deliverable at fidelity (be honest here):** Reachable, but this is the fidelity-risk preset of the phase, so it is scoped and referenced accordingly. In favour: (a) 3D distance-estimated fractals (Mandelbox / KIFS / Mandelbulb) are a *heavily solved* register with canonical published distance estimators and rendering recipes — this is exactly the "read and port the reference, do not derive" case (FA #73); (b) Phosphene already ships ray-march SDF presets with PBR + IBL (Glass Brutalist, Kinetic Sculpture) and the utility tree already contains `sd_mandelbulb_iterate` and the material cookbook; (c) fractals give the four-scale detail cascade *for free* — self-similarity is detail at every octave. The honest constraint: this needs its own increment budget and disciplined reference-porting, not one heroic session. We build to the achievable bar — a legible fractal architecture with real lighting and 2–3 materials — not to "a specific artist's Fragmentarium masterpiece."
+**Gate 2 — Iconic subject deliverable at fidelity (be honest here):** Reachable, but this is the fidelity-risk preset of the phase, so it is scoped and referenced accordingly. In favour: (a) 3D distance-estimated fractals (Mandelbox / KIFS / Mandelbulb) are a *heavily solved* register with canonical published distance estimators and rendering recipes — this is exactly the "read and port the reference, do not derive" case (FA #73); (b) Uzume already ships ray-march SDF presets with PBR + IBL (Glass Brutalist, Kinetic Sculpture) and the utility tree already contains `sd_mandelbulb_iterate` and the material cookbook; (c) fractals give the four-scale detail cascade *for free* — self-similarity is detail at every octave. The honest constraint: this needs its own increment budget and disciplined reference-porting, not one heroic session. We build to the achievable bar — a legible fractal architecture with real lighting and 2–3 materials — not to "a specific artist's Fragmentarium masterpiece."
 
 **Gate 3 — Infrastructure-feasible:** Yes. `ray_march` + G-buffer + PBR lighting + SSGI + `post_process` are all shipped; `sceneSDF`/`sceneMaterial` with matID dispatch is the standard authoring surface; the slot-8 `LumenPatternState` placeholder contract is handled by the engine for non-Lumen presets. No new passes or contract. The only "new" thing is the Mandelbox DE, which is a `sceneSDF` body.
 
@@ -124,7 +124,7 @@ Heaviest preset in the phase. Mandelbox DE cost scales with iteration count and 
 
 ## Increment PG.3.1 — Mandelbox Cathedral macro geometry + hero audio (preset increment)
 
-**Objective:** After this session, Phosphene has a new `ray_march` preset "Mandelbox Cathedral" whose `sceneSDF` is a ported Mandelbox distance estimator rendered as a single-material clay maquette with basic key + IBL lighting and a fixed camera; the fractal fold-scale unfolds with `bass_att_rel` and the fold rotation twists with `vocals_pitch_hz` (confidence-gated, with an `other_energy_dev` fallback); a non-black ambient cathedral renders at silence. Registered, compiling, loading, golden-hashed, perf-profiled. `certified` stays `false`. Later increments (PG.3.2–PG.3.4 in `§A9`) add materials, thin-film, SSGI, atmosphere, secondary audio, and cert. This is the "clay maquette" stage of `SHADER_CRAFT.md §2.2`.
+**Objective:** After this session, Uzume has a new `ray_march` preset "Mandelbox Cathedral" whose `sceneSDF` is a ported Mandelbox distance estimator rendered as a single-material clay maquette with basic key + IBL lighting and a fixed camera; the fractal fold-scale unfolds with `bass_att_rel` and the fold rotation twists with `vocals_pitch_hz` (confidence-gated, with an `other_energy_dev` fallback); a non-black ambient cathedral renders at silence. Registered, compiling, loading, golden-hashed, perf-profiled. `certified` stays `false`. Later increments (PG.3.2–PG.3.4 in `§A9`) add materials, thin-film, SSGI, atmosphere, secondary audio, and cert. This is the "clay maquette" stage of `SHADER_CRAFT.md §2.2`.
 
 ## 1. Skills to invoke (in order)
 - **`preset-session`** — before any `.metal` / sidecar edit.
@@ -136,12 +136,12 @@ Heaviest preset in the phase. Mandelbox DE cost scales with iteration count and 
 2. `docs/VISUAL_REFERENCES/mandelbox_cathedral/README.md` and every image; the cited porting references (Syntopia/Knighty/IQ + the Shadertoy DE).
 3. `docs/ARCHITECTURE.md §GPU Contract Details` — G-buffer layout, matID dispatch, `sceneSDF`/`sceneMaterial` signatures, the slot-8 `LumenPatternState` placeholder contract (non-Lumen presets receive the zero placeholder and `(void)lumen;`).
 4. `docs/SHADER_CRAFT.md §7` (SDF craft — displacement Lipschitz safety §7.2, tetrahedral normals §7.3, adaptive march §7.4, per-primitive matID §7.5), `§4` (materials, for the maquette material), `§5.1/§5.2` (lighting), `§9` (perf budget).
-5. `PhospheneEngine/Sources/Presets/Shaders/KineticSculpture.metal` and `GlassBrutalist.metal` — reference ray-march presets (`sceneSDF`/`sceneMaterial` structure, FOV-in-degrees convention).
-6. `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` (the shared deferred lighting/composite) and `PresetLoader+Preamble.swift` (the `rayMarchGBufferPreamble`, `sceneSDF`/`sceneMaterial` forwarding).
+5. `UzumeEngine/Sources/Presets/Shaders/KineticSculpture.metal` and `GlassBrutalist.metal` — reference ray-march presets (`sceneSDF`/`sceneMaterial` structure, FOV-in-degrees convention).
+6. `UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal` (the shared deferred lighting/composite) and `PresetLoader+Preamble.swift` (the `rayMarchGBufferPreamble`, `sceneSDF`/`sceneMaterial` forwarding).
 7. The Geometry utility tree entry for `sd_mandelbulb_iterate` (a related DE reference) and `op_blend`/`ray_march_adaptive`/`ray_march_normal_tetra`.
 
 ## 3. Pre-flight invariants (a failed check stops the session)
-- `git status` clean on `main`; `swift test --package-path PhospheneEngine` green.
+- `git status` clean on `main`; `swift test --package-path UzumeEngine` green.
 - `docs/VISUAL_REFERENCES/mandelbox_cathedral/` populated per `§A7` + `README.md` written. **If not, curate first (Matt-owned) or stop.**
 - `docs/ENGINEERING_PLAN.md` has a Phase PG / PG.3.1 row.
 - Confirm the production preset count for `PresetLoaderCompileFailureTest` to bump by exactly 1.
@@ -170,11 +170,11 @@ Heaviest preset in the phase. Mandelbox DE cost scales with iteration count and 
 ## 6. Verification commands
 ```
 swiftlint lint --strict --config .swiftlint.yml
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
-swift test --package-path PhospheneEngine 2>&1
-swift test --package-path PhospheneEngine --filter "PresetLoaderCompileFailureTest|MandelboxCathedral|RayMarchPipeline|PresetRegressionTests"
-RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview 2>&1
-swift test --package-path PhospheneEngine --filter PresetPerformanceTests 2>&1
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' build 2>&1
+swift test --package-path UzumeEngine 2>&1
+swift test --package-path UzumeEngine --filter "PresetLoaderCompileFailureTest|MandelboxCathedral|RayMarchPipeline|PresetRegressionTests"
+RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview 2>&1
+swift test --package-path UzumeEngine --filter PresetPerformanceTests 2>&1
 ```
 
 ## 7. Commit message templates (small commits; local `main`; push only on Matt's "yes, push")

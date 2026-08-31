@@ -1,4 +1,4 @@
-# Phosphene — Runbook
+# Uzume — Runbook
 
 ## Preconditions
 
@@ -13,30 +13,30 @@
 
 ## Spotify connector setup (U.11 — OAuth PKCE)
 
-Phosphene uses Spotify's Authorization Code + PKCE flow (user-level OAuth). The user logs in once via their system browser; the refresh token is stored in the macOS Keychain and used silently on subsequent launches.
+Uzume uses Spotify's Authorization Code + PKCE flow (user-level OAuth). The user logs in once via their system browser; the refresh token is stored in the macOS Keychain and used silently on subsequent launches.
 
 **One-time developer setup:**
 
 1. Go to [https://developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and log in.
 2. Click **Create app**. Name it "Uzume". Add redirect URI: **`uzume://spotify-callback`** (exact, required). Check **Web API**. Accept terms.
 3. Copy the **Client ID** from the app dashboard. (No client secret is needed for PKCE.)
-4. Create `PhospheneApp/Phosphene.local.xcconfig` (gitignored) with:
+4. Create `UzumeApp/Uzume.local.xcconfig` (gitignored) with:
    ```
    SPOTIFY_CLIENT_ID = your_client_id_here
    ```
-5. Build. No Xcode configuration change is needed: both `Debug` and `Release` already point at `Phosphene.xcconfig` (`baseConfigurationReference`, `PhospheneApp.xcodeproj/project.pbxproj`), and that file ends with `#include? "Phosphene.local.xcconfig"` — creating the file is sufficient.
+5. Build. No Xcode configuration change is needed: both `Debug` and `Release` already point at `Uzume.xcconfig` (`baseConfigurationReference`, `UzumeApp.xcodeproj/project.pbxproj`), and that file ends with `#include? "Uzume.local.xcconfig"` — creating the file is sufficient.
 
 The app reads `SpotifyClientID` at runtime via `Bundle.main.infoDictionary`. An empty or missing Client ID causes every Spotify connect attempt to throw `.spotifyAuthFailure` immediately.
 
-**`Phosphene.local.xcconfig` is gitignored, so it does not survive `git clean -fdx`, a fresh clone, or a new worktree.** Re-create it (step 4) whenever Spotify connect starts failing in a tree that used to work. In a DEBUG build the connector says so directly — "No Spotify Client ID in this build…" — rather than the generic auth-failure copy a shipped build shows.
+**`Uzume.local.xcconfig` is gitignored, so it does not survive `git clean -fdx`, a fresh clone, or a new worktree.** Re-create it (step 4) whenever Spotify connect starts failing in a tree that used to work. In a DEBUG build the connector says so directly — "No Spotify Client ID in this build…" — rather than the generic auth-failure copy a shipped build shows.
 
 **User flow (end-user, one-time):**
 
 1. Paste a Spotify playlist URL in the connector view.
-2. Phosphene shows "Log in with Spotify" if not yet authenticated.
+2. Uzume shows "Log in with Spotify" if not yet authenticated.
 3. Tap "Log in with Spotify" → system browser opens `accounts.spotify.com/authorize`.
 4. User approves → browser redirects to `uzume://spotify-callback?code=…`.
-5. Phosphene exchanges the code for tokens; refresh token stored in Keychain.
+5. Uzume exchanges the code for tokens; refresh token stored in Keychain.
 6. Future sessions skip the login step (silent token refresh).
 
 **Logout:** Not yet exposed in the Settings UI. Developer workaround: delete the Keychain item via Keychain Access.app → search "io.uzume.spotify".
@@ -56,29 +56,29 @@ Three connector-implementation lessons relocated to live next to the Spotify set
 
 ```bash
 # Build
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' build
 
-# Package tests (PhospheneEngine SPM target)
-swift test --package-path PhospheneEngine
+# Package tests (UzumeEngine SPM target)
+swift test --package-path UzumeEngine
 
 # App tests (app test target only — engine tests run via swift test above)
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test
+xcodebuild -scheme UzumeApp -destination 'platform=macOS' test
 
 # Lint
 swiftlint lint --strict --config .swiftlint.yml
 ```
 
-**The app scheme's test action runs only `PhospheneAppTests` (BUG-048).** From U.1 until 2026-06-11 it also ran the engine test bundle, which fails under xcodebuild's test-runner context on environment, not code: ffmpeg subprocess spawning and repo-relative file reads are denied ("Operation not permitted"), audio-device tests die instantly, and only ~440 of the engine suite's 1439 tests even load. The engine suite's canonical runner is `swift test --package-path PhospheneEngine`, where all of those pass. `SchemeTestActionRegressionTests` (engine suite) fails loudly if the engine bundle is re-added to the scheme's test action.
+**The app scheme's test action runs only `UzumeAppTests` (BUG-048).** From U.1 until 2026-06-11 it also ran the engine test bundle, which fails under xcodebuild's test-runner context on environment, not code: ffmpeg subprocess spawning and repo-relative file reads are denied ("Operation not permitted"), audio-device tests die instantly, and only ~440 of the engine suite's 1439 tests even load. The engine suite's canonical runner is `swift test --package-path UzumeEngine`, where all of those pass. `SchemeTestActionRegressionTests` (engine suite) fails loudly if the engine bundle is re-added to the scheme's test action.
 
-**Quit Uzume before running the app test suite (BUG-072).** The test *host* is `Uzume.app` itself, and `Info.plist` sets `LSMultipleInstancesProhibited` (U.11, for OAuth callback routing) — so while any `io.uzume.mac` process is running, LaunchServices refuses the host launch and the whole run fails at exit 65 with "Could not launch “PhospheneAppTests”", zero tests executed. It survives every build-side remedy (clean, `lsregister`, bundle delete, a different worktree or DerivedData path) because the blocker is a *running process*, not a build product. Fix:
+**Quit Uzume before running the app test suite (BUG-072).** The test *host* is `Uzume.app` itself, and `Info.plist` sets `LSMultipleInstancesProhibited` (U.11, for OAuth callback routing) — so while any `io.uzume.mac` process is running, LaunchServices refuses the host launch and the whole run fails at exit 65 with "Could not launch “UzumeAppTests”", zero tests executed. It survives every build-side remedy (clean, `lsregister`, bundle delete, a different worktree or DerivedData path) because the blocker is a *running process*, not a build product. Fix:
 
 ```bash
 osascript -e 'tell application id "io.uzume.mac" to quit'; pkill -x Uzume
 ```
 
 Address it **by bundle id**. At RN.1 the product became `Uzume.app` with executable
-`Uzume`, so the pre-rename incantations (`tell application "PhospheneApp"`,
-`pkill -x PhospheneApp`) silently match nothing and leave the blocker running — the
+`Uzume`, so the pre-rename incantations (`tell application "UzumeApp"`,
+`pkill -x UzumeApp`) silently match nothing and leave the blocker running — the
 next test run then fails for a reason the command you just ran appeared to rule out.
 If a wedged instance ignores `quit` outright, `kill -9 <pid>` from
 `pgrep -f 'Uzume.app/Contents/MacOS'` is the escape hatch.
@@ -120,7 +120,7 @@ security delete-generic-password -s io.uzume.spotify ~/Library/Keychains/login.k
 
 **3. Update the Spotify redirect URI — on Spotify's side.** This one is not in the repo and
 no sweep can fix it. The app now sends `uzume://spotify-callback`, but an app registration
-created before the rename still whitelists `phosphene://spotify-callback`, and Spotify rejects
+created before the rename still whitelists `uzume://spotify-callback`, and Spotify rejects
 the login with **"redirect_uri: Not matching configuration"** *after* the user has already typed
 their password — so it reads like a credentials failure rather than a config one. On
 developer.spotify.com/dashboard → your app → Settings → Redirect URIs, add
@@ -128,17 +128,17 @@ developer.spotify.com/dashboard → your app → Settings → Redirect URIs, add
 pre-rename build working.
 
 **4. Nothing to do for settings or the stem cache.** `IdentityMigrator` runs at launch and
-carries the UserDefaults domain plus `~/Library/Application Support/Phosphene` →
+carries the UserDefaults domain plus `~/Library/Application Support/Uzume` →
 `.../Uzume` (the stem cache — hundreds of MB, each entry an ML separation pass). It is
 idempotent and never overwrites a value already set under the new identity.
 
-**Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `PhospheneApp/Phosphene.xcconfig`.
+**Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `UzumeApp/Uzume.xcconfig`.
 
 ### Fast local tier — `Scripts/test_fast.sh` (CLEAN.7.2a)
 
 For the inner dev loop, `Scripts/test_fast.sh` runs the pure-logic core — ~978 of the ~1,524 engine tests (DSP / Orchestrator / Shared / Session-logic / Audio-core / Doc gates) in ~13 s — skipping the GPU / ML / audio-fixture / visual / perf / integration / soak suites. It is **green in a worktree**: it excludes exactly the gitignored-fixture suites that fail loud when fixtures are absent, so it's the quickest "did I break the core logic" signal *without* running `fetch_tempo_fixtures.sh`.
 
-It is **not the gate** — it's the local mirror of the CI fast gate (below). The full `swift test --package-path PhospheneEngine` via `Scripts/closeout_evidence.sh` stays the merge/closeout gate and runs everything (GPU, ML, fixture, perf). For a tighter targeted loop, `swift test --package-path PhospheneEngine --filter <SuiteName>` runs exactly one suite. The skip-list is curated (exclusion by `--skip` regex, so a *new* heavy suite is not auto-skipped) — when you add a heavy GPU/ML/fixture/visual suite, add its name fragment to the relevant group in the script.
+It is **not the gate** — it's the local mirror of the CI fast gate (below). The full `swift test --package-path UzumeEngine` via `Scripts/closeout_evidence.sh` stays the merge/closeout gate and runs everything (GPU, ML, fixture, perf). For a tighter targeted loop, `swift test --package-path UzumeEngine --filter <SuiteName>` runs exactly one suite. The skip-list is curated (exclusion by `--skip` regex, so a *new* heavy suite is not auto-skipped) — when you add a heavy GPU/ML/fixture/visual suite, add its name fragment to the relevant group in the script.
 
 ### Gate structure — CI fast gate vs manual closeout (CLEAN.5)
 
@@ -162,9 +162,9 @@ CI green ≠ closeout green. CI is the fast push/PR signal; the closeout block i
 
 ### Worktree setup: fetch local audio fixtures
 
-`PhospheneEngine/Tests/Fixtures/tempo/` is gitignored — the directory contains 30-second iTunes preview clips for the DSP.1 / BUG-008 / BeatThis regression tests, and those clips are licensed (do not commit). Fresh checkouts and new `git worktree add` sessions do not inherit them.
+`UzumeEngine/Tests/Fixtures/tempo/` is gitignored — the directory contains 30-second iTunes preview clips for the DSP.1 / BUG-008 / BeatThis regression tests, and those clips are licensed (do not commit). Fresh checkouts and new `git worktree add` sessions do not inherit them.
 
-If `swift test --package-path PhospheneEngine` reports 4 `BeatThis*` / `LiveDriftValidation` / `BeatGridAccuracyDiagnostic` failures with messages like *"love_rehab.m4a missing at .../Tests/Fixtures/tempo/love_rehab.m4a"*, the fixtures are missing. Either:
+If `swift test --package-path UzumeEngine` reports 4 `BeatThis*` / `LiveDriftValidation` / `BeatGridAccuracyDiagnostic` failures with messages like *"love_rehab.m4a missing at .../Tests/Fixtures/tempo/love_rehab.m4a"*, the fixtures are missing. Either:
 
 ```bash
 # The one to run (BUG-080, 2026-08-03): symlinks every gitignored tree a
@@ -191,7 +191,7 @@ Scripts/link_fixtures.sh --verify
 
 | System | Where it lives | Gated by | Runs by default |
 |---|---|---|---|
-| **tempo fixtures** (3 licensed clips) | `PhospheneEngine/Tests/Fixtures/tempo/`, gitignored | `FixtureManifestPresenceGate` | **yes** |
+| **tempo fixtures** (3 licensed clips) | `UzumeEngine/Tests/Fixtures/tempo/`, gitignored | `FixtureManifestPresenceGate` | **yes** |
 | **BeatBench** (17 tracks) | *outside the repo* at `BEATBENCH_FIXTURES_DIR` | `BeatBenchFixturePresenceGate`, sha256-matched | no — env-gated |
 | **diagnostic harnesses** (e.g. `pyramid_song.m4a`) | `Fixtures/tempo/`, gitignored | none | no — env-gated suites |
 
@@ -225,7 +225,7 @@ bytes — PNG / JPEG, depending on the source container). Per-track footprint:
 `schemaMismatch` on load → caller re-prepares with v2. One-time ~2 s cost
 per cached track on next play after the bump.
 
-**User-facing controls (LF.4).** `Phosphene → Clear Local-File Cache (<size>)`
+**User-facing controls (LF.4).** `Uzume → Clear Local-File Cache (<size>)`
 shows the current cache footprint in the menu label and empties the cache
 on click (with a confirmation alert reporting the bytes freed). Automatic
 LRU eviction runs after every cache write — the default 500 MB cap
@@ -240,7 +240,7 @@ find "$HOME/Library/Application Support/Uzume/StemCache" -type f
 # Size
 du -sh "$HOME/Library/Application Support/Uzume/StemCache"
 
-# Wipe all cached entries (or use Phosphene → Clear Local-File Cache)
+# Wipe all cached entries (or use Uzume → Clear Local-File Cache)
 rm -rf "$HOME/Library/Application Support/Uzume/StemCache"
 
 # Wipe one entry by file hash
@@ -248,10 +248,10 @@ shasum -a 256 path/to/file.m4a   # → c1685f07d559...
 rm -rf "$HOME/Library/Application Support/Uzume/StemCache/sha256/c1/c1685f07d559..."
 
 # Override the default 500 MB eviction cap (1 GB example)
-defaults write io.uzume.mac phosphene.cache.localFile.maxBytes -int 1073741824
+defaults write io.uzume.mac uzume.cache.localFile.maxBytes -int 1073741824
 
 # Read the current cap (LF.4)
-defaults read io.uzume.mac phosphene.cache.localFile.maxBytes
+defaults read io.uzume.mac uzume.cache.localFile.maxBytes
 ```
 
 **When to clear the cache.**
@@ -285,14 +285,14 @@ latency reference per increment.
 ## Recents menu management (LF.5, D-132)
 
 `File → Open Recent ▸` persists the last 10 file / folder / M3U opens to
-the `phosphene.lf.recents` UserDefaults key as a JSON-encoded list.
+the `uzume.lf.recents` UserDefaults key as a JSON-encoded list.
 
 ```sh
 # Inspect (the value is JSON inside a `<data>` blob — base64-decode if needed)
-defaults read io.uzume.mac phosphene.lf.recents
+defaults read io.uzume.mac uzume.lf.recents
 
 # Reset (use the menu's "Clear Recents" item, or wipe via defaults)
-defaults delete io.uzume.mac phosphene.lf.recents
+defaults delete io.uzume.mac uzume.lf.recents
 ```
 
 Stale entries (file no longer at the recorded path) render disabled with a
@@ -320,18 +320,18 @@ against the 500 MB cache cap (~70 cached tracks) — larger queues would
 thrash eviction mid-playback. Users with libraries > 200 audio files
 should pick smaller subset folders or trim the M3U.
 
-**File-association.** `Info.plist` registers Phosphene as an Alternate
+**File-association.** `Info.plist` registers Uzume as an Alternate
 handler (NOT Default) for `m4a / mp3 / flac / m3u / m3u8`. Once the
 LaunchServices database has re-indexed the bundle (typically takes
 effect after the first launch of a new build), the user can right-click
-a registered file in Finder → "Open With…" → Phosphene. To force a
+a registered file in Finder → "Open With…" → Uzume. To force a
 LaunchServices re-registration without restarting:
 
 ```sh
 /System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister \
   -kill -r -domain user
-# then verify Phosphene is registered:
-/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -dump | grep -i phosphene
+# then verify Uzume is registered:
+/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -dump | grep -i uzume
 ```
 
 ## Claude Code Session Checklist
@@ -339,8 +339,8 @@ LaunchServices re-registration without restarting:
 Every session that modifies Swift code must end with all four passing:
 
 1. `swiftlint lint --strict --config .swiftlint.yml`
-2. `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1`
-3. `swift test --package-path PhospheneEngine 2>&1`
+2. `xcodebuild -scheme UzumeApp -destination 'platform=macOS' build 2>&1`
+3. `swift test --package-path UzumeEngine 2>&1`
 4. All existing tests pass before new code is merged (regression gate)
 
 ## First-Launch Checklist
@@ -375,7 +375,7 @@ Checks:
 - `AudioHardwareCreateProcessTap` succeeds without permission but delivers zeros.
 - Confirm the system-wide tap installed (system audio is the only capture mode).
 - Check `SilenceDetector` state transitions (`.active` → `.suspect` at 1.5s → `.silent` at 3s).
-- DRM silence: Apple Music lossless/FairPlay and Spotify DRM can zero out the tap buffer. This is expected — Phosphene degrades to ambient visual mode and monitors for recovery.
+- DRM silence: Apple Music lossless/FairPlay and Spotify DRM can zero out the tap buffer. This is expected — Uzume degrades to ambient visual mode and monitors for recovery.
 - Scrub-induced silence: scrubbing in Spotify / Apple Music tears down the source process's audio session and the existing tap stays alive but delivers permanent silence. `AudioInputRouter` automatically reinstalls the tap on backoff `[3s, 10s, 30s]` after `.silent` is confirmed. Look for `Tap reinstall scheduled` / `Tap reinstall #N succeeded` lines in `session.log` to confirm recovery fired.
 
 ### Audio levels too low (raw tap peaks below −15 dBFS)
@@ -386,9 +386,9 @@ Checks:
 - **Spotify**: Settings → Playback → toggle **"Normalize volume"** OFF. Default normalization (-14 LUFS) drops mastered peaks to ~0.15-0.20.
 - **Apple Music**: Settings → Playback → toggle **"Sound Check"** OFF.
 - **Streaming quality**: pin to **Very High** / **Lossless**, disable any "auto-adjust quality" toggle. Lower bitrates compress dynamic range and flatten transients.
-- **Audio MIDI Setup**: if a Multi-Output Device is the system output, all member devices should be at the same sample rate (48 kHz preferred — Phosphene's stem pipeline assumes 44.1/48 kHz internally; 96 kHz forces resampling). Set the *physical* device (e.g., built-in speakers) as Primary and enable Drift Correction on virtual subdevices, not the other way around.
+- **Audio MIDI Setup**: if a Multi-Output Device is the system output, all member devices should be at the same sample rate (48 kHz preferred — Uzume's stem pipeline assumes 44.1/48 kHz internally; 96 kHz forces resampling). Set the *physical* device (e.g., built-in speakers) as Primary and enable Drift Correction on virtual subdevices, not the other way around.
 - **External USB/Thunderbolt interfaces (e.g., Apogee Duet 3 — current canonical playback chain)**: same 48 kHz rule. Open Audio MIDI Setup → select the interface → Format → **48,000.0 Hz, 2 ch 32-bit Float** on both Input and Output tabs. Make the interface the system default output (System Settings → Sound → Output). **Switching the default output device invalidates Uzume's Screen Recording permission** — the process tap continues to install successfully and deliver silent zeros, with no UI signal that the chain is broken. Re-grant via System Settings → Privacy & Security → Screen Recording → toggle Uzume off then on, relaunch, and confirm `Signal: Active` in the debug overlay within 1.5 s of audio starting. Same trap fires on any default-output change (built-in → interface, interface A → interface B, headphone unplug if the system rebinds defaults).
-- **Verification**: `raw_tap.wav` (30s Stage-4 capture in each session dir) peak should land at −3 to −9 dBFS for properly mastered tracks with normalization off. Peaks below −15 dBFS point to source-app normalization or routing attenuation. **Do not interpret post-stem-separation WAV spectra as the raw chain** — the stem separator isolates per-instrument content, so a "drums.wav with narrow spectrum" on a drum-sparse track tells you nothing about the chain. Only `raw_tap.wav` reflects what macOS actually delivers to Phosphene.
+- **Verification**: `raw_tap.wav` (30s Stage-4 capture in each session dir) peak should land at −3 to −9 dBFS for properly mastered tracks with normalization off. Peaks below −15 dBFS point to source-app normalization or routing attenuation. **Do not interpret post-stem-separation WAV spectra as the raw chain** — the stem separator isolates per-instrument content, so a "drums.wav with narrow spectrum" on a drum-sparse track tells you nothing about the chain. Only `raw_tap.wav` reflects what macOS actually delivers to Uzume.
 
 ### Diagnosing signal-chain degradation (proper methodology)
 
@@ -403,7 +403,7 @@ Spotify → coreaudiod → CATap → IO proc → AudioBuffer → FFT → StemSep
 
 To localize degradation:
 
-1. **Spectrum-check `raw_tap.wav`** — this is ground truth for what macOS hands us. If it looks clean here, the issue is in Phosphene or the preset, not the source chain.
+1. **Spectrum-check `raw_tap.wav`** — this is ground truth for what macOS hands us. If it looks clean here, the issue is in Uzume or the preset, not the source chain.
 2. **If `raw_tap.wav` is degraded**, play a 20 Hz–20 kHz sine sweep through the same chain (YouTube: "20Hz to 20kHz sine sweep stereo"). A clean chain produces a flat spectrum across the sweep duration; any dip localizes the attenuated frequency range.
 3. **If the sweep is flat but specific content still looks wrong**, the issue is Spotify/source app — bypass it with a locally-owned FLAC/MP3 through QuickTime and re-capture.
 4. **Post-separation stem WAVs are unreliable for chain diagnostics** — they reflect the stem separator's per-instrument isolation, not the mix. A track with minimal drums will produce a narrow-spectrum `drums.wav` regardless of chain quality.
@@ -446,7 +446,7 @@ Checks:
 
 **Missing Client ID** (`authFailure` state; DEBUG builds say "No Spotify Client ID in this build…", Release shows the generic "Couldn't connect to Spotify"):
 - `SpotifyClientID` in Info.plist is empty.
-- Cause: `PhospheneApp/Phosphene.local.xcconfig` was never created — or was lost, since it is gitignored and therefore absent after `git clean -fdx`, a fresh clone, or in a new worktree.
+- Cause: `UzumeApp/Uzume.local.xcconfig` was never created — or was lost, since it is gitignored and therefore absent after `git clean -fdx`, a fresh clone, or in a new worktree.
 - Fix: follow §Spotify connector setup above (creating the file is all that is needed). Build again after editing the xcconfig.
 
 **Redirect URI mismatch** (browser shows Spotify error page after login):
@@ -462,7 +462,7 @@ Checks:
 - Fix: tap "Log in with Spotify" again.
 
 **Refresh token revoked** (`requiresLogin` state reappears on launch):
-- Cause: user revoked Phosphene's access in Spotify account settings, or the token expired after a very long period.
+- Cause: user revoked Uzume's access in Spotify account settings, or the token expired after a very long period.
 - Fix: tap "Log in with Spotify" again to re-authenticate.
 
 **Private playlist** (`privatePlaylist` state, "That playlist is private"):
@@ -484,7 +484,7 @@ Checks:
     3. Add or re-confirm redirect URI: `uzume://spotify-callback`.
     4. Click **Save**.
     5. Delete the stored refresh token: open Keychain Access → search "io.uzume.spotify" → delete it.
-    6. Relaunch Phosphene and log in again. The new token will carry playlist permissions.
+    6. Relaunch Uzume and log in again. The new token will carry playlist permissions.
 
 **Empty playlist / 0 tracks prepared (reactive fallback despite successful login):**
 Root causes, in order of likelihood:
@@ -541,7 +541,7 @@ If tracks are still stuck after reconnect: check `session.log` for `NetworkRecov
 
 ## Diagnostic Session Captures
 
-Every Phosphene launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/` and writes diagnostic data continuously while the app runs. Use these to triage user-reported issues (visualizer behaviour, audio dropouts, stem-quality concerns).
+Every Uzume launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/` and writes diagnostic data continuously while the app runs. Use these to triage user-reported issues (visualizer behaviour, audio dropouts, stem-quality concerns).
 
 **Files:**
 
@@ -564,11 +564,11 @@ Every Phosphene launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/`
 | `session.log` has `Tap reinstall scheduled` entries | Audio path saw silence; check whether reinstall succeeded |
 | `video frame skipped: drawable WxH != writer WxH` log lines | Drawable size changed mid-session (window resize) |
 
-**Frozen-app exception.** If Phosphene is unresponsive or beachballing, do not force-quit it
+**Frozen-app exception.** If Uzume is unresponsive or beachballing, do not force-quit it
 yet. From the repository root, run `Scripts/capture_hang.sh` and wait for the script to report
 its capture directory. The bundle records a process sample, process state, session-log tail,
 and the recent drawable lifecycle needed to diagnose renderer stalls. After the capture
-finishes, force-quit Phosphene if necessary. If the process is terminated first, this evidence
+finishes, force-quit Uzume if necessary. If the process is terminated first, this evidence
 cannot be recovered.
 
 **Quitting cleanly matters.** `AVAssetWriter.finishWriting` is called from an `NSApplication.willTerminateNotification` observer in `VisualizerEngine.init`. Force-quitting the app (Activity Monitor, kill -9) skips this and leaves `video.mp4` without its `moov` atom — unplayable. Use ⌘Q.
@@ -599,7 +599,7 @@ Scripts/tsan_stress.sh
 
 Runs the concurrency + session-lifecycle stress and regression tests under
 `swift test --sanitize=thread` to prove the BUG-031/032 fixes are race-free
-(not merely moved). The script sets `PHOSPHENE_STRESS=1`, the opt-in gate for
+(not merely moved). The script sets `UZUME_STRESS=1`, the opt-in gate for
 `ConcurrencyStressTests` — the heavy overlapping-`separate()` + rapid
 session-start/end/cancel-churn harness, which skips in the normal suite so the
 per-increment closeout stays light. Pass condition: exit 0 **and** zero
@@ -614,7 +614,7 @@ Metal/MPSGraph `StemSeparator` — no suppressions file needed.
 ### Quick smoke run (60 seconds, in test suite)
 
 ```bash
-SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter SoakTestHarnessTests
+SOAK_TESTS=1 swift test --package-path UzumeEngine --filter SoakTestHarnessTests
 ```
 
 Reports are written to `$TMPDIR/phosphene_soak_smoke_<timestamp>/`.
@@ -622,13 +622,13 @@ Reports are written to `$TMPDIR/phosphene_soak_smoke_<timestamp>/`.
 ### 5-minute memory check (in test suite)
 
 ```bash
-SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter "SoakTestHarnessTests/fiveMinuteMemoryCheck"
+SOAK_TESTS=1 swift test --package-path UzumeEngine --filter "SoakTestHarnessTests/fiveMinuteMemoryCheck"
 ```
 
 ### 30-second Arachne COMPOSITE kernel cost benchmark (BUG-011 regression gate)
 
 ```bash
-SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter shortRunArachneComposite
+SOAK_TESTS=1 swift test --package-path UzumeEngine --filter shortRunArachneComposite
 ```
 
 Renders Arachne's COMPOSITE fragment to a 1920×1080 offscreen target for 30 simulated seconds at 60 Hz with the spider forced active and a placeholder WORLD texture bound; reports p50 / p95 / p99 / kernel-overrun count from `MTLCommandBuffer.gpuStartTime/gpuEndTime`. Loose gate: kernel p95 < 16 ms on M2 Pro. Arachne is fragment-only so kernel ≈ full-pipeline; spider-forced is the worst case. Failures indicate a shader-side regression (step count, coverage gate, or dispatch gate creep) before the full-pipeline real-music capture catches it.
@@ -649,8 +649,8 @@ Reports are written to `~/Documents/phosphene_soak/<ISO-timestamp>/report.json` 
 ### Custom run (shorter duration for iteration)
 
 ```bash
-swift build --package-path PhospheneEngine --configuration release --product SoakRunner
-caffeinate -i PhospheneEngine/.build/release/SoakRunner \
+swift build --package-path UzumeEngine --configuration release --product SoakRunner
+caffeinate -i UzumeEngine/.build/release/SoakRunner \
   --duration 300 \
   --sample-interval 30 \
   --audio-file /path/to/loop.wav
@@ -676,19 +676,19 @@ Pass these as `SoakTestHarness.Configuration` overrides for different workloads.
 
 ## Recording the quality reel
 
-The quality reel is a 3-minute screen capture of Phosphene playing the canonical
+The quality reel is a 3-minute screen capture of Uzume playing the canonical
 playlist (`docs/quality_reel_playlist.json`). Output: `docs/quality_reel.mp4`,
 1080p60, H.264, ~50–150 MB. Committed via Git LFS.
 
 **Procedure:**
 
 1. Confirm all three playlist tracks are present in your Apple Music library
-   and queueable via the Phosphene Apple Music connector.
-2. Build Phosphene Release: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' -configuration Release`.
+   and queueable via the Uzume Apple Music connector.
+2. Build Uzume Release: `xcodebuild -scheme UzumeApp -destination 'platform=macOS' -configuration Release`.
 3. Set your display to 1920×1080 (external display or Sidecar at 1080p).
-4. Open Phosphene and connect the playlist. Wait for `.ready` state.
+4. Open Uzume and connect the playlist. Wait for `.ready` state.
 5. Open macOS Screen Recording (Cmd+Shift+5 → "Record Selected Portion"), target
-   the Phosphene window. Set audio source to OFF — the reel captures visuals only.
+   the Uzume window. Set audio source to OFF — the reel captures visuals only.
 6. Start recording, then immediately start playback in your music app.
 7. Record continuously through all three segments (∼3 min). Do not stop and
    re-start between segments — transitions are part of the artefact.
@@ -709,9 +709,9 @@ requires adjustment.
   thresholds and produce spurious onsets.
 
 *Reactive-mode caveat:*
-Phosphene has no Spotify OAuth integration. Without OAuth, `SessionManager` cannot
+Uzume has no Spotify OAuth integration. Without OAuth, `SessionManager` cannot
 call `startSession(source: .spotify(...))` — the `.ready` state is never reached
-via the normal preparation pipeline. Instead, launch Phosphene and invoke
+via the normal preparation pipeline. Instead, launch Uzume and invoke
 `startAdHocSession()` (the "Start listening now" CTA in IdleView), which advances
 directly to `.playing` (reactive mode). The AI Orchestrator has no pre-planned
 session; `DefaultReactiveOrchestrator` drives preset selection live. This is a
@@ -804,7 +804,7 @@ check's job.
 ### Print the full rubric breakdown for all presets
 
 ```bash
-swift test --package-path PhospheneEngine --filter "FidelityRubricReportTests/rubricReport_allPresetsLoad" 2>&1 | grep -E "\[.\]|pass|FAIL|manual"
+swift test --package-path UzumeEngine --filter "FidelityRubricReportTests/rubricReport_allPresetsLoad" 2>&1 | grep -E "\[.\]|pass|FAIL|manual"
 ```
 
 Runs Suite 1 of `FidelityRubricTests` and prints each preset's per-item breakdown. No content assertions — this is a diagnostic readout only.
@@ -814,9 +814,9 @@ Runs Suite 1 of `FidelityRubricTests` and prints each preset's per-item breakdow
 After a fidelity uplift that flips a preset's `meetsAutomatedGate` from `false → true`:
 
 1. Run the report above and confirm the preset shows `[✓]`.
-2. Open `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/FidelityRubricTests.swift`.
+2. Open `UzumeEngine/Tests/UzumeEngineTests/Renderer/FidelityRubricTests.swift`.
 3. In `expectedAutomatedGate` (Suite 2), change the preset's entry from `false` to `true`.
-4. Run `swift test --package-path PhospheneEngine --filter FidelityRubricGateTests` to confirm no regressions.
+4. Run `swift test --package-path UzumeEngine --filter FidelityRubricGateTests` to confirm no regressions.
 5. Commit the updated dictionary referencing the preset and D-067.
 
 ### Certifying a preset (setting `certified: true`)
@@ -842,7 +842,7 @@ procedure, as practiced from Skein through Cytokinesis:
      **0.00 flashes/s** required.
 4. Non-empty `audio_routes` in the sidecar, all green (`RouteCoverageTests`
    — QG.1 requires it for certification).
-5. Full battery: `swift test --package-path PhospheneEngine --filter
+5. Full battery: `swift test --package-path UzumeEngine --filter
    "FidelityRubric|Photosensitivity|MultiPassFlash|RouteCoverage"` +
    `OrchestratorCertifiedFilterTests` (the preset now enters planning).
 
@@ -864,5 +864,5 @@ procedure, as practiced from Skein through Cytokinesis:
 Build/test mechanics that fire rarely but cost real debugging time when hit:
 
 - **`URLProtocol` stub tests require `@Suite(.serialized)`** (U.10). Swift Testing runs suites in parallel by default. A suite using a global `nonisolated(unsafe) static var handler` on a `URLProtocol` subclass must be annotated `@Suite(.serialized)` — otherwise one test's handler bleeds into another test's in-flight URL session on a background thread. Discovered when 5 of 9 `SpotifyTokenProviderTests` returned HTTP 400 instead of 200 during parallel execution.
-- **New app-layer source files must be registered in `project.pbxproj` across all four sections** (U.11): `PBXBuildFile`, `PBXFileReference`, `PBXGroup` (parent group), and `PBXSourcesBuildPhase`. Files on disk but not in the project file cause `cannot find type` build errors. The project uses alphabetical UUID prefixes (N10xxx / N20xxx were next-available at U.11). `xcodebuild -scheme PhospheneApp build` fails immediately if any section is missing.
+- **New app-layer source files must be registered in `project.pbxproj` across all four sections** (U.11): `PBXBuildFile`, `PBXFileReference`, `PBXGroup` (parent group), and `PBXSourcesBuildPhase`. Files on disk but not in the project file cause `cannot find type` build errors. The project uses alphabetical UUID prefixes (N10xxx / N20xxx were next-available at U.11). `xcodebuild -scheme UzumeApp build` fails immediately if any section is missing.
 - **`@MainActor` debounce test timing margins under parallel execution** (U.11). Under 305-test parallel app execution, `@MainActor` scheduling contention grows: a 300 ms debounce needs a 700 ms wait (2.3× headroom); async actor-hop completions (connect, login) need 250–400 ms.

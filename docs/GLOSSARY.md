@@ -1,6 +1,6 @@
 # Glossary — internal shorthand you'll meet in these docs
 
-Phosphene was built by a two-member team (Matt + Claude Code) and the docs
+Uzume was built by a two-member team (Matt + Claude Code) and the docs
 were written for them first. This page decodes the shorthand; nothing here
 is needed to *run* the project, only to read its history.
 

@@ -3,7 +3,7 @@
 **Audit increment:** CA.5
 **Date:** 2026-05-21
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneApp/` engine-adapter slice — 49 Swift files, 7,975 LoC. The Views (47 files) + ViewModels (12 files) presentation slice is deferred to CA.6 per the Pass 0 sub-scope decision below.
+**Scope:** `UzumeApp/` engine-adapter slice — 49 Swift files, 7,975 LoC. The Views (47 files) + ViewModels (12 files) presentation slice is deferred to CA.6 per the Pass 0 sub-scope decision below.
 **Methodology:** Phase CA scoping document — CA.5 kickoff in commit `54357118`.
 **Reads relied on:** `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/CAPABILITY_REGISTRY/DSP_MIR.md` (CA.1), `docs/CAPABILITY_REGISTRY/ML.md` (CA.2), `docs/CAPABILITY_REGISTRY/SESSION.md` (CA.3), `docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md` (CA.4), `docs/DECISIONS.md` (D-046, D-049, D-050, D-052, D-053, D-054, D-057, D-058, D-061, D-069, D-070, D-074, D-079, D-080, D-088, D-091, D-095, D-097, D-LM-buffer-slot-8, D-LM-palette-library), `docs/QUALITY/KNOWN_ISSUES.md` (BUG-001, BUG-005, BUG-006, BUG-011, BUG-012, BUG-013, BUG-015, BUG-016), `docs/ENGINEERING_PLAN.md` (Phase U + Phase QR + Phase CA), `docs/UX_SPEC.md`.
 
@@ -11,7 +11,7 @@
 
 ## Summary
 
-49 file-level entities audited (~8.0k LoC) across the engine-adapter slice of `PhospheneApp/`. The slice is the consumer-side surface for every Orchestrator / Session / DSP / ML / Renderer capability the prior four audits documented. **Headline finding: the just-landed BUG-015 wire is structurally correct.** The App-layer landing of `runOrchestratorLiveUpdate(mir:)`, the lock-guarded `liveTrackPlanIndex` / `lastClassifiedMood` / `orchestratorWireLoggedThisTrack` fields, the once-per-track diagnostic, the off-plan skip path, and the OrchestratorWiringRegressionTests source-presence regression test all match the BUG-015 Resolved-field design notes byte-for-byte. **Zero `broken-but-claimed` findings; zero new BUG entries filed.**
+49 file-level entities audited (~8.0k LoC) across the engine-adapter slice of `UzumeApp/`. The slice is the consumer-side surface for every Orchestrator / Session / DSP / ML / Renderer capability the prior four audits documented. **Headline finding: the just-landed BUG-015 wire is structurally correct.** The App-layer landing of `runOrchestratorLiveUpdate(mir:)`, the lock-guarded `liveTrackPlanIndex` / `lastClassifiedMood` / `orchestratorWireLoggedThisTrack` fields, the once-per-track diagnostic, the off-plan skip path, and the OrchestratorWiringRegressionTests source-presence regression test all match the BUG-015 Resolved-field design notes byte-for-byte. **Zero `broken-but-claimed` findings; zero new BUG entries filed.**
 
 The audit's substantive content sits in the doc-drift cluster (large; same shape as CA.1 / CA.2 / CA.3 / CA.4 found) and two small field-level findings (a `production-orphan` field cluster in `MultiDisplayToastBridge`; a stale file-header docstring in `LiveAdaptationToastBridge`). One additional non-defect surface observation is captured for BUG-016's open diagnosis without proposing a fix.
 
@@ -22,7 +22,7 @@ The audit's substantive content sits in the doc-drift cluster (large; same shape
 | `unverified-claim` | 1 | `LiveAdaptationToastBridge.swift:6` docstring claims "Two observation sources: user actions via PlaybackActionRouter, engine events (currently wired only for UserDefaults flag check and coalescing logic)." Code only routes user-action acks via `emitAck()`. The BUG-015 wire's engine-event downstream consumer logs to `os.Logger` + `session.log` and does not call `emitAck()`. Honest reading: the docstring hedges with "currently wired only for …" so it does not lie, but a future reader could expect engine-event toasts to fire from this bridge. The audit recommends either wiring engine adaptation events through `emitAck()` (post-BUG-015) or rewriting the docstring. Registered as CA.5-FU-2. |
 | `broken-but-claimed` | 0 | BUG-015 (the only `broken-but-claimed` finding in scope of the App-layer audit) is already filed AND Resolved 2026-05-21. CA.5 verifies the resolution; see §Verification-of-BUG-015-wire-shape. |
 | `documented-but-missing` | 0 | — |
-| `built-but-undocumented` | 2 large | (a) `ARCHITECTURE.md §Module Map PhospheneApp/` block lists 12 of 49 engine-adapter files — **37 absent**. Full list under §Cross-references below. Same systemic pattern as CA.1 (DSP/ 6-of-20), CA.2 (ML/ 9-of-16), CA.3 (Session/ 13-of-22), CA.4 (Orchestrator/ 9-of-14). (b) `ARCHITECTURE.md §Module Map Tests/PhospheneApp/` block is **absent entirely** — 60+ test files exist including the load-bearing regression tests `OrchestratorWiringRegressionTests`, `SettingsStoreEnvironmentRegressionTests`, `PlaybackChromeIndexBindingTests`. |
+| `built-but-undocumented` | 2 large | (a) `ARCHITECTURE.md §Module Map UzumeApp/` block lists 12 of 49 engine-adapter files — **37 absent**. Full list under §Cross-references below. Same systemic pattern as CA.1 (DSP/ 6-of-20), CA.2 (ML/ 9-of-16), CA.3 (Session/ 13-of-22), CA.4 (Orchestrator/ 9-of-14). (b) `ARCHITECTURE.md §Module Map Tests/UzumeApp/` block is **absent entirely** — 60+ test files exist including the load-bearing regression tests `OrchestratorWiringRegressionTests`, `SettingsStoreEnvironmentRegressionTests`, `PlaybackChromeIndexBindingTests`. |
 | `stub` | 0 | — |
 | `dead` | 0 | (At the file level. The two dead fields in `MultiDisplayToastBridge` are counted under `production-orphan`.) |
 | `boundary-noted` | 7 | App ↔ Orchestrator (BUG-015 wire + `DefaultPlaybackActionRouter` + `PresetScoringContextProvider` + scoring-context builders); App ↔ Session (`SessionManager` + `StemCache` + `MetadataPreFetcher` ownership); App ↔ DSP (`MIRPipeline` construction + per-frame consumer); App ↔ ML (`MoodClassifier` + `StemSeparator` + `MLDispatchScheduler` consumption); App ↔ Renderer (`RenderPipeline` + `FrameBudgetManager` + slot-6/7/8 buffer wiring); App ↔ Audio (`AudioInputRouter` + audio-thread → analysis-queue handoff); App ↔ Presets (per-preset state classes + `setMeshPresetTick` closures + slot-binding contract). All boundary verdicts complete. |
@@ -30,32 +30,32 @@ The audit's substantive content sits in the doc-drift cluster (large; same shape
 
 **Top findings, ranked.**
 
-1. **BUG-015 wire shape verified clean.** All seven design notes from the Resolved field land in code byte-for-byte: (a) `runOrchestratorLiveUpdate(mir:)` declared at `VisualizerEngine+Orchestrator.swift:287`; (b) called from `VisualizerEngine+Audio.swift:184` at the end of `processAnalysisFrame`; (c) cadence gate `analysisFrameCount % Self.orchestratorWireFrameDivisor == 0` with `orchestratorWireFrameDivisor: Int = 30`; (d) off-plan skip path `if snapshot.hasPlan, snapshot.trackIndex == nil { return }`; (e) `liveTrackPlanIndex` written in `VisualizerEngine+Capture.swift:131` under `orchestratorLock`; (f) `lastClassifiedMood` written in `VisualizerEngine+Audio.swift:432` (`publishMoodResult`) under `orchestratorLock`; (g) `orchestratorWireLoggedThisTrack` reset on track change at `VisualizerEngine+Capture.swift:137`. The once-per-track diagnostic at `VisualizerEngine+Orchestrator.swift:323–331` dual-writes to `sessionRecorder?.log(msg)` AND `logger.info("\(msg)")`. The regression test `PhospheneAppTests/OrchestratorWiringRegressionTests.swift` asserts source-presence via two `@Test` methods that strip comments first (so doc-comment mentions don't satisfy the assertion).
+1. **BUG-015 wire shape verified clean.** All seven design notes from the Resolved field land in code byte-for-byte: (a) `runOrchestratorLiveUpdate(mir:)` declared at `VisualizerEngine+Orchestrator.swift:287`; (b) called from `VisualizerEngine+Audio.swift:184` at the end of `processAnalysisFrame`; (c) cadence gate `analysisFrameCount % Self.orchestratorWireFrameDivisor == 0` with `orchestratorWireFrameDivisor: Int = 30`; (d) off-plan skip path `if snapshot.hasPlan, snapshot.trackIndex == nil { return }`; (e) `liveTrackPlanIndex` written in `VisualizerEngine+Capture.swift:131` under `orchestratorLock`; (f) `lastClassifiedMood` written in `VisualizerEngine+Audio.swift:432` (`publishMoodResult`) under `orchestratorLock`; (g) `orchestratorWireLoggedThisTrack` reset on track change at `VisualizerEngine+Capture.swift:137`. The once-per-track diagnostic at `VisualizerEngine+Orchestrator.swift:323–331` dual-writes to `sessionRecorder?.log(msg)` AND `logger.info("\(msg)")`. The regression test `UzumeAppTests/OrchestratorWiringRegressionTests.swift` asserts source-presence via two `@Test` methods that strip comments first (so doc-comment mentions don't satisfy the assertion).
 
 2. **BUG-012-i1 instrumentation intact** in both App-layer instrumented files. `VisualizerEngine.swift:709` (`init`) and `VisualizerEngine.swift:718` (`deinit`) both call `BUG012Probe.recordVisualizerEngineInit()` / `recordVisualizerEngineDeinit()`. `VisualizerEngine+Stems.swift` carries the lifecycle probes at all expected sites (timer entry, no-scheduler path, defer path, `performStemSeparation` enter/exit, `separator.separate` CALL/RETURN, dispatch-ID allocation). 48 `BUG012Probe` references total across the 8 instrumented files; no edits made in this audit per CA.5 Hard Rules.
 
 3. **`MultiDisplayToastBridge.coalesceTask` + `pendingEvents` field-level production-orphan.** Cited grep:
    ```
-   $ grep -rn "pendingEvents\|coalesceTask" PhospheneApp/Services/MultiDisplayToastBridge.swift PhospheneAppTests
-   PhospheneApp/Services/MultiDisplayToastBridge.swift:22:    private var coalesceTask: Task<Void, Never>?
-   PhospheneApp/Services/MultiDisplayToastBridge.swift:23:    private var pendingEvents: [String] = []
+   $ grep -rn "pendingEvents\|coalesceTask" UzumeApp/Services/MultiDisplayToastBridge.swift UzumeAppTests
+   UzumeApp/Services/MultiDisplayToastBridge.swift:22:    private var coalesceTask: Task<Void, Never>?
+   UzumeApp/Services/MultiDisplayToastBridge.swift:23:    private var pendingEvents: [String] = []
    ```
    Only the declaration sites. The line-21 comment "Coalescing: rapid adds/removes within 0.5s produce one toast" describes a behaviour the code does not implement. Registered as CA.5-FU-1.
 
 4. **`LiveAdaptationToastBridge` engine-event path absent at runtime.** The file's top docstring at line 6 claims "engine events (currently wired only for UserDefaults flag check and coalescing logic)." The BUG-015 wire's downstream consumer (`applyLiveUpdate(...)` at `VisualizerEngine+Orchestrator.swift:167`) emits adaptation events via `logger.info(...)` only (line 195) and never calls `emitAck()`. Cited grep:
    ```
-   $ grep -rn "emitAck\|toastBridge\." PhospheneApp --include="*.swift"
-   PhospheneApp/Services/DefaultPlaybackActionRouter.swift:250: toastBridge?.emitAck("Boosted \(familyName)")
-   PhospheneApp/Services/DefaultPlaybackActionRouter.swift:275: toastBridge?.emitAck("Not quite hitting the mark? Try ⌘R to re-plan.")
+   $ grep -rn "emitAck\|toastBridge\." UzumeApp --include="*.swift"
+   UzumeApp/Services/DefaultPlaybackActionRouter.swift:250: toastBridge?.emitAck("Boosted \(familyName)")
+   UzumeApp/Services/DefaultPlaybackActionRouter.swift:275: toastBridge?.emitAck("Not quite hitting the mark? Try ⌘R to re-plan.")
    …
-   PhospheneApp/Services/LiveAdaptationToastBridge.swift:62:    func emitAck(_ message: String) {
+   UzumeApp/Services/LiveAdaptationToastBridge.swift:62:    func emitAck(_ message: String) {
    ```
    All 11 `emitAck` call sites live in `DefaultPlaybackActionRouter.swift` (user-action acks). The docstring hedges with "currently wired only for…" so it does not lie, but the gap is undocumented in `ARCHITECTURE.md` or `DECISIONS.md`. Registered as CA.5-FU-2.
 
 5. **ARCHITECTURE.md doc drift cluster.**
-   - **§Module Map PhospheneApp/ block** lists `ContentView`, `PhospheneApp`, `VisualizerEngine`, `VisualizerEngine+Audio`, `VisualizerEngine+Stems`, `VisualizerEngine+Presets`, plus 3 `Permissions/` entries (complete) plus 6 `Services/` entries — but 24 `Services/` files and 7 `VisualizerEngine+*` extensions are absent. The 2 `Models/` files (`PhospheneToast.swift`, `SettingsTypes.swift`) have no module-map entries. `MusicKitFetcher.swift` is not listed. Full list of 37 missing entries in §Cross-references.
-   - **§Module Map Tests/PhospheneApp/ block** is **absent**. The Tests/ block has entries for Audio / DSP / ML / Renderer / Session / Orchestrator but not App. 60+ App-test files exist.
-   - **§UI Layer line 224** says `SessionStateViewModel` "Lives in `PhospheneApp/ViewModels/`." Correct, but the surrounding paragraph claims it's the bridge for `SessionManager.state` only — it also surfaces `reduceMotion` from `accessibilityState` via the `init(sessionManager:accessibilityState:)` signature used at `PhospheneApp.swift:50–53`. Minor description refinement; not blocking.
+   - **§Module Map UzumeApp/ block** lists `ContentView`, `UzumeApp`, `VisualizerEngine`, `VisualizerEngine+Audio`, `VisualizerEngine+Stems`, `VisualizerEngine+Presets`, plus 3 `Permissions/` entries (complete) plus 6 `Services/` entries — but 24 `Services/` files and 7 `VisualizerEngine+*` extensions are absent. The 2 `Models/` files (`UzumeToast.swift`, `SettingsTypes.swift`) have no module-map entries. `MusicKitFetcher.swift` is not listed. Full list of 37 missing entries in §Cross-references.
+   - **§Module Map Tests/UzumeApp/ block** is **absent**. The Tests/ block has entries for Audio / DSP / ML / Renderer / Session / Orchestrator but not App. 60+ App-test files exist.
+   - **§UI Layer line 224** says `SessionStateViewModel` "Lives in `UzumeApp/ViewModels/`." Correct, but the surrounding paragraph claims it's the bridge for `SessionManager.state` only — it also surfaces `reduceMotion` from `accessibilityState` via the `init(sessionManager:accessibilityState:)` signature used at `UzumeApp.swift:50–53`. Minor description refinement; not blocking.
 
 6. **`MusicKitFetcher.swift` filename drift.** File contains `ITunesSearchFetcher` class with explicit top-comment `// ITunesSearchFetcher — Free, unauthenticated iTunes Search API for genre + duration. No developer account, no tokens, no MusicKit authorization needed.` The filename is misleading. Recommend renaming the file to `ITunesSearchFetcher.swift` to match its contents. Registered as CA.5-FU-3.
 
@@ -70,17 +70,17 @@ The audit's substantive content sits in the doc-drift cluster (large; same shape
 
 8. **`D-091 / Failed Approach #55` enforcement verified clean.** Cited grep:
    ```
-   $ grep -rnE "@StateObject.*SettingsStore" PhospheneApp PhospheneAppTests
-   PhospheneApp/PhospheneApp.swift:25:    @StateObject private var settingsStore = SettingsStore()
-   PhospheneApp/Views/Playback/PlaybackView.swift:52: /// `@StateObject SettingsStore()` here creates a parallel state world —
-   PhospheneAppTests/SettingsStoreEnvironmentRegressionTests.swift:42:        @StateObject var shadowStore = SettingsStore(...)
-   PhospheneAppTests/SettingsStoreEnvironmentRegressionTests.swift:148: #expect(!src.contains("@StateObject private var settingsStore = SettingsStore()"),
+   $ grep -rnE "@StateObject.*SettingsStore" UzumeApp UzumeAppTests
+   UzumeApp/UzumeApp.swift:25:    @StateObject private var settingsStore = SettingsStore()
+   UzumeApp/Views/Playback/PlaybackView.swift:52: /// `@StateObject SettingsStore()` here creates a parallel state world —
+   UzumeAppTests/SettingsStoreEnvironmentRegressionTests.swift:42:        @StateObject var shadowStore = SettingsStore(...)
+   UzumeAppTests/SettingsStoreEnvironmentRegressionTests.swift:148: #expect(!src.contains("@StateObject private var settingsStore = SettingsStore()"),
    ```
-   One legitimate construction in `PhospheneApp.swift:25` (the app-entry single-instance store, per D-091). All other hits are: comments warning against the bad pattern (`PlaybackView.swift:52`), or the regression-test's shadow probe + source-presence assertion. No production code re-introduces the dead pattern.
+   One legitimate construction in `UzumeApp.swift:25` (the app-entry single-instance store, per D-091). All other hits are: comments warning against the bad pattern (`PlaybackView.swift:52`), or the regression-test's shadow probe + source-presence assertion. No production code re-introduces the dead pattern.
 
-9. **`@Suite(.serialized)` annotation present** on the only URLProtocol-stub-using App test (`PhospheneAppTests/SpotifyOAuthTokenProviderTests.swift:98 — @Suite("SpotifyOAuthTokenProvider", .serialized)`). U.10 rule satisfied.
+9. **`@Suite(.serialized)` annotation present** on the only URLProtocol-stub-using App test (`UzumeAppTests/SpotifyOAuthTokenProviderTests.swift:98 — @Suite("SpotifyOAuthTokenProvider", .serialized)`). U.10 rule satisfied.
 
-10. **SwiftLint baseline:** zero warnings in `PhospheneApp/` (18 warnings remain in `PhospheneEngine/`: `Presets/FerrofluidOcean/FerrofluidMesh.swift`, `Presets/SpectralCartographText.swift`, `Shared/SessionRecorder.swift` — all out of CA.5 scope). App-layer is SwiftLint-clean. The unrelated pending SwiftLint cleanup chip is engine-side, not App.
+10. **SwiftLint baseline:** zero warnings in `UzumeApp/` (18 warnings remain in `UzumeEngine/`: `Presets/FerrofluidOcean/FerrofluidMesh.swift`, `Presets/SpectralCartographText.swift`, `Shared/SessionRecorder.swift` — all out of CA.5 scope). App-layer is SwiftLint-clean. The unrelated pending SwiftLint cleanup chip is engine-side, not App.
 
 **Three follow-up items registered in [§Follow-up Backlog](#follow-up-backlog).** Plus one CA.6 hand-off (Views + ViewModels — the deferred half of the App layer).
 
@@ -90,12 +90,12 @@ The audit's substantive content sits in the doc-drift cluster (large; same shape
 
 Pass 0 confirmed the kickoff's recommended split. The chosen scope:
 
-- **CA.5 (this increment):** Engine-adapter slice — 49 files / 7,975 LoC. Top-level files (14: `VisualizerEngine` + 11 extensions + `ContentView` + `PhospheneApp` + `MusicKitFetcher`), `Services/` (30), `Permissions/` (3), `Models/` (2).
+- **CA.5 (this increment):** Engine-adapter slice — 49 files / 7,975 LoC. Top-level files (14: `VisualizerEngine` + 11 extensions + `ContentView` + `UzumeApp` + `MusicKitFetcher`), `Services/` (30), `Permissions/` (3), `Models/` (2).
 - **CA.6 (deferred):** Views + ViewModels presentation slice — 59 files / 6,889 LoC. `Views/` (47 across `Connecting/`, `Dashboard/`, `Ended/`, `Idle/`, `Onboarding/`, `Playback/`, `Preparation/`, `Ready/`, `Settings/` + root-level views including `MetalView.swift`) + `ViewModels/` (12).
 
 The split is justified by architectural layering: `Services/` + `VisualizerEngine` are the engine-coupling surface where the four prior audits' findings actually fire (BUG-015 wire, `DefaultPlaybackActionRouter` per D-050, `PresetScoringContextProvider` per Orchestrator scoring, `CaptureModeSwitchCoordinator` per D-061, etc.). `Views/` + `ViewModels/` is the SwiftUI presentation surface where U.x increments shipped UX flows and is its own audit class. **No silent scope-creep occurred.**
 
-The kickoff prompt said "MetalView.swift — though MetalView lives under Views/" and listed it under both top-level and Views/ scopes. CA.5 follows the actual filesystem location: `MetalView.swift` is under `PhospheneApp/Views/MetalView.swift` and is deferred to CA.6 along with the rest of `Views/`.
+The kickoff prompt said "MetalView.swift — though MetalView lives under Views/" and listed it under both top-level and Views/ scopes. CA.5 follows the actual filesystem location: `MetalView.swift` is under `UzumeApp/Views/MetalView.swift` and is deferred to CA.6 along with the rest of `Views/`.
 
 ---
 
@@ -110,9 +110,9 @@ The kickoff prompt said "MetalView.swift — though MetalView lives under Views/
 **1. `MultiDisplayToastBridge.coalesceTask` + `pendingEvents` — declared, never read or written.**
 
 ```
-$ grep -rn "pendingEvents\|coalesceTask" PhospheneApp/Services/MultiDisplayToastBridge.swift PhospheneAppTests PhospheneApp --include="*.swift"
-PhospheneApp/Services/MultiDisplayToastBridge.swift:22:    private var coalesceTask: Task<Void, Never>?
-PhospheneApp/Services/MultiDisplayToastBridge.swift:23:    private var pendingEvents: [String] = []
+$ grep -rn "pendingEvents\|coalesceTask" UzumeApp/Services/MultiDisplayToastBridge.swift UzumeAppTests UzumeApp --include="*.swift"
+UzumeApp/Services/MultiDisplayToastBridge.swift:22:    private var coalesceTask: Task<Void, Never>?
+UzumeApp/Services/MultiDisplayToastBridge.swift:23:    private var pendingEvents: [String] = []
 ```
 
 Two field declarations, zero consumers across the App layer and App tests. The file-internal logic (`handleAdded` at line 39, `handleRemoved` at line 56) enqueues toasts unconditionally; neither field is touched. The line-21 comment `// Coalescing: rapid adds/removes within 0.5s produce one toast.` documents an intent the code does not implement.
@@ -154,9 +154,9 @@ The audit recommends surfacing this to Matt as a product call (it is a UX questi
 
 ### built-but-undocumented
 
-**1. `ARCHITECTURE.md §Module Map PhospheneApp/` block lists 12 of 49 engine-adapter files; 37 missing.**
+**1. `ARCHITECTURE.md §Module Map UzumeApp/` block lists 12 of 49 engine-adapter files; 37 missing.**
 
-**Listed (12):** `ContentView`, `PhospheneApp`, `VisualizerEngine`, `VisualizerEngine+Audio`, `VisualizerEngine+Stems`, `VisualizerEngine+Presets`, `Permissions/ScreenCapturePermissionProvider`, `Permissions/PermissionMonitor`, `Permissions/PhotosensitivityAcknowledgementStore`, `Services/DelayProviding`, `Services/SpotifyURLKind`, `Services/SpotifyURLParser`, `Services/DisplayChangeCoordinator`, `Services/CaptureModeSwitchCoordinator`, `Services/NetworkRecoveryCoordinator`. (Counted 15; recount: yes, 6 Services entries — the audit's earlier "6 Services" count was correct. Including ContentView + PhospheneApp + VisualizerEngine + 3 extensions + 3 Permissions + 6 Services = **15 listed**, not 12. Recount accepted; total still 49 − 15 = **34 missing**.)
+**Listed (12):** `ContentView`, `UzumeApp`, `VisualizerEngine`, `VisualizerEngine+Audio`, `VisualizerEngine+Stems`, `VisualizerEngine+Presets`, `Permissions/ScreenCapturePermissionProvider`, `Permissions/PermissionMonitor`, `Permissions/PhotosensitivityAcknowledgementStore`, `Services/DelayProviding`, `Services/SpotifyURLKind`, `Services/SpotifyURLParser`, `Services/DisplayChangeCoordinator`, `Services/CaptureModeSwitchCoordinator`, `Services/NetworkRecoveryCoordinator`. (Counted 15; recount: yes, 6 Services entries — the audit's earlier "6 Services" count was correct. Including ContentView + UzumeApp + VisualizerEngine + 3 extensions + 3 Permissions + 6 Services = **15 listed**, not 12. Recount accepted; total still 49 − 15 = **34 missing**.)
 
 **Missing (34):**
 
@@ -179,7 +179,7 @@ Services/ (23):
 - `DisplayManager.swift` — `@MainActor ObservableObject` for screen tracking + window-move with fullscreen-quirk handling. Publishes `allScreens`, `currentScreen`, `primaryScreen`. `attach(to:)`, `moveToSecondaryDisplay()`, `moveToPrimaryDisplay()`. Plus `onScreensAdded` / `onScreensRemoved` callbacks consumed by `MultiDisplayToastBridge`.
 - `FirstAudioDetector.swift` — `@MainActor ObservableObject`; subscribes to `AudioSignalState` publisher; sets `hasDetectedAudio` after ≥ 250 ms sustained `.active` state. Per UX_SPEC §6.3.
 - `FullscreenObserver.swift` — `@MainActor ObservableObject` wrapping `NSWindow.didEnterFullScreenNotification` / `didExitFullScreenNotification`; publishes `isFullscreen: Bool`.
-- `LiveAdaptationToastBridge.swift` — User-action ack toast bridge; `emitAck(_:)` gated on `phosphene.settings.visuals.showLiveAdaptationToasts` UserDefaults; 2 s coalescing window. (See `unverified-claim` finding above.)
+- `LiveAdaptationToastBridge.swift` — User-action ack toast bridge; `emitAck(_:)` gated on `uzume.settings.visuals.showLiveAdaptationToasts` UserDefaults; 2 s coalescing window. (See `unverified-claim` finding above.)
 - `LocalizedCopy.swift` — `UserFacingError` → localized string resolver. Jargon deny-list enforcement (`containsJargon(_:)`) per UX_SPEC §9.5.
 - `MultiDisplayToastBridge.swift` — `DisplayManager.onScreensAdded/Removed` → `ToastManager` queue. Info toast on screen-added; warning toast + auto-move on current-screen-removed. (See `production-orphan` finding above for dead `coalesceTask`/`pendingEvents` fields.)
 - `NetworkRecoveryCoordinator.swift` — `@MainActor`; wires `ReachabilityMonitor.isOnlinePublisher` to `SessionManager.resumeFailedNetworkTracks()`; 2 s additional debounce on top of monitor's 1 s (3 s total); max 3 attempts per session; `.preparing` state guard. D-061(d,e).
@@ -199,14 +199,14 @@ Services/ (23):
 - `SpotifyOAuthTokenProvider.swift` — `public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLoginProviding`. PKCE auth-code OAuth flow. `expiryMarginSeconds: 300`, `loginTimeoutSeconds: 300`, redirect URI `"uzume://spotify-callback"`. U.11 / D-069.
 
 Models/ (2):
-- `PhospheneToast.swift` — Toast value type. `Severity` enum (`.info / .warning / .degradation`). `Source` enum (`.signalState / .liveAdaptationAck / .displayChange / .degradation / .generic`). `ToastAction { label: String, handler: @MainActor @Sendable () -> Void }`. Default duration `4 s`; `TimeInterval.infinity` for manual-dismiss-only.
+- `UzumeToast.swift` — Toast value type. `Severity` enum (`.info / .warning / .degradation`). `Source` enum (`.signalState / .liveAdaptationAck / .displayChange / .degradation / .generic`). `ToastAction { label: String, handler: @MainActor @Sendable () -> Void }`. Default duration `4 s`; `TimeInterval.infinity` for manual-dismiss-only.
 - `SettingsTypes.swift` — App-layer settings value-type enums: `DeviceTierOverride` (`.auto / .forceTier1 / .forceTier2`), `ReducedMotionPreference` (`.matchSystem / .alwaysOn / .alwaysOff`), `SessionRetentionPolicy` (5 cases).
 
 Doc-drift correction applied in this increment.
 
-**2. `ARCHITECTURE.md §Module Map Tests/PhospheneApp/` block is absent entirely.**
+**2. `ARCHITECTURE.md §Module Map Tests/UzumeApp/` block is absent entirely.**
 
-`PhospheneAppTests/` exists with 60+ test files. The Tests/ section of the Module Map has entries for `Audio/`, `DSP/`, `ML/`, `Renderer/`, `Session/`, and (post-CA.4) `Orchestrator/` — but not `PhospheneApp/`. Notable App-layer test files:
+`UzumeAppTests/` exists with 60+ test files. The Tests/ section of the Module Map has entries for `Audio/`, `DSP/`, `ML/`, `Renderer/`, `Session/`, and (post-CA.4) `Orchestrator/` — but not `UzumeApp/`. Notable App-layer test files:
 
 - **`OrchestratorWiringRegressionTests.swift`** — BUG-015 source-presence regression gate.
 - **`SettingsStoreEnvironmentRegressionTests.swift`** — D-091 / Failed Approach #55 regression gate (three assertions: `@EnvironmentObject` consumer sees changes; `@StateObject SettingsStore()` shadow does NOT see changes; `PlaybackView.swift` source must not contain the bad declaration).
@@ -228,7 +228,7 @@ Doc-drift correction applied in this increment.
 
 The audit produced no `boundary-deferred` items. The following App-layer boundary surfaces are noted (verdict complete; no future re-audit required):
 
-- **App ↔ Orchestrator.** `DefaultSessionPlanner` + `DefaultLiveAdapter` + `DefaultReactiveOrchestrator` instantiated at `VisualizerEngine.swift:458 / 461 / 464`. `DefaultPlaybackActionRouter` concrete lives in `PhospheneApp/Services/`. `PresetScoringContextProvider` builds `PresetScoringContext` for the Orchestrator scorer. The **BUG-015 wire** (`runOrchestratorLiveUpdate(mir:)` calling `applyLiveUpdate(...)` at ~3 Hz) is the load-bearing post-2026-05-21 surface; verified clean in §Verification-of-BUG-015-wire-shape. CA.4 closed the Orchestrator side; CA.5 closes the App side. Boundary verdict: **complete**.
+- **App ↔ Orchestrator.** `DefaultSessionPlanner` + `DefaultLiveAdapter` + `DefaultReactiveOrchestrator` instantiated at `VisualizerEngine.swift:458 / 461 / 464`. `DefaultPlaybackActionRouter` concrete lives in `UzumeApp/Services/`. `PresetScoringContextProvider` builds `PresetScoringContext` for the Orchestrator scorer. The **BUG-015 wire** (`runOrchestratorLiveUpdate(mir:)` calling `applyLiveUpdate(...)` at ~3 Hz) is the load-bearing post-2026-05-21 surface; verified clean in §Verification-of-BUG-015-wire-shape. CA.4 closed the Orchestrator side; CA.5 closes the App side. Boundary verdict: **complete**.
 
 - **App ↔ Session.** `SessionManager` constructed at `VisualizerEngine.swift:644` via `Self.makeSessionManager(...)` factory (`+InitHelpers.swift:99`). `StemCache` wired eagerly at `VisualizerEngine.swift:658` (`self.stemCache = self.sessionManager.cache` — BUG-006.2 fix). `MetadataPreFetcher` constructed at `VisualizerEngine.swift:641` and shared between `SessionPreparer` and the runtime track-change callback (Round 26 metadata-meter override). `stateCancellable` subscribes to `sessionManager.$state` and triggers `buildPlan()` on `.ready` (`VisualizerEngine.swift:687–692`); `readinessCancellable` subscribes to `$progressiveReadinessLevel` and triggers `extendPlan()` (`VisualizerEngine.swift:696–705`). Per CA.3 the Session side is clean. Boundary verdict: **complete**.
 
@@ -240,7 +240,7 @@ The audit produced no `boundary-deferred` items. The following App-layer boundar
 
 - **App ↔ Audio.** `AudioInputRouter` constructed at `VisualizerEngine+Audio.swift:26` (stored as `Any?` to avoid availability propagation per `VisualizerEngine.swift:196`). Three callbacks wired: `onAudioSamples` at `+Audio.swift:30` runs on the audio thread (writes `audioBuffer`, captures `tapSampleRate` via `updateTapSampleRate(_:)` per D-079 / QR.1, feeds `stemSampleBuffer`, runs FFT, dispatches to `analysisQueue.async`); `onSignalStateChanged` at `+Audio.swift:31` hops to MainActor for `@Published` updates; `onTrackChange` at `+Audio.swift:39` resolves `liveTrackPlanIndex` and `orchestratorLock`-guards the BUG-015 wire inputs before hopping to MainActor for SwiftUI consumers. **Cross-core visibility** for `tapSampleRate` is enforced via `tapSampleRateLock: NSLock` (`VisualizerEngine.swift:243`); the `_tapSampleRate` mutation goes through `updateTapSampleRate(_:)` which `withLock`s the write. CLAUDE.md D-079 / QR.1 rule satisfied. Boundary verdict: **complete**.
 
-- **App ↔ Presets.** Per-preset state classes (`ArachneState`, `GossamerState`, `LumenPatternEngine`, `FerrofluidParticles`, `FerrofluidMesh`, `DynamicTextOverlay`) live in `PhospheneEngine/Sources/Presets/` but are instantiated and owned in `VisualizerEngine.swift` (lines 119–163). The siblings-not-subclasses pattern per D-097 is enforced via `resolveParticleGeometry(forPresetName:)` at `VisualizerEngine.swift:754` (currently maps `"Murmuration"` → `murmurationGeometry`; unknown names return nil). The `wirePresetCompletionSubscription()` at `VisualizerEngine+Presets.swift:500` and `presetCompletionCancellable` storage (`VisualizerEngine.swift:536`) implement the V.7.6.2 / D-095 `PresetSignaling` subscription path. **Reset on preset switch** clears every per-preset field + every pipeline binding at the top of `applyPreset` (`+Presets.swift:48–80`) before the new preset configures its passes. The BUG-016 Lumen Mosaic apply path lives inside `case .rayMarch:` gated on `desc.name == "Lumen Mosaic"` at `+Presets.swift:166–178`. Boundary verdict: **complete** (the per-preset state classes themselves are CA-Presets scope and not audited here).
+- **App ↔ Presets.** Per-preset state classes (`ArachneState`, `GossamerState`, `LumenPatternEngine`, `FerrofluidParticles`, `FerrofluidMesh`, `DynamicTextOverlay`) live in `UzumeEngine/Sources/Presets/` but are instantiated and owned in `VisualizerEngine.swift` (lines 119–163). The siblings-not-subclasses pattern per D-097 is enforced via `resolveParticleGeometry(forPresetName:)` at `VisualizerEngine.swift:754` (currently maps `"Murmuration"` → `murmurationGeometry`; unknown names return nil). The `wirePresetCompletionSubscription()` at `VisualizerEngine+Presets.swift:500` and `presetCompletionCancellable` storage (`VisualizerEngine.swift:536`) implement the V.7.6.2 / D-095 `PresetSignaling` subscription path. **Reset on preset switch** clears every per-preset field + every pipeline binding at the top of `applyPreset` (`+Presets.swift:48–80`) before the new preset configures its passes. The BUG-016 Lumen Mosaic apply path lives inside `case .rayMarch:` gated on `desc.name == "Lumen Mosaic"` at `+Presets.swift:166–178`. Boundary verdict: **complete** (the per-preset state classes themselves are CA-Presets scope and not audited here).
 
 ### production-active
 
@@ -254,7 +254,7 @@ Consolidation: 48 of 49 files concentrate on `production-active`; the per-file i
 
 ### VisualizerEngine.swift (773 lines) — `production-active` + BUG-012-i1 instrumented (read-only)
 
-The engine's primary owner type: a `final class VisualizerEngine: ObservableObject, @unchecked Sendable` constructed once at app launch by `PhospheneApp.swift:23` via `@StateObject private var engine = VisualizerEngine()`. Owns the audio capture → FFT → analysis → MIR → mood → stem → render pipeline. ~30 `@Published` fields driving SwiftUI consumers. NSLock-guarded shared state (`tapSampleRateLock`, `orchestratorLock`, `stemsStateLock`, `beatSyncLock`). All Orchestrator-side handles (sessionPlanner, liveAdapter, reactiveOrchestrator, livePlan, livePlannedSession) instantiated here. BUG-015 wire inputs (`liveTrackPlanIndex`, `lastClassifiedMood`, `orchestratorWireLoggedThisTrack`) declared here under `orchestratorLock`.
+The engine's primary owner type: a `final class VisualizerEngine: ObservableObject, @unchecked Sendable` constructed once at app launch by `UzumeApp.swift:23` via `@StateObject private var engine = VisualizerEngine()`. Owns the audio capture → FFT → analysis → MIR → mood → stem → render pipeline. ~30 `@Published` fields driving SwiftUI consumers. NSLock-guarded shared state (`tapSampleRateLock`, `orchestratorLock`, `stemsStateLock`, `beatSyncLock`). All Orchestrator-side handles (sessionPlanner, liveAdapter, reactiveOrchestrator, livePlan, livePlannedSession) instantiated here. BUG-015 wire inputs (`liveTrackPlanIndex`, `lastClassifiedMood`, `orchestratorWireLoggedThisTrack`) declared here under `orchestratorLock`.
 
 | Capability | Verdict | Consumers (prod / test) | Doc-cited |
 |---|---|---|---|
@@ -399,8 +399,8 @@ Static factory methods called from `init`. Includes `NullStemSeparator` fallback
 | `startAudio()` | `production-active` | `PlaybackView.onAppear` | Permission gate per CLAUDE.md Failed Approach #22 |
 | `pollForScreenCapturePermission()` (private) | `production-active` | `startAudio` fallback | 2 s poll loop |
 | `startAudioCapture()` (private) | `production-active` | `startAudio`, poll loop | macOS 14.2+ AudioInputRouter.start |
-| `applyAccessibility(reduceMotion:beatAmplitudeScale:)` | `production-active` | `PhospheneApp.onChange` of `accessibilityState.reduceMotion` | U.9 / D-054 |
-| `applyShowUncertifiedPresets(_:)` | `production-active` | `PhospheneApp.task` on `settingsStore.$showUncertifiedPresets` | — |
+| `applyAccessibility(reduceMotion:beatAmplitudeScale:)` | `production-active` | `UzumeApp.onChange` of `accessibilityState.reduceMotion` | U.9 / D-054 |
+| `applyShowUncertifiedPresets(_:)` | `production-active` | `UzumeApp.task` on `settingsStore.$showUncertifiedPresets` | — |
 | `toggleDebugOverlay()` | `production-active` | Keyboard shortcut `D` | — |
 | `toggleForceSpider() -> Bool` (DEBUG-only) | `production-active` | Keyboard shortcut (developer cycle) | Arachne easter egg |
 | `showPresetName(_:)` | `production-active` | `applyPreset`, `nextPreset`, `previousPreset`, `applyPresetByID`, `regeneratePlan` consumers | 2 s + 0.5 s fade |
@@ -425,13 +425,13 @@ BUG-006.1 instrumentation. Dual-write pattern: each helper logs once to `session
 | `logTrackChangeObserved(event:identity:)` | `production-active` | `makeTrackChangeCallback` | BUG-006.1 |
 | `logWiringStemCacheLookup(identity:)` | `production-active` | `resetStemPipeline` | BUG-006.1 |
 
-### PhospheneApp.swift (104 lines) — `production-active`
+### UzumeApp.swift (104 lines) — `production-active`
 
 `@main` App entry. **One** `SettingsStore` instance per D-091 / Failed Approach #55. Constructs `engine`, `permissionMonitor`, `accessibilityState` as `@StateObject`; constructs `spotifyOAuth = SpotifyOAuthTokenProvider.makeLive()` as `let`. Wires `SettingsStore.reducedMotion` → `AccessibilityState.applyPreference` via `.task` Combine subscription; wires `accessibilityState.reduceMotion` → `engine.applyAccessibility` via `.onChange`. Routes `uzume://spotify-callback` to OAuth actor via `.onOpenURL`. `init()` runs `SettingsMigrator.migrate()`, `SessionRecorderRetentionPolicy.apply(policy:)`, and `DashboardFontLoader.resolveFonts(in:)`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
-| `PhospheneApp: App` | `production-active` | macOS app entry | D-091 |
+| `UzumeApp: App` | `production-active` | macOS app entry | D-091 |
 | `@StateObject` `engine`, `permissionMonitor`, `settingsStore`, `accessibilityState` | `production-active` | Environment injection | Failed Approach #55 (single SettingsStore) |
 | `spotifyOAuth: SpotifyOAuthTokenProvider` (private let, not `@StateObject` per actor non-ObservableObject) | `production-active` | `ConnectorPickerView` via environment + `.onOpenURL` | U.11 / D-069 |
 | `SpotifyOAuthProviderKey: EnvironmentKey` + `EnvironmentValues.spotifyOAuthProvider` | `production-active` | `ConnectorPickerView` | U.11 |
@@ -443,7 +443,7 @@ Routing: outer permission gate (`PermissionMonitor.isScreenCaptureGranted`) → 
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
-| `ContentView: View` | `production-active` | `PhospheneApp.body` | UX_SPEC §3 |
+| `ContentView: View` | `production-active` | `UzumeApp.body` | UX_SPEC §3 |
 | Permission gate | `production-active` | Outer ViewBuilder | UX_SPEC §3.1 |
 | Six SessionState branches | `production-active` | `viewModel.state` switch | UX_SPEC §3 |
 | `currentTrackIndexPublisher` (line 85) | `production-active` | `PlaybackView` | D-091 / BUG-006.2 / BUG-015 SwiftUI side |
@@ -466,7 +466,7 @@ The **single** app-wide `@MainActor final class SettingsStore: ObservableObject`
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
 | `SettingsStore` (single instance) | `production-active` | App-wide via `@EnvironmentObject` | D-091; `SettingsStoreEnvironmentRegressionTests` |
-| `@Published deviceTierOverride`, `qualityCeiling`, `includeMilkdropPresets`, `reducedMotion`, `excludedPresetCategories`, `showLiveAdaptationToasts`, `showUncertifiedPresets`, `sessionRecorderEnabled`, `sessionRetention` | `production-active` | `SettingsViewModel`, `LiveAdaptationToastBridge`, `PhospheneApp.task` chains | U.8 |
+| `@Published deviceTierOverride`, `qualityCeiling`, `includeMilkdropPresets`, `reducedMotion`, `excludedPresetCategories`, `showLiveAdaptationToasts`, `showUncertifiedPresets`, `sessionRecorderEnabled`, `sessionRetention` | `production-active` | `SettingsViewModel`, `LiveAdaptationToastBridge`, `UzumeApp.task` chains | U.8 |
 | `resetOnboarding()` | `production-active` | `SettingsViewModel` | — |
 | `Keys` enum | `production-active` | Internal | UserDefaults keys |
 
@@ -501,7 +501,7 @@ Declarative keyboard shortcut catalog. `ShortcutCategory` enum + `PlaybackShortc
 
 #### LiveAdaptationToastBridge.swift (80 lines) — `production-active` + `unverified-claim` docstring
 
-User-action ack toast bridge per U.6 Part C. `emitAck(_:)` gated on `phosphene.settings.visuals.showLiveAdaptationToasts` UserDefaults (default true for new installs). 2-second coalescing window. **Docstring drift:** see `unverified-claim` finding above — engine-event observation source mentioned in docstring is not wired in practice.
+User-action ack toast bridge per U.6 Part C. `emitAck(_:)` gated on `uzume.settings.visuals.showLiveAdaptationToasts` UserDefaults (default true for new installs). 2-second coalescing window. **Docstring drift:** see `unverified-claim` finding above — engine-event observation source mentioned in docstring is not wired in practice.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -511,7 +511,7 @@ User-action ack toast bridge per U.6 Part C. `emitAck(_:)` gated on `phosphene.s
 
 #### MultiDisplayToastBridge.swift (82 lines) — `production-active` + field-level `production-orphan`
 
-Wires `DisplayManager.onScreensAdded/Removed` to `ToastManager`. Screen added → info toast with "Move Phosphene there" action. Current-screen removed → warning toast + auto-move to primary. **Dead fields:** `coalesceTask: Task<Void, Never>?` and `pendingEvents: [String] = []` at lines 22–23 — declared but never read or written. See `production-orphan` finding above.
+Wires `DisplayManager.onScreensAdded/Removed` to `ToastManager`. Screen added → info toast with "Move Uzume there" action. Current-screen removed → warning toast + auto-move to primary. **Dead fields:** `coalesceTask: Task<Void, Never>?` and `pendingEvents: [String] = []` at lines 22–23 — declared but never read or written. See `production-orphan` finding above.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -563,12 +563,12 @@ Rolling EMA over per-stage durations (resolving / downloading / stemSeparation /
 
 #### SpotifyOAuthTokenProvider.swift (393 lines) — `production-active`
 
-U.11. `public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLoginProviding`. PKCE auth-code OAuth flow. `expiryMarginSeconds: 300`, `loginTimeoutSeconds: 300`, redirect URI `uzume://spotify-callback`. Scopes `playlist-read-private playlist-read-collaborative`. `makeLive(urlSession:)` factory used by `PhospheneApp`.
+U.11. `public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLoginProviding`. PKCE auth-code OAuth flow. `expiryMarginSeconds: 300`, `loginTimeoutSeconds: 300`, redirect URI `uzume://spotify-callback`. Scopes `playlist-read-private playlist-read-collaborative`. `makeLive(urlSession:)` factory used by `UzumeApp`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
 | `SpotifyOAuthLoginProviding` protocol | `production-active` | `SpotifyConnectionViewModel` | U.11 |
-| `SpotifyOAuthTokenProvider` actor | `production-active` | `PhospheneApp`, `ConnectorPickerView`, `SpotifyOAuthPlaylistConnector` | U.11 / D-069 |
+| `SpotifyOAuthTokenProvider` actor | `production-active` | `UzumeApp`, `ConnectorPickerView`, `SpotifyOAuthPlaylistConnector` | U.11 / D-069 |
 | `acquire() / login() / handleCallback / logout / isAuthenticated / invalidate` | `production-active` | Connectors + view models | U.11 |
 
 #### SpotifyOAuthPlaylistConnector.swift (44 lines) — `production-active`
@@ -631,7 +631,7 @@ D-061(a). Subscribes independently to `DisplayManager.$allScreens` and `.$curren
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
-| `AccessibilityState` | `production-active` | `PhospheneApp.@StateObject`; `ContentView`; per-frame render decisions | U.9 / D-054 |
+| `AccessibilityState` | `production-active` | `UzumeApp.@StateObject`; `ContentView`; per-frame render decisions | U.9 / D-054 |
 | `@Published reduceMotion`, `beatAmplitudeScale`, `systemReduceMotion` | `production-active` | `engine.applyAccessibility`, view models | — |
 | `shouldExecuteMVWarp`, `shouldExecuteSSGI` | `production-active` | Render gating | D-054 |
 | Beat amplitude constants 0.5 / 1.0 | `production-active` | Internal | U.9 |
@@ -660,7 +660,7 @@ App-layer bridge from `UserFacingError` enum to localized user-facing strings. `
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
 | `ReachabilityPublishing` protocol | `production-active` | `NetworkRecoveryCoordinator`, tests | — |
-| `ReachabilityMonitor` concrete | `production-active` | `PhospheneApp` / `PreparationProgressView` | — |
+| `ReachabilityMonitor` concrete | `production-active` | `UzumeApp` / `PreparationProgressView` | — |
 | `StubReachabilityMonitor` | `production-active` | Tests | — |
 
 #### PlaybackKeyMonitor.swift (64 lines) — `production-active`
@@ -704,7 +704,7 @@ One-shot UserDefaults key migration on app launch. One mapping today: `"phosphen
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
-| `SettingsMigrator.migrate(in:)` | `production-active` | `PhospheneApp.init` | — |
+| `SettingsMigrator.migrate(in:)` | `production-active` | `UzumeApp.init` | — |
 
 #### SessionRecorderRetentionPolicy.swift (143 lines) — `production-active`
 
@@ -712,18 +712,18 @@ Session-folder pruning at app launch. 60 s active-session guard. Supports `.keep
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
-| `SessionRecorderRetentionPolicy.apply(policy:sessionsDir:now:wallClock:)` | `production-active` | `PhospheneApp.init` | — |
+| `SessionRecorderRetentionPolicy.apply(policy:sessionsDir:now:wallClock:)` | `production-active` | `UzumeApp.init` | — |
 | 60 s active guard, 10 / 25 limits, 86_400 / 604_800 s cutoffs | `production-active` | Internal | — |
 
 ### Permissions/ (3 files)
 
 #### PermissionMonitor.swift (54 lines) — `production-active`
 
-`@MainActor final class: ObservableObject`. `@Published isScreenCaptureGranted: Bool`. Reads permission on init via `provider.isGranted()`; refreshes on `NSApplication.didBecomeActiveNotification`. Owned by `PhospheneApp` as `@StateObject`; injected as `@EnvironmentObject`.
+`@MainActor final class: ObservableObject`. `@Published isScreenCaptureGranted: Bool`. Reads permission on init via `provider.isGranted()`; refreshes on `NSApplication.didBecomeActiveNotification`. Owned by `UzumeApp` as `@StateObject`; injected as `@EnvironmentObject`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
-| `PermissionMonitor` | `production-active` | `PhospheneApp.@StateObject`; `ContentView.@EnvironmentObject` | — |
+| `PermissionMonitor` | `production-active` | `UzumeApp.@StateObject`; `ContentView.@EnvironmentObject` | — |
 | `refresh()` | `production-active` | NotificationCenter sink | — |
 
 #### PhotosensitivityAcknowledgementStore.swift (40 lines) — `production-active`
@@ -746,13 +746,13 @@ UserDefaults-backed photosensitivity acknowledgement. Key `"phosphene.onboarding
 
 ### Models/ (2 files)
 
-#### PhospheneToast.swift (78 lines) — `production-active`
+#### UzumeToast.swift (78 lines) — `production-active`
 
-`PhospheneToast: Identifiable, Equatable, Sendable` value type. `Severity` (`.info / .warning / .degradation`), `Source` (`.signalState / .liveAdaptationAck / .displayChange / .degradation / .generic`), `ToastAction { label: String, handler: @MainActor @Sendable () -> Void }`. Default duration 4 s; `TimeInterval.infinity` for manual-dismiss-only.
+`UzumeToast: Identifiable, Equatable, Sendable` value type. `Severity` (`.info / .warning / .degradation`), `Source` (`.signalState / .liveAdaptationAck / .displayChange / .degradation / .generic`), `ToastAction { label: String, handler: @MainActor @Sendable () -> Void }`. Default duration 4 s; `TimeInterval.infinity` for manual-dismiss-only.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
-| `PhospheneToast` + nested types | `production-active` | All toast emit sites; `ToastManager` (CA.6 scope) | — |
+| `UzumeToast` + nested types | `production-active` | All toast emit sites; `ToastManager` (CA.6 scope) | — |
 
 #### SettingsTypes.swift (46 lines) — `production-active`
 
@@ -788,9 +788,9 @@ The kickoff requires this section. BUG-015 was filed by CA.4 on 2026-05-20 and R
 
 9. **The 30 s mood-override cooldown is preserved** — the wire calls `applyLiveUpdate(...)` which calls `liveAdapter.adapt(...)` which calls `cooldownAdaptation(...)` per D-080. CA.4 verified the cooldown at `LiveAdapter.swift:362–381`. CA.5 verified the wire does not bypass it; the path is straight through.
 
-10. **The regression test `PhospheneAppTests/OrchestratorWiringRegressionTests.swift` is present and load-bearing.** Two `@Test` methods:
+10. **The regression test `UzumeAppTests/OrchestratorWiringRegressionTests.swift` is present and load-bearing.** Two `@Test` methods:
     - `test_visualizerEngineAudio_wiresOrchestratorLiveUpdate` — reads `VisualizerEngine+Audio.swift`, strips comments, asserts the file contains either `applyLiveUpdate(` or `runOrchestratorLiveUpdate(`. Either spelling is sufficient evidence that the wire reaches the live-adaptation pipeline; if both names disappear, the wire is dead again and the test fails.
-    - `test_appLayer_hasProductionCallSiteForApplyLiveUpdate` — enumerates `PhospheneApp/` Swift files, strips comments, counts files containing `applyLiveUpdate(`. Subtracts the declaration site (`VisualizerEngine+Orchestrator.swift`). If zero remain, BUG-015 has regressed.
+    - `test_appLayer_hasProductionCallSiteForApplyLiveUpdate` — enumerates `UzumeApp/` Swift files, strips comments, counts files containing `applyLiveUpdate(`. Subtracts the declaration site (`VisualizerEngine+Orchestrator.swift`). If zero remain, BUG-015 has regressed.
 
    The test strips line + block comments before counting so doc-comment mentions don't satisfy the assertion (the CA.4 grep found four doc-comment references in unrelated files; this regression test must not be fooled by the same).
 
@@ -804,18 +804,18 @@ The kickoff requires this section. BUG-015 was filed by CA.4 on 2026-05-20 and R
 
 The kickoff requires this section. Per CA.5 Hard Rules the eight BUG-012-i1 instrumented files are **read-only**. CA.5 read them freely; no edits made.
 
-**BUG-012-i1 probe call sites verified intact across all eight instrumented files.** 48 references total via `grep -rn "BUG012Probe" PhospheneEngine/Sources PhospheneApp PhospheneEngine/Tests --include="*.swift"`. Breakdown:
+**BUG-012-i1 probe call sites verified intact across all eight instrumented files.** 48 references total via `grep -rn "BUG012Probe" UzumeEngine/Sources UzumeApp UzumeEngine/Tests --include="*.swift"`. Breakdown:
 
 | File | Probe sites | Status |
 |---|---|---|
-| `PhospheneEngine/Sources/Shared/BUG012Probe.swift` | The probe module itself | `production-active` |
-| `PhospheneEngine/Sources/ML/StemFFT.swift` | Dispatch-ID allocation; in-flight counters; lock-await / lock-release log lines | Intact |
-| `PhospheneEngine/Sources/ML/StemFFT+GPU.swift` | `runForwardGraph()` — the documented EXC_BAD_ACCESS crash site | Intact |
-| `PhospheneEngine/Sources/ML/StemSeparator.swift` | UMA buffer-write lock-guard probes | Intact |
-| `PhospheneEngine/Sources/Renderer/MLDispatchScheduler.swift` | Line 190 — `BUG012Probe.log(...)` for scheduler decision tracking | Intact (extra file beyond the kickoff's explicit list; consistent with the broader BUG-012-i1 instrumentation tranche) |
-| `PhospheneEngine/Tests/PhospheneEngineTests/ML/BUG012ConcurrencyTest.swift` | The concurrency test exercising the suspected race surface | Intact |
-| **`PhospheneApp/VisualizerEngine.swift`** | Line 709 `BUG012Probe.recordVisualizerEngineInit()`; line 718 (`deinit`) `BUG012Probe.recordVisualizerEngineDeinit()` | Intact |
-| **`PhospheneApp/VisualizerEngine+Stems.swift`** | `runStemSeparation` timer entry (line 89); MainActor self=nil notice (line 96); no-scheduler queue (line 102); stemQueue.async self=nil notices (lines 104, 129, 139); `performStemSeparation` enter (line 157); separator.separate CALL (line 185) / RETURN (line 193); exit-with-outcome at multiple sites (`warmup-skip`, `silence-skip`, `ok`, `threw`, `no-separator`) | Intact |
+| `UzumeEngine/Sources/Shared/BUG012Probe.swift` | The probe module itself | `production-active` |
+| `UzumeEngine/Sources/ML/StemFFT.swift` | Dispatch-ID allocation; in-flight counters; lock-await / lock-release log lines | Intact |
+| `UzumeEngine/Sources/ML/StemFFT+GPU.swift` | `runForwardGraph()` — the documented EXC_BAD_ACCESS crash site | Intact |
+| `UzumeEngine/Sources/ML/StemSeparator.swift` | UMA buffer-write lock-guard probes | Intact |
+| `UzumeEngine/Sources/Renderer/MLDispatchScheduler.swift` | Line 190 — `BUG012Probe.log(...)` for scheduler decision tracking | Intact (extra file beyond the kickoff's explicit list; consistent with the broader BUG-012-i1 instrumentation tranche) |
+| `UzumeEngine/Tests/UzumeEngineTests/ML/BUG012ConcurrencyTest.swift` | The concurrency test exercising the suspected race surface | Intact |
+| **`UzumeApp/VisualizerEngine.swift`** | Line 709 `BUG012Probe.recordVisualizerEngineInit()`; line 718 (`deinit`) `BUG012Probe.recordVisualizerEngineDeinit()` | Intact |
+| **`UzumeApp/VisualizerEngine+Stems.swift`** | `runStemSeparation` timer entry (line 89); MainActor self=nil notice (line 96); no-scheduler queue (line 102); stemQueue.async self=nil notices (lines 104, 129, 139); `performStemSeparation` enter (line 157); separator.separate CALL (line 185) / RETURN (line 193); exit-with-outcome at multiple sites (`warmup-skip`, `silence-skip`, `ok`, `threw`, `no-separator`) | Intact |
 
 The path is clear for the next BUG-012 reproduction. No edits were applied to instrumented files in this audit per Hard Rules.
 
@@ -878,9 +878,9 @@ No edits to CLAUDE.md applied in this increment. The `What NOT To Do` rules refe
 
 Applied in this increment as doc-only corrections:
 
-1. **§Module Map PhospheneApp/** block extended. The pre-CA.5 block listed 15 of 49 engine-adapter files. The post-CA.5 block lists every file with a one-line behavioural description, mirroring the CA.4 fix for the Orchestrator block. Categories: top-level files (14), `Services/` (30), `Permissions/` (3), `Models/` (2). The `Views/` and `ViewModels/` sub-blocks are flagged in the audit doc as CA.6 scope.
+1. **§Module Map UzumeApp/** block extended. The pre-CA.5 block listed 15 of 49 engine-adapter files. The post-CA.5 block lists every file with a one-line behavioural description, mirroring the CA.4 fix for the Orchestrator block. Categories: top-level files (14), `Services/` (30), `Permissions/` (3), `Models/` (2). The `Views/` and `ViewModels/` sub-blocks are flagged in the audit doc as CA.6 scope.
 
-2. **§Module Map Tests/PhospheneApp/** block added. Lists the load-bearing regression / contract tests: `OrchestratorWiringRegressionTests`, `SettingsStoreEnvironmentRegressionTests`, `PlaybackChromeIndexBindingTests`, `DefaultPlaybackActionRouterTests`, `CaptureModeSwitchCoordinatorTests`, `NetworkRecoveryCoordinatorTests`, `SpotifyConnectionViewModelTests`, `SpotifyKeychainStoreTests`, `SpotifyOAuthTokenProviderTests`, `PresetScoringContextProviderTests`, `LiveAdaptationToastBridgeTests`, `AppleMusicConnectionViewModelTests`, `PlaybackErrorBridgeTests`, `PlaybackErrorConditionTrackerTests`, `SessionRecorderRetentionPolicyTests`, `SettingsMigratorTests`. The CA.6 audit will inventory VM-side test files.
+2. **§Module Map Tests/UzumeApp/** block added. Lists the load-bearing regression / contract tests: `OrchestratorWiringRegressionTests`, `SettingsStoreEnvironmentRegressionTests`, `PlaybackChromeIndexBindingTests`, `DefaultPlaybackActionRouterTests`, `CaptureModeSwitchCoordinatorTests`, `NetworkRecoveryCoordinatorTests`, `SpotifyConnectionViewModelTests`, `SpotifyKeychainStoreTests`, `SpotifyOAuthTokenProviderTests`, `PresetScoringContextProviderTests`, `LiveAdaptationToastBridgeTests`, `AppleMusicConnectionViewModelTests`, `PlaybackErrorBridgeTests`, `PlaybackErrorConditionTrackerTests`, `SessionRecorderRetentionPolicyTests`, `SettingsMigratorTests`. The CA.6 audit will inventory VM-side test files.
 
 3. **§UI Layer** — minor: `SessionStateViewModel` description (line 224) extended to note that it also surfaces `reduceMotion` from `accessibilityState`, matching the actual constructor signature `init(sessionManager:accessibilityState:)`. Not blocking — clarification only.
 
@@ -921,7 +921,7 @@ Items are greppable as `CA\.5-FU-\d+`. CA.6 (Views + ViewModels) is registered h
 |---|---|---|---|---|
 | **CA.5-FU-1** | Decide the fate of `MultiDisplayToastBridge.coalesceTask` + `pendingEvents` field-level production-orphans (`MultiDisplayToastBridge.swift:22–23`). Two options: (a) **implement the coalescing** (handler appends to `pendingEvents`; a Task fires after 0.5 s and enqueues one toast with N-message summary; cancels and restarts on each new event) — matches the line-21 comment intent; (b) **delete both fields** and the line-21 comment — display hot-plug events arrive at human-scale cadence on Macs so the practical risk of un-batched toasts is low. Option (b) is a < 5-line change; option (a) needs ~30 lines + a test. Bundle with any future App-layer commit. | The field-level orphan is closed: either fields are consumed by working coalescing logic with a test, OR fields + comment are removed. Engine + app builds clean; SwiftLint zero violations. | <1 | Ready now |
 | **CA.5-FU-2** | ✅ **Closed 2026-05-21** (Matt picked **option (b)** — stay invisible). Engine-driven adaptations intentionally do NOT toast — the visual change itself is the user-visible feedback per UX_SPEC §7.4 ("on keystroke"). Toast surface is reserved for user-initiated playback-action acknowledgements. Docstring at `LiveAdaptationToastBridge.swift:1-14` + class-level doc at `:22-26` rewritten to drop the "engine events" observation source and clarify `emitAck(_:)` is for user-action acks only. No behavioural change. | Closed. | <1 | ✅ Resolved 2026-05-21 |
-| **CA.5-FU-3** | Rename `PhospheneApp/MusicKitFetcher.swift` to `PhospheneApp/ITunesSearchFetcher.swift` so the filename matches the contained `ITunesSearchFetcher` class. The file's top comment already states explicitly that there is no MusicKit dependency. Also: update the four pbxproj sections (`PBXBuildFile`, `PBXFileReference`, `PBXGroup`, `PBXSourcesBuildPhase`) per the U.11 learning. Verify `xcodebuild -scheme PhospheneApp build` passes. | File renamed; pbxproj updated; engine + app builds clean; SwiftLint zero violations. ARCHITECTURE.md Module Map updated to reflect the new filename. | <1 | Ready now |
+| **CA.5-FU-3** | Rename `UzumeApp/MusicKitFetcher.swift` to `UzumeApp/ITunesSearchFetcher.swift` so the filename matches the contained `ITunesSearchFetcher` class. The file's top comment already states explicitly that there is no MusicKit dependency. Also: update the four pbxproj sections (`PBXBuildFile`, `PBXFileReference`, `PBXGroup`, `PBXSourcesBuildPhase`) per the U.11 learning. Verify `xcodebuild -scheme UzumeApp build` passes. | File renamed; pbxproj updated; engine + app builds clean; SwiftLint zero violations. ARCHITECTURE.md Module Map updated to reflect the new filename. | <1 | Ready now |
 | **CA.5-FU-4 (== CA.6)** | ✅ **Closed 2026-05-21.** CA.6 audit landed as [`docs/CAPABILITY_REGISTRY/APP_VIEWS.md`](APP_VIEWS.md) (commits `8afaddbd` audit doc + `bd2e9ae3` ARCHITECTURE.md / ENGINEERING_PLAN.md drift corrections). 59 files / 8,285 LoC; 58 of 59 `production-active`; zero `broken-but-claimed`; three small follow-ups (CA.6-FU-1/2/3) all closed same-day 2026-05-21. Four kickoff-required verifications all clean (PlaybackChromeViewModel BUG-015 / D-091 consumer chain; D-091 single-SettingsStore enforcement; DASH.7 dashboard surface against D-088/D-089; U.10/U.11 timing-margin compliance). The App layer is now fully closed. | Closed. | 1–2 | ✅ Resolved 2026-05-21 |
 | **CA.1-FU-1 status update (now superseded by BUG-015 fix's actual shape)** | The BUG-015 fix routes `liveBoundary` from `mirPipeline.latestStructuralPrediction` (option (b) from CA.1's framing, NOT option (a) as CA.4 recommended). The per-frame `StructuralAnalyzer` chain in `MIRPipeline.process` now has a runtime consumer — the audio-callback gate-to-prep-time fix is no longer the right action. CA.1-FU-1 should close as `superseded`. The wire is doing what option (b) intended. | CA.1-FU-1 closed in `docs/CAPABILITY_REGISTRY/DSP_MIR.md §Follow-up Backlog` and `docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md §Follow-up Backlog`. No code change required. | <1 | Ready now (doc-only update to two prior audit docs) |
 
@@ -935,7 +935,7 @@ Items are greppable as `CA\.5-FU-\d+`. CA.6 (Views + ViewModels) is registered h
 
 **What worked.**
 
-- **Direct reads + parallel Explore agents both scaled.** The engine-adapter core (12 `VisualizerEngine+*` extensions + `PhospheneApp.swift` + `ContentView.swift` + `MusicKitFetcher.swift` = 15 files, ~4,200 LoC, including the biggest single file at 773 lines) was read directly with no token overflow issues. The 30 `Services/` + 5 `Permissions/` + `Models/` files (~3,800 LoC) were batched across three parallel Explore agents; each agent took ~1 minute and produced complete per-file reports. **Total Pass 1 wall-clock: ~3 minutes** for ~8k LoC. CA.3 + CA.4's "direct reads scale to ≤ 5k LoC" rule expanded cleanly to ~8k with the agent supplement.
+- **Direct reads + parallel Explore agents both scaled.** The engine-adapter core (12 `VisualizerEngine+*` extensions + `UzumeApp.swift` + `ContentView.swift` + `MusicKitFetcher.swift` = 15 files, ~4,200 LoC, including the biggest single file at 773 lines) was read directly with no token overflow issues. The 30 `Services/` + 5 `Permissions/` + `Models/` files (~3,800 LoC) were batched across three parallel Explore agents; each agent took ~1 minute and produced complete per-file reports. **Total Pass 1 wall-clock: ~3 minutes** for ~8k LoC. CA.3 + CA.4's "direct reads scale to ≤ 5k LoC" rule expanded cleanly to ~8k with the agent supplement.
 
 - **Pass 0 BUG-status cross-check still cheap insurance.** Every BUG cited in the CA.5 kickoff (BUG-015 Resolved, BUG-016 Open, BUG-012 Open, BUG-001 Open, BUG-013 Open) matched `KNOWN_ISSUES.md` verbatim. No stale citation found. The Pass 0 step took ~2 minutes and would have surfaced any drift before the audit committed scope.
 
@@ -955,7 +955,7 @@ Items are greppable as `CA\.5-FU-\d+`. CA.6 (Views + ViewModels) is registered h
 
 - **Sub-scope decision wording.** The kickoff said the engine-adapter slice is "~50 files" but actual count is 49 (it lists MetalView.swift twice — once at root, once noting it's in Views/; the latter is correct). Minor.
 
-- **One trivial mis-step:** Early in Pass 2 I read the count "Listed (12)" but recounted to find it's actually 15 files listed in the pre-CA.5 ARCHITECTURE.md `§Module Map PhospheneApp/` block (not 12 as I'd initially written). Corrected inline; the post-CA.5 block lists all 49.
+- **One trivial mis-step:** Early in Pass 2 I read the count "Listed (12)" but recounted to find it's actually 15 files listed in the pre-CA.5 ARCHITECTURE.md `§Module Map UzumeApp/` block (not 12 as I'd initially written). Corrected inline; the post-CA.5 block lists all 49.
 
 **Recommended changes for CA.6.**
 

@@ -1,6 +1,6 @@
-# Contributing to Phosphene
+# Contributing to Uzume
 
-Phosphene is open to contributions with a specific focus: **presets** — the
+Uzume is open to contributions with a specific focus: **presets** — the
 visualizers themselves. Engine/app changes are welcome as issues first; the
 core is small-team-maintained and changes there move through the project's
 decision process.
@@ -10,8 +10,8 @@ decision process.
 A preset is a two-file drop-in, auto-discovered at build time:
 
 ```
-PhospheneEngine/Sources/Presets/Shaders/<Name>.metal   — the shader(s)
-PhospheneEngine/Sources/Presets/Shaders/<Name>.json    — the sidecar (metadata + audio routing)
+UzumeEngine/Sources/Presets/Shaders/<Name>.metal   — the shader(s)
+UzumeEngine/Sources/Presets/Shaders/<Name>.json    — the sidecar (metadata + audio routing)
 ```
 
 The sidecar schema is documented in
@@ -56,9 +56,9 @@ motion is valid only on the cached `BeatGrid`. The full hierarchy is in
    Note: a `certified: true` flag in a hot-reload sidecar is honored locally
    without the repo's flash/rubric gates — leave it `false` while developing
    and use *Show uncertified presets* (below).
-2. In-repo: place the pair in `PhospheneEngine/Sources/Presets/Shaders/` and
+2. In-repo: place the pair in `UzumeEngine/Sources/Presets/Shaders/` and
    build; broken shaders are logged and skipped, never crash the app.
-3. **Contact sheets:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReviewTests`
+3. **Contact sheets:** `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReviewTests`
    renders your preset against recorded real-music feature streams.
 4. **Reference comparison:** `Scripts/compare_render.sh <preset>` diffs
    against your reference imagery.
@@ -68,7 +68,7 @@ motion is valid only on the cached `BeatGrid`. The full hierarchy is in
 
 ## Gates your preset must pass
 
-All runnable locally with `swift test --package-path PhospheneEngine`:
+All runnable locally with `swift test --package-path UzumeEngine`:
 
 - **Route coverage** — every `audio_routes` entry in your sidecar must be
   exercised by the committed real-music fixtures (`RouteCoverageTests`).
@@ -100,7 +100,7 @@ rotation the orchestrator plans with — is a maintainer step:
 
 Porting the *concept* of a Milkdrop preset is welcome and has an established
 posture ([docs/CREDITS.md](docs/CREDITS.md)): the preset is authored from
-scratch on Phosphene's primitives, carries an `inspired_by` block in its
+scratch on Uzume's primitives, carries an `inspired_by` block in its
 sidecar (source preset name, original artist, pack), and gets a row in
 CREDITS.md. **Never commit a `.milk` file** — no source redistribution.
 

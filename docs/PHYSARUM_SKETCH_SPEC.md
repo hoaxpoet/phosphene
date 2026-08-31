@@ -12,7 +12,7 @@
 
 - **Iconic subject, deliverable at fidelity:** the Physarum vein network — instantly recognizable (slime mold / neural web / river delta), with a working reference for fidelity (Bleuje).
 - **Clear musical role:** continuous energy → consolidation (primary); structural drop → collapse-regrow (accent). Mute the audio and the *form* changes with the energy — the form carries the music. This is the specific thing Drift Motes lacked (its motes drifted identically regardless of audio).
-- **Infrastructure-feasible:** runs on Phosphene's existing per-frame compute + ping-pong feedback paths (see §4). No new render-graph primitive expected; flagged if that changes (§9).
+- **Infrastructure-feasible:** runs on Uzume's existing per-frame compute + ping-pong feedback paths (see §4). No new render-graph primitive expected; flagged if that changes (§9).
 
 Future variant (out of scope here): **stems-as-colonies** — per-stem colored colonies competing for the trail map.
 
@@ -24,7 +24,7 @@ Port Bleuje's documented 4-shader Physarum/36-Points pipeline; do **not** re-der
 
 - Bleuje write-up (4-shader structure, formulas, perf): https://bleuje.com/physarum-explanation/ · repo https://github.com/Bleuje/physarum-36p
 - Sage Jenson "36 Points" (parameter-as-function-of-trail): https://www.sagejenson.com/36points/
-- **License:** Bleuje/Sage are CC-BY-NC-SA 3.0 — re-implement the *algorithm* in our own Metal (techniques aren't copyrightable); do not paste their GLSL into MIT Phosphene.
+- **License:** Bleuje/Sage are CC-BY-NC-SA 3.0 — re-implement the *algorithm* in our own Metal (techniques aren't copyrightable); do not paste their GLSL into MIT Uzume.
 
 ---
 
@@ -41,7 +41,7 @@ The **36-Points** upgrade (our variety/knob bank): make the four params function
 
 ---
 
-## 4. Metal architecture (mapped to existing Phosphene paths)
+## 4. Metal architecture (mapped to existing Uzume paths)
 
 From the capability audit, all required paths already exist — this is additive, no prerequisite plumbing:
 
@@ -60,7 +60,7 @@ Concrete pieces:
 
 ## 5. Audio coupling — real primitives, one-primitive-per-layer (FA #67)
 
-Drive from Phosphene's actual deviation primitives (D-026) and structural signals, **not** raw onsets and **not** the browser-toy FFT. Continuous energy is the default primary driver (Audio Hierarchy Layer 1).
+Drive from Uzume's actual deviation primitives (D-026) and structural signals, **not** raw onsets and **not** the browser-toy FFT. Continuous energy is the default primary driver (Audio Hierarchy Layer 1).
 
 | Visual layer | Audio primitive | Timescale | Effect |
 |---|---|---|---|
@@ -114,4 +114,4 @@ JSON sidecar · certification / M7 · Orchestrator + transition integration · s
 
 ## 10. Build / verify boundary
 
-This sketch must be built and frame-timed on **macOS + Xcode + Apple Silicon** (`xcodebuild -scheme PhospheneApp …`, `RENDER_VISUAL=1` harness). It cannot be compiled or run in the Cowork Linux sandbox — Metal needs the Apple toolchain and GPU. Implementation + framerate capture happen on the Mac (Matt, or a Claude Code session there). This document is the design hand-off.
+This sketch must be built and frame-timed on **macOS + Xcode + Apple Silicon** (`xcodebuild -scheme UzumeApp …`, `RENDER_VISUAL=1` harness). It cannot be compiled or run in the Cowork Linux sandbox — Metal needs the Apple toolchain and GPU. Implementation + framerate capture happen on the Mac (Matt, or a Claude Code session there). This document is the design hand-off.

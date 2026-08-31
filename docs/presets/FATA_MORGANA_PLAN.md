@@ -1,7 +1,7 @@
-# Fata Morgana — port plan (butterchurn → Phosphene)
+# Fata Morgana — port plan (butterchurn → Uzume)
 
 **Preset:** `martin [shadow harlequins shape code] - fata morgana` (a Milkdrop/butterchurn builtin).
-**Goal:** faithful port of the **mirage** (custom warp + custom comp + custom shapes) onto Phosphene's
+**Goal:** faithful port of the **mirage** (custom warp + custom comp + custom shapes) onto Uzume's
 `mv_warp`, certified against the live oracle; **stem/beat uplift deferred** (Matt: "mirage first, decide
 uplift later", 2026-06-02). Direct successor to Dragon Bloom (D-137/D-138); cardinal rule **FA #70** —
 replicate butterchurn's render loop wholesale from source, do not patch-and-tune divergences.
@@ -27,7 +27,7 @@ comp — so **no** gamma/darken/echo/invert is applied (those baseVals are ignor
 
 **Reuse:** the mv_warp loop driver (`drawWithMVWarp`), 8-bit feedback (`feedbackFormat`), the prev↔target
 swap, the scene-overlay draw hook (`drawSceneGeometryOverlay` is where shapes go — on top of the warp
-target), `bindNoiseTextures` (Phosphene's `noiseHQ`/`noiseLQ` map to the comp's `noise_hq`/`pw_noise_lq`),
+target), `bindNoiseTextures` (Uzume's `noiseHQ`/`noiseLQ` map to the comp's `noise_hq`/`pw_noise_lq`),
 the real-session-replay diag pattern (`DragonBloomMVWarpAccumulationTest`), and the gating discipline
 (every other mv_warp preset stays byte-identical — `PresetRegression`).
 
@@ -37,7 +37,7 @@ the real-session-replay diag pattern (`DragonBloomMVWarpAccumulationTest`), and 
    `<preset>_warp_fragment` / `<preset>_comp_fragment`; the bundle uses them when present, else the shared
    defaults. (Cleaner than overloading the shared gated shaders with a third behaviour — keeps the
    byte-identical guarantee trivially, siblings-not-subclasses per D-097.)
-2. **Blur-of-previous-frame** bound to the warp pass. Phosphene has no blur-mip chain; approximate the
+2. **Blur-of-previous-frame** bound to the warp pass. Uzume has no blur-mip chain; approximate the
    butterchurn `blur1` with a small separable/multi-tap blur of the prev frame, stored in colour space
    (so warp `scale1=1, bias1=0`). Only generated for presets that request it (gated).
 3. **Custom-SHAPE draw encoder.** TRIANGLE_FAN n-gons (center = primary rgba, rim = secondary r2/g2/b2/a2),
@@ -63,7 +63,7 @@ New per-frame warp/comp uniforms (CPU-computed, fata-scoped): `roam_sin`/`slow_r
 
 ## Deferred (post-cert decision)
 
-Stem/beat **uplift** (D-137 move): swap the source's band-attack shape sizing for Phosphene **stems**
+Stem/beat **uplift** (D-137 move): swap the source's band-attack shape sizing for Uzume **stems**
 (bass/drums/vocals deviation primitives, D-026), a comp-stage beat pump, energy-weighted time. Decide
 as a separate increment after the faithful mirage certifies.
 
@@ -72,5 +72,5 @@ as a separate increment after the faithful mirage certifies.
 - Pipeline format must match the feedback texture format (8-bit) or the GPU **stalls** (beachball) at the
   preset transition — set BOTH `PresetLoader.feedbackFormat` and the app bundle format.
 - Test the **live dispatch path**, not single-frame `preset.pipelineState` (production-grade testing rule).
-- Aspect: authored 4:3; Phosphene is 16:9. Use the live aspect for shape `aspecty` (round n-gons); let the
+- Aspect: authored 4:3; Uzume is 16:9. Use the live aspect for shape `aspecty` (round n-gons); let the
   comp projection widen. Oracle is the comparison reference, not a 4:3 lock.

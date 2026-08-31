@@ -3,7 +3,7 @@
 **Audit increment:** CA.6
 **Date:** 2026-05-21
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneApp/Views/` (47 files) + `PhospheneApp/ViewModels/` (12 files) — the SwiftUI presentation slice, deferred from CA.5. 59 files / 8,285 LoC.
+**Scope:** `UzumeApp/Views/` (47 files) + `UzumeApp/ViewModels/` (12 files) — the SwiftUI presentation slice, deferred from CA.5. 59 files / 8,285 LoC.
 **Methodology:** Phase CA scoping document — CA.6 kickoff `docs/prompts/PHASE_CA_KICKOFF_CA6_APP_VIEWS_2026-05-21.md`.
 **Reads relied on:** `CLAUDE.md`, `docs/ARCHITECTURE.md` (§UI Layer + §Module Map), `docs/CAPABILITY_REGISTRY/APP.md` (CA.5), `docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md` (CA.4), `docs/CAPABILITY_REGISTRY/SESSION.md` (CA.3), `docs/CAPABILITY_REGISTRY/ML.md` (CA.2), `docs/CAPABILITY_REGISTRY/DSP_MIR.md` (CA.1), `docs/QUALITY/KNOWN_ISSUES.md` (BUG-001, BUG-012, BUG-013, BUG-015, BUG-016), `docs/DECISIONS.md` (D-049, D-050, D-052, D-054, D-058, D-061, D-069, D-088, D-089, D-091), `docs/ENGINEERING_PLAN.md` (Phase U + Phase CA + DASH.7), `docs/UX_SPEC.md` (§3, §6.3, §7, §8, §9.4, §9.5), `docs/RELEASE_NOTES_DEV.md` (`[dev-2026-05-21-c]` / `[dev-2026-05-21-d]` / `[dev-2026-05-21-e]` for the timing-margin chip).
 
@@ -22,7 +22,7 @@ Three small file-internal docstring-vs-code drift findings and the same systemic
 | `broken-but-claimed` | 0 | BUG-015 (the only App-layer-class `broken-but-claimed` finding in scope of the App-layer audit) was filed by CA.4 and Resolved 2026-05-21 — CA.5 verified the engine-adapter side; this audit verifies the View-tree consumer side. |
 | `documented-but-missing` | 0 | — |
 | `production-orphan` | 0 | No orphans found at file or field level within Views/ + ViewModels/. (CA.5-FU-1's `MultiDisplayToastBridge.coalesceTask` / `pendingEvents` cluster landed 2026-05-21 in commit `688095d4` per kickoff's status-on-entry; the file is in `Services/` and out of CA.6 scope.) |
-| `built-but-undocumented` | 2 large | (a) `ARCHITECTURE.md §Module Map PhospheneApp/ViewModels/` block lists **4 of 12** ViewModels (8 missing: `DashboardOverlayViewModel`, `EndSessionConfirmViewModel`, `PlanPreviewViewModel`, `PlaybackChromeViewModel`, `PreparationErrorViewModel`, `PreparationProgressViewModel`, `ReadyViewModel`, `SettingsViewModel`, `ToastManager` — `DashboardOverlayViewModel` lives in `Views/Dashboard/` but is registered under `Views/Dashboard/` block, not `ViewModels/`; recount: 8 from `ViewModels/` proper + correctly-listed `DashboardOverlayViewModel`). (b) `ARCHITECTURE.md §Module Map PhospheneApp/Views/` block lists ~20 of 47 (27 missing — full list in §Cross-references below). Same systemic pattern as CA.1 / CA.2 / CA.3 / CA.4 / CA.5. Plus three minor structural drift items in §UI Layer (lines 220-242): `NoAudioSignalBadge` is named but the file was renamed to `ListeningBadgeView` in U.6 (file-header at `ListeningBadgeView.swift:3` confirms); the keyboard-shortcut list omits `Shift+→` / `Shift+←` (force-immediate nudge per U.6b), `Z` (undo), `M` (mood-lock), `Esc` (end session), `Shift+?` (shortcut help); `DashboardOverlayView` (DASH.7 surface; PlaybackView Layer 6) is not mentioned in the §UI Layer paragraph at all. |
+| `built-but-undocumented` | 2 large | (a) `ARCHITECTURE.md §Module Map UzumeApp/ViewModels/` block lists **4 of 12** ViewModels (8 missing: `DashboardOverlayViewModel`, `EndSessionConfirmViewModel`, `PlanPreviewViewModel`, `PlaybackChromeViewModel`, `PreparationErrorViewModel`, `PreparationProgressViewModel`, `ReadyViewModel`, `SettingsViewModel`, `ToastManager` — `DashboardOverlayViewModel` lives in `Views/Dashboard/` but is registered under `Views/Dashboard/` block, not `ViewModels/`; recount: 8 from `ViewModels/` proper + correctly-listed `DashboardOverlayViewModel`). (b) `ARCHITECTURE.md §Module Map UzumeApp/Views/` block lists ~20 of 47 (27 missing — full list in §Cross-references below). Same systemic pattern as CA.1 / CA.2 / CA.3 / CA.4 / CA.5. Plus three minor structural drift items in §UI Layer (lines 220-242): `NoAudioSignalBadge` is named but the file was renamed to `ListeningBadgeView` in U.6 (file-header at `ListeningBadgeView.swift:3` confirms); the keyboard-shortcut list omits `Shift+→` / `Shift+←` (force-immediate nudge per U.6b), `Z` (undo), `M` (mood-lock), `Esc` (end session), `Shift+?` (shortcut help); `DashboardOverlayView` (DASH.7 surface; PlaybackView Layer 6) is not mentioned in the §UI Layer paragraph at all. |
 | `stub` | 0 | — |
 | `dead` | 0 | — |
 | `boundary-noted` | 5 | App-View ↔ App-Service (PlaybackView's 9 `@State` services audited from the View side; CA.5 already audited the Service classes); App-View ↔ VisualizerEngine (publisher-injection pattern via `engine.$xxx.eraseToAnyPublisher()` from ContentView); ViewModel ↔ SessionManager (SessionStateViewModel, PlaybackChromeViewModel, ReadyViewModel, etc. subscribe to `sessionManager.$state` or methods); ViewModel ↔ SettingsStore (read via `@ObservedObject SettingsViewModel`, never via direct `@StateObject SettingsStore`); ViewModel ↔ DSP (DashboardOverlayViewModel ingests `DashboardSnapshot` carrying BeatSyncSnapshot / StemFeatures / PerfSnapshot). All boundary verdicts complete; producer-side details documented in the prior four audits. |
@@ -34,13 +34,13 @@ Three small file-internal docstring-vs-code drift findings and the same systemic
 
 2. **D-091 single-SettingsStore enforcement verified clean across the View tree.** Cited grep:
    ```
-   $ grep -rnE "@StateObject.*SettingsStore" PhospheneApp PhospheneAppTests
-   PhospheneApp/PhospheneApp.swift:25:    @StateObject private var settingsStore = SettingsStore()
-   PhospheneApp/Views/Playback/PlaybackView.swift:52:    /// `@StateObject SettingsStore()` here creates a parallel state world —
-   PhospheneAppTests/SettingsStoreEnvironmentRegressionTests.swift:42:        @StateObject var shadowStore = SettingsStore(...)
-   PhospheneAppTests/SettingsStoreEnvironmentRegressionTests.swift:148: #expect(!src.contains("@StateObject private var settingsStore = SettingsStore()"),
+   $ grep -rnE "@StateObject.*SettingsStore" UzumeApp UzumeAppTests
+   UzumeApp/UzumeApp.swift:25:    @StateObject private var settingsStore = SettingsStore()
+   UzumeApp/Views/Playback/PlaybackView.swift:52:    /// `@StateObject SettingsStore()` here creates a parallel state world —
+   UzumeAppTests/SettingsStoreEnvironmentRegressionTests.swift:42:        @StateObject var shadowStore = SettingsStore(...)
+   UzumeAppTests/SettingsStoreEnvironmentRegressionTests.swift:148: #expect(!src.contains("@StateObject private var settingsStore = SettingsStore()"),
    ```
-   ONE legitimate construction at the app entry (`PhospheneApp.swift:25`); ONE consumer via `@EnvironmentObject` at `PlaybackView.swift:55` (the QR.4 correction); the `PlaybackView.swift:52` hit is a comment WARNING against the bad pattern (not actual usage). All Settings sub-sections (`AudioSettingsSection`, `VisualsSettingsSection`, `DiagnosticsSettingsSection`, `AboutSettingsSection`) take `SettingsViewModel` as `@ObservedObject` and never see `SettingsStore` directly. The single-instance + EnvironmentObject + ViewModel-facade topology is the canonical D-091 shape.
+   ONE legitimate construction at the app entry (`UzumeApp.swift:25`); ONE consumer via `@EnvironmentObject` at `PlaybackView.swift:55` (the QR.4 correction); the `PlaybackView.swift:52` hit is a comment WARNING against the bad pattern (not actual usage). All Settings sub-sections (`AudioSettingsSection`, `VisualsSettingsSection`, `DiagnosticsSettingsSection`, `AboutSettingsSection`) take `SettingsViewModel` as `@ObservedObject` and never see `SettingsStore` directly. The single-instance + EnvironmentObject + ViewModel-facade topology is the canonical D-091 shape.
 
 3. **DASH.7 dashboard surface verified clean against D-088 / D-089.** Every load-bearing claim in ARCHITECTURE.md `§Module Map Views/Dashboard/` lands in the code:
    - `DashboardOverlayView.swift:49` — `DarkVibrancyView()` as backdrop ✓
@@ -86,15 +86,15 @@ Three small file-internal docstring-vs-code drift findings and the same systemic
 8. **PlaybackView ownership topology matches CLAUDE.md / ARCHITECTURE.md.** PlaybackView owns: 4 `@StateObject` view models (`chromeVM: PlaybackChromeViewModel`, `toastManager: ToastManager`, `endSessionVM: EndSessionConfirmViewModel`, `dashboardVM: DashboardOverlayViewModel`); 8 `@State` services (`keyMonitor: PlaybackKeyMonitor`, `fullscreenObserver: FullscreenObserver`, `actionRouter: DefaultPlaybackActionRouter?`, `playbackErrorBridge: PlaybackErrorBridge?`, `displayManager: DisplayManager?`, `multiDisplayBridge: MultiDisplayToastBridge?`, `displayChangeCoordinator: DisplayChangeCoordinator?`, `captureModeSwitchCoordinator: CaptureModeSwitchCoordinator?`) + `@State currentRegistry: PlaybackShortcutRegistry?`; 2 `@EnvironmentObject` (`engine: VisualizerEngine`, `settingsStore: SettingsStore`); 4 `@State` UI flags (`showDebug`, `showHelp`, `showPlanPreview`, `showSettings`). Lifecycle: `setup()` at `.onAppear` (line 172, 190-236) wires the action router, fullscreen + display + capture-mode + error coordinators, and installs the key monitor; `teardown()` at `.onDisappear` (line 173, 238-241) uninstalls. CA.5's view of the Service-class lifecycle held; CA.6 confirms the View-side ownership matches.
 
 9. **Six top-level `SessionState` views and the chrome subviews have proper `accessibilityIdentifier` per UX_SPEC §3.** Static IDs declared:
-   - `phosphene.view.idle` — IdleView.swift:13 ✓
-   - `phosphene.view.connecting` — ConnectingView.swift:17 ✓
-   - `phosphene.view.preparing` — PreparationProgressView.swift:24 ✓
-   - `phosphene.view.ready` — ReadyView.swift:27 ✓
-   - `phosphene.view.playing` — PlaybackView.swift:30 ✓
-   - `phosphene.view.ended` — EndedView.swift:21 ✓
+   - `uzume.view.idle` — IdleView.swift:13 ✓
+   - `uzume.view.connecting` — ConnectingView.swift:17 ✓
+   - `uzume.view.preparing` — PreparationProgressView.swift:24 ✓
+   - `uzume.view.ready` — ReadyView.swift:27 ✓
+   - `uzume.view.playing` — PlaybackView.swift:30 ✓
+   - `uzume.view.ended` — EndedView.swift:21 ✓
    - Plus connector / settings / playback-chrome sub-IDs across all interactive surfaces.
 
-10. **CA.5-FU-2 status (LiveAdaptationToastBridge engine-event docstring)** — **still pending** as of CA.6 entry. The bridge's docstring still claims two observation sources (user actions + engine events) while only user-action acks reach `emitAck()`. CA.6 verifies no further drift but does not propose a fix (it remains a product call awaiting Matt's input). The Apple-side consumers (`DefaultPlaybackActionRouter` 11 sites) all reach `LiveAdaptationToastBridge.emitAck` correctly from the View-tree perspective — the SettingsViewModel binding for `phosphene.settings.visuals.showLiveAdaptationToasts` (`SettingsViewModel.swift:114-117`) flows to the UserDefaults flag the bridge gates emission on.
+10. **CA.5-FU-2 status (LiveAdaptationToastBridge engine-event docstring)** — **still pending** as of CA.6 entry. The bridge's docstring still claims two observation sources (user actions + engine events) while only user-action acks reach `emitAck()`. CA.6 verifies no further drift but does not propose a fix (it remains a product call awaiting Matt's input). The Apple-side consumers (`DefaultPlaybackActionRouter` 11 sites) all reach `LiveAdaptationToastBridge.emitAck` correctly from the View-tree perspective — the SettingsViewModel binding for `uzume.settings.visuals.showLiveAdaptationToasts` (`SettingsViewModel.swift:114-117`) flows to the UserDefaults flag the bridge gates emission on.
 
 **Four follow-up items registered in [§Follow-up Backlog](#follow-up-backlog).**
 
@@ -196,7 +196,7 @@ The Apple Music side does not have an equivalent URL-callback foregrounding scen
 
 ### built-but-undocumented
 
-**1. `ARCHITECTURE.md §Module Map PhospheneApp/Views/` block lists ~20 of 47 files (27 missing).**
+**1. `ARCHITECTURE.md §Module Map UzumeApp/Views/` block lists ~20 of 47 files (27 missing).**
 
 **Listed (~20):** `MetalView`, `DebugOverlayView`, `Dashboard/` subblock (5 files: `DashboardOverlayView`, `DashboardCardView`, `DashboardRowView`, `DarkVibrancyView`, `DashboardOverlayViewModel`), `ConnectorType`, `ConnectorTileView`, `ConnectorPickerView`, `AppleMusicConnectionView`, `SpotifyConnectionView`, `Onboarding/PermissionOnboardingView`, `Onboarding/PhotosensitivityNoticeView`, `Idle/IdleView`, `Connecting/ConnectingView`, `Preparation/PreparationProgressView`, `Ready/ReadyView`, `Playback/PlaybackView`, `Ended/EndedView`.
 
@@ -214,11 +214,11 @@ The Apple Music side does not have an equivalent URL-callback foregrounding scen
 
 Doc-drift correction applied in this increment.
 
-**2. `ARCHITECTURE.md §Module Map PhospheneApp/ViewModels/` block lists 4 of 12 ViewModels (8 missing).**
+**2. `ARCHITECTURE.md §Module Map UzumeApp/ViewModels/` block lists 4 of 12 ViewModels (8 missing).**
 
 **Listed (4):** `SessionStateViewModel`, `ConnectorPickerViewModel`, `AppleMusicConnectionViewModel`, `SpotifyConnectionViewModel`.
 
-**Missing (8):** `EndSessionConfirmViewModel`, `PlanPreviewViewModel`, `PlaybackChromeViewModel`, `PreparationErrorViewModel`, `PreparationProgressViewModel`, `ReadyViewModel`, `SettingsViewModel`, `ToastManager`. Note: `DashboardOverlayViewModel` lives in `Views/Dashboard/` per the actual filesystem layout, and the `Views/Dashboard/` sub-block in ARCHITECTURE.md correctly lists it there; the count above is for `PhospheneApp/ViewModels/` proper.
+**Missing (8):** `EndSessionConfirmViewModel`, `PlanPreviewViewModel`, `PlaybackChromeViewModel`, `PreparationErrorViewModel`, `PreparationProgressViewModel`, `ReadyViewModel`, `SettingsViewModel`, `ToastManager`. Note: `DashboardOverlayViewModel` lives in `Views/Dashboard/` per the actual filesystem layout, and the `Views/Dashboard/` sub-block in ARCHITECTURE.md correctly lists it there; the count above is for `UzumeApp/ViewModels/` proper.
 
 Doc-drift correction applied in this increment.
 
@@ -232,7 +232,7 @@ The audit produced no `boundary-deferred` items. The following App-View-layer bo
 
 - **ViewModel ↔ SessionManager.** `SessionStateViewModel` subscribes to `sessionManager.$state` via `.assign(to: \.state, on: self)` (line 54-57). `PlaybackChromeViewModel` consumes the engine's live track / preset / plan publishers, NOT `sessionManager` directly (the plan publishes via engine). `ReadyViewModel`, `PreparationProgressViewModel`, `PreparationErrorViewModel`, `EndSessionConfirmViewModel` each take `sessionManager` as an init parameter and call methods on it (`sessionManager.endSession()`, `sessionManager.beginPlayback()`, etc.) — no ViewModel re-instantiates `SessionManager` or holds it as a parallel state. CA.3 closed the SessionManager side. **Verdict: complete.**
 
-- **ViewModel ↔ SettingsStore.** The single `SettingsStore` is injected via `@EnvironmentObject` to PlaybackView (and never to other views). `SettingsView` takes `store: SettingsStore` as init parameter, builds `@StateObject SettingsViewModel(store: store)`. All Settings sub-sections (`AboutSettingsSection`, `AudioSettingsSection`, `DiagnosticsSettingsSection`, `VisualsSettingsSection`) bind to `viewModel: SettingsViewModel` as `@ObservedObject`. The two consumers reading SettingsStore directly outside the SettingsView tree are: PhospheneApp.swift (the single-instance owner) + `PlaybackView.swift:184` (`SettingsView(store: settingsStore)` passing the store down). The shape matches D-091 / Failed Approach #55. **Verdict: complete.**
+- **ViewModel ↔ SettingsStore.** The single `SettingsStore` is injected via `@EnvironmentObject` to PlaybackView (and never to other views). `SettingsView` takes `store: SettingsStore` as init parameter, builds `@StateObject SettingsViewModel(store: store)`. All Settings sub-sections (`AboutSettingsSection`, `AudioSettingsSection`, `DiagnosticsSettingsSection`, `VisualsSettingsSection`) bind to `viewModel: SettingsViewModel` as `@ObservedObject`. The two consumers reading SettingsStore directly outside the SettingsView tree are: UzumeApp.swift (the single-instance owner) + `PlaybackView.swift:184` (`SettingsView(store: settingsStore)` passing the store down). The shape matches D-091 / Failed Approach #55. **Verdict: complete.**
 
 - **ViewModel ↔ DSP / ML (via engine snapshots).** `DashboardOverlayViewModel` subscribes to a `DashboardSnapshot?` publisher (produced by `VisualizerEngine+Dashboard.publishDashboardSnapshot(stems:)` per CA.5's reading). The snapshot carries `BeatSyncSnapshot` (DSP), `StemFeatures` (ML/DSP), `PerfSnapshot` (Renderer). The throttle (33 ms / ~30 Hz) and the in-memory `MutableStemHistory` ring (240 samples per stem) live in the ViewModel; no DSP / ML code is touched by the consumer. CA.1 + CA.2 closed those producer sides. **Verdict: complete.**
 
@@ -254,9 +254,9 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
-| `SessionStateViewModel` class | `production-active` | `PhospheneApp` (constructs once), `ContentView` (consumes `state`) | U.1 |
+| `SessionStateViewModel` class | `production-active` | `UzumeApp` (constructs once), `ContentView` (consumes `state`) | U.1 |
 | `@Published state: SessionState`, `@Published reduceMotion: Bool` | `production-active` | ContentView routing + PlaybackView / ReadyView | — |
-| `init(sessionManager:accessibilityState:)` | `production-active` | `PhospheneApp` | U.9 — sources reduce-motion from `AccessibilityState` (CA.5-audited service) |
+| `init(sessionManager:accessibilityState:)` | `production-active` | `UzumeApp` | U.9 — sources reduce-motion from `AccessibilityState` (CA.5-audited service) |
 
 #### PlaybackChromeViewModel.swift (255 lines) — `production-active`
 
@@ -420,7 +420,7 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
 | `ToastManager` class | `production-active` | `PlaybackView.@StateObject` (line 41) | U.7 |
-| `@Published visibleToasts: [PhospheneToast]` | `production-active` | `ToastContainerView.@ObservedObject` | — |
+| `@Published visibleToasts: [UzumeToast]` | `production-active` | `ToastContainerView.@ObservedObject` | — |
 | `static maxVisible: 3` | `production-active` | Internal queue cap | — |
 | `enqueue(_:)`, `dismiss(id:)`, `dismissByCondition(_:)`, `isConditionAsserted(_:)` | `production-active` | `PlaybackErrorBridge` + `MultiDisplayToastBridge` + `LiveAdaptationToastBridge` + `DefaultPlaybackActionRouter.toastBridge?.emitAck` chain (CA.5-scope) | UX_SPEC §9.4 |
 | `dropOldest()` (private) | `production-active` | Internal overflow handler | — |
@@ -443,11 +443,11 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 ##### ConnectorPickerView.swift (193 lines) — `production-active` + co-located `unverified-claim` #3
 
-`struct ConnectorPickerView: View`. NavigationStack sheet with three tiles. **Apple Music destination creates VM inline** at line 111-115; Spotify destination uses `private struct OAuthSpotifyConnectionWrapper` with `@StateObject` for VM survival across body re-evals. The architectural asymmetry is the `unverified-claim` finding above. Accessibility IDs: `phosphene.view.connectorPicker`, plus per-tile IDs.
+`struct ConnectorPickerView: View`. NavigationStack sheet with three tiles. **Apple Music destination creates VM inline** at line 111-115; Spotify destination uses `private struct OAuthSpotifyConnectionWrapper` with `@StateObject` for VM survival across body re-evals. The architectural asymmetry is the `unverified-claim` finding above. Accessibility IDs: `uzume.view.connectorPicker`, plus per-tile IDs.
 
 ##### ConnectorTileView.swift (72 lines) — `production-active`
 
-`struct ConnectorTileView: View`. Reusable tile: icon + title + subtitle; disabled state with alt caption + optional secondary action. Accessibility ID pattern `phosphene.connector.tile.<type.rawValue>`.
+`struct ConnectorTileView: View`. Reusable tile: icon + title + subtitle; disabled state with alt caption + optional secondary action. Accessibility ID pattern `uzume.connector.tile.<type.rawValue>`.
 
 ##### ConnectorType.swift (35 lines) — `production-active`
 
@@ -481,7 +481,7 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 ##### ConnectingView.swift (90 lines) — `production-active`
 
-`@MainActor struct ConnectingView: View`. `.connecting` state per UX_SPEC §3. Spinner + localized headline + cancel CTA. Accessibility IDs `phosphene.view.connecting` + `phosphene.connecting.cancel`.
+`@MainActor struct ConnectingView: View`. `.connecting` state per UX_SPEC §3. Spinner + localized headline + cancel CTA. Accessibility IDs `uzume.view.connecting` + `uzume.connecting.cancel`.
 
 #### Dashboard/ (5 files) — DASH.7 + DASH.7.1 + DASH.7.2 surface
 
@@ -535,11 +535,11 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 ##### PlaybackChromeView.swift (100 lines) — `production-active`
 
-`struct PlaybackChromeView: View`. Overlay chrome composition. `@ObservedObject var viewModel: PlaybackChromeViewModel`. Composes 5 subviews (TrackInfoCardView, PlaybackControlsCluster, ListeningBadgeView, ToastContainerView, PreparationBackgroundIndicator). Accessibility ID `phosphene.playback.chrome`. Plus private `PreparationBackgroundIndicator` subview (subtle teal dot for 6.1 progressive readiness).
+`struct PlaybackChromeView: View`. Overlay chrome composition. `@ObservedObject var viewModel: PlaybackChromeViewModel`. Composes 5 subviews (TrackInfoCardView, PlaybackControlsCluster, ListeningBadgeView, ToastContainerView, PreparationBackgroundIndicator). Accessibility ID `uzume.playback.chrome`. Plus private `PreparationBackgroundIndicator` subview (subtle teal dot for 6.1 progressive readiness).
 
 ##### ListeningBadgeView.swift (54 lines) — `production-active`
 
-`struct ListeningBadgeView: View`. Top-center badge for sustained silence (≥ 3 s). **Replaces the legacy `NoAudioSignalBadge` per U.6** (file-header line 3 confirms). Respects `reduceMotion` (spinner skipped). Accessibility ID `phosphene.playback.listeningBadge`.
+`struct ListeningBadgeView: View`. Top-center badge for sustained silence (≥ 3 s). **Replaces the legacy `NoAudioSignalBadge` per U.6** (file-header line 3 confirms). Respects `reduceMotion` (spinner skipped). Accessibility ID `uzume.playback.listeningBadge`.
 
 ##### OverlayBackdropStyle.swift (39 lines) — `production-active`
 
@@ -547,15 +547,15 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 ##### PlaybackControlsCluster.swift (55 lines) — `production-active`
 
-`struct PlaybackControlsCluster: View`. Top-right cluster: SessionProgressDotsView + settings gear + close button. Accessibility ID `phosphene.playback.controlsCluster`.
+`struct PlaybackControlsCluster: View`. Top-right cluster: SessionProgressDotsView + settings gear + close button. Accessibility ID `uzume.playback.controlsCluster`.
 
 ##### SessionProgressDotsView.swift (101 lines) — `production-active`
 
-`struct SessionProgressDotsView: View`. Track-list progress dots. Three rendering branches: reactive mode (pulsing circle); > 30 tracks (text); else dots grid. Respects `reduceMotion`. Accessibility ID `phosphene.playback.progressDots`.
+`struct SessionProgressDotsView: View`. Track-list progress dots. Three rendering branches: reactive mode (pulsing circle); > 30 tracks (text); else dots grid. Respects `reduceMotion`. Accessibility ID `uzume.playback.progressDots`.
 
 ##### ShortcutHelpOverlayView.swift (123 lines) — `production-active`
 
-`struct ShortcutHelpOverlayView: View`. Full keyboard shortcut reference shown on Shift+?. Categorizes via `ShortcutCategory.allCases`. Accessibility ID `phosphene.playback.shortcutHelp`.
+`struct ShortcutHelpOverlayView: View`. Full keyboard shortcut reference shown on Shift+?. Categorizes via `ShortcutCategory.allCases`. Accessibility ID `uzume.playback.shortcutHelp`.
 
 ##### ToastContainerView.swift (36 lines) — `production-active`
 
@@ -571,7 +571,7 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 ##### TrackInfoCardView.swift (79 lines) — `production-active`
 
-`struct TrackInfoCardView: View`. Top-left card: title + artist + preset name + orchestrator state pill. Pill green (planned) / orange (reactive). Accessibility ID `phosphene.playback.trackInfoCard`.
+`struct TrackInfoCardView: View`. Top-left card: title + artist + preset name + orchestrator state pill. Pill green (planned) / orange (reactive). Accessibility ID `uzume.playback.trackInfoCard`.
 
 #### Preparation/ (3 files)
 
@@ -684,12 +684,12 @@ The kickoff requires this section. CA.5 verified the engine-side wire + the `@Pu
 
 7. **Failed Approach #56 regression check:**
    ```
-   $ grep -rnE "lowercased\(\).*title|lowercased\(\).*artist" PhospheneApp/ViewModels PhospheneApp/Views
+   $ grep -rnE "lowercased\(\).*title|lowercased\(\).*artist" UzumeApp/ViewModels UzumeApp/Views
    (no matches)
    ```
    Zero occurrences. The pre-QR.4 anti-pattern is fully eliminated.
 
-8. **Regression-gate test:** `PhospheneAppTests/PlaybackChromeIndexBindingTests.swift` carries the `test_titleCaseMismatch_doesNotChangeIndex` assertion (per CA.5's reading of the App-test inventory). The gate fires if anyone re-introduces a string-match path that's case-sensitive on title or artist.
+8. **Regression-gate test:** `UzumeAppTests/PlaybackChromeIndexBindingTests.swift` carries the `test_titleCaseMismatch_doesNotChangeIndex` assertion (per CA.5's reading of the App-test inventory). The gate fires if anyone re-introduces a string-match path that's case-sensitive on title or artist.
 
 9. **Off-plan-track handling:** when `currentTrackIndex == nil` (cover, remaster, encoding-different variant — the canonical-identity resolver returned `nil`), the publisher binds `nil` → `refreshProgress` writes `currentIndex: -1`. The `SessionProgressDotsView` reads `progress.currentIndex` and treats `-1` as "unknown" — no highlighted dot. **The View-tree response to the off-plan path is graceful.**
 
@@ -705,33 +705,33 @@ The kickoff requires this section. CA.5 verified the engine-adapter side; CA.6 v
 
 **Single legitimate construction site:**
 ```
-$ grep -rnE "@StateObject.*SettingsStore" PhospheneApp PhospheneAppTests
-PhospheneApp/PhospheneApp.swift:25:    @StateObject private var settingsStore = SettingsStore()
-PhospheneApp/Views/Playback/PlaybackView.swift:52:    /// `@StateObject SettingsStore()` here creates a parallel state world —
-PhospheneAppTests/SettingsStoreEnvironmentRegressionTests.swift:42:        @StateObject var shadowStore = SettingsStore(...)
-PhospheneAppTests/SettingsStoreEnvironmentRegressionTests.swift:148: #expect(!src.contains("@StateObject private var settingsStore = SettingsStore()"), ...
+$ grep -rnE "@StateObject.*SettingsStore" UzumeApp UzumeAppTests
+UzumeApp/UzumeApp.swift:25:    @StateObject private var settingsStore = SettingsStore()
+UzumeApp/Views/Playback/PlaybackView.swift:52:    /// `@StateObject SettingsStore()` here creates a parallel state world —
+UzumeAppTests/SettingsStoreEnvironmentRegressionTests.swift:42:        @StateObject var shadowStore = SettingsStore(...)
+UzumeAppTests/SettingsStoreEnvironmentRegressionTests.swift:148: #expect(!src.contains("@StateObject private var settingsStore = SettingsStore()"), ...
 ```
 
-- `PhospheneApp.swift:25` — the legitimate single-instance owner.
+- `UzumeApp.swift:25` — the legitimate single-instance owner.
 - `PlaybackView.swift:52` — a comment block WARNING against the bad pattern (not actual usage).
 - The two `SettingsStoreEnvironmentRegressionTests.swift` hits are the regression-test shadow probe + the source-presence assertion.
 
 **Production consumers (`@EnvironmentObject SettingsStore`):**
 ```
-$ grep -rnE "@EnvironmentObject.*SettingsStore" PhospheneApp
-PhospheneApp/Views/Playback/PlaybackView.swift:55:    @EnvironmentObject private var settingsStore: SettingsStore
+$ grep -rnE "@EnvironmentObject.*SettingsStore" UzumeApp
+UzumeApp/Views/Playback/PlaybackView.swift:55:    @EnvironmentObject private var settingsStore: SettingsStore
 ```
 
 Only one — `PlaybackView`. That's by design: the rest of the View tree consumes `SettingsStore` indirectly via `SettingsViewModel`. PlaybackView's role is to pass the store to `SettingsView(store: settingsStore)` on the sheet presentation (line 184), and to consume the store directly for the capture-mode-switch coordinator setup (`captureModeSwitchCoordinator: CaptureModeSwitchCoordinator(... settingsStore: settingsStore)` at lines 226-230, which subscribes to `SettingsStore.captureModeChanged` per D-061(b)).
 
 **Indirect consumers via SettingsViewModel:**
 ```
-$ grep -rnE "viewModel: SettingsViewModel|@ObservedObject.*SettingsViewModel" PhospheneApp/Views/Settings PhospheneApp/Views/SettingsView.swift
-PhospheneApp/Views/Settings/AboutSettingsSection.swift:9:    @ObservedObject var viewModel: SettingsViewModel
-PhospheneApp/Views/Settings/AudioSettingsSection.swift:9:    @ObservedObject var viewModel: SettingsViewModel
-PhospheneApp/Views/Settings/DiagnosticsSettingsSection.swift:9:    @ObservedObject var viewModel: SettingsViewModel
-PhospheneApp/Views/Settings/VisualsSettingsSection.swift:12:    @ObservedObject var viewModel: SettingsViewModel
-PhospheneApp/Views/SettingsView.swift:11:    @StateObject private var viewModel: SettingsViewModel
+$ grep -rnE "viewModel: SettingsViewModel|@ObservedObject.*SettingsViewModel" UzumeApp/Views/Settings UzumeApp/Views/SettingsView.swift
+UzumeApp/Views/Settings/AboutSettingsSection.swift:9:    @ObservedObject var viewModel: SettingsViewModel
+UzumeApp/Views/Settings/AudioSettingsSection.swift:9:    @ObservedObject var viewModel: SettingsViewModel
+UzumeApp/Views/Settings/DiagnosticsSettingsSection.swift:9:    @ObservedObject var viewModel: SettingsViewModel
+UzumeApp/Views/Settings/VisualsSettingsSection.swift:12:    @ObservedObject var viewModel: SettingsViewModel
+UzumeApp/Views/SettingsView.swift:11:    @StateObject private var viewModel: SettingsViewModel
 ```
 
 All 4 Settings sub-sections take `SettingsViewModel` as `@ObservedObject` (not owners). `SettingsView` owns the VM via `@StateObject` with a custom init that takes `SettingsStore` and builds the VM:
@@ -809,10 +809,10 @@ The kickoff requires this section. The `[dev-2026-05-21-c]` + `[dev-2026-05-21-d
 **`@Suite(.serialized)` U.10 audit:**
 
 ```
-$ grep -rnE "@Suite.*\.serialized|URLProtocol" PhospheneAppTests
-PhospheneAppTests/SpotifyKeychainStoreTests.swift:9:@Suite("SpotifyKeychainStore", .serialized)
-PhospheneAppTests/SpotifyOAuthTokenProviderTests.swift:18:private final class OAuthStubURLProtocol: URLProtocol {
-PhospheneAppTests/SpotifyOAuthTokenProviderTests.swift:99:@Suite("SpotifyOAuthTokenProvider", .serialized)
+$ grep -rnE "@Suite.*\.serialized|URLProtocol" UzumeAppTests
+UzumeAppTests/SpotifyKeychainStoreTests.swift:9:@Suite("SpotifyKeychainStore", .serialized)
+UzumeAppTests/SpotifyOAuthTokenProviderTests.swift:18:private final class OAuthStubURLProtocol: URLProtocol {
+UzumeAppTests/SpotifyOAuthTokenProviderTests.swift:99:@Suite("SpotifyOAuthTokenProvider", .serialized)
 ```
 
 Two suites use `.serialized`. The only `URLProtocol` subclass is `OAuthStubURLProtocol` inside `SpotifyOAuthTokenProviderTests.swift`, gated by the `.serialized` annotation at line 99 ✓. `SpotifyKeychainStoreTests` uses `.serialized` but doesn't have URLProtocol (the annotation is defensive — KeyChain ops via `SecItem*` APIs benefit from serialization too).
@@ -840,9 +840,9 @@ Applied in this increment as doc-only corrections:
    - Keyboard-shortcut list extended: add `Shift+→` / `Shift+←` (force-immediate nudge per UX_SPEC §7.4 / U.6b), `Z` (undo last adaptation), `M` (mood-lock), `Esc` (end session with confirm), `Shift+?` (shortcut help). The pre-CA.6 list (`→ / ← / Space / D / C / R / G`) was the U.6 baseline; QR.4 + U.6b layered the rest.
    - Add `DashboardOverlayView` as PlaybackView Layer 6 (DASH.7).
 
-2. **§Module Map PhospheneApp/Views/ block** extended. The pre-CA.6 block listed ~20 of 47 views with sparse one-liners. The post-CA.6 block lists every view with a one-line behavioural description, mirroring the CA.5 fix for the engine-adapter Module Map block. Sub-blocks added: `Playback/` (11 entries including ListeningBadgeView + chrome subviews + ToastView family + TrackChangeAnimationView + TrackInfoCardView + ShortcutHelpOverlayView), `Preparation/` (3 entries adding `PreparationFailureView` + `TopBannerView`), `Ready/` (5 entries adding `PlanPreviewRowView` + `PlanPreviewTransitionView` + `PlanPreviewView` + `ReadyPulsingBorder`), `Settings/` (6 entries: per-section sub-views + pickers).
+2. **§Module Map UzumeApp/Views/ block** extended. The pre-CA.6 block listed ~20 of 47 views with sparse one-liners. The post-CA.6 block lists every view with a one-line behavioural description, mirroring the CA.5 fix for the engine-adapter Module Map block. Sub-blocks added: `Playback/` (11 entries including ListeningBadgeView + chrome subviews + ToastView family + TrackChangeAnimationView + TrackInfoCardView + ShortcutHelpOverlayView), `Preparation/` (3 entries adding `PreparationFailureView` + `TopBannerView`), `Ready/` (5 entries adding `PlanPreviewRowView` + `PlanPreviewTransitionView` + `PlanPreviewView` + `ReadyPulsingBorder`), `Settings/` (6 entries: per-section sub-views + pickers).
 
-3. **§Module Map PhospheneApp/ViewModels/ block** extended. Pre-CA.6: 4 of 12. Post-CA.6: all 12 with one-liners. Added: `EndSessionConfirmViewModel`, `PlanPreviewViewModel`, `PlaybackChromeViewModel`, `PreparationErrorViewModel`, `PreparationProgressViewModel`, `ReadyViewModel`, `SettingsViewModel`, `ToastManager`. Note that `DashboardOverlayViewModel` continues to live under `Views/Dashboard/` per the filesystem layout.
+3. **§Module Map UzumeApp/ViewModels/ block** extended. Pre-CA.6: 4 of 12. Post-CA.6: all 12 with one-liners. Added: `EndSessionConfirmViewModel`, `PlanPreviewViewModel`, `PlaybackChromeViewModel`, `PreparationErrorViewModel`, `PreparationProgressViewModel`, `ReadyViewModel`, `SettingsViewModel`, `ToastManager`. Note that `DashboardOverlayViewModel` continues to live under `Views/Dashboard/` per the filesystem layout.
 
 ### Updates needed in ENGINEERING_PLAN.md
 
@@ -904,7 +904,7 @@ Items are greppable as `CA\.6-FU-\d+`. CA.7 (recommendation: CA-Renderer) is reg
 | **CA.6-FU-2** | ✅ **Closed 2026-05-21.** Rewrote `DashboardCardView.swift:5` file-header docstring "Clash Display title at 18pt" → "Clash Display Medium title at `DashboardTokens.TypeScale.bodyLarge` (15 pt) relative to `.title3`". Token-anchored so a future TypeScale change keeps the doc in sync automatically. Code unchanged. | Closed. | <1 | ✅ Resolved 2026-05-21 |
 | **CA.6-FU-3** | ✅ **Closed 2026-05-21** (chose **option (a)** — applied the wrapper pattern). Extracted `private struct AppleMusicConnectionWrapper: View` in `ConnectorPickerView.swift` mirroring the existing `OAuthSpotifyConnectionWrapper` shape: holds `@StateObject private var viewModel = AppleMusicConnectionViewModel()` so the VM (and its in-flight 2 s auto-retry Task) survives `ConnectorPickerView` body re-evaluations triggered by `viewModel.appleMusicRunning` changes from the NSWorkspace launch/terminate observers. `destination(for: .appleMusic)` now builds the wrapper instead of constructing the VM inline. No behavioural change in the common case; closes the architectural inconsistency. Build + SwiftLint clean. | Closed. | <1 | ✅ Resolved 2026-05-21 |
 | **CA.6-FU-4** | Update `docs/RUNBOOK.md` (or `docs/diagnostics/` as appropriate) to document the per-class U.11 timing-margin baselines used by the `[dev-2026-05-21-c]` chip. The chip's RELEASE_NOTES_DEV entry has the values (`700 ms wait for 300 ms debounce`, `1500 ms wait for 250 ms timer`, etc.), but they're buried in the release notes. Promoting to RUNBOOK gives future flake-cleanup increments a single-point reference. Captures the implicit "5× the debounce", "6× the timer", "20× the toast duration" patterns the chip applied. Optional but useful for the next time someone widens a timing margin. | RUNBOOK has a §Test Timing Margins section with the per-class baselines. Builds clean; docs SwiftLint clean. | <1 | Ready now (optional) |
-| **CA.7** | Next audit pass: **CA-Renderer** (kickoff doc landed). `PhospheneEngine/Sources/Renderer/` — 38 files / ~13,067 LoC including FrameBudgetManager + RenderPipeline + 9 extensions + RayMarchPipeline + MLDispatchScheduler + Dashboard renderer + Geometry/ + RayTracing/ + per-pass pipelines. Kickoff: [`docs/prompts/PHASE_CA_KICKOFF_CA7_RENDERER_2026-05-21.md`](../prompts/PHASE_CA_KICKOFF_CA7_RENDERER_2026-05-21.md) (commit `bf5dc4ac`). Recommends sub-scope split CA.7a (core pipeline ~22 files / ~7.5k LoC) + CA.7b (supporting Dashboard/Geometry/RayTracing ~15 files / ~5.5k LoC); five required verifications (GPU contract slot reservations vs CLAUDE.md; MLDispatchScheduler D-059 algorithm; FrameBudgetManager governor constants vs ARCHITECTURE.md; mv_warp accumulator dispatch path against the "production-grade pipeline" rule; Failed Approach #66 G-buffer test/prod parity). | Audit document published under `docs/CAPABILITY_REGISTRY/RENDERER.md`; same methodology as CA.1-CA.6; per-file verdicts; doc-drift corrections to ARCHITECTURE.md `§Module Map` blocks. | 1–2 | Kickoff doc landed 2026-05-21; ready to start (pending Matt's scheduling) |
+| **CA.7** | Next audit pass: **CA-Renderer** (kickoff doc landed). `UzumeEngine/Sources/Renderer/` — 38 files / ~13,067 LoC including FrameBudgetManager + RenderPipeline + 9 extensions + RayMarchPipeline + MLDispatchScheduler + Dashboard renderer + Geometry/ + RayTracing/ + per-pass pipelines. Kickoff: [`docs/prompts/PHASE_CA_KICKOFF_CA7_RENDERER_2026-05-21.md`](../prompts/PHASE_CA_KICKOFF_CA7_RENDERER_2026-05-21.md) (commit `bf5dc4ac`). Recommends sub-scope split CA.7a (core pipeline ~22 files / ~7.5k LoC) + CA.7b (supporting Dashboard/Geometry/RayTracing ~15 files / ~5.5k LoC); five required verifications (GPU contract slot reservations vs CLAUDE.md; MLDispatchScheduler D-059 algorithm; FrameBudgetManager governor constants vs ARCHITECTURE.md; mv_warp accumulator dispatch path against the "production-grade pipeline" rule; Failed Approach #66 G-buffer test/prod parity). | Audit document published under `docs/CAPABILITY_REGISTRY/RENDERER.md`; same methodology as CA.1-CA.6; per-file verdicts; doc-drift corrections to ARCHITECTURE.md `§Module Map` blocks. | 1–2 | Kickoff doc landed 2026-05-21; ready to start (pending Matt's scheduling) |
 | **CA.5-FU-2 status update (carried over from CA.5)** | The LiveAdaptationToastBridge engine-event docstring product call remains pending Matt's input. CA.6 did not re-investigate; the docstring still hedges with "currently wired only for…" and the BUG-015 wire's adaptation events still log to os.Logger / session.log without calling `emitAck()`. Carry forward to next App-adjacent increment. | Either docstring rewrite (option B) or `emitAck` wiring (option A) lands with appropriate test. | <1 | Pending Matt's product call |
 
 **Bundling recommendation.** CA.6-FU-1 + CA.6-FU-2 are both 1-2 line edits in the same `Views/Dashboard/` family — bundle into a single trivial PR. CA.6-FU-3 is a product call (needs Matt's input) plus a small empirical test. CA.6-FU-4 is optional. CA.7 is the natural next audit pass.
@@ -923,7 +923,7 @@ Items are greppable as `CA\.6-FU-\d+`. CA.7 (recommendation: CA-Renderer) is reg
 
 - **The D-091 single-SettingsStore enforcement grep produced confidence in one shot.** Two `@StateObject SettingsStore` hits (one legitimate at app entry, one a comment warning) + one `@EnvironmentObject SettingsStore` hit (the load-bearing PlaybackView consumer) + the test-file shadow probe — all expected; no surprises.
 
-- **The PlaybackChromeViewModel consumer-chain trace produced 10 byte-level confirmations matching the BUG-015 / D-091 design.** The publisher binds in ContentView.swift:85, relays through PlaybackView.swift:74,90, lands in PlaybackChromeViewModel.swift:121,169-176, and is consumed in :242-254 — no lowercased title+artist string matching anywhere. The `grep -rnE "lowercased\(\).*title|lowercased\(\).*artist" PhospheneApp/ViewModels PhospheneApp/Views` returned zero matches.
+- **The PlaybackChromeViewModel consumer-chain trace produced 10 byte-level confirmations matching the BUG-015 / D-091 design.** The publisher binds in ContentView.swift:85, relays through PlaybackView.swift:74,90, lands in PlaybackChromeViewModel.swift:121,169-176, and is consumed in :242-254 — no lowercased title+artist string matching anywhere. The `grep -rnE "lowercased\(\).*title|lowercased\(\).*artist" UzumeApp/ViewModels UzumeApp/Views` returned zero matches.
 
 - **The DASH.7 / D-089 verification produced 16 line-anchored confirmations.** Every DASH.7.2 / D-089 claim (DarkVibrancyView backdrop, 0.96α surface, 1px border, dark colorScheme lock, 320pt width, allowsHitTesting(false), accessibilityHidden(true), 33ms throttle, ingestForTest test seam, 240-sample stem history, .singleValue D-089 inline, .progressBar 110pt+.fixedSize, no SF Symbols, asymmetric transition, spring toggle, dashboard typography 15pt + 11pt + 1.5 tracking) is anchored to a file:line.
 

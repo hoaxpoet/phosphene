@@ -1,4 +1,4 @@
-# Phosphene — Release Checklist
+# Uzume — Release Checklist
 
 Run this checklist before tagging a local release or before asking Matt to review a session's output. "Release" in this context means: the code is in a state where Matt would reasonably run the app and judge it as representative of the project's current quality.
 
@@ -8,9 +8,9 @@ Not every increment requires a full release check. Infrastructure, test, and doc
 
 ## 1. Build Gate
 
-- [ ] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — zero errors, zero warnings treated as errors.
-- [ ] `swift test --package-path PhospheneEngine` — passes. Pre-existing flakes (see `KNOWN_ISSUES.md`) are called out by name; no new failures.
-- [ ] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test` — passes. App test suite green.
+- [ ] `xcodebuild -scheme UzumeApp -destination 'platform=macOS' build` — zero errors, zero warnings treated as errors.
+- [ ] `swift test --package-path UzumeEngine` — passes. Pre-existing flakes (see `KNOWN_ISSUES.md`) are called out by name; no new failures.
+- [ ] `xcodebuild -scheme UzumeApp -destination 'platform=macOS' test` — passes. App test suite green.
 - [ ] `swiftlint lint --strict --config .swiftlint.yml` — zero violations in active source paths. (`swiftlint` autocorrect is not acceptable as a substitute.)
 
 **Stop condition:** Any new test failure or SwiftLint violation blocks the release. Investigate and fix before continuing.

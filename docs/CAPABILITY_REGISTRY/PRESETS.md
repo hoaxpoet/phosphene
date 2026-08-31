@@ -3,7 +3,7 @@
 **Audit increment:** CA-Presets
 **Date:** 2026-05-21
 **Auditor:** Claude (session-driven, read-only)
-**Scope:** `PhospheneEngine/Sources/Presets/` Swift slice — 30 Swift files / **9,175 LoC** + 16 JSON sidecars (schema-verification reads). The kickoff stated 3,129 LoC; that number was the infrastructure cluster only — the per-preset state cluster adds ~5,116 LoC and the certification cluster adds ~930 LoC.
+**Scope:** `UzumeEngine/Sources/Presets/` Swift slice — 30 Swift files / **9,175 LoC** + 16 JSON sidecars (schema-verification reads). The kickoff stated 3,129 LoC; that number was the infrastructure cluster only — the per-preset state cluster adds ~5,116 LoC and the certification cluster adds ~930 LoC.
 **Methodology:** Phase CA scoping document (CA-Presets kickoff 2026-05-21).
 **Reads relied on:** [CLAUDE.md](../../CLAUDE.md) §Authoring Discipline / §Visual Quality Floor / §What NOT To Do / Failed Approaches #23/#39/#42/#43/#44/#48/#57/#58/#62/#66/#67; [docs/ARCHITECTURE.md](../ARCHITECTURE.md) §Module Map Presets/ block (lines 587–624) + §GPU Contract Details + §Preset Metadata Format; [docs/QUALITY/KNOWN_ISSUES.md](../QUALITY/KNOWN_ISSUES.md) BUG-016 / BUG-013 / BUG-011 / BUG-015; [docs/SHADER_CRAFT.md](../SHADER_CRAFT.md) §12.1 (mandatory gates) + §17 (sidecar schema); [docs/DECISIONS.md](../DECISIONS.md) D-094 / D-095 / D-097 / D-099 / D-102 / D-LM-buffer-slot-8 / D-LM-palette-library / D-LM-cream-rescission / D-124 / D-126 / D-127; [docs/ENGINEERING_PLAN.md](../ENGINEERING_PLAN.md) Increment 3.5.7 (Stalker retired) + V.7.7C / V.7.7D / LM.4.7 / AV.2.x / V.9 Session 4.5c.
 **Sibling audits:** [`AUDIO.md`](AUDIO.md) (CA-Audio — methodology + sample-rate plumbing precedent), [`RENDERER.md`](RENDERER.md) (CA.7a — render-pipeline branch chosen by passes list), [`RENDERER_SUPPORTING.md`](RENDERER_SUPPORTING.md) (CA.7b — `ParticleGeometryRegistry` + D-097 siblings), [`APP.md`](APP.md) (CA.5 — per-preset state class App-side ownership at `VisualizerEngine+Presets.swift:333-426`), [`ORCHESTRATOR.md`](ORCHESTRATOR.md) (CA.4 — PresetDescriptor scoring consumption + BUG-015 wire).
@@ -42,7 +42,7 @@ Two test/prod parity items verify clean: **D-094 ArachneSpiderGPU 80-byte invari
 
 6. **BUG-011 round 8 build-pause + completion-gate invariants: VERIFIED.** `ArachneBuildState.frameDurationSeconds = 2.775` (line 160), `radialDurationSeconds = 1.389` (line 162), `spiralChordsPerBeat = 3.24` (line 174), `spiralChordAccumulator: Float = 0` (line 244), `stemEnergySilenceThreshold = 0.02` (line 189). **Critical ordering verified**: `advanceBuildState` (ArachneState.swift:824-845) sets `pausedBySpider = spiderBlend > spiderPauseThreshold (= 0.01)` at line 826-827 BEFORE evaluating `audioSilent = stemEnergySum < stemEnergySilenceThreshold` at line 834-836. `effectiveDt = (spiderPaused || audioSilent) ? 0 : dt * pace` at line 845. `_presetCompletionEvent` is `public let` at line 449-450 for cross-module `PresetSignaling` conformance (lives in Orchestrator per D-095 placement deviation). `Arachne.json` sets `"wait_for_completion_event": true` + `"natural_cycle_seconds": 150`; `PresetMaxDuration.maxDuration(forSection:)` returns `.infinity` when `waitForCompletionEvent == true` (PresetMaxDuration.swift:101).
 
-7. **D-097 particle-siblings invariant: VERIFIED.** `ParticleGeometryRegistry.knownPresetNames = ["Murmuration"]` (`Renderer/Geometry/ParticleGeometryRegistry.swift:29-31`, per CA.7b). `FerrofluidParticles` (FerrofluidParticles.swift:30+) ships its own compute kernels (`ferrofluid_reset_cell_counts` / `bin_particles` / `height_bake` / `particle_update`) + its own state class; does NOT extend or parameterize `ProceduralGeometry`. Drift Motes is gone: zero references to `DriftMotes` / `drift_motes` / `motes_update` across `PhospheneEngine/Sources/` (grep confirmed). FeatureVector preserves the DM.2 extended layout (48 floats / 192 bytes) for future engine-library consumers per D-099 — currently unconsumed past the original 32 floats.
+7. **D-097 particle-siblings invariant: VERIFIED.** `ParticleGeometryRegistry.knownPresetNames = ["Murmuration"]` (`Renderer/Geometry/ParticleGeometryRegistry.swift:29-31`, per CA.7b). `FerrofluidParticles` (FerrofluidParticles.swift:30+) ships its own compute kernels (`ferrofluid_reset_cell_counts` / `bin_particles` / `height_bake` / `particle_update`) + its own state class; does NOT extend or parameterize `ProceduralGeometry`. Drift Motes is gone: zero references to `DriftMotes` / `drift_motes` / `motes_update` across `UzumeEngine/Sources/` (grep confirmed). FeatureVector preserves the DM.2 extended layout (48 floats / 192 bytes) for future engine-library consumers per D-099 — currently unconsumed past the original 32 floats.
 
 8. **D-099 / DM.2 Common.metal struct extension: VERIFIED.** `PresetLoader+Preamble.swift:34-57` declares the FeatureVector MSL struct with the first 32 floats in their original layout (bass through accumulated_audio_time) followed by MV-1 deviation primitives (bass_rel, bass_dev, mid_rel, mid_dev, treb_rel, treb_dev, bass_att_rel, mid_att_rel, treb_att_rel — 9 floats) followed by MV-3b beat phase (beat_phase01, beats_until_next — 2 floats) followed by bar phase (bar_phase01, beats_per_bar — 2 floats) + 5 pad floats = 48 floats. StemFeatures at lines 75-128 declares 64 floats (16 per-stem energy/band/beat + 8 MV-1 deviation + 16 MV-3a rich metadata + 2 MV-3c vocal pitch + 1 V.9 drums_energy_dev_smoothed + 21 pad). The matching Swift structs in `Sources/Shared/AudioFeatures+Analyzed.swift` (FeatureVector docstring at lines 15-44) and `Sources/Shared/StemFeatures*` confirm byte-identical alignment with the MSL declarations.
 
@@ -223,9 +223,9 @@ public struct ArachneSpiderGPU: Sendable {
 
 1. **`ParticleGeometryRegistry.knownPresetNames = ["Murmuration"]`** at `Renderer/Geometry/ParticleGeometryRegistry.swift:29-31`. Single-entry post-Drift Motes retirement (D-102).
 
-2. **No Drift Motes remnants:** Grep across `PhospheneEngine/Sources/` + `PhospheneApp/` for `DriftMotes` / `drift_motes` / `motes_update` returns zero hits in source code. The DM.0 → DM.3.3.1 codebase is preserved in git history (per CLAUDE.md / Failed Approach #58) but absent from the current working tree.
+2. **No Drift Motes remnants:** Grep across `UzumeEngine/Sources/` + `UzumeApp/` for `DriftMotes` / `drift_motes` / `motes_update` returns zero hits in source code. The DM.0 → DM.3.3.1 codebase is preserved in git history (per CLAUDE.md / Failed Approach #58) but absent from the current working tree.
 
-3. **No JSON sidecar for Drift Motes** in `PhospheneEngine/Sources/Presets/Shaders/` — verified: directory listing shows only 16 production sidecars + the Stalker entries are absent.
+3. **No JSON sidecar for Drift Motes** in `UzumeEngine/Sources/Presets/Shaders/` — verified: directory listing shows only 16 production sidecars + the Stalker entries are absent.
 
 4. **`PresetCategory` does NOT include a `driftMotes` case** (verified at PresetCategory.swift:21-33). The 11 cases are `waveform / fractal / geometric / particles / hypnotic / supernova / reaction / drawing / dancer / sparkle / transition` per D-123 cream-of-crop taxonomy.
 
@@ -268,10 +268,10 @@ None of the engine-library kernels read past the original 32 / 16 float window t
 
 | Check | Status | Evidence |
 |---|---|---|
-| No `DriftMotes`-related Swift files | ✓ | `ls PhospheneEngine/Sources/Presets/` shows only Arachnid/ AuroraVeil/ Certification/ FerrofluidOcean/ Gossamer/ Lumen/ + infra files. No `DriftMotes/` directory. |
-| No `DriftMotes.json` / `.metal` sidecars | ✓ | `ls PhospheneEngine/Sources/Presets/Shaders/` shows 16 production presets + Utilities/. No Drift Motes entry. |
+| No `DriftMotes`-related Swift files | ✓ | `ls UzumeEngine/Sources/Presets/` shows only Arachnid/ AuroraVeil/ Certification/ FerrofluidOcean/ Gossamer/ Lumen/ + infra files. No `DriftMotes/` directory. |
+| No `DriftMotes.json` / `.metal` sidecars | ✓ | `ls UzumeEngine/Sources/Presets/Shaders/` shows 16 production presets + Utilities/. No Drift Motes entry. |
 | No `DriftMotes` reference in `PresetCategory` | ✓ | PresetCategory.swift:21-33 — 11 cases, no `driftMotes`. |
-| No `motes_update` kernel reference | ✓ | Grep across `PhospheneEngine/Sources/` returns zero hits. |
+| No `motes_update` kernel reference | ✓ | Grep across `UzumeEngine/Sources/` returns zero hits. |
 | `ParticleGeometryRegistry` post-D-102 state | ✓ | `knownPresetNames = ["Murmuration"]` only (CA.7b). |
 | DM.2 extended FeatureVector / StemFeatures fields still in place | ✓ | Per §Verification of D-099 above — 48 / 64 float layouts preserved for future engine-library consumers. |
 
@@ -353,7 +353,7 @@ None of the engine-library kernels read past the original 32 / 16 float window t
 
 The shader reads `f.beats_per_bar` directly to compute the per-beat / per-bar timing scale. The Round 25-26 metadata override path (Session-side `SessionPreparer+Analysis.swift:299` per CA.3) lands the override on `BeatGrid.beatsPerBar`, which flows into the App-layer FeatureVector builder via `VisualizerEngine+Stems.swift:420, 495` (verified via grep) → into the per-frame uniform → into the shader.
 
-**No Swift-side fix needed for BUG-013.** The consumer chain is correct end-to-end; the bug is the Soundcharts API not returning `time_signature`, which is upstream and out of Phosphene's control (per BUG-013 body + CA-Audio finding).
+**No Swift-side fix needed for BUG-013.** The consumer chain is correct end-to-end; the bug is the Soundcharts API not returning `time_signature`, which is upstream and out of Uzume's control (per BUG-013 body + CA-Audio finding).
 
 **Verdict:** BUG-013 producer/consumer chain intact on the Swift side. The bug remains Open pending an alternative metadata source OR a per-track hardcoded-override path.
 

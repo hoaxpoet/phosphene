@@ -4,7 +4,7 @@
 2026-05-12 in support of Decision I.1 in
 [`MILKDROP_STRATEGY.md`](MILKDROP_STRATEGY.md) §3 and
 [`D-111`](DECISIONS.md) in `DECISIONS.md`. **Not legal advice.** The
-brief presents facts and Phosphene's proposed posture for counsel's
+brief presents facts and Uzume's proposed posture for counsel's
 review; counsel's response is not to be committed to this repository
 (privileged correspondence stays out of tree).
 
@@ -12,11 +12,11 @@ review; counsel's response is not to be committed to this repository
 
 ## 1. Subject
 
-Phosphene is a macOS music-visualization application (MIT-licensed,
+Uzume is a macOS music-visualization application (MIT-licensed,
 public repository at `github.com/hoaxpoet/uzume`). The project
 plans to ingest derivative works from a curated, third-party
 collection of Milkdrop visualizer presets and ship them as
-Phosphene-native presets under Phosphene's MIT licence. This brief
+Uzume-native presets under Uzume's MIT licence. This brief
 asks counsel to validate the proposed licensing posture before any
 derivative content is committed to a public branch.
 
@@ -38,7 +38,7 @@ renderer maintained at `github.com/projectM-visualizer`.
 
 Source URLs:
 
-* Pack repository (Phosphene's intended source):
+* Pack repository (Uzume's intended source):
   `https://github.com/projectM-visualizer/presets-cream-of-the-crop`
 * Pack's stated license file:
   `https://github.com/projectM-visualizer/presets-cream-of-the-crop/blob/master/LICENSE.md`
@@ -72,28 +72,28 @@ Key features of this posture:
 * Establishes a takedown path: preset authors may contact the
   projectM team to have a preset removed from future releases.
 
-## 4. Phosphene's intended use
+## 4. Uzume's intended use
 
-Phosphene proposes to:
+Uzume proposes to:
 
 1. Select ~35 presets from the pack across three quality tiers.
 2. **Transpile** each preset offline (not at runtime) from
-   Milkdrop's `.milk` format into Phosphene-native Metal shader
+   Milkdrop's `.milk` format into Uzume-native Metal shader
    source code and a JSON metadata sidecar. This is a one-way
    conversion; the original `.milk` files are not redistributed.
 3. **Modify** each transpiled preset to varying degrees depending
    on tier — from minimal (Classic Port tier: visual fidelity to the
-   source) to substantial (Hybrid tier: Phosphene's ray-marching
+   source) to substantial (Hybrid tier: Uzume's ray-marching
    3D rendering integrated with Milkdrop-style feedback warp).
-4. **Ship** the resulting `.metal` + `.json` files under Phosphene's
-   MIT license as part of the Phosphene repository and any
+4. **Ship** the resulting `.metal` + `.json` files under Uzume's
+   MIT license as part of the Uzume repository and any
    distributed binaries.
 
 ## 5. Proposed licensing posture (Decision I.1)
 
 For each Milkdrop-derived preset shipped:
 
-1. **License of distribution:** MIT (Phosphene's project license).
+1. **License of distribution:** MIT (Uzume's project license).
 2. **Provenance metadata** is embedded in each preset's JSON sidecar:
 
    ```json
@@ -113,13 +113,13 @@ For each Milkdrop-derived preset shipped:
    reachable from a user-visible "About" surface in any derivative
    product (the requirement is already documented in
    `docs/CREDITS.md`).
-4. **Takedown protocol:** Phosphene commits to honoring takedown
+4. **Takedown protocol:** Uzume commits to honoring takedown
    requests routed through the projectM team. If a preset author
    contacts projectM to have their work removed from the upstream
-   pack, Phosphene will remove the corresponding derivative preset
-   from Phosphene in the next release.
+   pack, Uzume will remove the corresponding derivative preset
+   from Uzume in the next release.
 
-This posture mirrors the attribution pattern Phosphene already uses
+This posture mirrors the attribution pattern Uzume already uses
 for the **Open-Unmix HQ** and **Beat This!** machine-learning model
 weights — both vendored under permissive licences with provenance
 recorded in `CREDITS.md`. See
@@ -137,7 +137,7 @@ for the existing pattern.
   author can be individually contacted for explicit licensing.
   **Rejected** as impractical: the pack contains 9,795 presets from
   many hundreds of authors over two decades; many authors are no
-  longer reachable. Phosphene's intended subset is ~35 presets.
+  longer reachable. Uzume's intended subset is ~35 presets.
 * **Run a runtime `.milk` interpreter** that loads pack files
   directly without producing derivatives. **Rejected** for unrelated
   engineering reasons (runtime safety, performance) but worth
@@ -149,14 +149,14 @@ for the existing pattern.
    free release + widespread unchallenged reuse + curator-managed
    takedown path) a sufficient legal basis under U.S. copyright law
    to ship transpiled derivatives of individual presets under
-   Phosphene's MIT licence? If not, what additional steps are
+   Uzume's MIT licence? If not, what additional steps are
    required?
 
 2. The proposed posture relies on attribution via embedded
    provenance metadata and a `CREDITS.md` file. Does this discharge
    any attribution-related obligations that may apply, including:
    (a) moral-rights / paternity-rights claims under non-U.S.
-   jurisdictions where users may run Phosphene; (b) any implied
+   jurisdictions where users may run Uzume; (b) any implied
    contractual attribution norms in the Milkdrop / projectM
    community of practice? If not, what attribution form would
    discharge these?
@@ -164,13 +164,13 @@ for the existing pattern.
 3. Is the proposed takedown protocol — honoring requests routed
    through the projectM team rather than maintaining direct contact
    channels with original authors — sufficient as a remediation
-   mechanism? Or should Phosphene establish a direct takedown contact
+   mechanism? Or should Uzume establish a direct takedown contact
    path (e.g. an email address or GitHub issue label) advertised in
    `CREDITS.md`?
 
-4. Phosphene modifies the transpiled presets to varying degrees,
+4. Uzume modifies the transpiled presets to varying degrees,
    including substantial rewrites for the Hybrid tier (combining
-   Milkdrop-style feedback warp with Phosphene's own ray-marching
+   Milkdrop-style feedback warp with Uzume's own ray-marching
    3D rendering). Does the extent of modification affect the
    attribution requirements or the underlying licensing analysis?
 
@@ -189,7 +189,7 @@ for the existing pattern.
 
 ## 8. Source documents counsel may want
 
-All in the Phosphene repository (`github.com/hoaxpoet/uzume`):
+All in the Uzume repository (`github.com/hoaxpoet/uzume`):
 
 * `docs/MILKDROP_STRATEGY.md` — the full Phase MD strategy
   document, including the decision context for the licensing
@@ -204,7 +204,7 @@ All in the Phosphene repository (`github.com/hoaxpoet/uzume`):
   empirical audit of the pack, including the count of files
   shipping embedded HLSL pixel-shader source vs. expression-language-
   only presets (relevant if counsel wants to understand exactly what
-  Phosphene is transpiling vs. what it is leaving aside).
+  Uzume is transpiling vs. what it is leaving aside).
 
 ## 9. Project state at time of writing
 
@@ -223,7 +223,7 @@ All in the Phosphene repository (`github.com/hoaxpoet/uzume`):
 
 ## 10. Authoring note
 
-This brief was drafted by Phosphene's lead developer with AI
+This brief was drafted by Uzume's lead developer with AI
 assistance. It is intended as a working summary to enable an
 efficient initial conversation with counsel; it is not itself
 legal analysis and should not be relied on as such. Counsel's

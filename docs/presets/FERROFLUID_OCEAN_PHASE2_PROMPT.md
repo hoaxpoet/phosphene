@@ -28,14 +28,14 @@ Recapture pending against `2026-05-15T14-10-12Z`'s playlist before Phase 2 begin
 
 | Path | Role |
 |---|---|
-| `PhospheneEngine/Sources/Renderer/Shaders/FerrofluidMesh.metal` | Mesh vertex + G-buffer fragment (Phase 1 Step B). Vertex stage: samples height texture, displaces vertex Y, computes normal via finite-difference cross product. |
-| `PhospheneEngine/Sources/Renderer/Shaders/FerrofluidParticles.metal` | Bake + SPH-LITE compute kernels. `ferrofluid_height_bake` is in use. `ferrofluid_particle_update` + `ferrofluid_bin_particles` + `ferrofluid_reset_cell_counts` EXIST but are NOT dispatched per frame in the current pipeline (particles are pinned). |
-| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift` | Owns particle buffer (1520 particles, 40×38 grid), cell-count + cell-slot buffers (spatial hash), 4096² height texture, bake compute pipelines. `encodePerFrameUpdate` method exists but is not currently called from the per-frame compute dispatch hook. |
-| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | Mesh buffer (257² vertices) + index buffer + G-buffer pipeline state + depth-stencil state. `encodeGBufferPass` is dispatched per frame via `RayMarchPipeline.meshGBufferEncoder`. |
-| `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` | Lighting fragment + `fluid_shading` (Leitl four-layer material) + `fluid_studio_env` (procedural studio env). matID==2 branch routes to Leitl. |
-| `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` | `fo_spike_strength` + `fo_swell_scale` + `sceneSDF`. The SDF path is no longer used for ferrofluid_ocean (mesh path replaces it) but the file still defines spike-strength routing that the mesh path's vertex shader mirrors. |
-| `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.json` | Preset descriptor. Scene camera + thin-film params. |
-| `PhospheneApp/VisualizerEngine+Presets.swift` | Wires `FerrofluidParticles` + `FerrofluidMesh` at preset apply; sets `meshGBufferEncoder` closure. |
+| `UzumeEngine/Sources/Renderer/Shaders/FerrofluidMesh.metal` | Mesh vertex + G-buffer fragment (Phase 1 Step B). Vertex stage: samples height texture, displaces vertex Y, computes normal via finite-difference cross product. |
+| `UzumeEngine/Sources/Renderer/Shaders/FerrofluidParticles.metal` | Bake + SPH-LITE compute kernels. `ferrofluid_height_bake` is in use. `ferrofluid_particle_update` + `ferrofluid_bin_particles` + `ferrofluid_reset_cell_counts` EXIST but are NOT dispatched per frame in the current pipeline (particles are pinned). |
+| `UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift` | Owns particle buffer (1520 particles, 40×38 grid), cell-count + cell-slot buffers (spatial hash), 4096² height texture, bake compute pipelines. `encodePerFrameUpdate` method exists but is not currently called from the per-frame compute dispatch hook. |
+| `UzumeEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | Mesh buffer (257² vertices) + index buffer + G-buffer pipeline state + depth-stencil state. `encodeGBufferPass` is dispatched per frame via `RayMarchPipeline.meshGBufferEncoder`. |
+| `UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal` | Lighting fragment + `fluid_shading` (Leitl four-layer material) + `fluid_studio_env` (procedural studio env). matID==2 branch routes to Leitl. |
+| `UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` | `fo_spike_strength` + `fo_swell_scale` + `sceneSDF`. The SDF path is no longer used for ferrofluid_ocean (mesh path replaces it) but the file still defines spike-strength routing that the mesh path's vertex shader mirrors. |
+| `UzumeEngine/Sources/Presets/Shaders/FerrofluidOcean.json` | Preset descriptor. Scene camera + thin-film params. |
+| `UzumeApp/VisualizerEngine+Presets.swift` | Wires `FerrofluidParticles` + `FerrofluidMesh` at preset apply; sets `meshGBufferEncoder` closure. |
 
 ## What's still missing from Leitl
 
@@ -47,7 +47,7 @@ Leitl's particles MOVE based on full Smoothed Particle Hydrodynamics. Heightmap 
 
 **Six compute kernels in Leitl's pipeline** (read these directly — they're all small, ~100-150 lines each):
 
-| Leitl shader | Role | Phosphene equivalent (if any) |
+| Leitl shader | Role | Uzume equivalent (if any) |
 |---|---|---|
 | `indices.frag.glsl` | Bin particles into cells (compute particle's cell ID, write to indices texture) | `ferrofluid_bin_particles` ~equivalent |
 | `sort.frag.glsl` | Odd-even merge sort indices by cell ID | NOT IMPLEMENTED |
@@ -76,7 +76,7 @@ cellSideCount = 11  → 11×11 = 121 cells
 
 **Our current setup differs:** 1520 particles in a 20×20 wu world patch (4 wu per side equivalent → particle density ~0.4 wu spacing). Leitl: 500 particles, domain 16 wu wide, density ~0.7 wu spacing. We may want to halve our particle count or double our domain to match SPH dynamics expectations. The kernel radius `H` should be ~1.5-2× particle spacing.
 
-**Existing Phosphene infrastructure to leverage:**
+**Existing Uzume infrastructure to leverage:**
 - Spatial-hash binning kernels already exist (`ferrofluid_bin_particles` + `ferrofluid_reset_cell_counts`).
 - Cell buffers (`cellCountBuffer`, `cellSlotBuffer`) already allocated.
 - Per-frame compute dispatch hook (`RenderPipeline.setRayMarchPresetComputeDispatch`) is in place but currently nil (was deliberately disabled for "pin particles" in round 4).
@@ -171,7 +171,7 @@ Crossfade as stems warm up.
 
 ### 5. Things Leitl has that we may NOT want to port
 
-- **Pointer interaction.** Leitl uses mouse/touch to push particles. Phosphene is a music visualizer, not interactive. Skip.
+- **Pointer interaction.** Leitl uses mouse/touch to push particles. Uzume is a music visualizer, not interactive. Skip.
 - **Ground disc as a separate render pass.** Leitl renders a disc primitive underneath the spikes plane. Our mesh's flat-base areas already serve as substrate (confirmed visible in Phase 1 captures). Skip.
 - **Close-camera framing.** Leitl is at (0, 0.5, 1) — 1 wu from origin. We deliberately use ocean-scale framing (camera 5 wu away from a 20 wu patch). Keep our framing; it serves the "ocean" identity.
 
@@ -209,7 +209,7 @@ Each step is its own commit, separately verifiable.
 
 Re-read these before authoring anything in Phase 2:
 
-- **Failed Approach #65 — Don't negotiate away components of a working reference implementation under unverified "redundancy" arguments.** This is what happened to me in Phase 1 (rounds 6-12 spent on tuning before I admitted I had only ported Leitl's fragment shader, not his geometry pipeline). The cost of starting from "match Leitl verbatim" and only adapting where context REQUIRES adaptation is much lower than starting from "Phosphene's version" and converging.
+- **Failed Approach #65 — Don't negotiate away components of a working reference implementation under unverified "redundancy" arguments.** This is what happened to me in Phase 1 (rounds 6-12 spent on tuning before I admitted I had only ported Leitl's fragment shader, not his geometry pipeline). The cost of starting from "match Leitl verbatim" and only adapting where context REQUIRES adaptation is much lower than starting from "Uzume's version" and converging.
 - **Failed Approach #64 — When iterative first-principles fixes aren't converging on a problem with known prior art in the field, stop guessing and do desk research.** Leitl's shaders are the prior art. Read them before writing MSL.
 - **Limit variables.** One change per commit. Visual gate after each. Stop and surface to Matt if the pattern of "fix one thing, new failure appears" emerges.
 - **Articulate the musical role before authoring any decoration layer.** What musical moment does ZOOM-coupled bake produce? "Audio-driven dramatic spike rise/fall." What does SPH motion produce? "Ferrofluid surface that ripples and shifts with the music, like real ferrofluid." Both have load-bearing musical roles → green light.

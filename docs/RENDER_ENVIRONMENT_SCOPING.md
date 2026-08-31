@@ -23,9 +23,9 @@ Concretely:
 ## GPU-contract risk
 
 `SceneUniforms` is defined in **four** places that must stay in lockstep (a mismatch is a silent memory-corruption class, not a compile error):
-- `PhospheneEngine/Sources/Renderer/Shaders/Common.metal` (the Metal definition)
-- `PhospheneEngine/Sources/Shared/AudioFeatures+SceneUniforms.swift` (the Swift struct)
-- `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` and `+WarpPreamble.swift` (the two shader-preamble mirrors)
+- `UzumeEngine/Sources/Renderer/Shaders/Common.metal` (the Metal definition)
+- `UzumeEngine/Sources/Shared/AudioFeatures+SceneUniforms.swift` (the Swift struct)
+- `UzumeEngine/Sources/Presets/PresetLoader+Preamble.swift` and `+WarpPreamble.swift` (the two shader-preamble mirrors)
 
 Current layout: Camera 64 B (4×SIMD4) · Lighting 32 B (2×SIMD4) · Scene params 32 B (2×SIMD4) = 128 B. Growing the lighting block (a light array + count) and adding env/background selector scalars must preserve 16-byte SIMD alignment and update all four definitions plus `docs/ARCHITECTURE.md §Key Types` and `§GPU Contract Details` in the same commit. Prefer packing selectors into existing spare `.w` lanes where safe (audited — `sceneParamsB.w` is the SSGI radius override and is currently writer-less, so it is NOT free-by-assumption; verify before reuse).
 

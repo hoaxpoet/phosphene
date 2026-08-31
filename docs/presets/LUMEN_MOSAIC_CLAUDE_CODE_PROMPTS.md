@@ -66,7 +66,7 @@ A separate **BUG-004 closure session** did run 2026-05-12 after LM.7 to formally
 
 ### D-026 enforcement
 
-Every audio-routing edit must pass `grep -n 'f\.bass[^_]\|f\.mid[^_]\|f\.treble[^_]' PhospheneEngine/Sources/Presets/Shaders/LumenMosaic.metal PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`. The grep must return zero matches outside the documented `f.beatBass` / `f.beatMid` / `f.beatTreble` rising-edge usage (which is event-shaped, not energy-shaped, and is the only sanctioned exception in this preset).
+Every audio-routing edit must pass `grep -n 'f\.bass[^_]\|f\.mid[^_]\|f\.treble[^_]' UzumeEngine/Sources/Presets/Shaders/LumenMosaic.metal UzumeEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`. The grep must return zero matches outside the documented `f.beatBass` / `f.beatMid` / `f.beatTreble` rising-edge usage (which is event-shaped, not energy-shaped, and is the only sanctioned exception in this preset).
 
 ### Matt-review boundaries
 
