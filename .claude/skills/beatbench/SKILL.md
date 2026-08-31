@@ -5,11 +5,11 @@ description: Invoke when running, extending, or interpreting the BeatBench beat-
 
 # BeatBench — the beat-sync measurement skill
 
-BeatBench scores a beat grid (offline JSON, a recorded session's `features.csv`, or a live capture) against tapped ground truth and emits standard + Phosphene-specific metrics. Kept separate from `beat-sync-session` so preset/UX increments that merely *cite* sync numbers load only this one. The harness exists as of GT.3: a Swift CLI (`BeatBench`) that runs the production `DefaultBeatGridAnalyzer`, so it scores the real grid rather than an exported approximation.
+BeatBench scores a beat grid (offline JSON, a recorded session's `features.csv`, or a live capture) against tapped ground truth and emits standard + Uzume-specific metrics. Kept separate from `beat-sync-session` so preset/UX increments that merely *cite* sync numbers load only this one. The harness exists as of GT.3: a Swift CLI (`BeatBench`) that runs the production `DefaultBeatGridAnalyzer`, so it scores the real grid rather than an exported approximation.
 
 ## Metrics (exact windows)
 
-The constants live in `PhospheneEngine/Sources/BeatBench/Metrics.swift` (`fMeasureToleranceS`, `cemgilSigmaS`, `continuityTolerance`) and are the authority; the windows below are those values stated in prose. `BeatBench --self-test` validates each metric against known-answer cases — run it before trusting any number.
+The constants live in `UzumeEngine/Sources/BeatBench/Metrics.swift` (`fMeasureToleranceS`, `cemgilSigmaS`, `continuityTolerance`) and are the authority; the windows below are those values stated in prose. `BeatBench --self-test` validates each metric against known-answer cases — run it before trusting any number.
 
 - **Beat F-measure @ ±70 ms** — precision/recall of detected vs ground-truth beats within a ±70 ms tolerance window. The headline offline number.
 - **Cemgil accuracy** — Gaussian error weighting of each beat's timing deviation (standard Cemgil et al. σ = 40 ms window). Rewards tightness, not just presence-in-window.
@@ -71,7 +71,7 @@ Detailed protocol: plan §GT.2. Summary:
 
 ## CLI invocations
 
-Run from `PhospheneEngine/` (that is where `Package.swift` lives), with
+Run from `UzumeEngine/` (that is where `Package.swift` lives), with
 `BEATBENCH_FIXTURES_DIR` set — default `~/phosphene_beatbench_fixtures`.
 
 ```bash

@@ -10,7 +10,7 @@ listing.
 Then reconcile three sources:
   - this Spotify resolution (the audio-available, ordered show)
   - tunes_club.csv (the definitive full catalog, incl. non-Spotify tracks)
-  - the census (which tracks already have Phosphene features, from the old lib)
+  - the census (which tracks already have Uzume features, from the old lib)
 
 Output: spotify_tracklists.csv + a coverage summary. ponytail: stdlib only,
 recursive JSON walk to find trackList so we don't hard-code Spotify's shape.

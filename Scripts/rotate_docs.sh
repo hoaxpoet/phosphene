@@ -30,7 +30,7 @@
 # Usage: Scripts/rotate_docs.sh [--dry-run]
 #   --dry-run  print the planned moves and summaries without writing anything.
 #
-# PHOSPHENE_TODAY=YYYY-MM-DD overrides "today" (testing only).
+# UZUME_TODAY=YYYY-MM-DD overrides "today" (testing only).
 
 set -euo pipefail
 
@@ -54,10 +54,10 @@ done
 # 18:25 EST and fast-gate failed at 01:31 UTC on an identical tree, and running
 # this script to fix it was a no-op because it too read the local clock. One clock,
 # and it has to be the one CI uses.
-TODAY="${PHOSPHENE_TODAY:-$(date -u +%Y-%m-%d)}"
-if [ -n "${PHOSPHENE_TODAY:-}" ]; then
+TODAY="${UZUME_TODAY:-$(date -u +%Y-%m-%d)}"
+if [ -n "${UZUME_TODAY:-}" ]; then
   # Explicit date in, explicit date out — pure calendar arithmetic, no zone crossing.
-  CUTOFF="$(date -j -v-14d -f %Y-%m-%d "$PHOSPHENE_TODAY" +%Y-%m-%d)"
+  CUTOFF="$(date -j -v-14d -f %Y-%m-%d "$UZUME_TODAY" +%Y-%m-%d)"
 else
   CUTOFF="$(date -u -v-14d +%Y-%m-%d)"
 fi
@@ -223,7 +223,7 @@ if [ "$KI_N" -gt 0 ]; then
   else
     if [ ! -f "$KI_HIST" ]; then
       cat > "$KI_HIST" << 'PREAMBLE'
-# Phosphene — Known Issues History
+# Uzume — Known Issues History
 
 Resolved entries rotated out of [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §Resolved (recent) by `Scripts/rotate_docs.sh` (DOC.6) once their resolution is older than 14 days. Moves are verbatim, newest-first; BUG numbers stay searchable here, and the `DocIntegrityTests` BUG-continuity gate spans both files.
 
@@ -273,7 +273,7 @@ if [ -n "$RN_MONTHS" ]; then
       MONTH_FILE="docs/RELEASE_NOTES_DEV_${m}.md"
       if [ ! -f "$MONTH_FILE" ]; then
         {
-          echo "# Phosphene — Developer Release Notes — ${m} (rotated monthly from the active [\`RELEASE_NOTES_DEV.md\`](RELEASE_NOTES_DEV.md) by \`Scripts/rotate_docs.sh\`; entries verbatim, newest-first)"
+          echo "# Uzume — Developer Release Notes — ${m} (rotated monthly from the active [\`RELEASE_NOTES_DEV.md\`](RELEASE_NOTES_DEV.md) by \`Scripts/rotate_docs.sh\`; entries verbatim, newest-first)"
           echo ""
           echo "---"
         } > "$MONTH_FILE"

@@ -13,14 +13,14 @@
 set -euo pipefail
 
 REMOTE="https://github.com/hoaxpoet/uzume.git"
-WORK="${TMPDIR:-/tmp}/phosphene-lfs-purge"
+WORK="${TMPDIR:-/tmp}/uzume-lfs-purge"
 # Purge ONLY raster images under these dirs, plus the retired ML weights.
 # Text records (READMEs, diagnoses, rendering contracts, source_*.txt/json) live
 # under docs/ too and MUST survive. So must Weights/SHA256SUMS — no extension,
 # so `.bin$` misses it; fetch_weights.sh verifies against it. Note the weights
 # arm is scoped to ML/Weights/, NOT ML/Models/ — the live *.mlpackage CoreML
 # blobs (incl. their own weight.bin) are still referenced and must stay.
-IMG_REGEX='(docs/(VISUAL_REFERENCES|diagnostics)/.*\.(jpg|jpeg|png|gif)|PhospheneEngine/Sources/ML/Weights/.*\.bin)$'
+IMG_REGEX='(docs/(VISUAL_REFERENCES|diagnostics)/.*\.(jpg|jpeg|png|gif)|UzumeEngine/Sources/ML/Weights/.*\.bin)$'
 EXECUTE=0
 [[ "${1:-}" == "--execute" ]] && EXECUTE=1
 
@@ -51,7 +51,7 @@ else
   echo "  OK: 0 image blobs remain"
 fi
 echo "== Verify: no weight blobs remain in ANY history =="
-if git log --all --name-only --pretty=format: -- 'PhospheneEngine/Sources/ML/Weights' \
+if git log --all --name-only --pretty=format: -- 'UzumeEngine/Sources/ML/Weights' \
      | grep -E '\.bin$' | grep -q .; then
   echo "  !! weights still present — aborting"; exit 1
 else
@@ -63,7 +63,7 @@ git cat-file -e HEAD:docs/diagnostics/CODE_AUDIT_2026-06-13.md \
   || { echo "  !! text record lost — aborting"; exit 1; }
 # SHA256SUMS is the manifest fetch_weights.sh verifies against — losing it
 # breaks every fresh clone's ability to fetch the Release-asset weights.
-git cat-file -e HEAD:PhospheneEngine/Sources/ML/Weights/SHA256SUMS \
+git cat-file -e HEAD:UzumeEngine/Sources/ML/Weights/SHA256SUMS \
   && echo "  OK: Weights/SHA256SUMS still in tree" \
   || { echo "  !! SHA256SUMS lost — aborting"; exit 1; }
 echo "== Remaining LFS files (expect only the live *.mlpackage blobs + quality_reel.mp4) =="

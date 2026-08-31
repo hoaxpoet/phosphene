@@ -15,13 +15,13 @@ set -uo pipefail
 OUT="${TMPDIR:-/tmp}/phosphene_hang_$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$OUT"
 
-PID=$(pgrep -x PhospheneApp | head -1)
+PID=$(pgrep -x UzumeApp | head -1)
 if [ -z "$PID" ]; then
-    echo "capture_hang: PhospheneApp is not running — nothing to sample." >&2
+    echo "capture_hang: UzumeApp is not running — nothing to sample." >&2
     exit 1
 fi
 
-echo "capture_hang: PhospheneApp pid $PID → $OUT"
+echo "capture_hang: UzumeApp pid $PID → $OUT"
 
 # 1. The stack. This is the artifact that matters most: it says WHERE it is stuck.
 #    5 s at 1 ms gives ~4250 samples, enough to prove a hard block vs a slow frame.

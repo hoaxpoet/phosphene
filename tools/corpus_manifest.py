@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""corpus_manifest.py — build, tag, and stratify the Phosphene corpus manifest.
+"""corpus_manifest.py — build, tag, and stratify the Uzume corpus manifest.
 
 CENSUS.1 tooling (see docs/ENGINEERING_PLAN.md §Phase CENSUS). Walks Matt's
 music archive, filters corpus hygiene hazards (AppleDouble `._` resource

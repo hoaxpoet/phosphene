@@ -21,44 +21,44 @@ set -euo pipefail
 # Roots to scan: production sources only (engine + app). Tests + fixtures
 # legitimately reference 44100 for fixture data; scripts likewise.
 ROOTS=(
-  "PhospheneEngine/Sources"
-  "PhospheneApp"
+  "UzumeEngine/Sources"
+  "UzumeApp"
 )
 
 # Files within those roots whose 44100 use is intentional and load-bearing.
 # Any new entry must come with a comment in the file explaining why.
 ALLOWLIST_FILES=(
-  "PhospheneEngine/Sources/ML/StemSeparator.swift"
-  "PhospheneEngine/Sources/ML/StemSeparator+Reconstruct.swift"
-  "PhospheneEngine/Sources/ML/StemModel.swift"
-  "PhospheneEngine/Sources/DSP/BeatThisPreprocessor.swift"
-  "PhospheneEngine/Sources/Diagnostics/SoakTestHarness+AudioGen.swift"
+  "UzumeEngine/Sources/ML/StemSeparator.swift"
+  "UzumeEngine/Sources/ML/StemSeparator+Reconstruct.swift"
+  "UzumeEngine/Sources/ML/StemModel.swift"
+  "UzumeEngine/Sources/DSP/BeatThisPreprocessor.swift"
+  "UzumeEngine/Sources/Diagnostics/SoakTestHarness+AudioGen.swift"
   # Default-argument boilerplate; live wiring overrides via
   # StemSeparator.modelSampleRate or the captured tapSampleRate. Keeping the
   # literal here lets tests / fixture code instantiate these types without
   # threading a rate through; production callers always pass an explicit value.
-  "PhospheneEngine/Sources/Shared/StemSampleBuffer.swift"
-  "PhospheneEngine/Sources/DSP/StemAnalyzer.swift"
-  "PhospheneEngine/Sources/DSP/PitchTracker.swift"
+  "UzumeEngine/Sources/Shared/StemSampleBuffer.swift"
+  "UzumeEngine/Sources/DSP/StemAnalyzer.swift"
+  "UzumeEngine/Sources/DSP/PitchTracker.swift"
   # Offline diagnostic CLIs (same category as SoakTestHarness): not on the live
   # tap path. The census runner's dual-rate mode intentionally analyzes the same
   # window at 44100 AND 48000 Hz (cross-path mood-skew calibration); the dumper
   # decodes fixtures at the preview-native rate.
-  "PhospheneEngine/Sources/CorpusCensusRunner/CorpusCensusRunner.swift"
-  "PhospheneEngine/Sources/InstrumentFamilyDumper/Dumper.swift"
+  "UzumeEngine/Sources/CorpusCensusRunner/CorpusCensusRunner.swift"
+  "UzumeEngine/Sources/InstrumentFamilyDumper/Dumper.swift"
   # ASH.1 / D-183: SignalHealthMonitor.expectedRates is the reference set of
   # known-good OUTPUT-DEVICE rates its sampleRateMismatch detector compares the
   # queried device rate against — a validation constant, NOT a tap-rate consumer
   # (FA #52). The detector exists to flag rates outside the 44.1/48 kHz family,
   # so the family is named literally. See the comment at the `expectedRates` init default.
-  "PhospheneEngine/Sources/Audio/SignalHealthMonitor.swift"
+  "UzumeEngine/Sources/Audio/SignalHealthMonitor.swift"
   # GT.2 TapCapture: ClickTrack.render synthesises a metronome WAV for the
   # tap-latency calibration round — procedurally generated audio in an offline
   # ground-truth CLI, the same category as SoakTestHarness+AudioGen. It is not a
   # tap-rate consumer: nothing here reads the live capture rate, and the rendered
   # file's rate only has to be a valid AVAudioFormat rate. See the comment at the
   # `sampleRate` binding.
-  "PhospheneEngine/Sources/TapCapture/TapRecorder.swift"
+  "UzumeEngine/Sources/TapCapture/TapRecorder.swift"
 )
 
 # Build a `grep -v` pattern from the allowlist. Escape the `+` since it has
@@ -125,7 +125,7 @@ fi
 metal_violations=$(
   grep -rEnH --include='*.metal' \
     'f\.(bass|mid|treble|sub_bass|low_bass|low_mid|mid_high|high_mid|high)[ ]*[*+\-]' \
-    PhospheneEngine/Sources/Presets/Shaders 2>/dev/null \
+    UzumeEngine/Sources/Presets/Shaders 2>/dev/null \
     | grep -vE 'f\.(bass|mid|treb|sub_bass|low_bass|low_mid|mid_high|high_mid|high)(_dev|_rel|_att_rel|_att)\b' \
     | grep -vE '//.*f\.' \
     || true

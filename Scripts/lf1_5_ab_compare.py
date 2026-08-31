@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LF.1.5 — A/B comparison of two Phosphene session captures.
+LF.1.5 — A/B comparison of two Uzume session captures.
 
 Throwaway-grade. Not part of any engine/app build. Re-run as needed.
 
@@ -358,10 +358,10 @@ def write_report(lf: dict, tap: dict, out_path: Path) -> None:
     lines: list[str] = []
     lines.append(f"# LF.1.5 — LF vs Process-Tap A/B Comparison ({today})")
     lines.append("")
-    lines.append(f"**Fixture:** `PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a` (29.93 s, AAC, 2 ch, 44100 Hz).")
+    lines.append(f"**Fixture:** `UzumeEngine/Tests/Fixtures/tempo/love_rehab.m4a` (29.93 s, AAC, 2 ch, 44100 Hz).")
     lines.append("")
-    lines.append(f"**LF session:** `{lf['session_id']}` — `PHOSPHENE_LOCAL_FILE_PLAYBACK` env var; `AVAudioEngine` + tap on player node (pre-mixer, pre-volume).")
-    lines.append(f"**Tap session:** `{tap['session_id']}` — `PHOSPHENE_AUTOSTART_ADHOC=1` + `afplay`; `AudioHardwareCreateProcessTap` (post-output, post-system-volume).")
+    lines.append(f"**LF session:** `{lf['session_id']}` — `UZUME_LOCAL_FILE_PLAYBACK` env var; `AVAudioEngine` + tap on player node (pre-mixer, pre-volume).")
+    lines.append(f"**Tap session:** `{tap['session_id']}` — `UZUME_AUTOSTART_ADHOC=1` + `afplay`; `AudioHardwareCreateProcessTap` (post-output, post-system-volume).")
     lines.append("")
     lines.append("## Verdict")
     lines.append("")
@@ -512,7 +512,7 @@ def write_report(lf: dict, tap: dict, out_path: Path) -> None:
     lines.append(
         "**What that means for LF.2.** The load-bearing musical metrics (BPM, "
         "subBass, sub-bass onset rate) agree across paths within the tolerance "
-        "Phosphene's downstream consumers need. The volume-level skew on the "
+        "Uzume's downstream consumers need. The volume-level skew on the "
         "tap path is a known property of the existing process-tap architecture "
         "(documented in `RUNBOOK.md §Audio levels too low`) — Spotify "
         "normalization OFF and source-app volume management are the existing "

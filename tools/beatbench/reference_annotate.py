@@ -7,8 +7,8 @@ disagreements go to Matt to arbitrate by ear (BEAT_SYNC_PROGRAM_PLAN.md §GT.2).
 
 WHY BEAT THIS! IS NOT A BACKEND HERE
 ------------------------------------
-Beat This! is Phosphene's OWN grid model (`BeatGridAnalyzer` = BeatThisPreprocessor
-+ BeatThisModel + BeatGridResolver, D-077). Scoring Phosphene's grid against a
+Beat This! is Uzume's OWN grid model (`BeatGridAnalyzer` = BeatThisPreprocessor
++ BeatThisModel + BeatGridResolver, D-077). Scoring Uzume's grid against a
 Beat This! annotation would be circular — it measures "did we port the model
 correctly" (already covered by the DSP.2 S8 layer-match tests), not "is the beat
 right". Ground truth must come from outside that loop: human taps plus a
@@ -18,7 +18,7 @@ LICENSE (see the `reference-port` skill §1)
 ------------------------------------------
 madmom and librosa run here as OFFLINE ANNOTATION TOOLS only. No madmom code and
 no CC-NC madmom model weights ship in the product. Nothing this script touches is
-linked into PhospheneEngine or PhospheneApp.
+linked into UzumeEngine or UzumeApp.
 
 Backends, in order of authority:
   madmom  — RNN + DBN beat/downbeat tracking. A genuinely different algorithm
@@ -39,7 +39,7 @@ import sys
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BEATBENCH = os.path.join(REPO, "PhospheneEngine", "Tests", "Fixtures", "beatbench")
+BEATBENCH = os.path.join(REPO, "UzumeEngine", "Tests", "Fixtures", "beatbench")
 MANIFEST = os.path.join(BEATBENCH, "manifest.json")
 OUT_DIR = os.path.join(BEATBENCH, "reference")
 
@@ -154,7 +154,7 @@ def annotate_track(entry, backend_name, backend, base):
         "suite": entry["suite"],
         "audio_file": filename,
         "backend": backend_name,
-        "independent_of_phosphene": backend["independent"],
+        "independent_of_uzume": backend["independent"],
         "backend_note": backend["note"],
         "beat_count": len(beats),
         "downbeat_count": len(downbeats),

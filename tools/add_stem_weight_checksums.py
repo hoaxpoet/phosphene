@@ -18,7 +18,7 @@ import json
 import sys
 from pathlib import Path
 
-WEIGHTS_DIR = Path(__file__).resolve().parent.parent / "PhospheneEngine/Sources/ML/Weights"
+WEIGHTS_DIR = Path(__file__).resolve().parent.parent / "UzumeEngine/Sources/ML/Weights"
 MANIFEST = WEIGHTS_DIR / "manifest.json"
 
 

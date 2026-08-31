@@ -3,7 +3,7 @@
 #
 # Tapping is the scarce resource, so this spends it where uncertainty is highest
 # rather than uniformly: the tracks where the independent reference tools disagree
-# with Phosphene's grid get tapped first, plus two easy 4/4 tracks as a control on
+# with Uzume's grid get tapped first, plus two easy 4/4 tracks as a control on
 # the tapping itself. Where taps and a reference AGREE on the tapped segment, the
 # validated reference is trusted for the rest of the track — that is what keeps a
 # ~90 s tap useful for full-length scoring (e.g. the BUG-065 drift curve).
@@ -18,7 +18,7 @@
 
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/../PhospheneEngine" || exit 1
+cd "$(dirname "${BASH_SOURCE[0]}")/../UzumeEngine" || exit 1
 export BEATBENCH_FIXTURES_DIR="${BEATBENCH_FIXTURES_DIR:-$HOME/phosphene_beatbench_fixtures}"
 
 GROUP="${1:-hard}"

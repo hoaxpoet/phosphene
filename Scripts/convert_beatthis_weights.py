@@ -2,10 +2,10 @@
 """convert_beatthis_weights.py — DSP.2 weight converter for Beat This!
 
 One-shot converter that ingests a Beat This! PyTorch Lightning checkpoint and
-emits Phosphene's vendored .bin weight format under
-PhospheneEngine/Sources/ML/Weights/beat_this/.
+emits Uzume's vendored .bin weight format under
+UzumeEngine/Sources/ML/Weights/beat_this/.
 
-Output format mirrors PhospheneEngine/Sources/ML/Weights/ (Open-Unmix HQ):
+Output format mirrors UzumeEngine/Sources/ML/Weights/ (Open-Unmix HQ):
 
   * one .bin file per float32 tensor: contiguous float32 little-endian, C order
   * manifest.json describing every tensor with shape, dtype, byte count, sha256
@@ -17,7 +17,7 @@ Usage:
     python3 Scripts/convert_beatthis_weights.py \\
         --checkpoint ~/.cache/torch/hub/checkpoints/beat_this-small0.ckpt \\
         --variant small0 \\
-        [--out PhospheneEngine/Sources/ML/Weights/beat_this]
+        [--out UzumeEngine/Sources/ML/Weights/beat_this]
 
     python3 Scripts/convert_beatthis_weights.py \\
         --checkpoint ~/.cache/torch/hub/checkpoints/beat_this-final0.ckpt \\
@@ -262,8 +262,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("PhospheneEngine/Sources/ML/Weights/beat_this"),
-        help="output directory (default: PhospheneEngine/Sources/ML/Weights/beat_this)",
+        default=Path("UzumeEngine/Sources/ML/Weights/beat_this"),
+        help="output directory (default: UzumeEngine/Sources/ML/Weights/beat_this)",
     )
     args = parser.parse_args(argv)
 

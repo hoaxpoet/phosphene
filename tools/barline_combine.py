@@ -15,9 +15,9 @@ feature works alone, and **phase was never measured**. This script answers those
           point: DBN.2 died twice to a statistic whose bias scaled with the meter.
 
 Usage:
-    ~/phosphene-ml-env/bin/python tools/barline_combine.py \\
+    ~/uzume-ml-env/bin/python tools/barline_combine.py \\
         --beats-dir /tmp/barprobe --fixtures ~/phosphene_beatbench_fixtures \\
-        --groundtruth PhospheneEngine/Tests/Fixtures/beatbench/groundtruth
+        --groundtruth UzumeEngine/Tests/Fixtures/beatbench/groundtruth
 """
 
 from __future__ import annotations
@@ -208,7 +208,7 @@ def main() -> int:
     ap.add_argument("--beats-dir", required=True)
     ap.add_argument("--fixtures", required=True)
     ap.add_argument("--groundtruth",
-                    default="PhospheneEngine/Tests/Fixtures/beatbench/groundtruth")
+                    default="UzumeEngine/Tests/Fixtures/beatbench/groundtruth")
     ap.add_argument("--control", type=int, default=200,
                     help="synthetic trials for the task-3 control (0 to skip)")
     args = ap.parse_args()

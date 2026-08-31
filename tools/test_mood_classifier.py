@@ -40,7 +40,7 @@ IDX_MINOR_CORR = 9
 
 DEFAULT_MODEL_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "PhospheneEngine", "Sources", "ML", "Models", "MoodClassifier.mlpackage",
+    "UzumeEngine", "Sources", "ML", "Models", "MoodClassifier.mlpackage",
 )
 
 
@@ -172,7 +172,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("Phosphene Mood Classifier — Integration Tests")
+    print("Uzume Mood Classifier — Integration Tests")
     print("=" * 60)
 
     if not os.path.exists(args.model):

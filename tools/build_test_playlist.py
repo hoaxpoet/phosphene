@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a capability-spanning test playlist from the census results.
 
-Selects a small, diverse set of local tracks that exercises Phosphene's
+Selects a small, diverse set of local tracks that exercises Uzume's
 audio-reactive dimensions (mood quadrant, tempo, beat-lock vs rubato/swing,
 tonal clarity) AND the local-file decode edge cases that surface defects
 (non-44.1 kHz, long-form, short, low-bitrate rips, high-bit-depth/FLAC).

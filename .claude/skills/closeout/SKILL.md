@@ -1,6 +1,6 @@
 ---
 name: closeout
-description: Increment completion protocol for Phosphene. Invoke at the END of every increment — engine, preset, UX, docs, infrastructure — before committing, and whenever writing a closeout report. Also invoke when about to push, commit, or claim an increment is done.
+description: Increment completion protocol for Uzume. Invoke at the END of every increment — engine, preset, UX, docs, infrastructure — before committing, and whenever writing a closeout report. Also invoke when about to push, commit, or claim an increment is done.
 ---
 
 # Increment Completion Protocol

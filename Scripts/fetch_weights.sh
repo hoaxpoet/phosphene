@@ -5,13 +5,13 @@
 # ship as a GitHub Release asset rather than git-LFS content, so cloning the
 # repo does not burn LFS bandwidth. This script is idempotent:
 #
-#   1. If PhospheneEngine/Sources/ML/Weights already verifies against its
+#   1. If UzumeEngine/Sources/ML/Weights already verifies against its
 #      committed SHA256SUMS manifest, it exits 0 without touching the network
 #      (a maintainer checkout, or a re-run).
 #   2. Otherwise it downloads ml-weights.tar.gz from the release URL, verifies
 #      the archive checksum, unpacks, and re-verifies every file.
 #
-# Override the source with PHOSPHENE_WEIGHTS_URL (e.g. a mirror or a local
+# Override the source with UZUME_WEIGHTS_URL (e.g. a mirror or a local
 # file:// path). The expected archive checksum lives next to the asset as
 # ml-weights.tar.gz.sha256 and is fetched from the same base URL.
 #
@@ -20,10 +20,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WEIGHTS_DIR="$REPO_ROOT/PhospheneEngine/Sources/ML/Weights"
+WEIGHTS_DIR="$REPO_ROOT/UzumeEngine/Sources/ML/Weights"
 MANIFEST="$WEIGHTS_DIR/SHA256SUMS"
 DEFAULT_URL="https://github.com/hoaxpoet/uzume/releases/download/ml-weights-v1/ml-weights.tar.gz"
-URL="${PHOSPHENE_WEIGHTS_URL:-$DEFAULT_URL}"
+URL="${UZUME_WEIGHTS_URL:-$DEFAULT_URL}"
 
 [ -f "$MANIFEST" ] || { echo "fetch_weights: missing $MANIFEST — repo checkout is broken" >&2; exit 1; }
 

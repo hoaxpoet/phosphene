@@ -13,7 +13,7 @@ diverge is where the bug lives.
 
 Usage:
     /tmp/beat_this_venv/bin/python Scripts/dump_beatthis_activations.py \\
-      --audio PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a \\
+      --audio UzumeEngine/Tests/Fixtures/tempo/love_rehab.m4a \\
       --out   docs/diagnostics/DSP.2-S8-python-activations.json
 """
 

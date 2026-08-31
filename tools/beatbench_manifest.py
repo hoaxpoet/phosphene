@@ -15,7 +15,7 @@ ponytail: sha256 via hashlib, duration via macOS `afinfo` (no third-party dep).
 
 Usage: python3 tools/beatbench_manifest.py [fixtures_dir]
   fixtures_dir default: $BEATBENCH_FIXTURES_DIR or ~/phosphene_beatbench_fixtures
-Writes: PhospheneEngine/Tests/Fixtures/beatbench/manifest.json
+Writes: UzumeEngine/Tests/Fixtures/beatbench/manifest.json
 """
 import hashlib
 import json
@@ -25,7 +25,7 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(REPO, "PhospheneEngine", "Tests", "Fixtures", "beatbench", "manifest.json")
+OUT = os.path.join(REPO, "UzumeEngine", "Tests", "Fixtures", "beatbench", "manifest.json")
 
 # Tap-derived fixtures were segmented from this recorded session's raw_tap.wav.
 # Canonical id is the recorder's timestamp; the directory was later renamed locally

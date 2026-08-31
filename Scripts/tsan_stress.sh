@@ -10,7 +10,7 @@
 #   - ConcurrencyStressTests           (opt-in heavy harness: live+prep overlap on
 #                                        one shared StemSeparator; rapid session
 #                                        start/end/cancel churn) — gated on
-#                                        PHOSPHENE_STRESS=1, which this script sets.
+#                                        UZUME_STRESS=1, which this script sets.
 #   - StemSeparatorConcurrencyTests    (BUG-031 regression — overlapping separate())
 #   - SessionLifecycleGenerationTests  (BUG-032 — end-then-restart guard, source order)
 #   - SessionRecoverySingleFlightTests (BUG-032 — recovery single-flight)
@@ -36,7 +36,7 @@ echo "==> TSan stress run (this rebuilds with instrumentation on first use; be p
 
 # Explicit per-test filters (unioned by swift test). Function names are stable
 # anchors; suite display names contain spaces/parens that are awkward to match.
-PHOSPHENE_STRESS=1 swift test --package-path PhospheneEngine --sanitize=thread \
+UZUME_STRESS=1 swift test --package-path UzumeEngine --sanitize=thread \
   --filter liveAndPrepOverlap_sharedSeparator_raceFree \
   --filter sessionStartEndCancelChurn_raceFreeNoDeadlock \
   --filter concurrentSeparations_returnPerCallerOwnStems \

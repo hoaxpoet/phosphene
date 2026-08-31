@@ -8,14 +8,14 @@ to Matt to arbitrate by ear (BEAT_SYNC_PROGRAM_PLAN.md §GT.2).
 
 madmom and librosa run here as **offline annotation tools only**. No madmom code
 and no CC-NC madmom model weights ship in the product; nothing here is linked into
-PhospheneEngine or PhospheneApp. This is the permitted case in the `reference-port`
+UzumeEngine or UzumeApp. This is the permitted case in the `reference-port`
 skill §1 (same precedent as the AGPL Essentia ground-truth tool).
 
 ## Why Beat This! is deliberately NOT a backend
 
-Beat This! **is Phosphene's own grid model** (`BeatGridAnalyzer` = BeatThisPreprocessor
+Beat This! **is Uzume's own grid model** (`BeatGridAnalyzer` = BeatThisPreprocessor
 + BeatThisModel + BeatGridResolver, D-077). Annotating with it and then scoring
-Phosphene's grid against those annotations would be circular — it measures "did we
+Uzume's grid against those annotations would be circular — it measures "did we
 port the model correctly" (already covered by the DSP.2 S8 layer-match tests), not
 "is the beat right". Ground truth has to come from outside that loop: human taps
 plus a *different* algorithm family.
@@ -51,7 +51,7 @@ tools/beatbench/.venv/bin/python tools/beatbench/reference_annotate.py --backend
 tools/beatbench/.venv/bin/python tools/beatbench/reference_annotate.py --tracks bleed,take_five
 ```
 
-Output: `PhospheneEngine/Tests/Fixtures/beatbench/reference/<track>.<backend>.json`
+Output: `UzumeEngine/Tests/Fixtures/beatbench/reference/<track>.<backend>.json`
 (existing files are skipped unless `--force`).
 
 ## Backend status

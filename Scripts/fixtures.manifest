@@ -25,6 +25,6 @@
 # Restore with Scripts/link_fixtures.sh (from a primary checkout) or
 # Scripts/fetch_tempo_fixtures.sh (public iTunes Search CDN).
 
-PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a
-PhospheneEngine/Tests/Fixtures/tempo/so_what.m4a
-PhospheneEngine/Tests/Fixtures/tempo/there_there.m4a
+UzumeEngine/Tests/Fixtures/tempo/love_rehab.m4a
+UzumeEngine/Tests/Fixtures/tempo/so_what.m4a
+UzumeEngine/Tests/Fixtures/tempo/there_there.m4a

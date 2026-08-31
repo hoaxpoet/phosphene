@@ -3,7 +3,7 @@
 Train mood classifier on live-pipeline annotated features.
 
 Input: CSV with columns [timestamp, track, artist, 10 features..., stableKey,
-       stableBPM, valence, arousal] — exported from Phosphene recording mode
+       stableBPM, valence, arousal] — exported from Uzume recording mode
        with manual V/A annotations propagated to all rows.
 
 The model trains on EXACTLY the same feature distribution it sees at inference.
@@ -36,7 +36,7 @@ NUM_OUTPUTS = 2
 DEFAULT_INPUT = os.path.expanduser("~/phosphene_features_annotated.csv")
 DEFAULT_OUTPUT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "PhospheneEngine", "Sources", "ML", "Models",
+    "UzumeEngine", "Sources", "ML", "Models",
 )
 DEFAULT_SCALER = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data", "mood_scaler.json"
@@ -106,7 +106,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("Phosphene Mood Classifier — Live Feature Training")
+    print("Uzume Mood Classifier — Live Feature Training")
     print("=" * 60)
 
     # Load data
@@ -225,9 +225,9 @@ def main():
         compute_units=ct.ComputeUnit.CPU_AND_NE,
         minimum_deployment_target=ct.target.macOS14,
     )
-    mlmodel.author = "Phosphene (live-pipeline trained)"
+    mlmodel.author = "Uzume (live-pipeline trained)"
     mlmodel.short_description = (
-        "Valence/arousal classifier trained on live Phosphene features "
+        "Valence/arousal classifier trained on live Uzume features "
         f"from {len(unique_tracks)} annotated tracks."
     )
 

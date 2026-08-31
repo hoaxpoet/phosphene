@@ -69,8 +69,8 @@ primary="$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')"
 # hand-synced, and "non-empty" is no longer mistaken for "complete" (RECON.13).
 # ---------------------------------------------------------------------------
 manifest=(
-  "PhospheneEngine/Tests/Fixtures|yes|."
-  "PhospheneEngine/Sources/ML/Weights|yes|."
+  "UzumeEngine/Tests/Fixtures|yes|."
+  "UzumeEngine/Sources/ML/Weights|yes|."
   "docs/VISUAL_REFERENCES|no|\.(jpg|jpeg|png|gif)$"
   "docs/diagnostics|no|\.(jpg|jpeg|png|gif)$"
 )

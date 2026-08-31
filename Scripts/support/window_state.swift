@@ -16,8 +16,8 @@ import Foundation
 let all = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
 let onScreen = Set((CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? [])
     .compactMap { $0[kCGWindowNumber as String] as? Int })
-let mine = all.filter { ($0[kCGWindowOwnerName as String] as? String) == "PhospheneApp" }
-if mine.isEmpty { print("PhospheneApp: no windows found (not running?)") }
+let mine = all.filter { ($0[kCGWindowOwnerName as String] as? String) == "UzumeApp" }
+if mine.isEmpty { print("UzumeApp: no windows found (not running?)") }
 
 /// A window is a plausible RENDER surface only at layer 0 and above menu-bar size. macOS
 /// menu bars are ~30 pt tall and appear once per attached display, so they dominate the list

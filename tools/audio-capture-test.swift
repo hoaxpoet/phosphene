@@ -192,7 +192,7 @@ gFFTSetup = setup
 vDSP_hann_window(&gWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
 
 print("╔═══════════════════════════════════════════════════╗")
-print("║  Phosphene Audio Capture Test (Increment 1.3)    ║")
+print("║  Uzume Audio Capture Test (Increment 1.3)    ║")
 print("║  Capturing \(Int(captureDuration))s of system audio at 48kHz stereo    ║")
 print("║  Play music in any app before running this.      ║")
 print("╚═══════════════════════════════════════════════════╝")

@@ -4,7 +4,7 @@ essentia_ground_truth.py — Generate ground-truth MIR features using Essentia.
 
 Computes reference values for validating the Swift MIR pipeline accuracy.
 This is an offline validation tool only — Essentia (AGPL) is NEVER linked
-into PhospheneEngine or PhospheneApp.
+into UzumeEngine or UzumeApp.
 
 Usage:
     pip install essentia

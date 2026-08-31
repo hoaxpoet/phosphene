@@ -1,6 +1,6 @@
 ---
 name: defect-handling
-description: Invoke when working any Phosphene defect — a BUG-* ID, a P0/P1/P2 report, a regression, or a user-reported failure. Enforces evidence-before-implementation and the multi-increment fix process. Canonical home of the Defect Handling Protocol (from CLAUDE.md at DOC.9).
+description: Invoke when working any Uzume defect — a BUG-* ID, a P0/P1/P2 report, a regression, or a user-reported failure. Enforces evidence-before-implementation and the multi-increment fix process. Canonical home of the Defect Handling Protocol (from CLAUDE.md at DOC.9).
 ---
 
 # Defect Handling Protocol

@@ -1,6 +1,6 @@
 ---
 name: shader-authoring
-description: Invoke before writing or editing any .metal shader, MSL code, render pass, or GPU-facing Swift in Phosphene. Covers the GPU contract, quality floor, mv_warp obligations, and the desk-research/reference-porting rules that prevent tuning spirals.
+description: Invoke before writing or editing any .metal shader, MSL code, render pass, or GPU-facing Swift in Uzume. Covers the GPU contract, quality floor, mv_warp obligations, and the desk-research/reference-porting rules that prevent tuning spirals.
 ---
 
 # Shader Authoring

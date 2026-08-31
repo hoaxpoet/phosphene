@@ -3,7 +3,7 @@
 # tracks via the iTunes Search API.
 #
 # These are the same public-CDN clips PreviewDownloader uses in production.
-# Files land in PhospheneEngine/Tests/Fixtures/tempo/ which is gitignored
+# Files land in UzumeEngine/Tests/Fixtures/tempo/ which is gitignored
 # (preview clips are licensed; do not commit).
 #
 # Usage:
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FIXTURE_DIR="$ROOT/PhospheneEngine/Tests/Fixtures/tempo"
+FIXTURE_DIR="$ROOT/UzumeEngine/Tests/Fixtures/tempo"
 mkdir -p "$FIXTURE_DIR"
 
 FORCE=0

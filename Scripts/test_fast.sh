@@ -7,11 +7,11 @@
 # ~13 s of test time — and GREEN in a git worktree, because it skips the audio-fixture
 # suites that fail-loud when the gitignored fixtures (love_rehab.m4a, …) are absent.
 #
-# This is NOT the gate. The full `swift test --package-path PhospheneEngine` (run by
+# This is NOT the gate. The full `swift test --package-path UzumeEngine` (run by
 # Scripts/closeout_evidence.sh) stays the merge / closeout gate and runs everything,
 # including the GPU / ML / fixture / visual / perf / integration / soak suites skipped
 # here. For a tighter, targeted loop, prefer:
-#     swift test --package-path PhospheneEngine --filter <SuiteName>
+#     swift test --package-path UzumeEngine --filter <SuiteName>
 #
 # Mechanism: exclusion by `swift test --skip <regex>` (matches swift-testing display
 # names AND XCTest class names). It is a CURATED skip-list — the full run is the source
@@ -48,4 +48,4 @@ echo "[test_fast] FAST tier — pure-logic core, ~13s. NOT the gate."
 echo "[test_fast] Full gate: Scripts/closeout_evidence.sh  |  Targeted: swift test … --filter <Suite>"
 echo ""
 
-exec swift test --package-path PhospheneEngine --skip "$SKIP"
+exec swift test --package-path UzumeEngine --skip "$SKIP"
