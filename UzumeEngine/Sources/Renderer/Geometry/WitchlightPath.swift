@@ -9,7 +9,7 @@
 //
 //   (a) HEADING — the harmonic steer. `tonalPhaseFifths` is a ±π circular quantity with a
 //       measured median per-frame step of 0.31–1.04 rad, far too noisy to steer a pen raw.
-//       It is smoothed by the CR.1.2 / D-198 mechanism already shipped in Phosphene: EMA
+//       It is smoothed by the CR.1.2 / D-198 mechanism already shipped in Uzume: EMA
 //       the sin and cos separately and recombine with `atan2`. NEVER EMA the raw sawtooth.
 //
 //   (b) ADVANCE — bounded-curvature kinematics (Dubins 1957). Moved to

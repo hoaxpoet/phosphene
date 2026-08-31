@@ -306,7 +306,7 @@ struct FractalTreeMeshRenderTest {
     /// turns/s is not the same as seeing what it does to the frame.
     ///
     ///   FT_SESSION=~/Documents/phosphene_sessions/<id> \
-    ///   RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter sessionSequence
+    ///   RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter sessionSequence
     ///
     /// Writes numbered PNGs plus strips of consecutive frames. Reader is the eyes (D-064).
     @Test("session sequence: contiguous frames from a real capture (FT_SESSION=<dir>)")
@@ -602,7 +602,7 @@ struct FractalTreeMeshRenderTest {
     /// assertion is what makes that a checked property rather than a claim.
     ///
     ///   FT_SESSION=~/Documents/phosphene_sessions/<id> \
-    ///   swift test --package-path PhospheneEngine --filter trunkStepsOnTheBeat
+    ///   swift test --package-path UzumeEngine --filter trunkStepsOnTheBeat
     @Test("FTR.10: the trunk holds between beats and steps on them (FT_SESSION=<dir>)")
     func trunkStepsOnTheBeat() throws {
         guard let dir = ProcessInfo.processInfo.environment["FT_SESSION"] else { return }

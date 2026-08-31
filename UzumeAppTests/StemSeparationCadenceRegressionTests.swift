@@ -25,7 +25,7 @@
 import Foundation
 import ML
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("Stem separation cadence invariants (BUG-086)")
 struct StemSeparationCadenceRegressionTests {

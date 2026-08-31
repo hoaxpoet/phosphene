@@ -17,7 +17,7 @@
 // question is whether real harmonic motion draws a legible figure, and the answer
 // has to be reproducible by anyone with a checkout.
 //
-//   RENDER_VISUAL=1 swift test --package-path PhospheneEngine \
+//   RENDER_VISUAL=1 swift test --package-path UzumeEngine \
 //       --filter WitchlightMotionSequence
 //   Scripts/motion_gate.sh witchlight /tmp/phosphene_visual/<stamp>/<track>
 //

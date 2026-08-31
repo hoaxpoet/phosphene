@@ -3,7 +3,7 @@
 import Foundation
 import Orchestrator
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Stub router
 

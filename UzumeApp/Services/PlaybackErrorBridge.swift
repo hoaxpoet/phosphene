@@ -196,7 +196,7 @@ final class PlaybackErrorBridge {
             logger.warning("PlaybackErrorBridge: one-shot error is not toast-mode — dropped")
             return
         }
-        let toastSeverity: PhospheneToast.Severity
+        let toastSeverity: UzumeToast.Severity
         switch error.severity {
         case .info:                 toastSeverity = .info
         case .warning:              toastSeverity = .warning
@@ -229,7 +229,7 @@ final class PlaybackErrorBridge {
               !audioLevelsLowShown else { return }
         audioLevelsLowShown = true
         let isSpotify = isSpotifySourceProvider?() ?? false
-        toastManager.enqueue(PhospheneToast(
+        toastManager.enqueue(UzumeToast(
             severity: .warning,
             copy: LocalizedCopy.string(for: .audioLevelsLow(isSpotifySource: isSpotify)),
             duration: Self.audioLevelsLowToastDuration,
@@ -375,7 +375,7 @@ final class PlaybackErrorBridge {
         logger.info("PlaybackErrorBridge: fresh audio resumed — overlay card cleared")
     }
 
-    /// Build a `PhospheneToast` for a `UserFacingError`, gating `duration` and
+    /// Build a `UzumeToast` for a `UserFacingError`, gating `duration` and
     /// `conditionID` on `error.isConditionBound` per CA-Shared-FU-1.
     ///
     /// Condition-bound errors (silence brief/extended, audio levels low) keep
@@ -385,11 +385,11 @@ final class PlaybackErrorBridge {
     /// Non-condition-bound errors use the default 4 s auto-dismiss.
     private func toast(
         for error: UserFacingError,
-        severity: PhospheneToast.Severity,
-        source: PhospheneToast.Source
-    ) -> PhospheneToast {
+        severity: UzumeToast.Severity,
+        source: UzumeToast.Source
+    ) -> UzumeToast {
         let bound = error.isConditionBound
-        return PhospheneToast(
+        return UzumeToast(
             severity: severity,
             copy: LocalizedCopy.string(for: error),
             duration: bound ? .infinity : 4,

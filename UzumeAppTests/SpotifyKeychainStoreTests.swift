@@ -2,7 +2,7 @@
 // Uses a test-specific Keychain service name to avoid touching production tokens.
 
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Tests
 

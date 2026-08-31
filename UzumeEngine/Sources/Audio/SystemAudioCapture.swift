@@ -6,7 +6,7 @@
 // on macOS 14.2+. ScreenCaptureKit was tried first but fails to deliver
 // audio callbacks on macOS 15+/26 despite video frames arriving.
 //
-// This is Phosphene's primary audio input. Local file playback exists
+// This is Uzume's primary audio input. Local file playback exists
 // only as a testing/offline fallback.
 //
 // swiftlint:disable file_length
@@ -211,7 +211,7 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
 
     private func createAggregateDevice() throws -> AudioDeviceID {
         let aggDesc: [String: Any] = [
-            kAudioAggregateDeviceNameKey as String: "PhospheneAggregate",
+            kAudioAggregateDeviceNameKey as String: "UzumeAggregate",
             kAudioAggregateDeviceUIDKey as String: "io.uzume.aggregate.\(UUID().uuidString)",
             kAudioAggregateDeviceIsPrivateKey as String: true,
             kAudioAggregateDeviceTapListKey as String: [[
@@ -297,7 +297,7 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
             // discovered the hard way. Do not swap the initializer.
             let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
             desc.uuid = tapUUID
-            desc.name = "PhospheneSystemTap"
+            desc.name = "UzumeSystemTap"
             return desc
 
         case .application(let bundleIdentifier):
@@ -310,7 +310,7 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
 
             let desc = CATapDescription(stereoMixdownOfProcesses: [AudioObjectID(app.processIdentifier)])
             desc.uuid = tapUUID
-            desc.name = "PhospheneAppTap-\(bundleIdentifier)"
+            desc.name = "UzumeAppTap-\(bundleIdentifier)"
             return desc
         }
     }

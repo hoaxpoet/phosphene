@@ -30,7 +30,7 @@ public enum ErrorSeverity: Sendable, Equatable {
     case info
     /// User may want to act, but the session can continue.
     case warning
-    /// Phosphene is operating in degraded mode.
+    /// Uzume is operating in degraded mode.
     case degradation
     /// Session cannot continue without user action.
     case fatal
@@ -93,7 +93,7 @@ extension UserFacingError {
         }
     }
 
-    /// Visual severity, maps to `PhospheneToast.Severity` in the App layer.
+    /// Visual severity, maps to `UzumeToast.Severity` in the App layer.
     public var severity: ErrorSeverity {
         switch self {
         case .networkOffline, .allTracksFailedToPrepare, .tapReinstallAllFailed:

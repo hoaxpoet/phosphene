@@ -4,7 +4,7 @@ import Foundation
 import Orchestrator
 import Presets
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - SettingsViewTests
 

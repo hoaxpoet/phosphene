@@ -12,8 +12,8 @@ import SwiftUI
 /// Non-blocking amber warning strip for preparation degradation signals.
 /// Never replaces the track list — appears above it as a dismissible alert strip.
 struct TopBannerView: View {
-    static let bannerID   = "phosphene.preparation.topBanner"
-    static let dismissID  = "phosphene.preparation.topBanner.dismiss"
+    static let bannerID   = "uzume.preparation.topBanner"
+    static let dismissID  = "uzume.preparation.topBanner.dismiss"
 
     let error: UserFacingError
     let onDismiss: (() -> Void)?

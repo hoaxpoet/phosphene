@@ -30,7 +30,7 @@
 // DYN.4/DYN.5 bought. Where the features sit relative to TRAINING is reported, never
 // asserted — a test cannot decide whether a distribution shift is a defect or the music.
 //
-//   MOOD_AUDIO="/path/to/track.mp3" swift test --package-path PhospheneEngine \
+//   MOOD_AUDIO="/path/to/track.mp3" swift test --package-path UzumeEngine \
 //     --filter MoodFluxCalibration
 
 import Testing

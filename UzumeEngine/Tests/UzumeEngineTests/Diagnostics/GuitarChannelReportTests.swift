@@ -20,7 +20,7 @@
 // the last. Plus `InstrumentFamilyAnalyzer` (IFC.4) and a direct PANNs guitar-class probe.
 //
 //   FTR12_AUDIO="/Volumes/Extreme SSD/…/track.mp3" FTR12_LABEL=sna \
-//     swift test --package-path PhospheneEngine --filter GuitarChannel
+//     swift test --package-path UzumeEngine --filter GuitarChannel
 //
 // Optional: FTR12_SECONDS (default 120), FTR12_FPS (override the fps handed to
 // StemAnalyzer — see the ANALYSIS RATE note below), FTR12_SKIP_PANNS=1.

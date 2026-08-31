@@ -242,10 +242,10 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     private static let pllMinRateInterval: Double = 0.15
 
     /// TRK.1 ships behind an env flag with a one-increment A/B path (beat-sync
-    /// program house rule). `PHOSPHENE_BEAT_PLL=1` enables the period-tracking
+    /// program house rule). `UZUME_BEAT_PLL=1` enables the period-tracking
     /// controller; unset preserves the legacy EMA byte-for-byte.
     static let pllEnabled: Bool =
-        ProcessInfo.processInfo.environment["PHOSPHENE_BEAT_PLL"] == "1"
+        ProcessInfo.processInfo.environment["UZUME_BEAT_PLL"] == "1"
     private var matchedOnsets: Int = 0
     /// Diagnostic counter — preserved for `LiveBeatDriftTraceEntry` reporting.
     /// Lock decisions no longer use this; see `firstNonTightMatchTime` (BUG-007.5).
@@ -608,7 +608,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         }
     }
 
-    /// TRK.1 type-2 (PI) update — the BUG-065 fix, behind `PHOSPHENE_BEAT_PLL`.
+    /// TRK.1 type-2 (PI) update — the BUG-065 fix, behind `UZUME_BEAT_PLL`.
     ///
     /// `error` is how far the current estimate sits from this onset's evidence. The
     /// PHASE term corrects it now; the PERIOD term learns the systematic clock/BPM

@@ -84,13 +84,13 @@ struct BeatThisLayerMatchTests {
         // MARK: Locate fixtures
         let testDir = URL(fileURLWithPath: String(#filePath)).deletingLastPathComponent()
         let audioURL = testDir
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
             .appendingPathComponent("Fixtures/tempo/love_rehab.m4a")
         let jsonURL = testDir
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
-            .deletingLastPathComponent()  // PhospheneEngine/
+            .deletingLastPathComponent()  // UzumeEngine/
             .deletingLastPathComponent()  // repo root
             .appendingPathComponent("docs/diagnostics/DSP.2-S8-python-activations.json")
 

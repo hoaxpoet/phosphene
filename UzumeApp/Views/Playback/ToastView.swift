@@ -4,10 +4,10 @@ import SwiftUI
 
 // MARK: - ToastView
 
-/// Renders a single `PhospheneToast` with severity accent bar + copy + optional action.
+/// Renders a single `UzumeToast` with severity accent bar + copy + optional action.
 struct ToastView: View {
 
-    let toast: PhospheneToast
+    let toast: UzumeToast
     let onDismiss: (UUID) -> Void
 
     var body: some View {

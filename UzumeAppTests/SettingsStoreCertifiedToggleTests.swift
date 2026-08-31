@@ -7,7 +7,7 @@
 
 import Testing
 import Foundation
-@testable import PhospheneApp
+@testable import UzumeApp
 import Orchestrator
 import Presets
 import Shared

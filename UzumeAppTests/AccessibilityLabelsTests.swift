@@ -1,7 +1,7 @@
 // AccessibilityLabelsTests — Unit tests for the AccessibilityLabels service. (U.9 Part B)
 
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - AccessibilityLabelsTests
 

@@ -54,7 +54,7 @@ enum AlbumArtworkCache {
     nonisolated(unsafe) private static let cache: NSCache<NSString, NSImage> = {
         let store = NSCache<NSString, NSImage>()
         store.countLimit = maxEntries
-        store.name = "phosphene.AlbumArtworkCache"
+        store.name = "uzume.AlbumArtworkCache"
         return store
     }()
 

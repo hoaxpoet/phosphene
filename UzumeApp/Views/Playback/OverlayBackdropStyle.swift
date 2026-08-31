@@ -9,7 +9,7 @@ import SwiftUI
 
 // MARK: - OverlayBackdropStyle
 
-/// ViewModifier that applies the standard Phosphene overlay backdrop.
+/// ViewModifier that applies the standard Uzume overlay backdrop.
 ///
 /// Usage:
 /// ```swift

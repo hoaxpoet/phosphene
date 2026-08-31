@@ -9,7 +9,7 @@ import SwiftUI
 /// Sits top-trailing on `PlaybackChromeView` with a 24 pt inset.
 struct PlaybackControlsCluster: View {
 
-    static let accessibilityID = "phosphene.playback.controlsCluster"
+    static let accessibilityID = "uzume.playback.controlsCluster"
 
     let progress: SessionProgressData
     let reduceMotion: Bool

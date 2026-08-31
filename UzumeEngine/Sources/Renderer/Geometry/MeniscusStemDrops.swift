@@ -1,4 +1,4 @@
-// MeniscusStemDrops — the Phosphene placement. THE DIVERGENCE AXIS.
+// MeniscusStemDrops — the Uzume placement. THE DIVERGENCE AXIS.
 //
 // Replaces the source's cepstral placement (`MeniscusDrops`, ported at MEN.2b and kept as
 // the oracle). Why it had to change, from Matt's live viewing rather than argument: the

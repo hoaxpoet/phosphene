@@ -24,10 +24,10 @@ import SwiftUI
 
 @MainActor
 struct EndedView: View {
-    static let accessibilityID         = "phosphene.view.ended"
-    static let newSessionButtonID      = "phosphene.ended.newSession"
-    static let openFolderButtonID      = "phosphene.ended.openFolder"
-    static let replayLocalFileButtonID = "phosphene.ended.replayLocalFile"
+    static let accessibilityID         = "uzume.view.ended"
+    static let newSessionButtonID      = "uzume.ended.newSession"
+    static let openFolderButtonID      = "uzume.ended.openFolder"
+    static let replayLocalFileButtonID = "uzume.ended.replayLocalFile"
 
     let trackCount: Int
     let sessionDuration: TimeInterval?
@@ -124,7 +124,7 @@ struct EndedView: View {
 
     /// Coral CTA tint per UX_SPEC line 948. Falls back to system accent if the
     /// asset/token is not available — DashboardTokens lives in the renderer module
-    /// and is not directly importable from PhospheneApp.
+    /// and is not directly importable from UzumeApp.
     private var coralAccent: Color {
         Color(red: 0.97, green: 0.45, blue: 0.36)
     }

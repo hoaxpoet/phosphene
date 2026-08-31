@@ -4,7 +4,7 @@
 // using the same ChainAnalyzer the app runs in-process at session end. Writes
 // chain_health.json + the CHAIN_HEALTH: line into the dir and prints the verdict.
 //
-//   swift run --package-path PhospheneEngine ChainHealthAnalyzer <session-dir>
+//   swift run --package-path UzumeEngine ChainHealthAnalyzer <session-dir>
 //
 // Wrapped by Scripts/analyze_session_chain.sh.
 

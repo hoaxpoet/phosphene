@@ -1,6 +1,6 @@
 // SettingsMigrator — One-shot UserDefaults key migration to phosphene.settings.* scheme.
 //
-// Called once at app launch from PhospheneApp.init (via onAppear or App.init).
+// Called once at app launch from UzumeApp.init (via onAppear or App.init).
 // Idempotent: running twice does not corrupt state.
 //
 // Migrations:

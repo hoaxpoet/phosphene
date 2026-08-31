@@ -8,7 +8,7 @@ import Presets
 import Session
 import Shared
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Helpers
 

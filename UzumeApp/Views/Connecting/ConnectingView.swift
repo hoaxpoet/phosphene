@@ -14,8 +14,8 @@ import SwiftUI
 
 @MainActor
 struct ConnectingView: View {
-    static let accessibilityID    = "phosphene.view.connecting"
-    static let cancelButtonID     = "phosphene.connecting.cancel"
+    static let accessibilityID    = "uzume.view.connecting"
+    static let cancelButtonID     = "uzume.connecting.cancel"
 
     /// Source of the in-flight connection. nil for ad-hoc / reactive sessions.
     let source: PlaylistSource?

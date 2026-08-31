@@ -41,7 +41,7 @@ private struct PreparationBackgroundIndicator: View {
 /// Composed as a ZStack and placed as `.overlay` on the full-bleed MetalView.
 struct PlaybackChromeView: View {
 
-    static let accessibilityID = "phosphene.playback.chrome"
+    static let accessibilityID = "uzume.playback.chrome"
 
     @ObservedObject var viewModel: PlaybackChromeViewModel
     let toastManager: ToastManager

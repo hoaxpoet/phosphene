@@ -3,7 +3,7 @@
 // Static review cannot prove the absence of data races; ThreadSanitizer can.
 // These are the stress harness the BUG-031/032 fixes (CLEAN.1.2/1.3) are
 // validated against under TSan — run them via `Scripts/tsan_stress.sh`, which
-// sets `PHOSPHENE_STRESS=1` and `swift test --sanitize=thread`. A TSan-clean
+// sets `UZUME_STRESS=1` and `swift test --sanitize=thread`. A TSan-clean
 // run (no "ThreadSanitizer: data race" report) is the pass condition.
 //
 // They are OPT-IN (env-gated) so the normal closeout suite stays light — the
@@ -28,7 +28,7 @@ import Metal
 // MARK: - Opt-in gate
 
 private var stressEnabled: Bool {
-    ProcessInfo.processInfo.environment["PHOSPHENE_STRESS"] == "1"
+    ProcessInfo.processInfo.environment["UZUME_STRESS"] == "1"
 }
 
 /// Lock-guarded failure box for detached work (mirrors SessionLifecycleChurnTests).

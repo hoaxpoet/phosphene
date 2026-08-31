@@ -12,7 +12,7 @@ import AppKit
 import Foundation
 import SwiftUI
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("EndedView")
 @MainActor
@@ -36,9 +36,9 @@ struct EndedViewTests {
 
     @Test("accessibility identifier constants are defined and unique")
     func test_accessibilityIDs_areDistinct() {
-        #expect(EndedView.accessibilityID == "phosphene.view.ended")
-        #expect(EndedView.newSessionButtonID == "phosphene.ended.newSession")
-        #expect(EndedView.openFolderButtonID == "phosphene.ended.openFolder")
+        #expect(EndedView.accessibilityID == "uzume.view.ended")
+        #expect(EndedView.newSessionButtonID == "uzume.ended.newSession")
+        #expect(EndedView.openFolderButtonID == "uzume.ended.openFolder")
         let ids = [EndedView.accessibilityID, EndedView.newSessionButtonID, EndedView.openFolderButtonID]
         #expect(Set(ids).count == ids.count, "EndedView accessibility identifiers must be distinct")
     }

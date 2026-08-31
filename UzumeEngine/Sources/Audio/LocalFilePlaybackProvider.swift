@@ -7,7 +7,7 @@
 // only feeds PCM into the analysis pipeline at near-real-time without
 // playing audio), this provider plays the file via `AVAudioEngine` +
 // `AVAudioPlayerNode` and installs a tap on the player node's output bus
-// (pre-mixer, pre-volume). Phosphene owns the playhead. Core Audio process
+// (pre-mixer, pre-volume). Uzume owns the playhead. Core Audio process
 // taps are bypassed entirely — no screen-capture permission required.
 
 @preconcurrency import AVFoundation

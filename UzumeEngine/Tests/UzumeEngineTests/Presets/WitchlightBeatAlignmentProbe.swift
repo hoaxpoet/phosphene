@@ -8,7 +8,7 @@
 // that fire in time — the head flare and the downbeat bead promotion — how they sit
 // against the session's own beat grid.
 //
-//   WITCHLIGHT_SESSION=<dir> swift test --package-path PhospheneEngine \
+//   WITCHLIGHT_SESSION=<dir> swift test --package-path UzumeEngine \
 //       --filter WitchlightBeatAlignment
 
 import Foundation

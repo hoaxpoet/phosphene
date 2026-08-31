@@ -61,11 +61,11 @@ struct AuroraVeilMVWarpAccumulationTest {
     func test_drawDirect_bindsSlot6() throws {
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // /Presets/
-            .deletingLastPathComponent()  // /PhospheneEngineTests/
+            .deletingLastPathComponent()  // /UzumeEngineTests/
             .deletingLastPathComponent()  // /Tests/
-            .deletingLastPathComponent()  // /PhospheneEngine/
+            .deletingLastPathComponent()  // /UzumeEngine/
             .deletingLastPathComponent()  // repo root
-        let renderer = repoRoot.appendingPathComponent("PhospheneEngine/Sources/Renderer")
+        let renderer = repoRoot.appendingPathComponent("UzumeEngine/Sources/Renderer")
 
         // NB.8 refactor: the slot-6 binding moved out of `drawDirect` into the
         // shared `encodePresetVisualization` helper (RenderPipeline+DirectDraw.swift),

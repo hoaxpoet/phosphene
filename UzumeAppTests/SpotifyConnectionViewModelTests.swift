@@ -5,7 +5,7 @@
 import Foundation
 import Session
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Tests
 
@@ -139,7 +139,7 @@ struct SpotifyConnectionViewModelTests {
 
     @Test("SpotifyConnectionView carries correct accessibilityID")
     func viewIdentifier() {
-        #expect(SpotifyConnectionView.accessibilityID == "phosphene.view.spotify.connection")
+        #expect(SpotifyConnectionView.accessibilityID == "uzume.view.spotify.connection")
     }
 
     // PUB.2 regression (ultra-review): the error-state "Try Again" CTA called

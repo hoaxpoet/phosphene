@@ -112,7 +112,7 @@ extension RenderPipeline {
         // slow_roam_sin (the COMP horizon-glow colour). Periods 21 / 13 / 8 / 5 min —
         // butterchurn's `time` is seconds-since-preset-load and the oracle is sampled
         // many minutes in (t≈400 s), where the three channels have desynced into a
-        // saturated, spectrum-cycling colour (warm orange at ~400 s). A fresh Phosphene
+        // saturated, spectrum-cycling colour (warm orange at ~400 s). A fresh Uzume
         // session starts at small `time`, where all three channels sit bunched in their
         // first rising quarter ([0.6,1.0], near-equal) → a PALE grey-white wash, never
         // saturated (Matt M7: "horizon is gray; should cycle the spectrum"). FAITHFUL

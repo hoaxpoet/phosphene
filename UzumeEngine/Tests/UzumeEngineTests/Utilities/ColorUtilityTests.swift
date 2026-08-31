@@ -3,7 +3,7 @@
 // Tests colour-space conversions, palette continuity, CA identity, and
 // tone-mapping properties. Uses the NoiseTestHarness compute-pipeline pattern.
 //
-// Run: swift test --package-path PhospheneEngine --filter ColorUtilityTests
+// Run: swift test --package-path UzumeEngine --filter ColorUtilityTests
 
 import Testing
 import Foundation

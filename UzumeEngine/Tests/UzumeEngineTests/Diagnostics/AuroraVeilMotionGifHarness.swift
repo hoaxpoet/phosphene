@@ -9,7 +9,7 @@
 // live M7 / a real-audio harness); it exists so the MOTION character can be
 // eyeballed frame-to-frame while iterating the shader.
 //
-//   AURORA_GIF=1 swift test --package-path PhospheneEngine --filter AuroraVeilMotionGifHarness
+//   AURORA_GIF=1 swift test --package-path UzumeEngine --filter AuroraVeilMotionGifHarness
 // Output: /tmp/aurora_motion/aurora_dance.gif  (+ f0000.png … for frame reads)
 
 import Testing

@@ -4,7 +4,7 @@
 import Foundation
 import Session
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("PreparationETAEstimator")
 struct PreparationETAEstimatorTests {

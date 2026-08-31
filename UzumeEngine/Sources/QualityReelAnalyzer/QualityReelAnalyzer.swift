@@ -1,8 +1,8 @@
-// QualityReelAnalyzer — Offline beat-reactivity analysis for Phosphene quality reels.
+// QualityReelAnalyzer — Offline beat-reactivity analysis for Uzume quality reels.
 // STATUS: retained-diagnostic — standalone CLI (executableTarget), run ad hoc on quality reels.
 //   Zero production importers BY DESIGN; not dead. See docs/AUDIT_KEEPLIST.md.
 //
-// Given a reel video (mp4 / mov), runs the audio track through Phosphene's
+// Given a reel video (mp4 / mov), runs the audio track through Uzume's
 // Beat This! pipeline (BeatThisPreprocessor → BeatThisModel → BeatGridResolver)
 // to produce an authoritative BeatGrid, then samples video frames at every
 // beat timestamp plus midpoint control frames between consecutive beats and
@@ -33,7 +33,7 @@ struct QualityReelAnalyzerCommand: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         commandName: "QualityReelAnalyzer",
-        abstract: "Beat-reactivity analysis of a Phosphene quality reel."
+        abstract: "Beat-reactivity analysis of a Uzume quality reel."
     )
 
     @Option(name: .long, help: "Path to reel video file (mp4, mov, etc.).")

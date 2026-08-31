@@ -5,7 +5,7 @@ import os.log
 
 private let lfLogger = Logger(subsystem: "io.uzume.mac", category: "LF1")
 
-/// Phosphene application entry point.
+/// Uzume application entry point.
 ///
 /// Creates a single window containing the Metal-backed visualizer.
 /// `VisualizerEngine` is the primary long-lived object — it owns the render
@@ -14,7 +14,7 @@ private let lfLogger = Logger(subsystem: "io.uzume.mac", category: "LF1")
 ///
 /// `AccessibilityState` (U.9) is a `@StateObject` here so it can observe
 /// `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification` independently
-/// of the settings store. `PhospheneApp.body` wires the two together via `.task`
+/// of the settings store. `UzumeApp.body` wires the two together via `.task`
 /// (subscribes to `settingsStore.$reducedMotion`) and `.onChange` (pushes engine
 /// flags on state change).
 ///
@@ -23,18 +23,18 @@ private let lfLogger = Logger(subsystem: "io.uzume.mac", category: "LF1")
 /// to `ConnectorPickerView` via environment injection. The `.onOpenURL` modifier
 /// routes `uzume://spotify-callback` redirects back to the actor.
 @main
-struct PhospheneApp: App {
+struct UzumeApp: App {
     @StateObject private var engine = VisualizerEngine()
     @StateObject private var permissionMonitor = PermissionMonitor()
     @StateObject private var settingsStore = SettingsStore()
     @StateObject private var accessibilityState = AccessibilityState()
 
     /// LF.5 Recents store — last 10 local-file / folder / M3U opens persisted
-    /// in `phosphene.lf.recents` UserDefaults. Drives `File → Open Recent ▸`.
+    /// in `uzume.lf.recents` UserDefaults. Drives `File → Open Recent ▸`.
     @StateObject private var recentsStore = LocalFileRecentsStore()
 
     /// Long-lived Spotify OAuth actor — not `@StateObject` because actors are not
-    /// `ObservableObject`; stored as a plain `let` since `PhospheneApp` is `@MainActor`.
+    /// `ObservableObject`; stored as a plain `let` since `UzumeApp` is `@MainActor`.
     private let spotifyOAuth = SpotifyOAuthTokenProvider.makeLive()
 
     init() {
@@ -42,7 +42,7 @@ struct PhospheneApp: App {
         // stem cache). Runs before SettingsMigrator so the key migration below
         // sees the carried-over values. Idempotent; a no-op after first launch.
         IdentityMigrator.migrate()
-        // Migrate legacy UserDefaults keys to the phosphene.settings.* scheme.
+        // Migrate legacy UserDefaults keys to the uzume.settings.* scheme.
         SettingsMigrator.migrate()
         // Prune old session folders according to the persisted retention policy.
         // Read the key directly to avoid a second SettingsStore allocation before @StateObject init.
@@ -116,7 +116,7 @@ struct PhospheneApp: App {
                 }
             }
             // LF.4 — Local-file playback hook. When the
-            // `PHOSPHENE_LOCAL_FILE_PLAYBACK` env var points at a readable
+            // `UZUME_LOCAL_FILE_PLAYBACK` env var points at a readable
             // audio file, bypass IdleView and drive the SessionManager LF
             // path (idle → preparing → ready → playing). The LF.2/LF.3
             // pre-analysis + persistent cache flow runs through
@@ -126,21 +126,21 @@ struct PhospheneApp: App {
             // var: no log, normal launch proceeds.
             //
             // LF.1.5 — Process-tap autostart hook (dev-only, env-var-gated).
-            // When `PHOSPHENE_AUTOSTART_ADHOC=1` is set AND the LF env var is
+            // When `UZUME_AUTOSTART_ADHOC=1` is set AND the LF env var is
             // NOT, fire the same code path IdleView's "Start listening now"
             // button uses. Makes the LF-vs-tap A/B reproducible without a
             // manual UI click. LF env var takes precedence.
             .task {
                 let env = ProcessInfo.processInfo.environment
-                if let raw = env["PHOSPHENE_LOCAL_FILE_PLAYBACK"], !raw.isEmpty {
+                if let raw = env["UZUME_LOCAL_FILE_PLAYBACK"], !raw.isEmpty {
                     let url = URL(fileURLWithPath: raw)
                     guard FileManager.default.isReadableFile(atPath: url.path) else { return }
                     lfLogger.info("[LF.4] local-file playback mode: \(url.path, privacy: .public)")
                     await engine.sessionManager.startLocalFile(at: url)
                     return
                 }
-                if env["PHOSPHENE_AUTOSTART_ADHOC"] == "1" {
-                    lfLogger.info("[LF.1.5] autostart ad-hoc session (PHOSPHENE_AUTOSTART_ADHOC=1)")
+                if env["UZUME_AUTOSTART_ADHOC"] == "1" {
+                    lfLogger.info("[LF.1.5] autostart ad-hoc session (UZUME_AUTOSTART_ADHOC=1)")
                     engine.sessionManager.startAdHocSession()
                 }
             }
@@ -157,14 +157,14 @@ struct PhospheneApp: App {
                 )
             }
         }
-        // LF.4 + LF.5 — File menu + Phosphene-menu additions.
+        // LF.4 + LF.5 — File menu + Uzume-menu additions.
         //
         // File menu:
         //   - "Open Local File…"      (⌘O)            — LF.4
         //   - "Open Local Folder…"                    — LF.5
         //   - "Open Recent ▸" submenu                 — LF.5
         //
-        // Phosphene (.appInfo): "Clear Local-File Cache (<size>)" item that
+        // Uzume (.appInfo): "Clear Local-File Cache (<size>)" item that
         // surfaces the current disk footprint in the menu label. The size
         // auto-refreshes via the `localFileCacheBytes` publisher.
         .commands {
@@ -217,7 +217,7 @@ struct PhospheneApp: App {
     // MARK: - LF.5 file-association dispatch
 
     /// Route a `file://` URL received via `.onOpenURL` (Finder double-click,
-    /// `open -a Phosphene <path>`, drag-onto-Dock-icon) into the right
+    /// `open -a Uzume <path>`, drag-onto-Dock-icon) into the right
     /// LocalFileMenuCommands entry point. Unsupported extensions and
     /// non-existent paths are silently ignored — file-association handlers
     /// shouldn't pop alerts on unexpected URLs the OS chose to route here.
@@ -293,7 +293,7 @@ private struct SpotifyOAuthProviderKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// The app-level Spotify OAuth token provider, set by `PhospheneApp`.
+    /// The app-level Spotify OAuth token provider, set by `UzumeApp`.
     var spotifyOAuthProvider: SpotifyOAuthTokenProvider? {
         get { self[SpotifyOAuthProviderKey.self] }
         set { self[SpotifyOAuthProviderKey.self] = newValue }

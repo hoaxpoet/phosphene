@@ -10,7 +10,7 @@
 //   - Preset with no golden entry: skips silently (new preset or update in progress).
 //
 // To regenerate all goldens:
-//   UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine \
+//   UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path UzumeEngine \
 //     --filter "Print golden hashes"
 // Paste the printed lines into goldenPresetHashes below.
 //

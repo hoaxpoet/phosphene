@@ -123,7 +123,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Master size gain on the stem-driven Fata blob radius (FM.L2, D-139). The shapes
     /// are driven by the D-026 `_energy_rel` primitive (~1.0-centred, the faithful analog
     /// of Milkdrop's `_att`), so rad ≈ baseRad at average level — matching the source's
-    /// `baseVal.rad × _att`. 1.5 gives a touch more presence on Phosphene's wider 16:9
+    /// `baseVal.rad × _att`. 1.5 gives a touch more presence on Uzume's wider 16:9
     /// canvas vs the oracle's 4:3. (The earlier 5.0 compensated for the wrong 0.5-centred
     /// AGC `_energy` drive, which oversized the blobs into the gray-wash.) Diag sweeps it
     /// via FATA_BOOST.

@@ -8,7 +8,7 @@ private let logger = Logger(subsystem: "io.uzume.mac", category: "ToastManager")
 
 // MARK: - ToastManager
 
-/// Manages the lifecycle of `PhospheneToast` notifications.
+/// Manages the lifecycle of `UzumeToast` notifications.
 ///
 /// Maintains a FIFO queue of up to three visible toasts. Auto-dismisses each
 /// toast after its configured duration. Overflow drops the oldest non-degradation
@@ -20,7 +20,7 @@ final class ToastManager: ObservableObject {
 
     // MARK: - Published
 
-    @Published private(set) var visibleToasts: [PhospheneToast] = []
+    @Published private(set) var visibleToasts: [UzumeToast] = []
 
     // MARK: - Constants
 
@@ -37,7 +37,7 @@ final class ToastManager: ObservableObject {
     /// If the queue is already at `maxVisible`:
     /// - Drops the oldest non-degradation toast to make room.
     /// - If all visible toasts are `.degradation`, drops the oldest regardless.
-    func enqueue(_ toast: PhospheneToast) {
+    func enqueue(_ toast: UzumeToast) {
         if visibleToasts.count >= Self.maxVisible {
             dropOldest()
         }

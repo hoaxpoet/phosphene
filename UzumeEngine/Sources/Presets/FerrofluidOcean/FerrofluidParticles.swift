@@ -226,7 +226,7 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**
     /// to keep peak tips razor-sharp per `04_specular_razor_highlights.jpg`.
     /// Leitl's 0.1 reads as ferrofluid peaks on his demo scale; at
-    /// Phosphene's larger world patch the same 0.1 rounded apexes that
+    /// Uzume's larger world patch the same 0.1 rounded apexes that
     /// should be near-conical for sharp specular catches.
     public static let apexSmoothK: Float = 0.03
 

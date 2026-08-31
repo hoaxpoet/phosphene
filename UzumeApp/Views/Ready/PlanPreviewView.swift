@@ -18,8 +18,8 @@ import SwiftUI
 /// Creates and owns `PlanPreviewViewModel` via `@StateObject`.
 @MainActor
 struct PlanPreviewView: View {
-    static let accessibilityID         = "phosphene.view.planPreview"
-    static let regenerateButtonID      = "phosphene.planPreview.regenerate"
+    static let accessibilityID         = "uzume.view.planPreview"
+    static let regenerateButtonID      = "uzume.planPreview.regenerate"
 
     @StateObject private var viewModel: PlanPreviewViewModel
 

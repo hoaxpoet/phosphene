@@ -23,7 +23,7 @@
 // timing-sensitive SessionManager concurrency suites — which is a contention problem to
 // avoid causing, not a budget of theirs to widen. Run it at closeout:
 //
-//   WITCHLIGHT_FLASH_BUDGET=1 swift test --package-path PhospheneEngine --filter WitchlightFlashBudget
+//   WITCHLIGHT_FLASH_BUDGET=1 swift test --package-path UzumeEngine --filter WitchlightFlashBudget
 
 import Testing
 import Foundation

@@ -6,7 +6,7 @@
 import AppKit
 import Session
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("Esc Behavior")
 @MainActor

@@ -2,7 +2,7 @@
 
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("LiveAdaptationToastBridge")
 @MainActor

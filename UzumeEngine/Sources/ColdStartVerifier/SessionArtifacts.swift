@@ -1,4 +1,4 @@
-// SessionArtifacts — Parse a Phosphene session directory for cold-start verification.
+// SessionArtifacts — Parse a Uzume session directory for cold-start verification.
 //
 // Reads features.csv (per-frame beat-sync columns) and session.log (track-change
 // + BeatGrid-install events), and segments the frame stream into per-track runs.

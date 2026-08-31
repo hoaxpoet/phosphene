@@ -115,7 +115,7 @@ extension VisualizerEngine {
             // Stage-4 diagnostic: dump the raw tap samples (first 30s) to
             // raw_tap.wav in the session directory.  Ground truth for
             // spectrum-vs-stem comparisons — whatever band-limiting or
-            // attenuation shows up here is upstream of Phosphene.
+            // attenuation shows up here is upstream of Uzume.
             self?.sessionRecorder?.recordRawTapSamples(
                 pointer: samples,
                 count: count,

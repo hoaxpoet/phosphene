@@ -1,6 +1,6 @@
 // SpotifyTokenProviderTests — Unit tests for the SpotifyTokenProviding fallback.
 // The production token provider is the app-layer SpotifyOAuthTokenProvider
-// (Authorization Code + PKCE), covered by PhospheneApp's OAuth tests. The
+// (Authorization Code + PKCE), covered by UzumeApp's OAuth tests. The
 // client-credentials DefaultSpotifyTokenProvider was removed in CLEAN.2.1
 // (a native app must not embed a client secret), so only the unconfigured-
 // fallback sentinel remains to cover here.

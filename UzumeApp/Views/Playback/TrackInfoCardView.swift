@@ -17,8 +17,8 @@ import SwiftUI
 /// up streaming-path artwork, the same slot renders for those sessions too.
 struct TrackInfoCardView: View {
 
-    static let accessibilityID = "phosphene.playback.trackInfoCard"
-    static let artworkSlotID   = "phosphene.playback.trackInfoCard.artwork"
+    static let accessibilityID = "uzume.playback.trackInfoCard"
+    static let artworkSlotID   = "uzume.playback.trackInfoCard.artwork"
 
     let trackInfo: TrackInfoDisplay?
     let preset: PresetDisplay?

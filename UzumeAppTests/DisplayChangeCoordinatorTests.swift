@@ -12,7 +12,7 @@ import Combine
 import Foundation
 import Renderer
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("DisplayChangeCoordinator")
 @MainActor

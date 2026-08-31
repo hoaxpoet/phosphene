@@ -5,7 +5,7 @@
 
 import AppKit
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("FullscreenObserver")
 @MainActor

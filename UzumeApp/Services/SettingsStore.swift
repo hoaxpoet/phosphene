@@ -1,4 +1,4 @@
-// SettingsStore — Typed UserDefaults wrapper for all Phosphene settings.
+// SettingsStore — Typed UserDefaults wrapper for all Uzume settings.
 //
 // Key scheme: "phosphene.settings.<group>.<key>"
 // Apply semantics:

@@ -15,7 +15,7 @@ import Foundation
 import Session
 import SwiftUI
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("ConnectingViewCancel")
 @MainActor
@@ -51,8 +51,8 @@ struct ConnectingViewCancelTests {
 
     @Test("accessibility identifier constants are defined and distinct")
     func test_accessibilityIDs_areDistinct() {
-        #expect(ConnectingView.accessibilityID == "phosphene.view.connecting")
-        #expect(ConnectingView.cancelButtonID == "phosphene.connecting.cancel")
+        #expect(ConnectingView.accessibilityID == "uzume.view.connecting")
+        #expect(ConnectingView.cancelButtonID == "uzume.connecting.cancel")
         #expect(ConnectingView.accessibilityID != ConnectingView.cancelButtonID)
     }
 

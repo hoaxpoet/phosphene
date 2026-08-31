@@ -3,9 +3,9 @@ excluded:
   - .build
   - .claude
   - DerivedData
-  - PhospheneEngine/.build
-  - PhospheneTools/.build
-  - PhospheneEngine/Tests
+  - UzumeEngine/.build
+  - UzumeTools/.build
+  - UzumeEngine/Tests
   - tools
 
 disabled_rules:

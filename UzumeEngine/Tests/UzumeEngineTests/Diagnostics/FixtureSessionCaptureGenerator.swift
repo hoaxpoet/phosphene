@@ -33,15 +33,15 @@
 // render-defect protocols still require real session captures.
 //
 // USAGE (env-gated; a normal suite pass skips it):
-//   PHOSPHENE_GEN_SESSION_DIR="$HOME/Documents/phosphene_sessions" \
-//     swift test --package-path PhospheneEngine --filter FixtureSessionCaptureGenerator
+//   UZUME_GEN_SESSION_DIR="$HOME/Documents/phosphene_sessions" \
+//     swift test --package-path UzumeEngine --filter FixtureSessionCaptureGenerator
 //
 // Writes one `fixturegen-<name>/` session dir per fixture, each containing
 // features.csv + stems.csv + a provenance session.log. Re-running overwrites
 // in place. To refresh the checked-in route-coverage fixtures afterwards:
 //   for f in love_rehab so_what there_there; do
 //     cp ~/Documents/phosphene_sessions/fixturegen-$f/{features,stems}.csv \
-//        PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/route_coverage/$f/
+//        UzumeEngine/Tests/UzumeEngineTests/Fixtures/route_coverage/$f/
 //   done
 
 import Foundation
@@ -69,11 +69,11 @@ struct FixtureSessionCaptureGenerator {
     /// Analysis hop — FFTProcessor.fftSize / the live analysis cadence.
     private static let hop = 1024
 
-    @Test("Generate real-audio session captures from tempo fixtures (env-gated: PHOSPHENE_GEN_SESSION_DIR)")
+    @Test("Generate real-audio session captures from tempo fixtures (env-gated: UZUME_GEN_SESSION_DIR)")
     func generateFixtureSessionCaptures() throws {
-        guard let outBase = ProcessInfo.processInfo.environment["PHOSPHENE_GEN_SESSION_DIR"],
+        guard let outBase = ProcessInfo.processInfo.environment["UZUME_GEN_SESSION_DIR"],
               !outBase.isEmpty else {
-            print("FixtureSessionCaptureGenerator: PHOSPHENE_GEN_SESSION_DIR not set, skipping")
+            print("FixtureSessionCaptureGenerator: UZUME_GEN_SESSION_DIR not set, skipping")
             return
         }
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -83,7 +83,7 @@ struct FixtureSessionCaptureGenerator {
         let outDir = URL(fileURLWithPath: (outBase as NSString).expandingTildeInPath)
         let fixturesDir = URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()  // Diagnostics/
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
             .appendingPathComponent("Fixtures/tempo")
 

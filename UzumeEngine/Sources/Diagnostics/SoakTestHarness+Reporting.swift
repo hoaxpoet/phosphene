@@ -122,7 +122,7 @@ extension SoakTestHarness {
         let timing = frameTimingReporter.snapshot()
 
         var lines = [
-            "# Phosphene Soak Test Report",
+            "# Uzume Soak Test Report",
             "",
             "**Assessment:** \(report.finalAssessment.rawValue)",
             "**Duration:** \(dur)s  ",

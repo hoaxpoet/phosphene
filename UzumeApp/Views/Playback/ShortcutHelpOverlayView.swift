@@ -10,7 +10,7 @@ import SwiftUI
 /// Groups shortcuts by category (Playback / Live Adaptation / Developer).
 struct ShortcutHelpOverlayView: View {
 
-    static let accessibilityID = "phosphene.playback.shortcutHelp"
+    static let accessibilityID = "uzume.playback.shortcutHelp"
 
     let shortcuts: [PlaybackShortcut]
     let onDismiss: () -> Void

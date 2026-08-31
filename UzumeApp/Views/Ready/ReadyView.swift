@@ -24,12 +24,12 @@ import SwiftUI
 /// logic lives in the ViewModel. Auto-advances to `.playing` on first audio.
 @MainActor
 struct ReadyView: View {
-    static let accessibilityID      = "phosphene.view.ready"
-    static let headlineID           = "phosphene.ready.headline"
-    static let previewPlanButtonID  = "phosphene.ready.previewPlan"
-    static let endSessionButtonID   = "phosphene.ready.endSession"
-    static let retryButtonID        = "phosphene.ready.retry"
-    static let timeoutOverlayID     = "phosphene.ready.timeoutOverlay"
+    static let accessibilityID      = "uzume.view.ready"
+    static let headlineID           = "uzume.ready.headline"
+    static let previewPlanButtonID  = "uzume.ready.previewPlan"
+    static let endSessionButtonID   = "uzume.ready.endSession"
+    static let retryButtonID        = "uzume.ready.retry"
+    static let timeoutOverlayID     = "uzume.ready.timeoutOverlay"
 
     @StateObject private var viewModel: ReadyViewModel
 

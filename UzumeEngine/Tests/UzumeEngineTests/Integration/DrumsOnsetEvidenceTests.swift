@@ -13,21 +13,21 @@
 // detector instance, not a fused band) — and prints each source's
 // |offset-to-nearest-grid-beat| distribution against the same grid.
 //
-// DIAGNOSTIC ONLY. Env-gated (`PHOSPHENE_TRK2_EVIDENCE=1`) because a full run
+// DIAGNOSTIC ONLY. Env-gated (`UZUME_TRK2_EVIDENCE=1`) because a full run
 // separates the whole capture through MPSGraph — ~1 s of GPU per 10 s of audio.
 // It asserts nothing; the printed table is the artifact.
 //
-//   PHOSPHENE_TRK2_EVIDENCE=1 \
-//   swift test --package-path PhospheneEngine --filter DrumsOnsetEvidence
+//   UZUME_TRK2_EVIDENCE=1 \
+//   swift test --package-path UzumeEngine --filter DrumsOnsetEvidence
 //
 // Overrides for replaying a recorded session instead of the bundled fixture:
-//   PHOSPHENE_TRK2_AUDIO       audio file (default Fixtures/tempo/love_rehab.m4a)
-//   PHOSPHENE_TRK2_BEATS       JSON `{"beats":[…]}` (default: analyze the audio)
-//   PHOSPHENE_TRK2_GRID_OFFSET seconds added to the GRID's beat times to bring them
+//   UZUME_TRK2_AUDIO       audio file (default Fixtures/tempo/love_rehab.m4a)
+//   UZUME_TRK2_BEATS       JSON `{"beats":[…]}` (default: analyze the audio)
+//   UZUME_TRK2_GRID_OFFSET seconds added to the GRID's beat times to bring them
 //                              into the audio's time base (e.g. a session's raw_tap.wav
 //                              starts N s after track zero → pass −N)
-//   PHOSPHENE_TRK2_SECONDS     analyse only the first N seconds
-//   PHOSPHENE_TRK2_DUMP_DRUMS  write the separated drums stem (raw f32le mono 44.1 kHz)
+//   UZUME_TRK2_SECONDS     analyse only the first N seconds
+//   UZUME_TRK2_DUMP_DRUMS  write the separated drums stem (raw f32le mono 44.1 kHz)
 //                              for cross-checking against a session's own stem dumps
 
 import Testing
@@ -125,8 +125,8 @@ struct DrumsOnsetEvidenceTests {
 
     @Test("TRK.2 evidence: sub-bass vs drums-stem onset alignment to the cached grid")
     func test_subBassVsDrumsStemOnsetAlignment() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_TRK2_EVIDENCE"] == "1" else {
-            print("[TRK.2] skipped — set PHOSPHENE_TRK2_EVIDENCE=1 to run (slow: full-capture stem separation)")
+        guard ProcessInfo.processInfo.environment["UZUME_TRK2_EVIDENCE"] == "1" else {
+            print("[TRK.2] skipped — set UZUME_TRK2_EVIDENCE=1 to run (slow: full-capture stem separation)")
             return
         }
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -136,16 +136,16 @@ struct DrumsOnsetEvidenceTests {
         let env = ProcessInfo.processInfo.environment
         let sampleRate: Double = 44100
 
-        let audioURL = env["PHOSPHENE_TRK2_AUDIO"].map { URL(fileURLWithPath: $0) } ?? Self.defaultFixtureURL()
+        let audioURL = env["UZUME_TRK2_AUDIO"].map { URL(fileURLWithPath: $0) } ?? Self.defaultFixtureURL()
         guard FileManager.default.fileExists(atPath: audioURL.path) else {
             Issue.record("audio missing at \(audioURL.path)")
             return
         }
-        let gridOffset = env["PHOSPHENE_TRK2_GRID_OFFSET"].flatMap(Double.init) ?? 0
+        let gridOffset = env["UZUME_TRK2_GRID_OFFSET"].flatMap(Double.init) ?? 0
 
         // Stereo for the separator (the live path separates the stereo tap);
         // mono for the full-mix detector (what MIRPipeline analyses).
-        let limitS = env["PHOSPHENE_TRK2_SECONDS"].flatMap(Double.init)
+        let limitS = env["UZUME_TRK2_SECONDS"].flatMap(Double.init)
         let stereo = try Self.decode(url: audioURL, channels: 2, sampleRate: Int(sampleRate), seconds: limitS)
         var mono = [Float](repeating: 0, count: stereo.count / 2)
         for i in 0..<mono.count { mono[i] = (stereo[i * 2] + stereo[i * 2 + 1]) * 0.5 }
@@ -154,7 +154,7 @@ struct DrumsOnsetEvidenceTests {
         // Grid: supplied beats, or the production offline analyzer on this audio.
         // `offsetBy` also extrapolates forward, exactly as the live install path does.
         let baseGrid: BeatGrid
-        if let beatsPath = env["PHOSPHENE_TRK2_BEATS"] {
+        if let beatsPath = env["UZUME_TRK2_BEATS"] {
             baseGrid = try Self.loadGrid(path: beatsPath)
         } else {
             baseGrid = try DefaultBeatGridAnalyzer(device: device)
@@ -173,7 +173,7 @@ struct DrumsOnsetEvidenceTests {
 
         // Escape hatch for verifying this offline separation against the live path's
         // own stem dumps (session `stems/NNNN_<track>/drums.wav`).
-        if let dumpPath = env["PHOSPHENE_TRK2_DUMP_DRUMS"] {
+        if let dumpPath = env["UZUME_TRK2_DUMP_DRUMS"] {
             try Data(bytes: drums, count: drums.count * 4).write(to: URL(fileURLWithPath: dumpPath))
             print("[TRK.2] drums stem written (raw f32le mono 44100) → \(dumpPath)")
         }
@@ -345,7 +345,7 @@ struct DrumsOnsetEvidenceTests {
     private static func defaultFixtureURL() -> URL {
         URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()   // Integration/
-            .deletingLastPathComponent()   // PhospheneEngineTests/
+            .deletingLastPathComponent()   // UzumeEngineTests/
             .deletingLastPathComponent()   // Tests/
             .appendingPathComponent("Fixtures/tempo/love_rehab.m4a")
     }

@@ -31,7 +31,7 @@
 // fact to cite.
 //
 //   FTR_AUDIO_DIR="/Volumes/Extreme SSD/S/Smashing Pumpkins/[1993] - Siamese Dream" \
-//     swift test --package-path PhospheneEngine --filter PerNoteMagnitude
+//     swift test --package-path UzumeEngine --filter PerNoteMagnitude
 
 import Testing
 import Foundation

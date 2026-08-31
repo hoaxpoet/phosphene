@@ -90,7 +90,7 @@ private enum ChurnFixture {
     static func shortExcerptURL() throws -> URL? {
         let testDir = URL(fileURLWithPath: String(#filePath)).deletingLastPathComponent()
         let source = testDir
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
             .appendingPathComponent("Fixtures/tempo/love_rehab.m4a")
         guard FileManager.default.fileExists(atPath: source.path) else {

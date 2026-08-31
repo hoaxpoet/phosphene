@@ -59,7 +59,7 @@ struct MoodClassifierGoldenTests {
     static let fixturePath: URL = {
         URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()  // ML/
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .appendingPathComponent("Fixtures/mood_classifier_golden.json")
     }()
 

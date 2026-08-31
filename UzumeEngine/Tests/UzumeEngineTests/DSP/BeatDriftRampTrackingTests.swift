@@ -37,7 +37,7 @@
 //       nearest to where it already believes it is.
 //
 // ⛔ VALIDATION RESULT (do not enable the flag on this basis). With
-// PHOSPHENE_BEAT_PLL=1 the REAL recorded fixture regresses hard —
+// UZUME_BEAT_PLL=1 the REAL recorded fixture regresses hard —
 // `LiveDriftValidationTests` (loveRehab) goes to maxAbsDrift 101.5 ms against a
 // 50 ms limit and beat-alignment 0.05 against a 0.80 limit. This synthetic suite
 // said "improved" (12 -> 9 ms) while real data says materially worse: the period
@@ -114,7 +114,7 @@ struct BeatDriftRampTrackingTests {
     @Test("a period error makes the legacy proportional controller drift without bound")
     func test_legacyControllerCannotNullARamp() {
         guard !LiveBeatDriftTracker.pllEnabled else {
-            print("[TRK.1] PHOSPHENE_BEAT_PLL=1 set — legacy baseline skipped")
+            print("[TRK.1] UZUME_BEAT_PLL=1 set — legacy baseline skipped")
             return
         }
         let windows = Self.driftByWindow(pllEnabled: false)
@@ -129,7 +129,7 @@ struct BeatDriftRampTrackingTests {
     @Test("the period-tracking controller holds drift inside the perceptual window")
     func test_periodControllerNullsTheRamp() {
         guard LiveBeatDriftTracker.pllEnabled else {
-            print("[TRK.1] set PHOSPHENE_BEAT_PLL=1 to exercise the period controller")
+            print("[TRK.1] set UZUME_BEAT_PLL=1 to exercise the period controller")
             return
         }
         let windows = Self.driftByWindow(pllEnabled: true)

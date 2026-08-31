@@ -10,7 +10,7 @@ import SwiftUI
 /// Collapses to a text summary when the track count exceeds 30.
 struct SessionProgressDotsView: View {
 
-    static let accessibilityID = "phosphene.playback.progressDots"
+    static let accessibilityID = "uzume.playback.progressDots"
 
     let progress: SessionProgressData
     let reduceMotion: Bool

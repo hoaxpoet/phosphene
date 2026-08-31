@@ -19,14 +19,14 @@
 import Foundation
 import Testing
 
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("Stem series wiring (LFSTEM.1c/1e/2)")
 struct StemSeriesWiringTests {
 
     private func source(_ relativePath: String) -> String? {
         let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()           // PhospheneAppTests
+            .deletingLastPathComponent()           // UzumeAppTests
             .deletingLastPathComponent()           // repo root
             .appendingPathComponent(relativePath)
         guard let src = try? String(contentsOf: url, encoding: .utf8) else {
@@ -45,9 +45,9 @@ struct StemSeriesWiringTests {
     /// them; a pre-analysed series is an array lookup and has no such bound.
     @Test("The live path stands down, and the series is sampled per RENDER frame")
     func test_livePathStandsDownForASeries() {
-        guard let audio = source("PhospheneApp/VisualizerEngine+Audio.swift"),
-              let draw = source("PhospheneEngine/Sources/Renderer/RenderPipeline+Draw.swift"),
-              let initHelpers = source("PhospheneApp/VisualizerEngine+InitHelpers.swift")
+        guard let audio = source("UzumeApp/VisualizerEngine+Audio.swift"),
+              let draw = source("UzumeEngine/Sources/Renderer/RenderPipeline+Draw.swift"),
+              let initHelpers = source("UzumeApp/VisualizerEngine+InitHelpers.swift")
         else { return }
 
         #expect(audio.contains("if stemSeriesLock.withLock({ !currentStemSeries.isEmpty }) { return }"), """
@@ -85,8 +85,8 @@ struct StemSeriesWiringTests {
     /// rising `stem_suppressed` in `GPU_PRESSURE`.
     @Test("Live separation is suppressed by the SERIES, not by the source being a local file")
     func test_separationSuppressedBySeriesOnly() {
-        guard let stems = source("PhospheneApp/VisualizerEngine+Stems.swift"),
-              let initHelpers = source("PhospheneApp/VisualizerEngine+InitHelpers.swift")
+        guard let stems = source("UzumeApp/VisualizerEngine+Stems.swift"),
+              let initHelpers = source("UzumeApp/VisualizerEngine+InitHelpers.swift")
         else { return }
 
         #expect(stems.contains("if separationSupersededBySeries() { return }"), """
@@ -113,7 +113,7 @@ struct StemSeriesWiringTests {
     /// Invariant 2 — cleared on every track change, installed on the one path that has data.
     @Test("The per-track series is cleared unconditionally and installed only on a cache hit")
     func test_clearedOnEveryTrackChange() {
-        guard let stems = source("PhospheneApp/VisualizerEngine+Stems.swift") else { return }
+        guard let stems = source("UzumeApp/VisualizerEngine+Stems.swift") else { return }
         #expect(stems.contains("currentStemSeries = .empty"), """
                 currentStemSeries must be cleared unconditionally on track change, beside the \
                 instrument-family clear. A per-track surface cleared on only one path leaks the \
@@ -134,9 +134,9 @@ struct StemSeriesWiringTests {
     /// Invariant 3 — the sweep is local-file-only.
     @Test("Only the local-file path builds a series; the shared preview analysis does not")
     func test_streamingNeverGetsASeries() {
-        guard let localFile = source("PhospheneApp/VisualizerEngine+LocalFilePlayback.swift"),
+        guard let localFile = source("UzumeApp/VisualizerEngine+LocalFilePlayback.swift"),
               let sharedAnalysis =
-                source("PhospheneEngine/Sources/Session/SessionPreparer+Analysis.swift")
+                source("UzumeEngine/Sources/Session/SessionPreparer+Analysis.swift")
         else { return }
 
         #expect(localFile.contains("analyzeStemSeriesForLocalFile"), """

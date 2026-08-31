@@ -33,7 +33,7 @@ struct BeatBenchFixturePresenceGate {
     static func manifestURL() -> URL {
         URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()  // BeatBench/
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
             .appendingPathComponent("Fixtures/beatbench/manifest.json")
     }

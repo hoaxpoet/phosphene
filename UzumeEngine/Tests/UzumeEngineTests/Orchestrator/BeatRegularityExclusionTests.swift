@@ -173,9 +173,9 @@ final class BeatRegularityExclusionTests: XCTestCase {
         // FFO requires a new product decision — this gate enforces that.
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()    // → Orchestrator/
-            .deletingLastPathComponent()    // → PhospheneEngineTests/
+            .deletingLastPathComponent()    // → UzumeEngineTests/
             .deletingLastPathComponent()    // → Tests/
-            .deletingLastPathComponent()    // → PhospheneEngine/
+            .deletingLastPathComponent()    // → UzumeEngine/
             .appendingPathComponent("Sources/Presets/Shaders/FerrofluidOcean.json")
         let descriptor = try JSONDecoder().decode(PresetDescriptor.self,
                                                   from: Data(contentsOf: url))

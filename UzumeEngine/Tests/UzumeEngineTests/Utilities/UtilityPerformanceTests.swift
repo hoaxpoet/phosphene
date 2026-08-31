@@ -5,7 +5,7 @@
 //
 // Results inform SHADER_CRAFT.md §9.4 two-column performance table.
 // Produce docs/V4_PERF_RESULTS.json by running:
-//   swift test --package-path PhospheneEngine --filter UtilityPerformanceTests
+//   swift test --package-path UzumeEngine --filter UtilityPerformanceTests
 //
 // NOTE: These tests measure real GPU performance and are skipped gracefully if
 // no Metal device is available (e.g. Linux CI). They do NOT assert pass/fail —

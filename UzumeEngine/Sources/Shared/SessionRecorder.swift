@@ -20,7 +20,7 @@
 //   stems/<N>_<title>/    One directory per stem-separation invocation:
 //       drums.wav bass.wav vocals.wav other.wav
 //   raw_tap.wav           First 30s of interleaved Float32 PCM straight from
-//                         the Core Audio tap callback — before any Phosphene
+//                         the Core Audio tap callback — before any Uzume
 //                         DSP (FFT, AGC, stem separation).  Stage 4 ground
 //                         truth for diagnosing signal-chain degradation.
 //                         Compare its spectrum against stems/*/*.wav to
@@ -47,7 +47,7 @@ private let logger = Logger(subsystem: "io.uzume", category: "SessionRecorder")
 
 // MARK: - SessionRecorder
 
-/// Continuously records diagnostic data from a running Phosphene session.
+/// Continuously records diagnostic data from a running Uzume session.
 ///
 /// Thread-safe: hot path methods (`recordFrame`, `recordStemSeparation`, `log`)
 /// dispatch onto an internal serial queue; callers do not need to synchronize.
@@ -61,7 +61,7 @@ public final class SessionRecorder: @unchecked Sendable {
     private let stemsCSVURL: URL
     private let logURL: URL
     /// First 30 seconds of interleaved Float32 samples straight from the
-    /// Core Audio tap callback, before Phosphene's FFT / AGC / stem separation
+    /// Core Audio tap callback, before Uzume's FFT / AGC / stem separation
     /// touch them.  This is Stage 4 ground truth for diagnosing where in the
     /// chain signal degradation (low-level peaks, high-frequency roll-off)
     /// is introduced.  Compare its spectrum against the per-stem WAVs to
@@ -105,7 +105,7 @@ public final class SessionRecorder: @unchecked Sendable {
     /// power/heat — no fps cost). It is **OFF by default**; the CSV / log /
     /// raw-tap / stem artifacts (nearly free, and where ~all the diagnostic
     /// value lives) always record. Enable per session with
-    /// `PHOSPHENE_RECORD_VIDEO=1` (e.g. to capture a quality reel). When off,
+    /// `UZUME_RECORD_VIDEO=1` (e.g. to capture a quality reel). When off,
     /// `ensureCaptureTexture` returns nil → the blit, the byte read, and the
     /// encoder are all skipped.
     let videoEnabled: Bool
@@ -233,11 +233,11 @@ public final class SessionRecorder: @unchecked Sendable {
     var rawTapLastHeaderSyncSamples: Int = 0
     /// Set once the duration cap is reached or `finish()` closes the file.
     var rawTapDone: Bool = false
-    /// Default 30 s diagnostic cap. Set `PHOSPHENE_FULL_RAW_TAP=1` to capture
+    /// Default 30 s diagnostic cap. Set `UZUME_FULL_RAW_TAP=1` to capture
     /// the entire session — required by `QualityReelAnalyzer`, which needs
     /// audio coverage matching the visual reel for beat alignment.
     let rawTapDurationSeconds: Double = ProcessInfo.processInfo
-        .environment["PHOSPHENE_FULL_RAW_TAP"] == "1" ? 86_400.0 : 30.0
+        .environment["UZUME_FULL_RAW_TAP"] == "1" ? 86_400.0 : 30.0
 
     /// True once `finish()` has closed all handles.
     var didFinish: Bool = false
@@ -255,7 +255,7 @@ public final class SessionRecorder: @unchecked Sendable {
     /// Returns `nil` if disabled or if the directory could not be created.
     ///
     /// - Parameter videoEnabled: gate the per-frame video capture (BUG-050).
-    ///   `nil` (the production default) reads `PHOSPHENE_RECORD_VIDEO` from the
+    ///   `nil` (the production default) reads `UZUME_RECORD_VIDEO` from the
     ///   environment → off unless set to `1`. Tests pass an explicit value.
     public init?(baseDir: URL? = nil, enabled: Bool = true, videoEnabled: Bool? = nil) {
         guard enabled else {
@@ -284,7 +284,7 @@ public final class SessionRecorder: @unchecked Sendable {
         self.rawTapURL      = dir.appendingPathComponent("raw_tap.wav")
 
         self.videoEnabled   = videoEnabled
-            ?? (ProcessInfo.processInfo.environment["PHOSPHENE_RECORD_VIDEO"] == "1")
+            ?? (ProcessInfo.processInfo.environment["UZUME_RECORD_VIDEO"] == "1")
 
         // NOTHING is written here — see `materializeIfNeeded()`. Constructing a recorder is
         // free and leaves no trace on disk (BUG-083).
@@ -528,7 +528,7 @@ public final class SessionRecorder: @unchecked Sendable {
         writeLogLine("host macOS=\(osVersion) gpu=\(device) hostname=\(proc.hostName)")
         let videoState = videoEnabled
             ? "ENABLED"
-            : "OFF — CSV/log/stems only (BUG-050; set PHOSPHENE_RECORD_VIDEO=1 to capture video.mp4)"
+            : "OFF — CSV/log/stems only (BUG-050; set UZUME_RECORD_VIDEO=1 to capture video.mp4)"
         writeLogLine("video recording: \(videoState)")
     }
 }

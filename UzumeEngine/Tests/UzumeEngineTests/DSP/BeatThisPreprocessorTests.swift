@@ -104,7 +104,7 @@ struct BeatThisPreprocessorTests {
         // #filePath gives the absolute path to this source file at compile time.
         let testDir = URL(fileURLWithPath: String(#filePath)).deletingLastPathComponent()
         let audioURL = testDir
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
             .appendingPathComponent("Fixtures/tempo/love_rehab.m4a")
         // Debug: uncomment to diagnose path issues.

@@ -266,7 +266,7 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
 
         // Double-`-` ambient hint: two presses within 90s → emit once per session.
         if let prev = lastNegativeNudgeAt, (sessionTime - prev) < 90, !ambientHintShown {
-            let hint = PhospheneToast(
+            let hint = UzumeToast(
                 severity: .info,
                 copy: "Not quite hitting the mark? Try ⌘R to re-plan.",
                 source: .liveAdaptationAck

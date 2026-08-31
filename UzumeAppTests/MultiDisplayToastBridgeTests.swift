@@ -3,7 +3,7 @@
 import AppKit
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("MultiDisplayToastBridge")
 @MainActor
@@ -30,7 +30,7 @@ struct MultiDisplayToastBridgeTests {
         #expect(harness.toastManager.visibleToasts.count == 1)
         #expect(harness.toastManager.visibleToasts[0].severity == .info)
         #expect(harness.toastManager.visibleToasts[0].action != nil)
-        #expect(harness.toastManager.visibleToasts[0].action?.label == "Move Phosphene there")
+        #expect(harness.toastManager.visibleToasts[0].action?.label == "Move Uzume there")
     }
 
     @Test func screenRemoved_notCurrent_emitsInfoToast() {

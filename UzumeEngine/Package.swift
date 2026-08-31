@@ -3,13 +3,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "PhospheneEngine",
+    name: "UzumeEngine",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         .library(
-            name: "PhospheneEngine",
+            name: "UzumeEngine",
             targets: [
                 "Audio",
                 "DSP",
@@ -212,13 +212,13 @@ let package = Package(
             path: "Sources/ChainHealthAnalyzer"
         ),
         .testTarget(
-            name: "PhospheneEngineTests",
+            name: "UzumeEngineTests",
             dependencies: [
                 "Shared", "Audio", "DSP", "ML", "Presets",
                 "Renderer", "Session", "Orchestrator", "Diagnostics",
                 "CorpusCensusRunner", "TonalDumper", "PresetSessionReplay",
             ],
-            path: "Tests/PhospheneEngineTests",
+            path: "Tests/UzumeEngineTests",
             resources: [
                 .copy("Regression/Fixtures"),
                 .copy("Fixtures/beat_this_reference"),

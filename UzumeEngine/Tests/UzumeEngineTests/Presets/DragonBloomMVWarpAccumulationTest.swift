@@ -52,12 +52,12 @@ struct DragonBloomMVWarpAccumulationTest {
     func test_metalSource_declaresMVWarpFunctions() throws {
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // /Presets/
-            .deletingLastPathComponent()   // /PhospheneEngineTests/
+            .deletingLastPathComponent()   // /UzumeEngineTests/
             .deletingLastPathComponent()   // /Tests/
-            .deletingLastPathComponent()   // /PhospheneEngine/
+            .deletingLastPathComponent()   // /UzumeEngine/
             .deletingLastPathComponent()   // repo root
         let url = repoRoot.appendingPathComponent(
-            "PhospheneEngine/Sources/Presets/Shaders/DragonBloom.metal")
+            "UzumeEngine/Sources/Presets/Shaders/DragonBloom.metal")
         let src = try String(contentsOf: url, encoding: .utf8)
         #expect(src.contains("dragon_bloom_fragment"),
                 "DragonBloom.metal missing dragon_bloom_fragment entry point.")
@@ -76,7 +76,7 @@ struct DragonBloomMVWarpAccumulationTest {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let url = repoRoot.appendingPathComponent(
-            "PhospheneEngine/Sources/Presets/Shaders/DragonBloom.json")
+            "UzumeEngine/Sources/Presets/Shaders/DragonBloom.json")
         let data = try Data(contentsOf: url)
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let passes = json?["passes"] as? [String]

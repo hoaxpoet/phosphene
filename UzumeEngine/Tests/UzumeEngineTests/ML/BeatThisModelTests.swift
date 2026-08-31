@@ -124,7 +124,7 @@ import Foundation
 
         let testDir = URL(fileURLWithPath: String(#filePath)).deletingLastPathComponent()
         let audioURL = testDir
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
             .appendingPathComponent("Fixtures/tempo/love_rehab.m4a")
         guard FileManager.default.fileExists(atPath: audioURL.path) else {

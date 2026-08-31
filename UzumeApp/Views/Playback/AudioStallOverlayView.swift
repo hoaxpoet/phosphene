@@ -12,10 +12,10 @@ import SwiftUI
 // MARK: - AudioStallOverlayView
 
 /// Center overlay card with a plain-language explanation and a fix ladder for
-/// the "Phosphene isn't receiving audio" condition. Fades in/out on `isVisible`.
+/// the "Uzume isn't receiving audio" condition. Fades in/out on `isVisible`.
 struct AudioStallOverlayView: View {
 
-    static let accessibilityID = "phosphene.playback.audioStallCard"
+    static let accessibilityID = "uzume.playback.audioStallCard"
 
     let isVisible: Bool
     let reduceMotion: Bool

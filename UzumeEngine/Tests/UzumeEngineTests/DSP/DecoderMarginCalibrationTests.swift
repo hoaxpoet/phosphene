@@ -10,8 +10,8 @@
 //
 // DIAGNOSTIC ONLY — env-gated, asserts nothing.
 //
-//   PHOSPHENE_DBN2_CALIBRATE=1 \
-//   swift test --package-path PhospheneEngine --filter DecoderMarginCalibration
+//   UZUME_DBN2_CALIBRATE=1 \
+//   swift test --package-path UzumeEngine --filter DecoderMarginCalibration
 
 import Testing
 import Foundation
@@ -38,8 +38,8 @@ struct DecoderMarginCalibrationTests {
 
     @Test("DBN.2: meter-margin distribution across the ground-truthed catalogue")
     func test_marginCalibration() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_DBN2_CALIBRATE"] == "1" else {
-            print("[DBN.2] skipped — set PHOSPHENE_DBN2_CALIBRATE=1 to run")
+        guard ProcessInfo.processInfo.environment["UZUME_DBN2_CALIBRATE"] == "1" else {
+            print("[DBN.2] skipped — set UZUME_DBN2_CALIBRATE=1 to run")
             return
         }
         guard let device = MTLCreateSystemDefaultDevice() else { Issue.record("no Metal"); return }
@@ -129,7 +129,7 @@ struct DecoderMarginCalibrationTests {
     /// the meters should converge as it goes to zero.
     @Test("DBN.2: is money's meter collapse driven by downbeatWeight, not the tempo hint?")
     func test_moneyMeterCollapse() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_DBN2_CALIBRATE"] == "1" else { return }
+        guard ProcessInfo.processInfo.environment["UZUME_DBN2_CALIBRATE"] == "1" else { return }
         guard let device = MTLCreateSystemDefaultDevice() else { Issue.record("no Metal"); return }
         let dir = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
             ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")

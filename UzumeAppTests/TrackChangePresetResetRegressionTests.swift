@@ -13,16 +13,16 @@
 import Foundation
 import Testing
 
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("Track-change preset reset wiring (BUG-044)")
 struct TrackChangePresetResetRegressionTests {
 
     private func appSource(_ relativePath: String) -> String? {
         let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()           // PhospheneAppTests
+            .deletingLastPathComponent()           // UzumeAppTests
             .deletingLastPathComponent()           // repo root
-            .appendingPathComponent("PhospheneApp/\(relativePath)")
+            .appendingPathComponent("UzumeApp/\(relativePath)")
         guard let src = try? String(contentsOf: url, encoding: .utf8) else {
             Issue.record("\(relativePath) not found at \(url.path)")
             return nil

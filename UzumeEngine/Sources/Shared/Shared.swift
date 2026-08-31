@@ -1,4 +1,4 @@
 // Shared — Common types, UMA buffer wrappers, and type definitions
-// used across all PhospheneEngine modules.
+// used across all UzumeEngine modules.
 
 import Foundation

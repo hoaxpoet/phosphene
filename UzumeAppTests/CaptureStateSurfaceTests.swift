@@ -9,7 +9,7 @@
 import Foundation
 import Audio
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("CaptureStateSurface")
 @MainActor

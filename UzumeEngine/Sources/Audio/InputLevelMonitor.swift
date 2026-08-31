@@ -24,7 +24,7 @@
 //
 // The monitor produces a SignalQuality grade (green/yellow/red) with a
 // human-readable reason string so the operator knows whether to fix the
-// audio-source setup or look for a bug in Phosphene.
+// audio-source setup or look for a bug in Uzume.
 //
 // Thread-safety: `submit` is called from the Core Audio IO proc (raw
 // samples) and the background analysis queue (FFT magnitudes).  All

@@ -5,7 +5,7 @@
 
 import AppKit
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Tests
 
@@ -52,7 +52,7 @@ struct ConnectorPickerViewModelTests {
 
     @Test("appleMusicRunning accessibilityID constants are stable")
     func accessibilityIDPrefix() {
-        #expect(ConnectorTileView.accessibilityIDPrefix == "phosphene.connector.tile")
+        #expect(ConnectorTileView.accessibilityIDPrefix == "uzume.connector.tile")
     }
 }
 
@@ -64,17 +64,17 @@ struct ConnectorPickerViewTests {
 
     @Test("ConnectorPickerView carries correct accessibilityID")
     func pickerViewIdentifier() {
-        #expect(ConnectorPickerView.accessibilityID == "phosphene.view.connectorPicker")
+        #expect(ConnectorPickerView.accessibilityID == "uzume.view.connectorPicker")
     }
 
     @Test("IdleView connect button carries correct accessibilityID")
     func idleConnectButtonIdentifier() {
-        #expect(IdleView.connectButtonID == "phosphene.idle.connectPlaylist")
+        #expect(IdleView.connectButtonID == "uzume.idle.connectPlaylist")
     }
 
     @Test("IdleView ad-hoc button carries correct accessibilityID")
     func idleAdHocButtonIdentifier() {
-        #expect(IdleView.adHocButtonID == "phosphene.idle.startListening")
+        #expect(IdleView.adHocButtonID == "uzume.idle.startListening")
     }
 
     @Test("ConnectorType rawValue is stable")
@@ -88,7 +88,7 @@ struct ConnectorPickerViewTests {
     func tileAccessibilityIDsMatchRawValues() {
         for type in ConnectorType.allCases {
             let expected = "\(ConnectorTileView.accessibilityIDPrefix).\(type.rawValue)"
-            #expect(expected.hasPrefix("phosphene.connector.tile."))
+            #expect(expected.hasPrefix("uzume.connector.tile."))
         }
     }
 }

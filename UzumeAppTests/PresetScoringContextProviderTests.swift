@@ -4,7 +4,7 @@ import Foundation
 import Orchestrator
 import Shared
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - PresetScoringContextProviderTests
 

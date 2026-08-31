@@ -18,8 +18,8 @@
 //     --checkpoint ~/.cache/torch/hub/checkpoints/beat_this-final0.ckpt \
 //     --variant final0 --out /tmp/beat_this_final0
 //
-//   PHOSPHENE_MDL1_AB=1 PHOSPHENE_FINAL0_DIR=/tmp/beat_this_final0 \
-//   swift test --package-path PhospheneEngine --filter Final0AB
+//   UZUME_MDL1_AB=1 UZUME_FINAL0_DIR=/tmp/beat_this_final0 \
+//   swift test --package-path UzumeEngine --filter Final0AB
 //
 // DIAGNOSTIC ONLY — env-gated, asserts nothing. The printed table is the artifact.
 
@@ -47,13 +47,13 @@ struct Final0ABTests {
 
     @Test("MDL.1: small0 vs final0 on the ground-truthed catalogue")
     func test_final0AB() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_MDL1_AB"] == "1" else {
-            print("[MDL.1] skipped — set PHOSPHENE_MDL1_AB=1 to run")
+        guard ProcessInfo.processInfo.environment["UZUME_MDL1_AB"] == "1" else {
+            print("[MDL.1] skipped — set UZUME_MDL1_AB=1 to run")
             return
         }
         guard let device = MTLCreateSystemDefaultDevice() else { Issue.record("no Metal"); return }
-        guard let finalDirPath = ProcessInfo.processInfo.environment["PHOSPHENE_FINAL0_DIR"] else {
-            Issue.record("PHOSPHENE_FINAL0_DIR unset — convert final0 weights first (see header)")
+        guard let finalDirPath = ProcessInfo.processInfo.environment["UZUME_FINAL0_DIR"] else {
+            Issue.record("UZUME_FINAL0_DIR unset — convert final0 weights first (see header)")
             return
         }
         let finalDir = URL(fileURLWithPath: finalDirPath)

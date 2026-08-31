@@ -1,4 +1,4 @@
-// Logging — Structured os.Logger instances for each Phosphene subsystem.
+// Logging — Structured os.Logger instances for each Uzume subsystem.
 // Use these instead of creating ad-hoc loggers throughout the codebase.
 
 import os.log

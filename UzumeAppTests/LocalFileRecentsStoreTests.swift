@@ -1,11 +1,11 @@
 // LocalFileRecentsStoreTests — LF.5 / D-132 Recents persistence regression.
 //
 // Each test owns a fresh `UserDefaults(suiteName:)` so the user's real
-// `phosphene.lf.recents` entry is never read or written.
+// `uzume.lf.recents` entry is never read or written.
 
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("LocalFileRecentsStore (LF.5)")
 @MainActor

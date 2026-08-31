@@ -54,7 +54,7 @@ public final class LocalFileErrorStore: ObservableObject {
 
     /// Production-shared instance. Use this from static call sites in
     /// `LocalFileMenuCommands` and inject via `.environmentObject(...)` in
-    /// `PhospheneApp` so SwiftUI consumers observe the same publisher.
+    /// `UzumeApp` so SwiftUI consumers observe the same publisher.
     public static let shared = LocalFileErrorStore()
 
     /// Most recent error, or `nil` if no error is active. Auto-clears 6 s

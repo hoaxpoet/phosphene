@@ -16,21 +16,21 @@ struct DynamicTypeRegressionTests {
     // MARK: - Helpers
 
     private static let viewFiles: [String] = [
-        "PhospheneApp/Views/Playback/TrackInfoCardView.swift",
-        "PhospheneApp/Views/Playback/ToastView.swift",
-        "PhospheneApp/Views/Playback/ListeningBadgeView.swift",
-        "PhospheneApp/Views/Playback/SessionProgressDotsView.swift",
-        "PhospheneApp/Views/Playback/PlaybackControlsCluster.swift",
-        "PhospheneApp/Views/Playback/TrackChangeAnimationView.swift",
-        "PhospheneApp/Views/Playback/ShortcutHelpOverlayView.swift",
-        "PhospheneApp/Views/Ready/PlanPreviewRowView.swift",
-        "PhospheneApp/Views/Ready/PlanPreviewTransitionView.swift",
-        "PhospheneApp/Views/Ready/PlanPreviewView.swift",
-        "PhospheneApp/Views/Ready/ReadyView.swift",
-        "PhospheneApp/Views/AppleMusicConnectionView.swift",
-        "PhospheneApp/Views/Preparation/TopBannerView.swift",
-        "PhospheneApp/Views/Preparation/PreparationFailureView.swift",
-        "PhospheneApp/Views/FullScreenErrorView.swift",
+        "UzumeApp/Views/Playback/TrackInfoCardView.swift",
+        "UzumeApp/Views/Playback/ToastView.swift",
+        "UzumeApp/Views/Playback/ListeningBadgeView.swift",
+        "UzumeApp/Views/Playback/SessionProgressDotsView.swift",
+        "UzumeApp/Views/Playback/PlaybackControlsCluster.swift",
+        "UzumeApp/Views/Playback/TrackChangeAnimationView.swift",
+        "UzumeApp/Views/Playback/ShortcutHelpOverlayView.swift",
+        "UzumeApp/Views/Ready/PlanPreviewRowView.swift",
+        "UzumeApp/Views/Ready/PlanPreviewTransitionView.swift",
+        "UzumeApp/Views/Ready/PlanPreviewView.swift",
+        "UzumeApp/Views/Ready/ReadyView.swift",
+        "UzumeApp/Views/AppleMusicConnectionView.swift",
+        "UzumeApp/Views/Preparation/TopBannerView.swift",
+        "UzumeApp/Views/Preparation/PreparationFailureView.swift",
+        "UzumeApp/Views/FullScreenErrorView.swift",
     ]
 
     private func projectRoot(file: StaticString = #filePath) throws -> URL {

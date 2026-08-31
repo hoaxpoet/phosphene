@@ -29,7 +29,7 @@ struct PresetSidecarKeyGateTests {
     // MARK: - Repo location
 
     /// The enclosing checkout, found by ascending to the nearest ancestor containing
-    /// `PhospheneEngine/Package.swift`; `nil` when this is not a source checkout.
+    /// `UzumeEngine/Package.swift`; `nil` when this is not a source checkout.
     ///
     /// Same anchor-search as `CommonLayoutTest` (QG.6) and for the same reason: a name
     /// search walks past a git worktree onto the primary checkout, and a fixed component
@@ -41,7 +41,7 @@ struct PresetSidecarKeyGateTests {
         for _ in 0..<12 {
             url.deleteLastPathComponent()
             guard url.pathComponents.count > 1 else { return nil }
-            let anchor = url.appendingPathComponent("PhospheneEngine/Package.swift")
+            let anchor = url.appendingPathComponent("UzumeEngine/Package.swift")
             if FileManager.default.fileExists(atPath: anchor.path) { return url }
         }
         return nil
@@ -203,8 +203,8 @@ struct PresetSidecarKeyGateTests {
             print("PresetSidecarKeyGateTests: not a source checkout — skipping")
             return
         }
-        let shaders = root.appendingPathComponent("PhospheneEngine/Sources/Presets/Shaders")
-        let descriptorURL = root.appendingPathComponent("PhospheneEngine/Sources/Presets/PresetDescriptor.swift")
+        let shaders = root.appendingPathComponent("UzumeEngine/Sources/Presets/Shaders")
+        let descriptorURL = root.appendingPathComponent("UzumeEngine/Sources/Presets/PresetDescriptor.swift")
 
         let descriptorSource = try #require(
             try? String(contentsOf: descriptorURL, encoding: .utf8),
@@ -271,12 +271,12 @@ struct PresetSidecarKeyGateTests {
             return
         }
         let descriptorSource = try String(
-            contentsOf: root.appendingPathComponent("PhospheneEngine/Sources/Presets/PresetDescriptor.swift"),
+            contentsOf: root.appendingPathComponent("UzumeEngine/Sources/Presets/PresetDescriptor.swift"),
             encoding: .utf8)
         let declared = Self.descriptorCodingKeys(in: descriptorSource)
         #expect(declared.count > 30, "Only \(declared.count) coding keys parsed — the gate lost its source")
 
-        let shaders = root.appendingPathComponent("PhospheneEngine/Sources/Presets/Shaders")
+        let shaders = root.appendingPathComponent("UzumeEngine/Sources/Presets/Shaders")
         let sidecars = try #require(
             try? FileManager.default.contentsOfDirectory(at: shaders, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "json" },
@@ -322,7 +322,7 @@ struct PresetSidecarKeyGateTests {
             print("PresetSidecarKeyGateTests: not a source checkout — skipping")
             return
         }
-        let shaders = root.appendingPathComponent("PhospheneEngine/Sources/Presets/Shaders")
+        let shaders = root.appendingPathComponent("UzumeEngine/Sources/Presets/Shaders")
         let sidecars = try #require(
             try? FileManager.default.contentsOfDirectory(at: shaders, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "json" }.sorted(by: { $0.path < $1.path }),
@@ -373,7 +373,7 @@ struct PresetSidecarKeyGateTests {
             print("PresetSidecarKeyGateTests: not a source checkout — skipping")
             return
         }
-        let shaders = root.appendingPathComponent("PhospheneEngine/Sources/Presets/Shaders")
+        let shaders = root.appendingPathComponent("UzumeEngine/Sources/Presets/Shaders")
         let sidecars = try #require(
             try? FileManager.default.contentsOfDirectory(at: shaders, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "json" }.sorted(by: { $0.path < $1.path }),

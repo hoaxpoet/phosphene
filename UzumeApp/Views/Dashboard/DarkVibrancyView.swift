@@ -1,8 +1,8 @@
 // DarkVibrancyView — NSVisualEffectView locked to vibrant-dark, regardless
 // of system appearance (DASH.7.2).
 //
-// Phosphene's brand context (`.impeccable.md`) is unambiguous: "Theme: Dark.
-// Phosphene runs in dim rooms, often on a TV." SwiftUI's `.regularMaterial`
+// Uzume's brand context (`.impeccable.md`) is unambiguous: "Theme: Dark.
+// Uzume runs in dim rooms, often on a TV." SwiftUI's `.regularMaterial`
 // is system-appearance-adaptive — on macOS Light it renders a beige/grey
 // surface that fails contrast for the dashboard text. This view forces
 // the panel to render `vibrantDark` always.

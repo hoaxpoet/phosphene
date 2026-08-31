@@ -14,7 +14,7 @@
 // Default cap is 500 MB (~70 tracks at ~7 MB/track). Eviction fires
 // after every successful `store(...)` call so the cap is continuously
 // enforced. `clearAll()` is the user-facing reset hook surfaced via the
-// `Phosphene → Clear Local-File Cache (<size>)` menu item.
+// `Uzume → Clear Local-File Cache (<size>)` menu item.
 //
 // LF.5: `metadata.json` schema bumps to version 2 with an optional
 // `metadata: LocalFileMetadata` field carrying ID3 / Vorbis-extracted

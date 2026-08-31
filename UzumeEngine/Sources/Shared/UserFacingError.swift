@@ -1,4 +1,4 @@
-// UserFacingError — Typed enum covering every user-visible error surface in Phosphene.
+// UserFacingError — Typed enum covering every user-visible error surface in Uzume.
 //
 // Lives in the Shared module (engine-layer) so Session, Audio, and App can all
 // reference the same typed cases. Copy lives in the App bundle's Localizable.strings;
@@ -19,7 +19,7 @@ import Foundation
 
 // MARK: - UserFacingError
 
-/// A typed error case for every user-visible error surface in Phosphene.
+/// A typed error case for every user-visible error surface in Uzume.
 ///
 /// Each case maps to exactly one row in `UX_SPEC.md §9.1–§9.4`. Silent rows
 /// (developer-only / log-only) are represented by cases whose `presentationMode`

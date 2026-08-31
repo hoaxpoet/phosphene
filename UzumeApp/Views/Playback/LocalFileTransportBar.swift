@@ -20,7 +20,7 @@ import SwiftUI
 
 struct LocalFileTransportBar: View {
 
-    static let accessibilityID = "phosphene.playback.lfTransport"
+    static let accessibilityID = "uzume.playback.lfTransport"
 
     let isPaused: Bool
     let onStop: () -> Void

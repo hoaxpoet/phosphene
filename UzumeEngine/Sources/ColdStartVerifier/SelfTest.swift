@@ -7,7 +7,7 @@
 // synthetic data. The Beat This! inference itself is not self-tested (it needs
 // the model + Metal); it is exercised by the real run.
 //
-// This is a self-test of the harness's OWN math, not a claim about Phosphene's
+// This is a self-test of the harness's OWN math, not a claim about Uzume's
 // behaviour. It is runnable before a session is captured, so the harness is
 // verified before it is trusted.
 

@@ -30,7 +30,7 @@ struct PresetSessionReplay: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
         commandName: "preset-session-replay",
-        abstract: "Replay a recorded Phosphene session against a preset's route specs.",
+        abstract: "Replay a recorded Uzume session against a preset's route specs.",
         discussion: """
             Parses a session's features.csv + stems.csv, computes per-route
             firing statistics, extracts video frames at the strongest audio

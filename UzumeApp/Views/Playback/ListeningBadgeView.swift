@@ -14,7 +14,7 @@ import SwiftUI
 /// In reduce-motion mode: abrupt show/hide, no spinner.
 struct ListeningBadgeView: View {
 
-    static let accessibilityID = "phosphene.playback.listeningBadge"
+    static let accessibilityID = "uzume.playback.listeningBadge"
 
     let isVisible: Bool
     let reduceMotion: Bool

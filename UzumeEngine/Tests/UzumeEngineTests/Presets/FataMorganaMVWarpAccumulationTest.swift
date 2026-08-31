@@ -42,7 +42,7 @@ struct FataMorganaMVWarpAccumulationTest {
     @Test("FataMorgana.metal declares the custom warp/comp/blur + mv_warp functions")
     func test_metalSource_declaresFunctions() throws {
         let url = Self.repoRoot.appendingPathComponent(
-            "PhospheneEngine/Sources/Presets/Shaders/FataMorgana.metal")
+            "UzumeEngine/Sources/Presets/Shaders/FataMorgana.metal")
         let src = try String(contentsOf: url, encoding: .utf8)
         for fn in ["fata_morgana_fragment",
                    "fata_morgana_warp_fragment",
@@ -57,7 +57,7 @@ struct FataMorganaMVWarpAccumulationTest {
     @Test("FataMorgana.json declares passes: [\"direct\", \"mv_warp\"]")
     func test_json_declaresDirectAndMVWarp() throws {
         let url = Self.repoRoot.appendingPathComponent(
-            "PhospheneEngine/Sources/Presets/Shaders/FataMorgana.json")
+            "UzumeEngine/Sources/Presets/Shaders/FataMorgana.json")
         let json = try JSONSerialization.jsonObject(with: try Data(contentsOf: url)) as? [String: Any]
         #expect(json?["passes"] as? [String] == ["direct", "mv_warp"])
     }
@@ -279,8 +279,8 @@ struct FataMorganaMVWarpAccumulationTest {
 
     static let repoRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()   // /Presets/
-        .deletingLastPathComponent()   // /PhospheneEngineTests/
+        .deletingLastPathComponent()   // /UzumeEngineTests/
         .deletingLastPathComponent()   // /Tests/
-        .deletingLastPathComponent()   // /PhospheneEngine/
+        .deletingLastPathComponent()   // /UzumeEngine/
         .deletingLastPathComponent()   // repo root
 }

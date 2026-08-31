@@ -53,7 +53,7 @@ enum AccessibilityLabels {
     // MARK: - Toast
 
     /// "Warning: No audio detected for 15 seconds."
-    static func toastLabel(copy: String, severity: PhospheneToast.Severity) -> String {
+    static func toastLabel(copy: String, severity: UzumeToast.Severity) -> String {
         let severityStr: String
         switch severity {
         case .info:        severityStr = String(localized: "a11y.toast.severity.info")

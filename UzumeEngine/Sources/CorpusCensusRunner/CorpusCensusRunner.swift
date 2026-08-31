@@ -30,7 +30,7 @@ struct CorpusCensusRunnerCommand: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         commandName: "CorpusCensusRunner",
-        abstract: "Batch corpus analysis through Phosphene's existing pipeline (CENSUS.2).",
+        abstract: "Batch corpus analysis through Uzume's existing pipeline (CENSUS.2).",
         discussion: """
         Reads a manifest (relpath column, joined against --root), decodes the first
         --window-seconds of each track at its FILE-NATIVE rate (mono). 30 s is the

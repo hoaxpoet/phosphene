@@ -15,7 +15,7 @@
 import Testing
 import Foundation
 import Session
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - StubURLProtocol
 

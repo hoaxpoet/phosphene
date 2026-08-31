@@ -19,7 +19,7 @@
 // never had: a way to render its marks with a KNOWN painter state.
 //
 // Run:
-//   PHOSPHENE_SKEIN_COST=1 swift test --package-path PhospheneEngine --filter SkeinLineCostTests
+//   UZUME_SKEIN_COST=1 swift test --package-path UzumeEngine --filter SkeinLineCostTests
 
 import Foundation
 import Metal
@@ -178,8 +178,8 @@ struct SkeinLineCostTests {
 
     @Test("Measure Skein's fragment cost against the breakpoint count (BUG-110)")
     func measureLineCost() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_SKEIN_COST"] == "1" else {
-            print("SkeinLineCostTests: PHOSPHENE_SKEIN_COST not set, skipping"); return
+        guard ProcessInfo.processInfo.environment["UZUME_SKEIN_COST"] == "1" else {
+            print("SkeinLineCostTests: UZUME_SKEIN_COST not set, skipping"); return
         }
         guard let device = MTLCreateSystemDefaultDevice(),
               let queue = device.makeCommandQueue() else {

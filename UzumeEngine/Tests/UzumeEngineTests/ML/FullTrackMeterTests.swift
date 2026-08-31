@@ -12,8 +12,8 @@
 //
 // DIAGNOSTIC ONLY — env-gated, asserts nothing. The printed table is the artifact.
 //
-//   PHOSPHENE_FT1_FULLTRACK=1 \
-//   swift test --package-path PhospheneEngine --filter FullTrackMeter
+//   UZUME_FT1_FULLTRACK=1 \
+//   swift test --package-path UzumeEngine --filter FullTrackMeter
 
 import Testing
 import Foundation
@@ -34,7 +34,7 @@ struct FullTrackMeterTests {
     ]
 
     /// FT.3 task 1 — tracks with NO ground truth, which therefore played no part in
-    /// designing the bar-line probe. Dumped only when `PHOSPHENE_BEATS_DUMP` is set, so
+    /// designing the bar-line probe. Dumped only when `UZUME_BEATS_DUMP` is set, so
     /// FT.1's own table stays exactly the nine it was measured on.
     static let unseen: [(name: String, meter: Int?)] = [
         ("so_what", nil), ("around_the_world", nil), ("stayin_alive", nil),
@@ -44,8 +44,8 @@ struct FullTrackMeterTests {
 
     @Test("FT.1: 30 s window vs full-track tiling — does meter improve?")
     func test_fullTrackMeter() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_FT1_FULLTRACK"] == "1" else {
-            print("[FT.1] skipped — set PHOSPHENE_FT1_FULLTRACK=1 to run")
+        guard ProcessInfo.processInfo.environment["UZUME_FT1_FULLTRACK"] == "1" else {
+            print("[FT.1] skipped — set UZUME_FT1_FULLTRACK=1 to run")
             return
         }
         guard let device = MTLCreateSystemDefaultDevice() else { Issue.record("no Metal"); return }
@@ -66,7 +66,7 @@ struct FullTrackMeterTests {
         var improved: [String] = []
         var regressed: [String] = []
 
-        let dumpDir = ProcessInfo.processInfo.environment["PHOSPHENE_BEATS_DUMP"]
+        let dumpDir = ProcessInfo.processInfo.environment["UZUME_BEATS_DUMP"]
         for entry in Self.catalogue + (dumpDir == nil ? [] : Self.unseen) {
             guard let url = Self.locate(entry.name, in: dir) else {
                 print("  \(entry.name): fixture missing"); continue

@@ -37,7 +37,7 @@ struct AboutSectionData: Sendable {
     /// Plaintext summary suitable for copying to the clipboard.
     var debugInfo: String {
         """
-        Phosphene \(appVersion) (\(buildNumber))
+        Uzume \(appVersion) (\(buildNumber))
         macOS: \(macOSVersion)
         GPU: \(gpuFamily)
         """

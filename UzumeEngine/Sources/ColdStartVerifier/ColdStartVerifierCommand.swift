@@ -4,7 +4,7 @@
 //   (docs/CAPABILITY_REGISTRY/BEAT_SYNC.md §Cold-Start). executableTarget → zero production
 //   importers BY DESIGN. Before deleting, read docs/AUDIT_KEEPLIST.md.
 //
-// Empirically verifies Phosphene's cold-start beat-sync bar: "beat-synced from
+// Empirically verifies Uzume's cold-start beat-sync bar: "beat-synced from
 // frame 1 of every track" (design doc COLD_START_SYNC_DESIGN_2026-05-20.md §3).
 //
 // WHAT IT MEASURES
@@ -57,7 +57,7 @@ struct ColdStartVerifierCommand: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         commandName: "ColdStartVerifier",
-        abstract: "Verify Phosphene's cold-start beat-sync bar against a captured session."
+        abstract: "Verify Uzume's cold-start beat-sync bar against a captured session."
     )
 
     @Option(name: .long, help: "Session directory (must contain features.csv + raw_tap.wav).")
@@ -341,7 +341,7 @@ enum VerifierError: Error, CustomStringConvertible {
             return "Required file not found: \(url.path)"
         case .missingRawTap(let url):
             return "raw_tap.wav not found at \(url.path). The session must be captured "
-                + "with PHOSPHENE_FULL_RAW_TAP=1 so raw_tap.wav covers every track."
+                + "with UZUME_FULL_RAW_TAP=1 so raw_tap.wav covers every track."
         case .missingColumn(let name):
             return "features.csv is missing the required column '\(name)' — the session "
                 + "predates the beat-sync CSV schema."

@@ -211,7 +211,7 @@ public struct MeniscusConfiguration: Sendable {
     /// spectrum itself first, which is precisely what my four attempts were missing.
     /// `dropForce` is the source's unit scale; the frame-rate term (60/fps) lives in the
     /// step.
-    /// UNITS CONVERSION between Milkdrop's spectrum scale and Phosphene's
+    /// UNITS CONVERSION between Milkdrop's spectrum scale and Uzume's
     /// `FFTProcessor` magnitudes. Every other drop constant is the source's own value;
     /// this one has no counterpart there, because the source never had to cross between
     /// two different spectra.

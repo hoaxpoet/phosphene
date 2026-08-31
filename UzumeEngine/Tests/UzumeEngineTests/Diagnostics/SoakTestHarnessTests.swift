@@ -6,7 +6,7 @@
 //   - 5-minute memory check: observes memory growth (no assertion, observability only).
 //
 // To run soak tests:
-//   SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter SoakTestHarnessTests
+//   SOAK_TESTS=1 swift test --package-path UzumeEngine --filter SoakTestHarnessTests
 //
 // D-060(d): the 2-hour run is NOT in this suite. Use Scripts/run_soak_test.sh.
 

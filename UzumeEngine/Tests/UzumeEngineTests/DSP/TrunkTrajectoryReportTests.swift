@@ -14,7 +14,7 @@
 // offline profile and `SpectralAnalyzer` frame by frame — over a decoded FULL track, and
 // reports the trunk value the shader would compute. No reconstruction, no CSV, no proxy.
 //
-//   SECDET_AUDIO=/path/to/track.mp3 swift test --package-path PhospheneEngine \
+//   SECDET_AUDIO=/path/to/track.mp3 swift test --package-path UzumeEngine \
 //     --filter TrunkTrajectoryReport
 //
 // Reporting, not asserting a verdict: whether the motion reads as musical is Matt's M7.

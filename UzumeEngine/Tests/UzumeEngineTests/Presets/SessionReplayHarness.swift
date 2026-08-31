@@ -27,7 +27,7 @@
 //   REPLAY_OUT=/tmp/replay \
 //   REPLAY_W=1067 REPLAY_H=750 \
 //   REPLAY_FROM=0 REPLAY_COUNT=90 \
-//   swift test --package-path PhospheneEngine --filter SessionReplay
+//   swift test --package-path UzumeEngine --filter SessionReplay
 
 import Testing
 import Foundation

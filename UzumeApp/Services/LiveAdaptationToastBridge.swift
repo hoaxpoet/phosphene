@@ -79,7 +79,7 @@ final class LiveAdaptationToastBridge {
             let msgs = self.pendingMessages
             self.pendingMessages = []
             let copy = msgs.count == 1 ? msgs[0] : "Plan updated (\(msgs.count) changes)"
-            let toast = PhospheneToast(severity: .info, copy: copy, source: .liveAdaptationAck)
+            let toast = UzumeToast(severity: .info, copy: copy, source: .liveAdaptationAck)
             self.toastManager.enqueue(toast)
             logger.info("LiveAdaptationToastBridge: ack toast '\(copy)'")
         }

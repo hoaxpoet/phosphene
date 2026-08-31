@@ -13,7 +13,7 @@
 // THE ONE DELIBERATE DEVIATION is the beat source, and it is mandatory compliance rather
 // than a claimed divergence (`MENISCUS_PLAN.md` §5). The source tests `bass+mid+treb`
 // against a slow running average — an absolute ratio on AGC-normalised energy, which is
-// exactly FA #31 / D-026. Phosphene drives the same behaviour from deviation primitives.
+// exactly FA #31 / D-026. Uzume drives the same behaviour from deviation primitives.
 
 import Foundation
 import Shared

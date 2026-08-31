@@ -20,7 +20,7 @@ import Metal
 
 // `phys_footprint` is process-wide, so this gate is only meaningful run ISOLATED:
 //
-//   SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter MemorySoakGate
+//   SOAK_TESTS=1 swift test --package-path UzumeEngine --filter MemorySoakGate
 //
 // Under the normal parallel `swift test` / closeout, other suites' allocations (GPU
 // buffers, stem models) swamp the measurement — a full-suite run showed +625 MB of

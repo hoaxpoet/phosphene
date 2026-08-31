@@ -28,12 +28,12 @@ struct MSLNamingTests {
     }()
 
     private static var commonMetalURL: URL {
-        repoRoot.appendingPathComponent("PhospheneEngine/Sources/Renderer/Shaders/Common.metal")
+        repoRoot.appendingPathComponent("UzumeEngine/Sources/Renderer/Shaders/Common.metal")
     }
 
     /// Every production .metal file under the engine sources.
     private static func metalFiles() -> [URL] {
-        let base = repoRoot.appendingPathComponent("PhospheneEngine/Sources")
+        let base = repoRoot.appendingPathComponent("UzumeEngine/Sources")
         guard let walker = FileManager.default.enumerator(at: base, includingPropertiesForKeys: nil) else { return [] }
         var out: [URL] = []
         for case let url as URL in walker where url.pathExtension == "metal" { out.append(url) }

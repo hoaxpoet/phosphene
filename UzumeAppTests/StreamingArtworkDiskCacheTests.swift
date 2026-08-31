@@ -5,7 +5,7 @@
 import Foundation
 import Testing
 
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("StreamingArtworkDiskCache (LF.6.streaming)")
 struct StreamingArtworkDiskCacheTests {

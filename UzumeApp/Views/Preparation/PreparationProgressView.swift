@@ -21,9 +21,9 @@ import SwiftUI
 /// reactively via `ContentView`'s switch on `SessionManager.state`.
 @MainActor
 struct PreparationProgressView: View {
-    static let accessibilityID  = "phosphene.view.preparing"
-    static let cancelButtonID   = "phosphene.preparing.cancel"
-    static let startNowButtonID = "phosphene.preparing.startNow"
+    static let accessibilityID  = "uzume.view.preparing"
+    static let cancelButtonID   = "uzume.preparing.cancel"
+    static let startNowButtonID = "uzume.preparing.startNow"
 
     @StateObject private var viewModel: PreparationProgressViewModel
     @StateObject private var errorViewModel: PreparationErrorViewModel

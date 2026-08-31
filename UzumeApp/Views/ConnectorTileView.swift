@@ -7,7 +7,7 @@ import SwiftUI
 // MARK: - ConnectorTileView
 
 struct ConnectorTileView: View {
-    static let accessibilityIDPrefix = "phosphene.connector.tile"
+    static let accessibilityIDPrefix = "uzume.connector.tile"
 
     let type: ConnectorType
     let isEnabled: Bool

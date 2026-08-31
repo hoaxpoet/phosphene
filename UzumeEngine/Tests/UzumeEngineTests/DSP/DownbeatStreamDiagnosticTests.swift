@@ -15,11 +15,11 @@
 //
 // DIAGNOSTIC ONLY — env-gated, asserts nothing. The printed table is the artifact.
 //
-//   PHOSPHENE_DBN1_DOWNBEAT=1 \
-//   swift test --package-path PhospheneEngine --filter DownbeatStreamDiagnostic
+//   UZUME_DBN1_DOWNBEAT=1 \
+//   swift test --package-path UzumeEngine --filter DownbeatStreamDiagnostic
 //
 // Tracks default to a broken/working pair (money, billie_jean); override with
-// PHOSPHENE_DBN1_TRACKS as a comma-separated list of fixture basenames.
+// UZUME_DBN1_TRACKS as a comma-separated list of fixture basenames.
 
 import Testing
 import Foundation
@@ -33,8 +33,8 @@ struct DownbeatStreamDiagnosticTests {
 
     @Test("DBN.1: where the downbeat signal dies — model stream vs resolver post-processing")
     func test_downbeatStreamDiagnostic() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_DBN1_DOWNBEAT"] == "1" else {
-            print("[DBN.1] skipped — set PHOSPHENE_DBN1_DOWNBEAT=1 to run")
+        guard ProcessInfo.processInfo.environment["UZUME_DBN1_DOWNBEAT"] == "1" else {
+            print("[DBN.1] skipped — set UZUME_DBN1_DOWNBEAT=1 to run")
             return
         }
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -43,7 +43,7 @@ struct DownbeatStreamDiagnosticTests {
         let env = ProcessInfo.processInfo.environment
         let fixturesDir = env["BEATBENCH_FIXTURES_DIR"]
             ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")
-        let names = (env["PHOSPHENE_DBN1_TRACKS"] ?? "money,billie_jean")
+        let names = (env["UZUME_DBN1_TRACKS"] ?? "money,billie_jean")
             .split(separator: ",").map(String.init)
 
         print("""

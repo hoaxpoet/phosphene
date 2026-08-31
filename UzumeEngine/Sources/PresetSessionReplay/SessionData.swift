@@ -1,4 +1,4 @@
-// SessionData.swift — Parse a Phosphene session directory's CSV artifacts.
+// SessionData.swift — Parse a Uzume session directory's CSV artifacts.
 //
 // A session directory written by `SessionRecorder` contains:
 //   features.csv  — one row per rendered frame, FeatureVector columns

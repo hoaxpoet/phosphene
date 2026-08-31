@@ -14,7 +14,7 @@
 // (head-off-frame is what "the camera cannot keep up" means numerically), because the two are
 // coupled — a faster pen grows the trail, the auto-fit zooms out, and the head runs for the edge.
 //
-//   WITCHLIGHT_SESSIONS=<dirA>:<dirB> swift test --package-path PhospheneEngine \
+//   WITCHLIGHT_SESSIONS=<dirA>:<dirB> swift test --package-path UzumeEngine \
 //       --filter WitchlightSpeedSweep
 
 import Foundation

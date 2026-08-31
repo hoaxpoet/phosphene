@@ -7,7 +7,7 @@
 // Gated behind RENDER_VISUAL=1 so it stays out of normal CI / `swift test` runs.
 //
 // Invocation:
-//   RENDER_VISUAL=1 swift test --package-path PhospheneEngine \
+//   RENDER_VISUAL=1 swift test --package-path UzumeEngine \
 //       --filter PresetVisualReview
 //
 // Output: /tmp/phosphene_visual/<ISO8601>/<preset>_{silence,mid,beat}.png
@@ -1486,7 +1486,7 @@ struct PresetVisualReviewTests {
     }
 
     /// Walk up from `#filePath` to the project root (4 levels:
-    /// PhospheneEngine/Tests/PhospheneEngineTests/Renderer/<file> → repo root).
+    /// UzumeEngine/Tests/UzumeEngineTests/Renderer/<file> → repo root).
     private func projectRootURL(file: String = #filePath) -> URL {
         var url = URL(fileURLWithPath: file)
         for _ in 0..<5 { url.deleteLastPathComponent() }

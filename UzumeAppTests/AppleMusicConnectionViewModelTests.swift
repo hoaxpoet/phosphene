@@ -12,7 +12,7 @@
 
 import Session
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Tests
 
@@ -114,7 +114,7 @@ struct AppleMusicConnectionViewModelTests {
 
     @Test("view identifiers are stable")
     func viewIdentifiers() {
-        #expect(AppleMusicConnectionView.accessibilityID == "phosphene.view.appleMusic.connection")
+        #expect(AppleMusicConnectionView.accessibilityID == "uzume.view.appleMusic.connection")
     }
 }
 

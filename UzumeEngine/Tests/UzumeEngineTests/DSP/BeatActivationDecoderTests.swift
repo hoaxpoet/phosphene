@@ -218,7 +218,7 @@ struct BeatActivationDecoderTests {
 
     @Test("DBN.2 sweep: downbeatWeight vs the degenerate stream")
     func test_downbeatWeightSweep() {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_DBN2_SWEEP"] == "1" else { return }
+        guard ProcessInfo.processInfo.environment["UZUME_DBN2_SWEEP"] == "1" else { return }
         let (b, d) = Self.synth(bpm: 120, meter: 4, seconds: 24,
                                 downbeatOnEveryBeat: true, offBeatDownbeatLevel: 0.80)
         for weight in [0.0, 0.5, 1.0, 2.0, 5.0, 10.0] {
@@ -234,7 +234,7 @@ struct BeatActivationDecoderTests {
 
     @Test("DBN.2 diag: where does each meter place its bar lines on the degenerate fixture?")
     func test_degenerateBarLinePlacement() {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_DBN2_SWEEP"] == "1" else { return }
+        guard ProcessInfo.processInfo.environment["UZUME_DBN2_SWEEP"] == "1" else { return }
         let (b, d) = Self.synth(bpm: 120, meter: 4, seconds: 24,
                                 downbeatOnEveryBeat: true, offBeatDownbeatLevel: 0.80)
         // True bar lines are every 4th beat at 120 BPM => every 2.0 s starting at 0.

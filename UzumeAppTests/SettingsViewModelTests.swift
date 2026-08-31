@@ -2,7 +2,7 @@
 
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - SettingsViewModelTests
 
@@ -64,7 +64,7 @@ struct SettingsViewModelTests {
     @Test func debugInfo_containsSystemInfo_noAudioData() {
         let (vm, _) = makeVM()
         let info = vm.about.debugInfo
-        #expect(info.contains("Phosphene"))
+        #expect(info.contains("Uzume"))
         #expect(info.contains("1.0"))
         #expect(info.contains("Apple M2"))
         // Must not contain audio or session data keywords.

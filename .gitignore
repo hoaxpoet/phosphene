@@ -30,9 +30,9 @@ xcuserdata/
 .swiftpm/
 Package.resolved
 # CLEAN.5.4c: commit the two resolved files CI builds from (pin transitive SPM
-# deps). Anchored '/' so PhospheneTools/ and worktree copies stay ignored.
-!/PhospheneEngine/Package.resolved
-!/PhospheneApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+# deps). Anchored '/' so UzumeTools/ and worktree copies stay ignored.
+!/UzumeEngine/Package.resolved
+!/UzumeApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Metal
 *.metallib
@@ -60,7 +60,7 @@ skills-lock.json
 *.local.xcconfig
 
 # Local audio fixtures for DSP.1 tempo capture (preview clips are licensed).
-PhospheneEngine/Tests/Fixtures/tempo/
+UzumeEngine/Tests/Fixtures/tempo/
 
 # Vendored third-party repos (tracked by pinned commit hash in docs).
 # Beat This! reference impl for DSP.2 S8 layer-diff:
@@ -92,8 +92,8 @@ coupling/
 # ML weights ship as the ml-weights-v1 GitHub Release asset (PUB.2 cutover),
 # fetched by Scripts/fetch_weights.sh — out of git entirely. Only SHA256SUMS is
 # tracked; it is what fetch + verification read.
-PhospheneEngine/Sources/ML/Weights/*
-!PhospheneEngine/Sources/ML/Weights/SHA256SUMS
+UzumeEngine/Sources/ML/Weights/*
+!UzumeEngine/Sources/ML/Weights/SHA256SUMS
 
 # Dev-only reference/diagnostic IMAGES — kept local, out of git. No build target
 # reads them; they exist for a human (and Claude) to look at during preset work.

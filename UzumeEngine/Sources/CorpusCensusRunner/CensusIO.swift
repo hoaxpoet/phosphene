@@ -1,7 +1,7 @@
 // CensusIO — pure CSV / manifest / resume helpers for CorpusCensusRunner.
 //
 // No Metal, no audio, no I/O side effects on the pure functions — everything here
-// is unit-tested in PhospheneEngineTests (CorpusCensusTests). Kept separate from
+// is unit-tested in UzumeEngineTests (CorpusCensusTests). Kept separate from
 // main.swift so the test target can `@testable import CorpusCensusRunner` and
 // exercise the fold-adjacent string plumbing without a Metal device.
 

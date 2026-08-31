@@ -10,7 +10,7 @@ import SwiftUI
 /// Preferences-style sheet. NavigationSplitView sidebar + detail.
 struct SettingsView: View {
 
-    static let accessibilityID = "phosphene.view.settings"
+    static let accessibilityID = "uzume.view.settings"
 
     @StateObject private var viewModel: SettingsViewModel
     @State private var selection: SettingsSection? = .localFiles

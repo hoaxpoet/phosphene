@@ -6,7 +6,7 @@
 // in SHADER_CRAFT.md §9.4 with a formatted two-column Markdown table.
 //
 // Usage:
-//   swift run --package-path PhospheneEngine UtilityCostTableUpdater \
+//   swift run --package-path UzumeEngine UtilityCostTableUpdater \
 //     --results docs/V4_PERF_RESULTS.json \
 //     --shader-craft docs/SHADER_CRAFT.md
 //

@@ -6,7 +6,7 @@
 import AppKit
 import Combine
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Stub Provider
 

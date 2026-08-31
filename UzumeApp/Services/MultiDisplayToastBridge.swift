@@ -36,12 +36,12 @@ final class MultiDisplayToastBridge {
         guard !screens.isEmpty else { return }
         let message = "New display connected."
 
-        let toast = PhospheneToast(
+        let toast = UzumeToast(
             severity: .info,
             copy: message,
             duration: .infinity,
             source: .displayChange,
-            action: PhospheneToast.ToastAction(label: "Move Phosphene there") { [weak self] in
+            action: UzumeToast.ToastAction(label: "Move Uzume there") { [weak self] in
                 self?.displayManager.moveToSecondaryDisplay()
             }
         )
@@ -57,7 +57,7 @@ final class MultiDisplayToastBridge {
 
         if wasCurrentRemoved {
             displayManager.moveToPrimaryDisplay()
-            let toast = PhospheneToast(
+            let toast = UzumeToast(
                 severity: .warning,
                 copy: "Output display disconnected. Moved to main display.",
                 duration: 5,
@@ -66,7 +66,7 @@ final class MultiDisplayToastBridge {
             toastManager.enqueue(toast)
             logger.info("MultiDisplayToastBridge: active screen '\(names)' removed — moved to primary")
         } else {
-            let toast = PhospheneToast(
+            let toast = UzumeToast(
                 severity: .info,
                 copy: "Display '\(names)' disconnected.",
                 duration: 4,

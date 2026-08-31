@@ -26,7 +26,7 @@ struct FixtureManifestPresenceGate {
 
     /// Repo root, resolved from this file's path so it holds regardless of the
     /// test runner's working directory.
-    /// …/PhospheneEngine/Tests/PhospheneEngineTests/ML/ → up 5.
+    /// …/UzumeEngine/Tests/UzumeEngineTests/ML/ → up 5.
     static func repoRoot(file: String = #filePath) -> URL {
         var url = URL(fileURLWithPath: file)
         for _ in 0..<5 { url.deleteLastPathComponent() }

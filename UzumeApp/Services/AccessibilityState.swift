@@ -9,7 +9,7 @@
 //   3. Beat-pulse amplitude clamped in RenderPipeline.draw(in:) before renderFrame,
 //      applied to all four beat fields (beatBass/Mid/Treble/Composite) of the local
 //      FeatureVector copy. Affects all presets, all draw paths, uniformly.
-//   4. SettingsStore.reducedMotion preference is now wired: PhospheneApp.body uses
+//   4. SettingsStore.reducedMotion preference is now wired: UzumeApp.body uses
 //      .task to subscribe settings.$reducedMotion → AccessibilityState.applyPreference.
 //   5. PlaybackChromeViewModel migrated from direct NSWorkspace observation to a
 //      reduceMotionPublisher injected at init (publisher-injection pattern, D-049).
@@ -29,7 +29,7 @@ import Foundation
 /// with the user's in-app `ReducedMotionPreference` (from `SettingsStore`) into a
 /// single `reduceMotion: Bool` that the app and engine consume.
 ///
-/// Owned by `PhospheneApp` as a `@StateObject`. Distributed via `.environmentObject`.
+/// Owned by `UzumeApp` as a `@StateObject`. Distributed via `.environmentObject`.
 /// Engine flags (`beatAmplitudeScale`, `frameReduceMotion`) are propagated via
 /// `VisualizerEngine.applyAccessibility(_:)` on each state change.
 @MainActor
@@ -77,7 +77,7 @@ final class AccessibilityState: ObservableObject {
 
     // MARK: - Preference Update
 
-    /// Apply an updated `ReducedMotionPreference` (called by PhospheneApp when
+    /// Apply an updated `ReducedMotionPreference` (called by UzumeApp when
     /// `SettingsStore.reducedMotion` changes).
     func applyPreference(_ pref: ReducedMotionPreference) {
         guard pref != reducedMotionPreference else { return }

@@ -26,7 +26,7 @@
 // Env-gated: a session capture is not a committed fixture.
 //
 //   FT_SESSION=~/Documents/phosphene_sessions/2026-08-04T20-23-15Z \
-//     swift test --package-path PhospheneEngine --filter SurgeLoudnessProfileRealAudio
+//     swift test --package-path UzumeEngine --filter SurgeLoudnessProfileRealAudio
 
 import Testing
 import Foundation

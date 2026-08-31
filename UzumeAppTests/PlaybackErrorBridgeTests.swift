@@ -17,7 +17,7 @@ import Foundation
 import Session
 import Shared
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("PlaybackErrorBridge")
 @MainActor
@@ -135,7 +135,7 @@ struct PlaybackErrorBridgeTests {
         let fix = makeSUT()
         // Simulate: silence asserted, then audio recovers
         fix.tracker.assert("silence.extended")
-        let toast = PhospheneToast(
+        let toast = UzumeToast(
             severity: .degradation,
             copy: "Silence",
             duration: .infinity,
@@ -181,7 +181,7 @@ struct PlaybackErrorBridgeTests {
         // mock state — otherwise clearSilence() fires when the initial value dispatches.
         await Task.yield()
         fix.tracker.assert("silence.extended")
-        let toast = PhospheneToast(
+        let toast = UzumeToast(
             severity: .degradation,
             copy: "Silence",
             duration: .infinity,

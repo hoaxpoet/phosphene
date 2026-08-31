@@ -7,9 +7,9 @@
 // image filenames follow the _NAMING_CONVENTION.md pattern.
 //
 // Usage (from project root):
-//   swift run --package-path PhospheneTools CheckVisualReferences
-//   swift run --package-path PhospheneTools CheckVisualReferences --strict
-//   swift run --package-path PhospheneTools CheckVisualReferences --project-root /path/to/project
+//   swift run --package-path UzumeTools CheckVisualReferences
+//   swift run --package-path UzumeTools CheckVisualReferences --strict
+//   swift run --package-path UzumeTools CheckVisualReferences --project-root /path/to/project
 //
 // Default mode: prints warnings but exits 0 (fail-soft, for the intermediate
 // curation state where folders exist but images are not yet committed).
@@ -38,7 +38,7 @@ struct CheckVisualReferences: ParsableCommand {
         let root = URL(fileURLWithPath: projectRoot).standardizedFileURL
         let refsDir = root.appendingPathComponent("docs/VISUAL_REFERENCES")
         let shadersDir = root.appendingPathComponent(
-            "PhospheneEngine/Sources/Presets/Shaders"
+            "UzumeEngine/Sources/Presets/Shaders"
         )
 
         var warnings: [String] = []

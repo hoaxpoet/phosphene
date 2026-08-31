@@ -1,7 +1,7 @@
 // SpotifyKeychainStore — Persists and retrieves the Spotify OAuth refresh token
 // using the macOS Keychain (Security.framework).
 //
-// No sandbox entitlements are required — Phosphene runs unsandboxed
+// No sandbox entitlements are required — Uzume runs unsandboxed
 // (com.apple.security.app-sandbox = false).
 //
 // Default service key: "io.uzume.spotify"
@@ -12,7 +12,7 @@
 // was implemented and REVERTED: under the new bundle ID the app has no ACL on
 // the old item, so SecItemCopyMatching raises a modal authorization prompt and
 // BLOCKS. Because this store is built from a stored-property initializer on
-// PhospheneApp, that blocked launch itself — the app wedged before init()'s
+// UzumeApp, that blocked launch itself — the app wedged before init()'s
 // body ran and the XCTest runner could never connect. Silent cross-identity
 // adoption needs a shared keychain-access-group, which is a signing change well
 // outside RN.1. One OAuth click beats a scary dialog on every cold start.

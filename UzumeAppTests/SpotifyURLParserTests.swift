@@ -1,7 +1,7 @@
 // SpotifyURLParserTests — 12 unit tests covering valid and invalid Spotify URLs/URIs.
 
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("SpotifyURLParser")
 struct SpotifyURLParserTests {

@@ -46,7 +46,7 @@ public enum M3UParser {
         case malformedUTF8
         /// The parser walked the file but every non-comment line either failed
         /// to resolve or pointed at an unreadable target. The `.m3u` is
-        /// effectively empty from Phosphene's perspective.
+        /// effectively empty from Uzume's perspective.
         case noEntriesResolved
     }
 

@@ -26,7 +26,7 @@ public enum MetadataSource: String, Sendable, Equatable, Codable {
 ///
 /// CPU-only — never uploaded to GPU buffers. All fields are optional
 /// because metadata may be partially available or entirely absent.
-/// Phosphene works at every tier of metadata availability.
+/// Uzume works at every tier of metadata availability.
 public struct TrackMetadata: Sendable, Equatable, Codable {
     public var title: String?
     public var artist: String?

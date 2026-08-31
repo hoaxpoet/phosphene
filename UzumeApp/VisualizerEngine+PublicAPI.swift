@@ -100,7 +100,7 @@ extension VisualizerEngine {
 
     /// Apply reduced-motion and beat-amplitude flags to the render pipeline.
     ///
-    /// Called from `PhospheneApp` whenever `AccessibilityState` publishes a change.
+    /// Called from `UzumeApp` whenever `AccessibilityState` publishes a change.
     /// Both `pipeline.frameReduceMotion` and `pipeline.beatAmplitudeScale` are
     /// read on the main actor in `draw(in:)`, so no lock is needed here.
     @MainActor
@@ -115,7 +115,7 @@ extension VisualizerEngine {
 
     /// Forward the "show uncertified presets" user preference into the engine.
     ///
-    /// Called from `PhospheneApp` whenever `SettingsStore.showUncertifiedPresets` changes.
+    /// Called from `UzumeApp` whenever `SettingsStore.showUncertifiedPresets` changes.
     /// Stored so `applyReactiveUpdate` can pass it through to `PresetScoringContext`,
     /// which otherwise defaults to `includeUncertifiedPresets: false`.
     @MainActor

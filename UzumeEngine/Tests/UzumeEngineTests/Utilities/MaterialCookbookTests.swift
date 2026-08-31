@@ -6,7 +6,7 @@
 // emission presence) rather than exact pixel hashes, since the Materials
 // subtree is pure-function and platform-deterministic within float tolerances.
 //
-// Run: swift test --package-path PhospheneEngine --filter MaterialCookbookTests
+// Run: swift test --package-path UzumeEngine --filter MaterialCookbookTests
 
 import Testing
 import Foundation

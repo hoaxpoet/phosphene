@@ -7,7 +7,7 @@
 // progresses through stages
 // (.anchorPulse → .radial → .spiral → .stable → .evicting) measured in beats,
 // so spinning is slower on slow music and faster on fast music — a
-// Phosphene-exclusive behavior derived from MV-3b BeatPredictor.
+// Uzume-exclusive behavior derived from MV-3b BeatPredictor.
 //
 // The `webBuffer` MTLBuffer carries WebGPU structs (64 bytes each) that the
 // Arachne mesh shader reads at object/mesh buffer(1) to determine which webs

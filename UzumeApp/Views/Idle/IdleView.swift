@@ -10,9 +10,9 @@ import SwiftUI
 
 @MainActor
 struct IdleView: View {
-    static let accessibilityID        = "phosphene.view.idle"
-    static let connectButtonID        = "phosphene.idle.connectPlaylist"
-    static let adHocButtonID          = "phosphene.idle.startListening"
+    static let accessibilityID        = "uzume.view.idle"
+    static let connectButtonID        = "uzume.idle.connectPlaylist"
+    static let adHocButtonID          = "uzume.idle.startListening"
 
     @EnvironmentObject private var engine: VisualizerEngine
     @EnvironmentObject private var errorStore: LocalFileErrorStore

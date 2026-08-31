@@ -15,7 +15,7 @@ import Audio
 import Combine
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Helpers
 

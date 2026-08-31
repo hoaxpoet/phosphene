@@ -1,6 +1,6 @@
 // SchemeTestActionRegressionTests — BUG-048 regression gate (2026-06-11).
 //
-// The PhospheneApp scheme's test action included the PhospheneEngineTests
+// The UzumeApp scheme's test action included the UzumeEngineTests
 // bundle from U.1 until BUG-048. Under `xcodebuild test` the engine bundle
 // runs inside the app test host's sandboxed runner context, where ffmpeg
 // subprocess spawning, audio-device access, and repo-relative file reads are
@@ -9,7 +9,7 @@
 // 1439 tests even load. Three closeout evidence blocks (2026-06-11, two
 // shells + Matt's terminal) confirmed the failure cluster is the xcodebuild
 // context, not the code. The engine suite's canonical runner is
-// `swift test --package-path PhospheneEngine`; `xcodebuild test` covers the
+// `swift test --package-path UzumeEngine`; `xcodebuild test` covers the
 // app suite. Re-adding the engine bundle to the scheme's test action
 // silently reintroduces a permanently-red app step in every closeout
 // evidence block — this gate makes that re-add loud.
@@ -23,14 +23,14 @@ struct SchemeTestActionRegressionTests {
     /// Repo root derived from this file's path (same pattern as DocIntegrityTests).
     private static let repoRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)
-        for _ in 0..<4 { url.deleteLastPathComponent() }   // file → Tests dir ×2 → PhospheneEngine → root
+        for _ in 0..<4 { url.deleteLastPathComponent() }   // file → Tests dir ×2 → UzumeEngine → root
         return url
     }()
 
     private static let schemePath =
-        "PhospheneApp.xcodeproj/xcshareddata/xcschemes/PhospheneApp.xcscheme"
+        "UzumeApp.xcodeproj/xcshareddata/xcschemes/UzumeApp.xcscheme"
 
-    @Test("the shared PhospheneApp scheme's test action does not include the engine test bundle")
+    @Test("the shared UzumeApp scheme's test action does not include the engine test bundle")
     func schemeTestActionExcludesEngineBundle() throws {
         let url = Self.repoRoot.appendingPathComponent(Self.schemePath)
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -49,12 +49,12 @@ struct SchemeTestActionRegressionTests {
         let testables = scheme[testablesRange.upperBound ..< testablesEnd.lowerBound]
 
         #expect(
-            !testables.contains("PhospheneEngineTests"),
-            "PhospheneEngineTests is back in the app scheme's test action — BUG-048 regression. Engine tests run via `swift test --package-path PhospheneEngine`; under xcodebuild's runner they fail on environment (subprocess/audio/file access), not code."
+            !testables.contains("UzumeEngineTests"),
+            "UzumeEngineTests is back in the app scheme's test action — BUG-048 regression. Engine tests run via `swift test --package-path UzumeEngine`; under xcodebuild's runner they fail on environment (subprocess/audio/file access), not code."
         )
         #expect(
-            testables.contains("PhospheneAppTests"),
-            "the app scheme's test action no longer runs PhospheneAppTests — the canonical app-test invocation would silently test nothing"
+            testables.contains("UzumeAppTests"),
+            "the app scheme's test action no longer runs UzumeAppTests — the canonical app-test invocation would silently test nothing"
         )
     }
 }

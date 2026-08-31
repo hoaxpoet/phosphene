@@ -6,7 +6,7 @@
 // to a 64×64 buffer, and compares the 64-bit dHash against a stored golden value.
 //
 // Golden hash regeneration:
-//   UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine \
+//   UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path UzumeEngine \
 //       --filter "test_printSpiderGoldenHash"
 //
 // The test confirms that:

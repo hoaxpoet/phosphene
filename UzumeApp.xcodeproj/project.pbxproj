@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10001 /* PhospheneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20001; };
+		A10001 /* UzumeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20001; };
 		A10002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20002; };
 		B10001 /* SessionStateViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001; };
 		B10002 /* Uzume.app in Frameworks */ = {isa = PBXBuildFile; fileRef = A20004; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -75,7 +75,7 @@
 		P10011 /* StreamingArtworkPublishingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20011; };
 		P10012 /* TrackChangePresetResetRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20012; };
 		P10013 /* StemSeriesWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20013; };
-		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
+		A10003 /* UzumeEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
 		A10012 /* CoreML.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20012; };
@@ -119,7 +119,7 @@
 		G10022 /* PlanPreviewViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20022; };
 		G10023 /* PlanPreviewRegenerateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20023; };
 		G10024 /* ReadyViewTimeoutIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20024; };
-		H10001 /* PhospheneToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20001; };
+		H10001 /* UzumeToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20001; };
 		H10002 /* PlaybackChromeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20002; };
 		H10003 /* ToastManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20003; };
 		H10004 /* EndSessionConfirmViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20004; };
@@ -208,11 +208,11 @@
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A20001 /* PhospheneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhospheneApp.swift; sourceTree = "<group>"; };
+		A20001 /* UzumeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UzumeApp.swift; sourceTree = "<group>"; };
 		A20002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B20001 /* SessionStateViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateViewTests.swift; sourceTree = "<group>"; };
-		B20002 /* PhospheneAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhospheneAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		A20003 /* PhospheneApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhospheneApp.entitlements; sourceTree = "<group>"; };
+		B20002 /* UzumeAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = UzumeAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20003 /* UzumeApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UzumeApp.entitlements; sourceTree = "<group>"; };
 		A20020 /* MetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalView.swift; sourceTree = "<group>"; };
 		A20021 /* DebugOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayView.swift; sourceTree = "<group>"; };
 		A20022 /* ITunesSearchFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ITunesSearchFetcher.swift; sourceTree = "<group>"; };
@@ -260,7 +260,7 @@
 		P20013 /* StemSeriesWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StemSeriesWiringTests.swift; sourceTree = "<group>"; };
 		O20007 /* DarkVibrancyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkVibrancyView.swift; sourceTree = "<group>"; };
 		A20004 /* Uzume.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Uzume.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
+		A20005 /* UzumeEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = UzumeEngine; path = UzumeEngine; sourceTree = "<group>"; };
 		A20010 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		A20011 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		A20012 /* CoreML.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreML.framework; path = System/Library/Frameworks/CoreML.framework; sourceTree = SDKROOT; };
@@ -268,7 +268,7 @@
 		A20014 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		A20015 /* ScreenCaptureKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenCaptureKit.framework; path = System/Library/Frameworks/ScreenCaptureKit.framework; sourceTree = SDKROOT; };
 		A20016 /* MusicKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MusicKit.framework; path = System/Library/Frameworks/MusicKit.framework; sourceTree = SDKROOT; };
-		A20030 /* Phosphene.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Phosphene.xcconfig; sourceTree = "<group>"; };
+		A20030 /* Uzume.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Uzume.xcconfig; sourceTree = "<group>"; };
 		A20040 /* VisualizerEngine+Orchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Orchestrator.swift"; sourceTree = "<group>"; };
 		N20006 /* VisualizerEngine+WiringLogs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+WiringLogs.swift"; sourceTree = "<group>"; };
 		N20007 /* VisualizerEngine+TrackIdentityResolution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+TrackIdentityResolution.swift"; sourceTree = "<group>"; };
@@ -323,7 +323,7 @@
 		G20022 /* PlanPreviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewViewModelTests.swift; sourceTree = "<group>"; };
 		G20023 /* PlanPreviewRegenerateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewRegenerateTests.swift; sourceTree = "<group>"; };
 		G20024 /* ReadyViewTimeoutIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewTimeoutIntegrationTests.swift; sourceTree = "<group>"; };
-		H20001 /* PhospheneToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhospheneToast.swift; sourceTree = "<group>"; };
+		H20001 /* UzumeToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UzumeToast.swift; sourceTree = "<group>"; };
 		H20002 /* PlaybackChromeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeViewModel.swift; sourceTree = "<group>"; };
 		H20003 /* ToastManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastManager.swift; sourceTree = "<group>"; };
 		H20004 /* EndSessionConfirmViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndSessionConfirmViewModel.swift; sourceTree = "<group>"; };
@@ -416,7 +416,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10003 /* PhospheneEngine in Frameworks */,
+				A10003 /* UzumeEngine in Frameworks */,
 				A10010 /* Metal.framework in Frameworks */,
 				A10011 /* MetalKit.framework in Frameworks */,
 				A10012 /* CoreML.framework in Frameworks */,
@@ -427,7 +427,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B30001 /* Frameworks (PhospheneAppTests) */ = {
+		B30001 /* Frameworks (UzumeAppTests) */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -453,19 +453,19 @@
 		A40001 /* = mainGroup */ = {
 			isa = PBXGroup;
 			children = (
-				A40002 /* PhospheneApp */,
-				B40001 /* PhospheneAppTests */,
+				A40002 /* UzumeApp */,
+				B40001 /* UzumeAppTests */,
 				A40003 /* Frameworks */,
 				A40004 /* Products */,
-				A20005 /* PhospheneEngine */,
+				A20005 /* UzumeEngine */,
 			);
 			sourceTree = "<group>";
 		};
-		A40002 /* PhospheneApp */ = {
+		A40002 /* UzumeApp */ = {
 			isa = PBXGroup;
 			children = (
 				K20902 /* Assets.xcassets */,
-				A20001 /* PhospheneApp.swift */,
+				A20001 /* UzumeApp.swift */,
 				A20002 /* ContentView.swift */,
 				A20031 /* VisualizerEngine.swift */,
 				K20090 /* NowPlayingSurface.swift */,
@@ -495,11 +495,11 @@
 				C40001 /* ViewModels */,
 				A40005 /* Views */,
 				E40001 /* Services */,
-				A20003 /* PhospheneApp.entitlements */,
-				A20030 /* Phosphene.xcconfig */,
+				A20003 /* UzumeApp.entitlements */,
+				A20030 /* Uzume.xcconfig */,
 				I20007 /* Localizable.strings */,
 			);
-			path = PhospheneApp;
+			path = UzumeApp;
 			sourceTree = "<group>";
 		};
 		C40001 /* ViewModels */ = {
@@ -694,12 +694,12 @@
 			isa = PBXGroup;
 			children = (
 				A20004 /* Uzume.app */,
-				B20002 /* PhospheneAppTests.xctest */,
+				B20002 /* UzumeAppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		B40001 /* PhospheneAppTests */ = {
+		B40001 /* UzumeAppTests */ = {
 			isa = PBXGroup;
 			children = (
 				B20001 /* SessionStateViewTests.swift */,
@@ -771,13 +771,13 @@
 				P20012 /* TrackChangePresetResetRegressionTests.swift */,
 				P20013 /* StemSeriesWiringTests.swift */,
 			);
-			path = PhospheneAppTests;
+			path = UzumeAppTests;
 			sourceTree = "<group>";
 		};
 		H40001 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				H20001 /* PhospheneToast.swift */,
+				H20001 /* UzumeToast.swift */,
 				K20001 /* SettingsTypes.swift */,
 			);
 			path = Models;
@@ -798,7 +798,7 @@
 		/* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A50001 /* PhospheneApp */ = {
+		A50001 /* UzumeApp */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A70001;
 			buildPhases = (
@@ -810,15 +810,15 @@
 			);
 			dependencies = (
 			);
-			name = PhospheneApp;
+			name = UzumeApp;
 			packageProductDependencies = (
-				A80001 /* PhospheneEngine */,
+				A80001 /* UzumeEngine */,
 			);
-			productName = PhospheneApp;
+			productName = UzumeApp;
 			productReference = A20004 /* Uzume.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B50001 /* PhospheneAppTests */ = {
+		B50001 /* UzumeAppTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B70001;
 			buildPhases = (
@@ -830,9 +830,9 @@
 			dependencies = (
 				B90001 /* PBXTargetDependency */,
 			);
-			name = PhospheneAppTests;
-			productName = PhospheneAppTests;
-			productReference = B20002 /* PhospheneAppTests.xctest */;
+			name = UzumeAppTests;
+			productName = UzumeAppTests;
+			productReference = B20002 /* UzumeAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -860,14 +860,14 @@
 			);
 			mainGroup = A40001;
 			packageReferences = (
-				A80002 /* PhospheneEngine */,
+				A80002 /* UzumeEngine */,
 			);
 			productRefGroup = A40004 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A50001 /* PhospheneApp */,
-				B50001 /* PhospheneAppTests */,
+				A50001 /* UzumeApp */,
+				B50001 /* UzumeAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -877,7 +877,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10001 /* PhospheneApp.swift in Sources */,
+				A10001 /* UzumeApp.swift in Sources */,
 				A10002 /* ContentView.swift in Sources */,
 				A10031 /* VisualizerEngine.swift in Sources */,
 				K10090 /* NowPlayingSurface.swift in Sources */,
@@ -941,7 +941,7 @@
 				G10001 /* ReadyViewModel.swift in Sources */,
 				G10002 /* PlanPreviewViewModel.swift in Sources */,
 				G10003 /* FirstAudioDetector.swift in Sources */,
-				H10001 /* PhospheneToast.swift in Sources */,
+				H10001 /* UzumeToast.swift in Sources */,
 				H10002 /* PlaybackChromeViewModel.swift in Sources */,
 				H10003 /* ToastManager.swift in Sources */,
 				H10004 /* EndSessionConfirmViewModel.swift in Sources */,
@@ -999,7 +999,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B60001 /* Sources (PhospheneAppTests) */ = {
+		B60001 /* Sources (UzumeAppTests) */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1187,7 +1187,7 @@
 			};
 			name = Release;
 		};
-		BB0001 /* Debug (PhospheneAppTests) */ = {
+		BB0001 /* Debug (UzumeAppTests) */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -1205,7 +1205,7 @@
 			};
 			name = Debug;
 		};
-		BB0002 /* Release (PhospheneAppTests) */ = {
+		BB0002 /* Release (UzumeAppTests) */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -1225,18 +1225,18 @@
 		};
 		AB0003 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = A20030 /* Phosphene.xcconfig */;
+			baseConfigurationReference = A20030 /* Uzume.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = PhospheneApp/PhospheneApp.entitlements;
+				CODE_SIGN_ENTITLEMENTS = UzumeApp/UzumeApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2LBTN9PB4Z;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = PhospheneApp/Info.plist;
+				INFOPLIST_FILE = UzumeApp/Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				PRODUCT_MODULE_NAME = PhospheneApp;
+				PRODUCT_MODULE_NAME = UzumeApp;
 				PRODUCT_NAME = Uzume;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2024 Matt. All rights reserved.";
@@ -1255,9 +1255,9 @@
 		};
 		AB0004 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = A20030 /* Phosphene.xcconfig */;
+			baseConfigurationReference = A20030 /* Uzume.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = PhospheneApp/PhospheneApp.entitlements;
+				CODE_SIGN_ENTITLEMENTS = UzumeApp/UzumeApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -1265,9 +1265,9 @@
 				DEVELOPMENT_TEAM = 2LBTN9PB4Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = PhospheneApp/Info.plist;
+				INFOPLIST_FILE = UzumeApp/Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				PRODUCT_MODULE_NAME = PhospheneApp;
+				PRODUCT_MODULE_NAME = UzumeApp;
 				PRODUCT_NAME = Uzume;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2024 Matt. All rights reserved.";
@@ -1288,12 +1288,12 @@
 /* Begin PBXTargetDependency section */
 		B90001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A50001 /* PhospheneApp */;
+			target = A50001 /* UzumeApp */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCConfigurationList section */
-		A70001 /* Build configuration list for PBXNativeTarget "PhospheneApp" */ = {
+		A70001 /* Build configuration list for PBXNativeTarget "UzumeApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AB0003 /* Debug */,
@@ -1302,7 +1302,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A70003 /* Build configuration list for PBXProject "PhospheneApp" */ = {
+		A70003 /* Build configuration list for PBXProject "UzumeApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AB0001 /* Debug */,
@@ -1313,7 +1313,7 @@
 		};
 /* End XCConfigurationList section */
 
-		B70001 /* Build configuration list for PBXNativeTarget "PhospheneAppTests" */ = {
+		B70001 /* Build configuration list for PBXNativeTarget "UzumeAppTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BB0001 /* Debug */,
@@ -1323,16 +1323,16 @@
 			defaultConfigurationName = Release;
 		};
 /* Begin XCLocalSwiftPackageReference section */
-		A80002 /* PhospheneEngine */ = {
+		A80002 /* UzumeEngine */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = PhospheneEngine;
+			relativePath = UzumeEngine;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		A80001 /* PhospheneEngine */ = {
+		A80001 /* UzumeEngine */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = PhospheneEngine;
+			productName = UzumeEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
 

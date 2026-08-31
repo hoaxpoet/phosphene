@@ -12,7 +12,7 @@ import SwiftUI
 // MARK: - SpotifyConnectionView
 
 struct SpotifyConnectionView: View {
-    static let accessibilityID = "phosphene.view.spotify.connection"
+    static let accessibilityID = "uzume.view.spotify.connection"
 
     @ObservedObject var viewModel: SpotifyConnectionViewModel
     let onConnect: @Sendable ([TrackIdentity], PlaylistSource) async -> Void
@@ -59,7 +59,7 @@ struct SpotifyConnectionView: View {
             .background(Color.white.opacity(0.07))
             .cornerRadius(8)
             .focused($isURLFieldFocused)
-            .accessibilityIdentifier("phosphene.spotify.urlField")
+            .accessibilityIdentifier("uzume.spotify.urlField")
         }
     }
 
@@ -130,7 +130,7 @@ struct SpotifyConnectionView: View {
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
             .disabled(viewModel.isConnecting)
-            .accessibilityIdentifier("phosphene.spotify.continueButton")
+            .accessibilityIdentifier("uzume.spotify.continueButton")
         }
     }
 
@@ -191,7 +191,7 @@ struct SpotifyConnectionView: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .accessibilityIdentifier("phosphene.spotify.loginButton")
+            .accessibilityIdentifier("uzume.spotify.loginButton")
         }
     }
 
@@ -244,6 +244,6 @@ struct SpotifyConnectionView: View {
             onUseAppleMusicInstead()
         }
         .buttonStyle(.bordered)
-        .accessibilityIdentifier("phosphene.spotify.useAppleMusicInstead")
+        .accessibilityIdentifier("uzume.spotify.useAppleMusicInstead")
     }
 }

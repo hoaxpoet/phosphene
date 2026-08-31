@@ -27,7 +27,7 @@ import SwiftUI
 @MainActor
 struct PlaybackView: View {
 
-    static let accessibilityID = "phosphene.view.playing"
+    static let accessibilityID = "uzume.view.playing"
 
     // MARK: - Injected
 
@@ -290,7 +290,7 @@ struct PlaybackView: View {
         let forceSpiderAction: (@MainActor () -> Void)? = { [weak engine = self.engine, weak tm = self.toastManager] in
             guard let engine, let tm else { return }
             let isOn = engine.toggleForceSpider()
-            tm.enqueue(PhospheneToast(
+            tm.enqueue(UzumeToast(
                 severity: .info,
                 copy: isOn ? "Spider forced: ON" : "Spider forced: OFF",
                 duration: 3,
@@ -304,7 +304,7 @@ struct PlaybackView: View {
             guard let engine else { return }
             engine.nextPreset()
             if let name = engine.presetLoader.currentPreset?.descriptor.name {
-                tm?.enqueue(PhospheneToast(
+                tm?.enqueue(UzumeToast(
                     severity: .info,
                     copy: "Preset → \(name)",
                     duration: 2,
@@ -316,7 +316,7 @@ struct PlaybackView: View {
             guard let engine else { return }
             engine.previousPreset()
             if let name = engine.presetLoader.currentPreset?.descriptor.name {
-                tm?.enqueue(PhospheneToast(
+                tm?.enqueue(UzumeToast(
                     severity: .info,
                     copy: "Preset → \(name)",
                     duration: 2,
@@ -337,7 +337,7 @@ struct PlaybackView: View {
             guard let engine, let tm else { return }
             engine.diagnosticPresetLocked.toggle()
             let isOn = engine.diagnosticPresetLocked
-            tm.enqueue(PhospheneToast(
+            tm.enqueue(UzumeToast(
                 severity: .info,
                 copy: isOn ? "Diagnostic hold ON" : "Diagnostic hold OFF",
                 duration: 3,

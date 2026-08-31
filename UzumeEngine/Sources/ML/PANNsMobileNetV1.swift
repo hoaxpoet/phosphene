@@ -1,6 +1,6 @@
 // PANNsMobileNetV1 — PANNs MobileNetV1 audio tagger, MPSGraph port (IFC.2 / D-177).
 //
-// AudioSet 527-class multi-label tagger (Kong et al., 2020). Phosphene uses it
+// AudioSet 527-class multi-label tagger (Kong et al., 2020). Uzume uses it
 // for instrument-family activity on the 30 s preview clip (strings / brass /
 // woodwinds / percussion), the load-bearing capability for Ricercar (D-176).
 //

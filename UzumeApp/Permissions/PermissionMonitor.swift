@@ -11,7 +11,7 @@ import Combine
 /// `@MainActor` observable that publishes `isScreenCaptureGranted` and re-reads it
 /// whenever the app re-enters the foreground.
 ///
-/// Owned by `PhospheneApp` as a `@StateObject`; injected into the view hierarchy as
+/// Owned by `UzumeApp` as a `@StateObject`; injected into the view hierarchy as
 /// an environment object so `ContentView` can gate the session-state switch on it.
 @MainActor
 final class PermissionMonitor: ObservableObject {

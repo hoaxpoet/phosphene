@@ -26,7 +26,7 @@ struct SpotifyItemsSchemaTests {
     func test_itemsResponseDecodesViaItemKey() async throws {
         let fixtureURL = URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()  // Session/
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .appendingPathComponent("Fixtures/spotify_items_response.json")
         let data = try Data(contentsOf: fixtureURL)
 

@@ -15,7 +15,7 @@
 //      far longer than any ordinary between-tracks gap.
 //
 //   3. sampleRateMismatch — the system output device's nominal rate is outside
-//      Phosphene's expected 44.1/48 kHz family (e.g. a 96 kHz interface forces
+//      Uzume's expected 44.1/48 kHz family (e.g. a 96 kHz interface forces
 //      resampling the stem pipeline assumes away).
 //
 // The monitor OBSERVES; it never steers tap recovery (that coupling is a future

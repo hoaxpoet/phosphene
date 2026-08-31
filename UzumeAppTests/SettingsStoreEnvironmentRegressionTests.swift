@@ -2,7 +2,7 @@
 //
 // Catches the duplicate-`SettingsStore` bug if it ever recurs. Pre-fix:
 // `PlaybackView` instantiated `@StateObject private var settingsStore =
-// SettingsStore()` while `PhospheneApp.swift` injected the global store via
+// SettingsStore()` while `UzumeApp.swift` injected the global store via
 // `@EnvironmentObject`. Toggles in Settings updated the global store but the
 // playback-side consumer was bound to the parallel one, silently swallowing
 // every settings change.
@@ -22,7 +22,7 @@ import Combine
 import Foundation
 import SwiftUI
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("SettingsStoreEnvironmentRegression")
 @MainActor
@@ -137,9 +137,9 @@ struct SettingsStoreEnvironmentRegressionTests {
         // @EnvironmentObject declaration moves or changes name, update both
         // here and CLAUDE.md §UX Contract.
         let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()           // PhospheneAppTests
+            .deletingLastPathComponent()           // UzumeAppTests
             .deletingLastPathComponent()           // repo root
-            .appendingPathComponent("PhospheneApp/Views/Playback/PlaybackView.swift")
+            .appendingPathComponent("UzumeApp/Views/Playback/PlaybackView.swift")
         guard let src = try? String(contentsOf: url, encoding: .utf8) else {
             Issue.record("PlaybackView.swift not found at \(url.path)")
             return

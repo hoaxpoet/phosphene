@@ -5,7 +5,7 @@
 // Scores a beat grid against the GT.2 ground truth and emits the metric set the
 // program commits to (see the `beatbench` skill). Two grid sources:
 //
-//   offline-grid   — run Phosphene's own analyzer (BeatThisPreprocessor +
+//   offline-grid   — run Uzume's own analyzer (BeatThisPreprocessor +
 //                    BeatThisModel + BeatGridResolver) over a fixture and score
 //                    the grid it produces. This is the prep-time path.
 //   session-replay — score a recorded session's live grid (GT.3 follow-up).
@@ -70,7 +70,7 @@ struct BeatBenchCommand: ParsableCommand {
         URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()   // → Sources/BeatBench
             .deletingLastPathComponent()   // → Sources
-            .deletingLastPathComponent()   // → PhospheneEngine
+            .deletingLastPathComponent()   // → UzumeEngine
             .appendingPathComponent("Tests/Fixtures/beatbench")
     }
 
@@ -279,7 +279,7 @@ struct BeatBenchCommand: ParsableCommand {
         var scored: [LiveScores] = []
         for segment in segments where segment.duration > 30 && segment.isRealPlayback {
             // Identify the track by its grid-BPM fingerprint.
-            let candidates = PhospheneGrid.values
+            let candidates = UzumeGrid.values
             let match = candidates.min {
                 abs($0.value - segment.medianGridBPM) < abs($1.value - segment.medianGridBPM)
             }

@@ -126,9 +126,9 @@ import Foundation
     private var weightsRoot: URL {
         URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()   // ML/
-            .deletingLastPathComponent()   // PhospheneEngineTests/
+            .deletingLastPathComponent()   // UzumeEngineTests/
             .deletingLastPathComponent()   // Tests/
-            .deletingLastPathComponent()   // PhospheneEngine/ (package root)
+            .deletingLastPathComponent()   // UzumeEngine/ (package root)
             .appendingPathComponent("Sources/ML/Weights")
     }
     private var stemWeightsDir: URL { weightsRoot }

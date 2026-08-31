@@ -69,7 +69,7 @@ struct ContentView: View {
             preparingView
         case .ready:
             // LF.4: local-file sessions don't show ReadyView (the user
-            // has nothing to confirm — Phosphene IS the player). The engine's
+            // has nothing to confirm — Uzume IS the player). The engine's
             // `.ready` handler advances to `.playing` in the same MainActor
             // tick; routing the visible UI directly to PlaybackView avoids
             // any flash of ReadyView during the cross-state transition.

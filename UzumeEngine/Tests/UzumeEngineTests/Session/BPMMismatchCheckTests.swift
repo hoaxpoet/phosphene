@@ -1,7 +1,7 @@
 // BPMMismatchCheckTests — Pure-function coverage for BUG-008.2 (2-way) and
 // DSP.4 (3-way).
 //
-// The detector lives at PhospheneEngine/Sources/Session/BPMMismatchCheck.swift.
+// The detector lives at UzumeEngine/Sources/Session/BPMMismatchCheck.swift.
 // These tests pin the threshold semantics (3 % default, generous on purpose so
 // the only signal is "this track has the Love Rehab problem") and the
 // nil-return paths (zero / non-finite / sub-threshold inputs).

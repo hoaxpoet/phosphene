@@ -16,9 +16,9 @@ import SwiftUI
 /// Full-screen catastrophic-preparation failure, per UX_SPEC §9.3 §9.2.
 /// Replaces the track-list pane when PreparationErrorViewModel fires .fullScreen.
 struct PreparationFailureView: View {
-    static let accessibilityID      = "phosphene.view.preparationFailure"
-    static let pickPlaylistButtonID = "phosphene.preparationFailure.pickPlaylist"
-    static let reactiveButtonID     = "phosphene.preparationFailure.startReactive"
+    static let accessibilityID      = "uzume.view.preparationFailure"
+    static let pickPlaylistButtonID = "uzume.preparationFailure.pickPlaylist"
+    static let reactiveButtonID     = "uzume.preparationFailure.startReactive"
 
     let error: UserFacingError
     let onPickAnotherPlaylist: () -> Void

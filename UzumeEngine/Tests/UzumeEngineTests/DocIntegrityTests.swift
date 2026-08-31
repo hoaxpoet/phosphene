@@ -35,10 +35,10 @@ struct DocIntegrityTests {
 
     // MARK: - Repo file access
 
-    /// Repo root derived from this file's path (…/PhospheneEngine/Tests/PhospheneEngineTests/…).
+    /// Repo root derived from this file's path (…/UzumeEngine/Tests/UzumeEngineTests/…).
     private static let repoRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)
-        for _ in 0..<4 { url.deleteLastPathComponent() }   // file → Tests dir ×2 → PhospheneEngine → root
+        for _ in 0..<4 { url.deleteLastPathComponent() }   // file → Tests dir ×2 → UzumeEngine → root
         return url
     }()
 
@@ -70,7 +70,7 @@ struct DocIntegrityTests {
         var parts: [String] = []
         if let c = read("CLAUDE.md") { parts.append(c) }
         let fm = FileManager.default
-        for top in ["PhospheneEngine/Sources", "PhospheneApp", "PhospheneEngine/Tests", "docs"] {
+        for top in ["UzumeEngine/Sources", "UzumeApp", "UzumeEngine/Tests", "docs"] {
             let base = repoRoot.appendingPathComponent(top)
             guard let walker = fm.enumerator(at: base, includingPropertiesForKeys: nil) else { continue }
             for case let url as URL in walker {
@@ -397,7 +397,7 @@ struct DocIntegrityTests {
     // grep-ing" index is worse than none. Per the D-161 ratchet rule 3 (violated twice
     // → mechanize) this converts to a gate.
 
-    /// Every `.swift` / `.metal` under PhospheneEngine/Sources + PhospheneApp must be
+    /// Every `.swift` / `.metal` under UzumeEngine/Sources + UzumeApp must be
     /// findable in the Module Map by its filename-minus-extension (a substring match).
     /// Diagnostic/tooling modules and utility trees are documented as ONE group entry
     /// that names its files, so a stem match — not a per-file entry line — is the
@@ -417,7 +417,7 @@ struct DocIntegrityTests {
                                    "ARCHITECTURE.md has no ## Module Map section").joined(separator: "\n")
         let fm = FileManager.default
         var undocumented: [String] = []
-        for root in ["PhospheneEngine/Sources", "PhospheneApp"] {
+        for root in ["UzumeEngine/Sources", "UzumeApp"] {
             let base = Self.repoRoot.appendingPathComponent(root)
             guard let walker = fm.enumerator(at: base, includingPropertiesForKeys: nil) else { continue }
             for case let url as URL in walker {
@@ -428,7 +428,7 @@ struct DocIntegrityTests {
         }
         undocumented.sort()
         let shown = undocumented.prefix(25).joined(separator: ", ")
-        #expect(undocumented.isEmpty, "ARCHITECTURE Module Map omits \(undocumented.count) source file(s) under PhospheneEngine/Sources or PhospheneApp/: \(shown). Add a one-line entry under ## Module Map (or name the file in its module's group entry) — per-file completeness is the map's contract (CLEAN.7.3 / D-168).")
+        #expect(undocumented.isEmpty, "ARCHITECTURE Module Map omits \(undocumented.count) source file(s) under UzumeEngine/Sources or UzumeApp/: \(shown). Add a one-line entry under ## Module Map (or name the file in its module's group entry) — per-file completeness is the map's contract (CLEAN.7.3 / D-168).")
     }
 
     // MARK: - Skill-integrity gate (DOC.9 / D-179)

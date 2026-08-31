@@ -29,7 +29,7 @@ private let logger = Logging.session
 
 // MARK: - SessionManager
 
-/// Owns the Phosphene session lifecycle.
+/// Owns the Uzume session lifecycle.
 ///
 /// In **session mode**, call `startSession(source:)` before playback begins.
 /// The manager connects to the playlist and pre-analyzes tracks via `SessionPreparer`,

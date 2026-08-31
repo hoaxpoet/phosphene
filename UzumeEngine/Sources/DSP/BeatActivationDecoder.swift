@@ -32,7 +32,7 @@ public struct BeatActivationDecoder: Sendable {
 
     // MARK: - Tunables
 
-    /// Every value is sourced to a paper equation or marked as a Phosphene tunable.
+    /// Every value is sourced to a paper equation or marked as a Uzume tunable.
     /// See `docs/design/DBN_DECODER_SPEC.md` §3–§5 for the rationale behind each.
     public struct Tunables: Sendable {
         /// Meter hypotheses to decode. **Fixed at {3,4,5,7} by D-207** — widening this
@@ -41,12 +41,12 @@ public struct BeatActivationDecoder: Sendable {
         public var meterHypotheses: [Int] = [3, 4, 5, 7]
 
         /// Half-width of the tempo search band as a fraction of the tempo hint.
-        /// Phosphene tunable (spec §3.1) — we condition on the incumbent BPM estimate
+        /// Uzume tunable (spec §3.1) — we condition on the incumbent BPM estimate
         /// because tempo is not the broken axis; meter is.
         public var tempoBandFraction: Double = 0.10
 
         /// Number of tempo states, log-spaced across the band to mimic auditory JNDs
-        /// (Krebs §2.3.2). Phosphene tunable; the spec's cost table sizes this.
+        /// (Krebs §2.3.2). Uzume tunable; the spec's cost table sizes this.
         public var tempoStateCount: Int = 11
 
         /// λ in Krebs Eq. 10 — the tempo-change penalty, and **the category-3 lever**.

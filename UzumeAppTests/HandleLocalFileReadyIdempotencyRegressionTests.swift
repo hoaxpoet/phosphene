@@ -41,7 +41,7 @@ struct HandleLocalFileReadyIdempotencyRegressionTests {
     private func repoRoot() -> URL {
         var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         while !FileManager.default.fileExists(
-            atPath: dir.appendingPathComponent("PhospheneApp").path
+            atPath: dir.appendingPathComponent("UzumeApp").path
         ) {
             let parent = dir.deletingLastPathComponent()
             if parent == dir {
@@ -95,7 +95,7 @@ struct HandleLocalFileReadyIdempotencyRegressionTests {
 
     @Test("VisualizerEngine declares lastStartedLocalFilePlaybackURL")
     func test_visualizerEngine_declaresMarkerField() throws {
-        let url = repoRoot().appendingPathComponent("PhospheneApp/VisualizerEngine.swift")
+        let url = repoRoot().appendingPathComponent("UzumeApp/VisualizerEngine.swift")
         let raw = try String(contentsOf: url, encoding: .utf8)
         let src = stripComments(raw)
 
@@ -112,7 +112,7 @@ struct HandleLocalFileReadyIdempotencyRegressionTests {
     @Test("handleLocalFileReady reads + writes the URL marker")
     func test_handleLocalFileReady_readsAndWritesMarker() throws {
         let url = repoRoot().appendingPathComponent(
-            "PhospheneApp/VisualizerEngine+LocalFilePlayback.swift"
+            "UzumeApp/VisualizerEngine+LocalFilePlayback.swift"
         )
         let raw = try String(contentsOf: url, encoding: .utf8)
         let src = stripComments(raw)
@@ -134,7 +134,7 @@ struct HandleLocalFileReadyIdempotencyRegressionTests {
 
     @Test("State observer clears the marker on .preparing and .ended")
     func test_stateObserver_clearsMarker() throws {
-        let url = repoRoot().appendingPathComponent("PhospheneApp/VisualizerEngine.swift")
+        let url = repoRoot().appendingPathComponent("UzumeApp/VisualizerEngine.swift")
         let raw = try String(contentsOf: url, encoding: .utf8)
         let src = stripComments(raw)
 

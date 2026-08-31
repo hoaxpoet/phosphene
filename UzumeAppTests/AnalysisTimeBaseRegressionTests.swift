@@ -16,7 +16,7 @@
 
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("Analysis time base derives from audio, not wall-clock (BUG087.2)")
 struct AnalysisTimeBaseRegressionTests {

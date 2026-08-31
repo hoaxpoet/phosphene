@@ -36,7 +36,7 @@ struct DashboardFontLoaderTests {
 
     @Test("proseCustomLoaded is false when test bundle has no font files")
     func resolveFonts_proseCustomFlag_isFalseInTestBundle() {
-        // The test bundle (PhospheneEngineTests) has no Epilogue TTFs; the
+        // The test bundle (UzumeEngineTests) has no Epilogue TTFs; the
         // loader must fall back to system sans and report proseCustomLoaded = false.
         let resolution = DashboardFontLoader.resolveFonts(
             in: Bundle(for: DashboardFontLoaderAnchor.self) as Bundle?

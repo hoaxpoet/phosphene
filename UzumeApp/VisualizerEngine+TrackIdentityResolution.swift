@@ -33,7 +33,7 @@ extension VisualizerEngine {
     ///
     /// Thread-safe: acquires `orchestratorLock`. Delegates the search to
     /// `PlannedSession.canonicalIdentity(matchingTitle:artist:)` so the
-    /// matching algorithm itself is testable from `PhospheneEngineTests`.
+    /// matching algorithm itself is testable from `UzumeEngineTests`.
     func canonicalTrackIdentity(matching partial: TrackIdentity) -> TrackIdentity? {
         let plan = orchestratorLock.withLock { livePlan }
         return plan?.canonicalIdentity(matchingTitle: partial.title, artist: partial.artist)

@@ -23,7 +23,7 @@ import SwiftUI
 
 @MainActor
 struct PermissionOnboardingView: View {
-    static let accessibilityID = "phosphene.view.permissionOnboarding"
+    static let accessibilityID = "uzume.view.permissionOnboarding"
 
     @State private var showExplainer = false
 
@@ -49,13 +49,13 @@ struct PermissionOnboardingView: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .accessibilityIdentifier("phosphene.onboarding.grantAccess")
+            .accessibilityIdentifier("uzume.onboarding.grantAccess")
 
             Button(String(localized: "onboarding.permission.open_settings")) {
                 openSettings()
             }
             .buttonStyle(.link)
-            .accessibilityIdentifier("phosphene.onboarding.openSettings")
+            .accessibilityIdentifier("uzume.onboarding.openSettings")
 
             DisclosureGroup(
                 String(localized: "onboarding.permission.why_label"),
@@ -68,7 +68,7 @@ struct PermissionOnboardingView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)
             }
-            .accessibilityIdentifier("phosphene.onboarding.whyExplainer")
+            .accessibilityIdentifier("uzume.onboarding.whyExplainer")
         }
         .frame(maxWidth: 480)
         .padding(40)

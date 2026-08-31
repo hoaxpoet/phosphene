@@ -15,7 +15,7 @@ import SwiftUI
 
 @MainActor
 struct PhotosensitivityNoticeView: View {
-    static let accessibilityID = "phosphene.view.photosensitivityNotice"
+    static let accessibilityID = "uzume.view.photosensitivityNotice"
 
     let onAcknowledge: () -> Void
 
@@ -36,14 +36,14 @@ struct PhotosensitivityNoticeView: View {
                     openAccessibilityPane()
                     onAcknowledge()
                 }
-                .accessibilityIdentifier("phosphene.photosensitivity.openAccessibility")
+                .accessibilityIdentifier("uzume.photosensitivity.openAccessibility")
 
                 Button(String(localized: "onboarding.photosensitivity.acknowledge")) {
                     onAcknowledge()
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("phosphene.photosensitivity.acknowledge")
+                .accessibilityIdentifier("uzume.photosensitivity.acknowledge")
             }
         }
         .padding(32)

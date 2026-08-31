@@ -6,7 +6,7 @@
 //
 // HOW TO RUN:
 //   1. Start playing music in Spotify, Apple Music, or any audio app
-//   2. Run: swift test --package-path PhospheneEngine --filter FerrofluidLiveAudio
+//   2. Run: swift test --package-path UzumeEngine --filter FerrofluidLiveAudio
 //   3. Review the diagnostic output — all feature ranges, beat counts, and
 //      frame-to-frame visual change are reported
 //

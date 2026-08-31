@@ -48,7 +48,7 @@ struct DashboardOverlayView: View {
                 // Vibrant-dark NSVisualEffectView. Always dark regardless of
                 // system appearance (D-089).
                 DarkVibrancyView()
-                // Phosphene `surface` tint at 0.96α over the vibrancy. The
+                // Uzume `surface` tint at 0.96α over the vibrancy. The
                 // dashboard sits over the visualizer, which can render any
                 // colour — to guarantee WCAG AA contrast for body/teal/coral
                 // text in the worst case (a bright preset frame underneath),

@@ -1,6 +1,6 @@
 // RawTapAnalysis — Decode raw_tap.wav and detect sub-bass onsets.
 //
-// raw_tap.wav is the Core Audio tap audio captured before any Phosphene DSP
+// raw_tap.wav is the Core Audio tap audio captured before any Uzume DSP
 // (SessionRecorder+RawTap.swift). This module decodes it to mono Float32 and
 // replays it through the SAME FFTProcessor → BeatDetector path the live engine
 // uses, producing sub-bass onset timestamps.

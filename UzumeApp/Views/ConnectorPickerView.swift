@@ -2,7 +2,7 @@
 // Presented as a sheet from IdleView. Uses NavigationStack internally so each
 // connector flow view is pushed onto the stack — back button returns to this picker.
 //
-// U.11: reads `spotifyOAuthProvider` from the environment (set by PhospheneApp) to
+// U.11: reads `spotifyOAuthProvider` from the environment (set by UzumeApp) to
 // build a `SpotifyConnectionViewModel` with OAuth login capability.
 
 import Session
@@ -11,7 +11,7 @@ import SwiftUI
 // MARK: - ConnectorPickerView
 
 struct ConnectorPickerView: View {
-    static let accessibilityID = "phosphene.view.connectorPicker"
+    static let accessibilityID = "uzume.view.connectorPicker"
 
     /// Called when a connector successfully identifies a playlist.
     /// `tracks` contains pre-fetched tracks when available (Spotify OAuth path);

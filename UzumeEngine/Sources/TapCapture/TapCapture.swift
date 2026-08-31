@@ -79,13 +79,13 @@ struct TapCaptureCommand: ParsableCommand {
     // MARK: - Paths
 
     /// Repo-relative artifact root, derived from this source file's location.
-    /// #filePath is …/PhospheneEngine/Sources/TapCapture/TapCapture.swift; three
-    /// deletions land on the package root (…/PhospheneEngine).
+    /// #filePath is …/UzumeEngine/Sources/TapCapture/TapCapture.swift; three
+    /// deletions land on the package root (…/UzumeEngine).
     private var beatbenchDir: URL {
         URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()   // → Sources/TapCapture
             .deletingLastPathComponent()   // → Sources
-            .deletingLastPathComponent()   // → PhospheneEngine (package root)
+            .deletingLastPathComponent()   // → UzumeEngine (package root)
             .appendingPathComponent("Tests/Fixtures/beatbench")
     }
 

@@ -15,7 +15,7 @@
 // missed surface here.
 //
 // Opt-in via `LF_FORMAT_COVERAGE=1` (matches the SOAK_TESTS=1 pattern).
-// Fixtures live under `PhospheneEngine/Tests/Fixtures/tempo/` which is
+// Fixtures live under `UzumeEngine/Tests/Fixtures/tempo/` which is
 // .gitignore'd — see `Scripts/fetch_tempo_fixtures.sh` and the LF.2
 // closeout for re-creation recipes (`afconvert` for FLAC, `ffmpeg` for
 // MP3 via libmp3lame).
@@ -43,13 +43,13 @@ struct LocalFilePlaybackFormatCoverageTests {
 
     // MARK: - Fixture Resolution
 
-    /// Resolve `PhospheneEngine/Tests/Fixtures/tempo/<filename>` from the
+    /// Resolve `UzumeEngine/Tests/Fixtures/tempo/<filename>` from the
     /// suite's source file path. Same pattern used by
     /// `BeatGridAccuracyDiagnosticTests`.
     private static func fixtureURL(_ filename: String) -> URL {
         let testDir = URL(fileURLWithPath: String(#filePath)).deletingLastPathComponent()
         return testDir
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
             .appendingPathComponent("Fixtures/tempo/\(filename)")
     }

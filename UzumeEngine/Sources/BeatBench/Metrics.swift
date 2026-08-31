@@ -1,7 +1,7 @@
 // Metrics — the BeatBench scoring core (GT.3).
 //
 // Standard beat-tracking metrics as defined in the MIREX / `mir_eval` literature,
-// plus the Phosphene-specific ones the program needs. Definitions and windows are
+// plus the Uzume-specific ones the program needs. Definitions and windows are
 // fixed by the `beatbench` skill; this file is their implementation.
 //
 // Every metric here is exercised by `BeatBench --self-test` against cases whose

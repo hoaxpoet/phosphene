@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "PhospheneTools",
+    name: "UzumeTools",
     platforms: [
         .macOS(.v14)
     ],

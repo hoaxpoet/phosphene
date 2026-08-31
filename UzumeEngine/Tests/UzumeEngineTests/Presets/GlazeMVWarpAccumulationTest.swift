@@ -468,10 +468,10 @@ struct GlazeMVWarpAccumulationTest {
     private static func shaderURL(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // /Presets/
-            .deletingLastPathComponent()   // /PhospheneEngineTests/
+            .deletingLastPathComponent()   // /UzumeEngineTests/
             .deletingLastPathComponent()   // /Tests/
-            .deletingLastPathComponent()   // /PhospheneEngine/
+            .deletingLastPathComponent()   // /UzumeEngine/
             .deletingLastPathComponent()   // repo root
-            .appendingPathComponent("PhospheneEngine/Sources/Presets/Shaders/\(name)")
+            .appendingPathComponent("UzumeEngine/Sources/Presets/Shaders/\(name)")
     }
 }

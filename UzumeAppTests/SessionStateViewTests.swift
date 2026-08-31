@@ -27,7 +27,7 @@ import Session
 import Shared
 import SwiftUI
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - ViewModel Tests
 
@@ -68,7 +68,7 @@ struct SessionStateViewModelTests {
     // it. Before the fix, `assign(to:\.state, on: self)` (Subscribers.Assign
     // retains its target) + storing the cancellable on `self.cancellables` closed
     // a retain cycle, so every instance — including the one re-created on each
-    // PhospheneApp body evaluation — leaked forever. The `sink { [weak self] }`
+    // UzumeApp body evaluation — leaked forever. The `sink { [weak self] }`
     // fix breaks the cycle. Red pre-fix (weakVM != nil), green post-fix.
     @Test("deallocates — no assign(to:on:self) retain cycle")
     func deallocates_noRetainCycle() {
@@ -98,7 +98,7 @@ struct ContentViewRoutingTests {
         let a11y = AccessibilityState(workspace: NSWorkspace.shared)
         let vm = SessionStateViewModel(sessionManager: SessionManager.testInstance(), accessibilityState: a11y)
         #expect(vm.state == .idle)
-        #expect(IdleView.accessibilityID == "phosphene.view.idle")
+        #expect(IdleView.accessibilityID == "uzume.view.idle")
     }
 
     @Test("ended state routes to EndedView")
@@ -108,7 +108,7 @@ struct ContentViewRoutingTests {
         let a11y = AccessibilityState(workspace: NSWorkspace.shared)
         let vm = SessionStateViewModel(sessionManager: manager, accessibilityState: a11y)
         #expect(vm.state == .ended)
-        #expect(EndedView.accessibilityID == "phosphene.view.ended")
+        #expect(EndedView.accessibilityID == "uzume.view.ended")
     }
 
     @Test("playing state routes to PlaybackView")
@@ -119,7 +119,7 @@ struct ContentViewRoutingTests {
         manager.startAdHocSession()
         try await Task.sleep(for: .milliseconds(50))
         #expect(vm.state == .playing)
-        #expect(PlaybackView.accessibilityID == "phosphene.view.playing")
+        #expect(PlaybackView.accessibilityID == "uzume.view.playing")
     }
 }
 
@@ -136,17 +136,17 @@ struct ViewIdentifierTests {
 
     @Test("ConnectingView carries correct identifier")
     func connectingViewIdentifier() {
-        #expect(ConnectingView.accessibilityID == "phosphene.view.connecting")
+        #expect(ConnectingView.accessibilityID == "uzume.view.connecting")
     }
 
     @Test("PreparationProgressView carries correct identifier")
     func preparingViewIdentifier() {
-        #expect(PreparationProgressView.accessibilityID == "phosphene.view.preparing")
+        #expect(PreparationProgressView.accessibilityID == "uzume.view.preparing")
     }
 
     @Test("ReadyView carries correct identifier")
     func readyViewIdentifier() {
-        #expect(ReadyView.accessibilityID == "phosphene.view.ready")
+        #expect(ReadyView.accessibilityID == "uzume.view.ready")
     }
 }
 

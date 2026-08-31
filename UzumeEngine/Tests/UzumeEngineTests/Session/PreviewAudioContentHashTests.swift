@@ -107,7 +107,7 @@ struct PreviewAudioContentHashTests {
     func test_sha256_loveRehab_matchesShasum() throws {
         let testDir = URL(fileURLWithPath: String(#filePath)).deletingLastPathComponent()
         let fixtureURL = testDir
-            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // UzumeEngineTests/
             .deletingLastPathComponent()  // Tests/
             .appendingPathComponent("Fixtures/tempo/love_rehab.m4a")
         guard FileManager.default.fileExists(atPath: fixtureURL.path) else {

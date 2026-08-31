@@ -8,7 +8,7 @@ import SwiftUI
 // MARK: - AppleMusicConnectionView
 
 struct AppleMusicConnectionView: View {
-    static let accessibilityID = "phosphene.view.appleMusic.connection"
+    static let accessibilityID = "uzume.view.appleMusic.connection"
 
     @ObservedObject var viewModel: AppleMusicConnectionViewModel
     // Apple Music has no pre-fetched tracks — passes [] so the caller uses startSession(source:).
@@ -50,7 +50,7 @@ struct AppleMusicConnectionView: View {
             onUseSpotifyInstead()
         }
         .buttonStyle(.bordered)
-        .accessibilityIdentifier("phosphene.appleMusic.useSpotifyInstead")
+        .accessibilityIdentifier("uzume.appleMusic.useSpotifyInstead")
     }
 
     // MARK: - State content
@@ -150,7 +150,7 @@ struct AppleMusicConnectionView: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .accessibilityIdentifier("phosphene.appleMusic.openSystemSettings")
+            .accessibilityIdentifier("uzume.appleMusic.openSystemSettings")
         }
     }
 

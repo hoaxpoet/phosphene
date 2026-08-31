@@ -82,12 +82,12 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
             // Glaze's downbeat pushes are their connection layer.
             // Split into two switches at FT.4.1 (Matt, 2026-08-27). FT.4 bundled them and the
             // A/B could not tell take_five's bar win apart from bleed's beat loss; they are
-            // independent — `BarLineEstimator` takes any `beats` array. `PHOSPHENE_FULLTRACK_BARS`
+            // independent — `BarLineEstimator` takes any `beats` array. `UZUME_FULLTRACK_BARS`
             // still turns both on so the FT.4 arm stays reproducible.
             let env = ProcessInfo.processInfo.environment
-            let both = env["PHOSPHENE_FULLTRACK_BARS"] == "1"
-            let fullTrack = both || env["PHOSPHENE_FULLTRACK_DECODE"] == "1"
-            let barLine = both || env["PHOSPHENE_BARLINE"] == "1"
+            let both = env["UZUME_FULLTRACK_BARS"] == "1"
+            let fullTrack = both || env["UZUME_FULLTRACK_DECODE"] == "1"
+            let barLine = both || env["UZUME_BARLINE"] == "1"
             let activations: (beats: [Float], downbeats: [Float])
             if fullTrack {
                 activations = try BeatThisTiledInference.predictFullTrack(

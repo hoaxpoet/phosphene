@@ -2,7 +2,7 @@
 // ConnectorPickerView (GAP A, 2026-05-28). Sibling of AppleMusicConnectionView
 // and SpotifyConnectionView; renders inside the picker's NavigationStack.
 //
-// Phosphene reads three shapes of local source — single file, folder, or
+// Uzume reads three shapes of local source — single file, folder, or
 // playlist (.m3u / .m3u8). Each gets its own action tile that opens the
 // matching NSOpenPanel. The view also teaches the drag-and-drop affordance
 // via a quiet footer line (the window-level .onDrop handler accepts files,
@@ -22,10 +22,10 @@ import SwiftUI
 @MainActor
 struct LocalSourceConnectionView: View {
 
-    static let accessibilityID    = "phosphene.view.lf_source"
-    static let folderTileID       = "phosphene.lf_source.tile.folder"
-    static let fileTileID         = "phosphene.lf_source.tile.file"
-    static let playlistTileID     = "phosphene.lf_source.tile.playlist"
+    static let accessibilityID    = "uzume.view.lf_source"
+    static let folderTileID       = "uzume.lf_source.tile.folder"
+    static let fileTileID         = "uzume.lf_source.tile.file"
+    static let playlistTileID     = "uzume.lf_source.tile.playlist"
 
     @EnvironmentObject private var engine: VisualizerEngine
     @EnvironmentObject private var recentsStore: LocalFileRecentsStore

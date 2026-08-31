@@ -23,7 +23,7 @@ struct SoakRunnerCommand: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
         commandName: "SoakRunner",
-        abstract: "Run a headless Phosphene soak test.",
+        abstract: "Run a headless Uzume soak test.",
         discussion: """
         Drives AudioInputRouter with a looping audio file for the specified duration,
         sampling memory + frame timing periodically. Writes JSON + Markdown report to

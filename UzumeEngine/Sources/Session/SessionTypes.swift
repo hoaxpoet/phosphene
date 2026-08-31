@@ -8,7 +8,7 @@ import Foundation
 
 // MARK: - SessionState
 
-/// The lifecycle state of a Phosphene visualization session.
+/// The lifecycle state of a Uzume visualization session.
 public enum SessionState: String, Sendable, Equatable {
     /// No session is active.
     case idle

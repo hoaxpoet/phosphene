@@ -17,7 +17,7 @@
 // The CONTROL is the same track twice: it must return r = 1.000. Without it a low r could
 // just mean the metric is noise.
 //
-//   swift test --package-path PhospheneEngine --filter WitchlightPathDivergence
+//   swift test --package-path UzumeEngine --filter WitchlightPathDivergence
 
 import Foundation
 import Testing

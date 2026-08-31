@@ -6,7 +6,7 @@
 import Combine
 import Session
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 // MARK: - Minimal Mock (shared with existing tests, but re-declared to keep file self-contained)
 

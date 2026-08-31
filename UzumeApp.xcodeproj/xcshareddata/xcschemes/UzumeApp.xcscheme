@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A50001"
-               BuildableName = "PhospheneApp.app"
-               BlueprintName = "PhospheneApp"
-               ReferencedContainer = "container:PhospheneApp.xcodeproj">
+               BuildableName = "Uzume.app"
+               BlueprintName = "UzumeApp"
+               ReferencedContainer = "container:UzumeApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -30,9 +30,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "B50001"
-               BuildableName = "PhospheneAppTests.xctest"
-               BlueprintName = "PhospheneAppTests"
-               ReferencedContainer = "container:PhospheneApp.xcodeproj">
+               BuildableName = "UzumeAppTests.xctest"
+               BlueprintName = "UzumeAppTests"
+               ReferencedContainer = "container:UzumeApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -49,9 +49,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "B50001"
-               BuildableName = "PhospheneAppTests.xctest"
-               BlueprintName = "PhospheneAppTests"
-               ReferencedContainer = "container:PhospheneApp.xcodeproj">
+               BuildableName = "UzumeAppTests.xctest"
+               BlueprintName = "UzumeAppTests"
+               ReferencedContainer = "container:UzumeApp.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -72,14 +72,14 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A50001"
-            BuildableName = "PhospheneApp.app"
-            BlueprintName = "PhospheneApp"
-            ReferencedContainer = "container:PhospheneApp.xcodeproj">
+            BuildableName = "Uzume.app"
+            BlueprintName = "UzumeApp"
+            ReferencedContainer = "container:UzumeApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "PHOSPHENE_FULL_RAW_TAP"
+            key = "UZUME_FULL_RAW_TAP"
             value = "1"
             isEnabled = "YES">
          </EnvironmentVariable>
@@ -97,9 +97,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A50001"
-            BuildableName = "PhospheneApp.app"
-            BlueprintName = "PhospheneApp"
-            ReferencedContainer = "container:PhospheneApp.xcodeproj">
+            BuildableName = "Uzume.app"
+            BlueprintName = "UzumeApp"
+            ReferencedContainer = "container:UzumeApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

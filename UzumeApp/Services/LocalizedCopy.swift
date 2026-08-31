@@ -2,7 +2,7 @@
 //
 // All copy resolution goes through this single path, so tests can call
 // LocalizedCopy.string(for:) without constructing String(localized:) inline.
-// Strings live in PhospheneApp/en.lproj/Localizable.strings.
+// Strings live in UzumeApp/en.lproj/Localizable.strings.
 
 import Foundation
 import Shared

@@ -1,7 +1,7 @@
 // BarLineEstimatorTests — FT.3 task 4's parity gate, plus the controls that keep the port
 // honest without any fixture.
 //
-// The parity test (`PHOSPHENE_BARLINE_PARITY`) is the increment's real gate: the Swift
+// The parity test (`UZUME_BARLINE_PARITY`) is the increment's real gate: the Swift
 // margins must reproduce `tools/barline_parity.py`'s to within 1e-3 on the ground-truthed
 // tracks. It needs the beats dump and the audio fixtures, so it is env-gated.
 //

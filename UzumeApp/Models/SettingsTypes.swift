@@ -1,6 +1,6 @@
-// SettingsTypes — Value types for all PhospheneApp settings (app-layer only).
+// SettingsTypes — Value types for all UzumeApp settings (app-layer only).
 //
-// Engine-facing types (QualityCeiling, PresetCategory) live in PhospheneEngine.
+// Engine-facing types (QualityCeiling, PresetCategory) live in UzumeEngine.
 // These types cover device tier override, motion preference, and retention.
 
 import Foundation

@@ -5,8 +5,8 @@
 // frame — the phenomenon itself, not its input correlates. Detects flash
 // events (per-frame luma steps, near-white pixel bursts) and localises them.
 //
-// Env-gated: set PHOSPHENE_SESSION_DIR to a session directory and
-// PHOSPHENE_FLASH_WINDOW to "<segIndex>:<loSec>:<hiSec>" (segments split on
+// Env-gated: set UZUME_SESSION_DIR to a session directory and
+// UZUME_FLASH_WINDOW to "<segIndex>:<loSec>:<hiSec>" (segments split on
 // track_elapsed_s resets). Skips silently otherwise (diagnostic, not a gate).
 //
 // Faithfully replicates the CPU-side per-frame modulation the live app applies
@@ -28,19 +28,19 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
     private static let renderHeight = 270
 
     func test_renderSessionWindow_andMeasureFlashes() throws {
-        guard let dir = ProcessInfo.processInfo.environment["PHOSPHENE_SESSION_DIR"],
-              let windowSpec = ProcessInfo.processInfo.environment["PHOSPHENE_FLASH_WINDOW"] else {
-            throw XCTSkip("diagnostic — set PHOSPHENE_SESSION_DIR + PHOSPHENE_FLASH_WINDOW (seg:lo:hi)")
+        guard let dir = ProcessInfo.processInfo.environment["UZUME_SESSION_DIR"],
+              let windowSpec = ProcessInfo.processInfo.environment["UZUME_FLASH_WINDOW"] else {
+            throw XCTSkip("diagnostic — set UZUME_SESSION_DIR + UZUME_FLASH_WINDOW (seg:lo:hi)")
         }
         let parts = windowSpec.split(separator: ":").compactMap { Double($0) }
-        guard parts.count == 3 else { throw XCTSkip("PHOSPHENE_FLASH_WINDOW must be seg:lo:hi") }
+        guard parts.count == 3 else { throw XCTSkip("UZUME_FLASH_WINDOW must be seg:lo:hi") }
         let (segIdx, lo, hi) = (Int(parts[0]), parts[1], parts[2])
         // Ablation: none | pulse | aurora | aurora-hue | light — disable ONE
         // layer to attribute measured flashes mechanically. `aurora-hue` zeroes
         // ONLY the vocals-pitch fields (the S4 replica-gap route): the aurora
         // keeps its drums-driven intensity but the hue input freezes to the
         // valence fallback — isolating hue motion from brightness motion.
-        let ablate = ProcessInfo.processInfo.environment["PHOSPHENE_FLASH_ABLATE"] ?? "none"
+        let ablate = ProcessInfo.processInfo.environment["UZUME_FLASH_ABLATE"] ?? "none"
 
         guard let device = MTLCreateSystemDefaultDevice() else { throw XCTSkip("no Metal device") }
         let loader = PresetLoader(device: device, pixelFormat: .bgra8Unorm_srgb)

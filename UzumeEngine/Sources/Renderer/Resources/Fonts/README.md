@@ -18,8 +18,8 @@ Font License 1.1**.
 1. Download `Epilogue-Regular.ttf` and `Epilogue-Medium.ttf` from either source.
 2. Place both files in this directory:
    ```
-   PhospheneEngine/Sources/Renderer/Resources/Fonts/Epilogue-Regular.ttf
-   PhospheneEngine/Sources/Renderer/Resources/Fonts/Epilogue-Medium.ttf
+   UzumeEngine/Sources/Renderer/Resources/Fonts/Epilogue-Regular.ttf
+   UzumeEngine/Sources/Renderer/Resources/Fonts/Epilogue-Medium.ttf
    ```
 3. Rebuild. `DashboardFontLoader.resolveFonts()` detects the files at launch and
    registers them automatically. `FontResolution.proseCustomLoaded` will be `true`.
@@ -39,7 +39,7 @@ PERF) and SwiftUI state headlines per `.impeccable.md`. It is available from
 1. Download `ClashDisplay-Medium.otf` (or `.ttf`) from Fontshare.
 2. Place it in this directory:
    ```
-   PhospheneEngine/Sources/Renderer/Resources/Fonts/ClashDisplay-Medium.otf
+   UzumeEngine/Sources/Renderer/Resources/Fonts/ClashDisplay-Medium.otf
    ```
 3. Rebuild. `DashboardFontLoader.resolveFonts()` registers it automatically.
    `FontResolution.displayCustomLoaded` will be `true`.

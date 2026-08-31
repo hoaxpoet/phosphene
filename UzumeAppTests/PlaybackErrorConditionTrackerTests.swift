@@ -8,7 +8,7 @@
 
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("PlaybackErrorConditionTracker")
 @MainActor

@@ -5,7 +5,7 @@ import AppKit
 import Foundation
 import Testing
 
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("AlbumArtworkCache (LF.6)")
 struct AlbumArtworkCacheTests {

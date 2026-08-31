@@ -8,7 +8,7 @@ import Foundation
 
 /// Persists whether the user has acknowledged the photosensitivity notice.
 ///
-/// Key: `phosphene.onboarding.photosensitivityAcknowledged`.
+/// Key: `uzume.onboarding.photosensitivityAcknowledged`.
 /// Tests must construct with a named `UserDefaults` suite and tear it down after each test.
 final class PhotosensitivityAcknowledgementStore {
 

@@ -5,34 +5,34 @@
 
 import Session
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("PlaybackView chrome identifiers")
 @MainActor
 struct PlaybackChromeIdentifierTests {
 
     @Test func trackInfoCardView_hasExpectedID() {
-        #expect(TrackInfoCardView.accessibilityID == "phosphene.playback.trackInfoCard")
+        #expect(TrackInfoCardView.accessibilityID == "uzume.playback.trackInfoCard")
     }
 
     @Test func sessionProgressDotsView_hasExpectedID() {
-        #expect(SessionProgressDotsView.accessibilityID == "phosphene.playback.progressDots")
+        #expect(SessionProgressDotsView.accessibilityID == "uzume.playback.progressDots")
     }
 
     @Test func playbackControlsCluster_hasExpectedID() {
-        #expect(PlaybackControlsCluster.accessibilityID == "phosphene.playback.controlsCluster")
+        #expect(PlaybackControlsCluster.accessibilityID == "uzume.playback.controlsCluster")
     }
 
     @Test func listeningBadgeView_hasExpectedID() {
-        #expect(ListeningBadgeView.accessibilityID == "phosphene.playback.listeningBadge")
+        #expect(ListeningBadgeView.accessibilityID == "uzume.playback.listeningBadge")
     }
 
     @Test func playChromeView_hasExpectedID() {
-        #expect(PlaybackChromeView.accessibilityID == "phosphene.playback.chrome")
+        #expect(PlaybackChromeView.accessibilityID == "uzume.playback.chrome")
     }
 
     @Test func shortcutHelpOverlayView_hasExpectedID() {
-        #expect(ShortcutHelpOverlayView.accessibilityID == "phosphene.playback.shortcutHelp")
+        #expect(ShortcutHelpOverlayView.accessibilityID == "uzume.playback.shortcutHelp")
     }
 
     @Test func endSessionConfirmViewModel_defaultsUnpresented() {

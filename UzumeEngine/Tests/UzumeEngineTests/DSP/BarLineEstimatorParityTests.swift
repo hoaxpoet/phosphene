@@ -8,13 +8,13 @@
 // ENV-GATED: it needs the full-track beats dump and the out-of-repo audio fixtures.
 //
 //   mkdir -p /tmp/barprobe
-//   PHOSPHENE_FT1_FULLTRACK=1 PHOSPHENE_BEATS_DUMP=/tmp/barprobe \
-//     swift test --package-path PhospheneEngine --filter FullTrackMeter
+//   UZUME_FT1_FULLTRACK=1 UZUME_BEATS_DUMP=/tmp/barprobe \
+//     swift test --package-path UzumeEngine --filter FullTrackMeter
 //   ~/phosphene-ml-env/bin/python tools/barline_parity.py \
 //     --beats-dir /tmp/barprobe --fixtures ~/phosphene_beatbench_fixtures \
 //     --out /tmp/barprobe/parity.json
-//   PHOSPHENE_BARLINE_PARITY=/tmp/barprobe/parity.json \
-//     swift test --package-path PhospheneEngine --filter BarLineParity
+//   UZUME_BARLINE_PARITY=/tmp/barprobe/parity.json \
+//     swift test --package-path UzumeEngine --filter BarLineParity
 
 import Testing
 import Foundation
@@ -47,15 +47,15 @@ struct BarLineEstimatorParityTests {
 
     @Test("Swift margins match the Python reference to 1e-3")
     func test_pythonParity() throws {
-        guard let parityPath = ProcessInfo.processInfo.environment["PHOSPHENE_BARLINE_PARITY"] else {
-            print("[FT.3] BarLineParity skipped — set PHOSPHENE_BARLINE_PARITY=<parity.json>")
+        guard let parityPath = ProcessInfo.processInfo.environment["UZUME_BARLINE_PARITY"] else {
+            print("[FT.3] BarLineParity skipped — set UZUME_BARLINE_PARITY=<parity.json>")
             return
         }
         let parityURL = URL(fileURLWithPath: parityPath)
         let reference = try JSONDecoder().decode(
             [String: Reference].self, from: Data(contentsOf: parityURL)
         )
-        let beatsDir = ProcessInfo.processInfo.environment["PHOSPHENE_BEATS_DUMP"]
+        let beatsDir = ProcessInfo.processInfo.environment["UZUME_BEATS_DUMP"]
             .map { URL(fileURLWithPath: $0) } ?? parityURL.deletingLastPathComponent()
         let fixtures = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
             ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")

@@ -3,7 +3,7 @@
 // Catches the "DefaultLiveAdapter + DefaultReactiveOrchestrator are fully
 // implemented and unit-tested but never invoked at runtime" bug surfaced by
 // the CA.4 Orchestrator audit (2026-05-20). Pre-fix: a grep for
-// `applyLiveUpdate` in PhospheneApp + PhospheneEngine returned the declaration
+// `applyLiveUpdate` in UzumeApp + UzumeEngine returned the declaration
 // site, four doc-comment references, two test references, and ZERO actual
 // invocations. The entire Phase 4.5 / 4.6 runtime adaptation pipeline was
 // dead in production while the Orchestrator-module unit tests passed green.
@@ -33,11 +33,11 @@ struct OrchestratorWiringRegressionTests {
     // MARK: - Helpers
 
     /// Walk up from this test file until we find the repo root (the directory
-    /// containing `PhospheneApp/`).
+    /// containing `UzumeApp/`).
     private func repoRoot() -> URL {
         var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         while !FileManager.default.fileExists(
-            atPath: dir.appendingPathComponent("PhospheneApp").path
+            atPath: dir.appendingPathComponent("UzumeApp").path
         ) {
             let parent = dir.deletingLastPathComponent()
             if parent == dir {
@@ -98,7 +98,7 @@ struct OrchestratorWiringRegressionTests {
     @Test("VisualizerEngine+Audio.swift wires the Orchestrator live-adaptation pipeline")
     func test_visualizerEngineAudio_wiresOrchestratorLiveUpdate() throws {
         let url = repoRoot().appendingPathComponent(
-            "PhospheneApp/VisualizerEngine+Audio.swift"
+            "UzumeApp/VisualizerEngine+Audio.swift"
         )
         let raw = try String(contentsOf: url, encoding: .utf8)
         let src = stripComments(raw)
@@ -124,7 +124,7 @@ struct OrchestratorWiringRegressionTests {
     /// the only direct caller — that's the BUG-015 fix shape.
     @Test("App layer contains a production call site for applyLiveUpdate(")
     func test_appLayer_hasProductionCallSiteForApplyLiveUpdate() throws {
-        let appDir = repoRoot().appendingPathComponent("PhospheneApp")
+        let appDir = repoRoot().appendingPathComponent("UzumeApp")
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
             at: appDir,
@@ -163,7 +163,7 @@ struct OrchestratorWiringRegressionTests {
 
         #expect(!callSiteFiles.isEmpty, """
         BUG-015 regression: zero production call sites for `applyLiveUpdate(` \
-        exist anywhere in PhospheneApp/ (outside the declaration in \
+        exist anywhere in UzumeApp/ (outside the declaration in \
         VisualizerEngine+Orchestrator.swift). The live-adaptation pipeline is \
         dead in production. See docs/QUALITY/KNOWN_ISSUES.md §BUG-015.
         """)

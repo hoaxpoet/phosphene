@@ -9,7 +9,7 @@
 // Gated behind NIMBUS_BUDGET=1 so it stays out of normal CI / `swift test`.
 //
 // Invocation:
-//   NIMBUS_BUDGET=1 swift test --package-path PhospheneEngine \
+//   NIMBUS_BUDGET=1 swift test --package-path UzumeEngine \
 //       --filter NimbusBudgetProbe
 //
 // NB.1 budget gate (DESIGN §6 / README Gate 0): Tier 2 per-preset GPU ≤ 7 ms at

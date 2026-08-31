@@ -1,6 +1,6 @@
 // SessionRecorderRetentionPolicy — Prunes old session recording folders at app launch.
 //
-// Called once at app launch via PhospheneApp.init. Runs synchronously (no background)
+// Called once at app launch via UzumeApp.init. Runs synchronously (no background)
 // since folder counts are typically small (<100) and deletion is fast.
 //
 // Safety constraints:

@@ -42,14 +42,14 @@ enum RendererPortExtractionError: Error {
 @MainActor
 private func extractRendererPBRPorts() throws -> String {
     // Resolve RayMarch.metal relative to this test file's location at build time.
-    // PhospheneEngine/Tests/PhospheneEngineTests/Renderer/RendererPBRPortSyncTests.swift
-    // → PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal
+    // UzumeEngine/Tests/UzumeEngineTests/Renderer/RendererPBRPortSyncTests.swift
+    // → UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal
     let here = URL(fileURLWithPath: #filePath)
     let rayMarchURL = here
         .deletingLastPathComponent()             // Renderer/
-        .deletingLastPathComponent()             // PhospheneEngineTests/
+        .deletingLastPathComponent()             // UzumeEngineTests/
         .deletingLastPathComponent()             // Tests/
-        .deletingLastPathComponent()             // PhospheneEngine/
+        .deletingLastPathComponent()             // UzumeEngine/
         .appendingPathComponent("Sources/Renderer/Shaders/RayMarch.metal")
 
     guard FileManager.default.fileExists(atPath: rayMarchURL.path) else {

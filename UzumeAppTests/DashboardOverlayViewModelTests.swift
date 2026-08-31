@@ -4,7 +4,7 @@
 import Combine
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 @testable import Renderer
 @testable import Shared
 

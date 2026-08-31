@@ -1,14 +1,14 @@
-// PhospheneToast — Toast notification model for in-session status messages.
+// UzumeToast — Toast notification model for in-session status messages.
 
 import Foundation
 
-// MARK: - PhospheneToast
+// MARK: - UzumeToast
 
 /// A transient in-session notification shown in the bottom-right toast slot.
 ///
 /// Toasts are managed by `ToastManager`. Up to three are visible simultaneously.
 /// Degradation-severity toasts are never auto-dropped when the queue overflows.
-struct PhospheneToast: Identifiable, Equatable, Sendable {
+struct UzumeToast: Identifiable, Equatable, Sendable {
 
     // MARK: - Severity
 

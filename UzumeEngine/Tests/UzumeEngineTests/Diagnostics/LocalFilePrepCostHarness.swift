@@ -1,7 +1,7 @@
 // LocalFilePrepCostHarness — what local-file preparation costs today, and what a
 // full-file stem series would add (LFSTEM scoping measurement).
 //
-// STATUS: env-gated diagnostic (`PHOSPHENE_PREP_COST=1`). Zero production importers
+// STATUS: env-gated diagnostic (`UZUME_PREP_COST=1`). Zero production importers
 // by design; it exists so a scoping number is measured rather than estimated.
 //
 // The question it answers: stem features reach presets ~2.5 s late (a 2 s live
@@ -21,7 +21,7 @@
 //      the series hop, which is what a full-file pass adds on top of A.
 //
 // Run:
-//   PHOSPHENE_PREP_COST=1 swift test --package-path PhospheneEngine \
+//   UZUME_PREP_COST=1 swift test --package-path UzumeEngine \
 //     --filter LocalFilePrepCostHarness
 //
 // Requires the tempo fixtures + ML weights (`Scripts/link_fixtures.sh` in a worktree).
@@ -61,8 +61,8 @@ struct LocalFilePrepCostHarness {
 
     @Test("Measure current prep cost and the marginal cost of a full-file stem series")
     func measurePrepCost() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_PREP_COST"] == "1" else {
-            print("LocalFilePrepCostHarness: PHOSPHENE_PREP_COST not set, skipping")
+        guard ProcessInfo.processInfo.environment["UZUME_PREP_COST"] == "1" else {
+            print("LocalFilePrepCostHarness: UZUME_PREP_COST not set, skipping")
             return
         }
         guard #available(macOS 14.2, *) else { return }
@@ -72,7 +72,7 @@ struct LocalFilePrepCostHarness {
         }
         let fixturesDir = URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent()   // Diagnostics/
-            .deletingLastPathComponent()   // PhospheneEngineTests/
+            .deletingLastPathComponent()   // UzumeEngineTests/
             .deletingLastPathComponent()   // Tests/
             .appendingPathComponent("Fixtures/tempo")
 

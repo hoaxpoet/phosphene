@@ -44,7 +44,7 @@ struct CommonLayoutTest {
     /// FTR.6 replaced the name search with a fixed component count, which fixes the
     /// worktree case but re-breaks the moment this file moves — and a wrong root reads as
     /// "sources unreadable", which the parity test used to treat as a *pass*. Ascending to
-    /// the nearest ancestor containing `PhospheneEngine/Package.swift` is self-validating:
+    /// the nearest ancestor containing `UzumeEngine/Package.swift` is self-validating:
     /// a worktree root matches before the primary ever comes into range, and the result is
     /// either provably the enclosing checkout or `nil`.
     ///
@@ -53,12 +53,12 @@ struct CommonLayoutTest {
     /// arm-the-gate-or-skip-cleanly distinction `DocIntegrityTests.docsPresent` draws.
     private static let repoRoot: URL? = {
         var url = URL(fileURLWithPath: #filePath)
-        // file → Shared → PhospheneEngineTests → Tests → PhospheneEngine → root is 5,
+        // file → Shared → UzumeEngineTests → Tests → UzumeEngine → root is 5,
         // but never rely on that: search, and bound the search so it cannot run away.
         for _ in 0..<12 {
             url.deleteLastPathComponent()
             guard url.pathComponents.count > 1 else { return nil }
-            let anchor = url.appendingPathComponent("PhospheneEngine/Package.swift")
+            let anchor = url.appendingPathComponent("UzumeEngine/Package.swift")
             if FileManager.default.fileExists(atPath: anchor.path) { return url }
         }
         return nil
@@ -117,12 +117,12 @@ struct CommonLayoutTest {
         )
 
         let commonURL = root
-            .appendingPathComponent("PhospheneEngine/Sources/Renderer/Shaders/Common.metal")
+            .appendingPathComponent("UzumeEngine/Sources/Renderer/Shaders/Common.metal")
         let preambleURL = root
-            .appendingPathComponent("PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift")
+            .appendingPathComponent("UzumeEngine/Sources/Presets/PresetLoader+Preamble.swift")
         let common = try #require(
             try? String(contentsOf: commonURL, encoding: .utf8),
-            "Common.metal unreadable at \(commonURL.path). This is a source checkout (\(root.path) has PhospheneEngine/Package.swift), so the GPU contract is unverified — never a pass."
+            "Common.metal unreadable at \(commonURL.path). This is a source checkout (\(root.path) has UzumeEngine/Package.swift), so the GPU contract is unverified — never a pass."
         )
         let preamble = try #require(
             try? String(contentsOf: preambleURL, encoding: .utf8),

@@ -2,7 +2,7 @@
 // sub-bass onset detector (BUG-007.8).
 //
 // Beat This! reports beat timestamps based on broadband perceptual beat detection
-// (transformer trained on human tap annotations). At playback time, Phosphene's
+// (transformer trained on human tap annotations). At playback time, Uzume's
 // sub-bass onset detector fires on kick-band spectral energy peaks. These two
 // signals can be offset by track-specific amounts (typically ±50–150 ms) due to:
 //   • Different kick attack envelopes (sharp vs soft)

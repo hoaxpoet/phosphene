@@ -42,7 +42,7 @@ private let menuLogger = Logger(subsystem: "io.uzume.mac", category: "LocalFileM
 
 enum LocalFileMenuCommands {
 
-    /// File extensions Phosphene accepts for local-file playback. Matches the
+    /// File extensions Uzume accepts for local-file playback. Matches the
     /// three formats covered by `LocalFilePlaybackFormatCoverageTests`.
     /// Aliases the engine-side allow-list so the two can't drift (BUG-051).
     static let allowedExtensions: Set<String> = M3UParser.allowedAudioExtensions
@@ -297,7 +297,7 @@ enum LocalFileMenuCommands {
 
     // MARK: - Clear cache (LF.4)
 
-    /// Action target for `Phosphene → Clear Local-File Cache (…)`. Calls
+    /// Action target for `Uzume → Clear Local-File Cache (…)`. Calls
     /// `PersistentStemCache.clearAll()` and surfaces a confirmation alert
     /// reporting the bytes freed.
     @MainActor

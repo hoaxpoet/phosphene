@@ -35,7 +35,7 @@
 // approximate can legitimately read low. Low r ⇒ "not measured as present," never a
 // defect. Disambiguation + calibration live in the baseline doc.
 //
-// Gated behind PHOSPHENE_COUPLING=1 — the sweep renders the full real multi-pass
+// Gated behind UZUME_COUPLING=1 — the sweep renders the full real multi-pass
 // stack (~130 s). The normal battery skips fast (green); the baseline run sets the
 // env. FidelityRubricReportTests is the diagnostic-report pattern this follows.
 
@@ -75,8 +75,8 @@ struct CouplingReportTests {
 
     @Test("Audio-visual coupling report — certified presets × canonical fixtures (QG.3)")
     func couplingReport() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_COUPLING"] == "1" else {
-            print("CouplingReportTests: gated — set PHOSPHENE_COUPLING=1 to run the real multi-pass "
+        guard ProcessInfo.processInfo.environment["UZUME_COUPLING"] == "1" else {
+            print("CouplingReportTests: gated — set UZUME_COUPLING=1 to run the real multi-pass "
                   + "render sweep (~130 s). See docs/diagnostics/QG3_COUPLING_BASELINE.md for the baseline.")
             return
         }
@@ -550,7 +550,7 @@ struct CouplingReportTests {
     // MARK: - CSV output
 
     static func outputDirectory() -> URL {
-        if let override = ProcessInfo.processInfo.environment["PHOSPHENE_COUPLING_DIR"] {
+        if let override = ProcessInfo.processInfo.environment["UZUME_COUPLING_DIR"] {
             return URL(fileURLWithPath: override)
         }
         return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)

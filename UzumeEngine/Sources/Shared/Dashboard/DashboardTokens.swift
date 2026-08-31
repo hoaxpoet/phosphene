@@ -8,7 +8,7 @@
 // Color values are derived from `.impeccable.md` OKLCH spec via offline
 // conversion (see DASH.1.1 closeout in DECISIONS.md D-081). Pure neutrals are
 // avoided: every chrome and text token is tinted toward the brand purple hue
-// (~278°) so dashboard surfaces feel cohesive with the Phosphene visualizer.
+// (~278°) so dashboard surfaces feel cohesive with the Uzume visualizer.
 
 import CoreGraphics
 

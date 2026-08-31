@@ -5,7 +5,7 @@ import Foundation
 import Session
 import Shared
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("NowPlayingSurface")
 @MainActor

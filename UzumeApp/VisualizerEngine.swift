@@ -404,7 +404,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     var persistentStemCache: PersistentStemCache?
 
     /// Current persistent-cache footprint in bytes. Drives the dynamic
-    /// `Phosphene → Clear Local-File Cache (<size>)` menu label (LF.4 / D-131).
+    /// `Uzume → Clear Local-File Cache (<size>)` menu label (LF.4 / D-131).
     /// Refreshed on engine init, after each LF preparation completes, and
     /// after `clearAll()` runs. Slightly stale between refreshes is fine
     /// — the menu label re-reads on next refresh.
@@ -908,7 +908,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // toasts (wired below, post-init). Directory created on first launch.
         let userPresetsDir = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("Phosphene/Presets", isDirectory: true)
+            .appendingPathComponent("Uzume/Presets", isDirectory: true)
         if let userPresetsDir {
             try? FileManager.default.createDirectory(
                 at: userPresetsDir, withIntermediateDirectories: true)
@@ -1139,11 +1139,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // first means no further dispatch lands after the audio
                     // router teardown.
                     self.stopStemPipeline()
-                    // LF.5.fix D-LF5-2: Phosphene IS the player for local-file
+                    // LF.5.fix D-LF5-2: Uzume IS the player for local-file
                     // sessions, so End Session must actually stop audio. For
                     // streaming sessions stop() also tears down the Core Audio
                     // process tap (correct behaviour at session end — the
-                    // streaming app keeps playing, Phosphene stops analysing).
+                    // streaming app keeps playing, Uzume stops analysing).
                     // Either way, idempotent + safe.
                     if #available(macOS 14.2, *), let audioRouter = self.router as? AudioInputRouter {
                         audioRouter.stop()

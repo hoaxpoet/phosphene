@@ -14,7 +14,7 @@
 //
 // Env-gated (opt-in; a normal suite pass skips it — it needs the gitignored tempo
 // fixtures + a Metal device + ffmpeg):
-//   PHOSPHENE_STRUCT_REPLAY=1 swift test --package-path PhospheneEngine \
+//   UZUME_STRUCT_REPLAY=1 swift test --package-path UzumeEngine \
 //     --filter StructuralSectionScaleReplay
 //
 // NOTE: a 30 s preview clip rarely contains a true musical section change, so
@@ -35,10 +35,10 @@ struct StructuralSectionScaleReplay {
     private static let fixtures = ["love_rehab.m4a", "so_what.m4a", "there_there.m4a"]
     private static let sampleRate: Float = 48_000          // production tap rate
 
-    @Test("Section-scale structural replay on real fixtures (env-gated: PHOSPHENE_STRUCT_REPLAY)")
+    @Test("Section-scale structural replay on real fixtures (env-gated: UZUME_STRUCT_REPLAY)")
     func replaySectionScale() throws {
-        guard ProcessInfo.processInfo.environment["PHOSPHENE_STRUCT_REPLAY"] == "1" else {
-            print("StructuralSectionScaleReplay: PHOSPHENE_STRUCT_REPLAY != 1, skipping")
+        guard ProcessInfo.processInfo.environment["UZUME_STRUCT_REPLAY"] == "1" else {
+            print("StructuralSectionScaleReplay: UZUME_STRUCT_REPLAY != 1, skipping")
             return
         }
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -50,8 +50,8 @@ struct StructuralSectionScaleReplay {
         // raw_tap.wav — a full real track, not a 30 s preview) to validate the
         // POSITIVE direction (does it find real 15–60 s sections?). No assertions
         // (arbitrary input); prints the boundary table for offline diagnosis.
-        if let wav = ProcessInfo.processInfo.environment["PHOSPHENE_REPLAY_WAV"], !wav.isEmpty {
-            let sr = Float(ProcessInfo.processInfo.environment["PHOSPHENE_REPLAY_SR"] ?? "") ?? 44_100
+        if let wav = ProcessInfo.processInfo.environment["UZUME_REPLAY_WAV"], !wav.isEmpty {
+            let sr = Float(ProcessInfo.processInfo.environment["UZUME_REPLAY_SR"] ?? "") ?? 44_100
             let url = URL(fileURLWithPath: (wav as NSString).expandingTildeInPath)
             let samples = try Self.decodeMonoFloat32(url: url, targetSampleRate: Int(sr))
             print("=== BUG-042 floor/threshold sweep: \(url.lastPathComponent) @ \(Int(sr)) Hz, "

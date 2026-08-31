@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import PhospheneApp
+@testable import UzumeApp
 
 @Suite("ToastManager condition-ID")
 @MainActor
@@ -16,9 +16,9 @@ struct ToastManagerConditionTests {
     @Test("dismissByCondition removes matching toasts")
     func test_dismissByCondition_removesMatching() {
         let tm = ToastManager()
-        let t1 = PhospheneToast(
+        let t1 = UzumeToast(
             severity: .degradation, copy: "Silence", duration: .infinity, conditionID: "silence.extended")
-        let t2 = PhospheneToast(severity: .info, copy: "Other", duration: .infinity, conditionID: nil)
+        let t2 = UzumeToast(severity: .info, copy: "Other", duration: .infinity, conditionID: nil)
         tm.enqueue(t1)
         tm.enqueue(t2)
         #expect(tm.visibleToasts.count == 2)
@@ -32,7 +32,7 @@ struct ToastManagerConditionTests {
     @Test("isConditionAsserted returns true while toast visible")
     func test_isConditionAsserted_trueWhileVisible() {
         let tm = ToastManager()
-        let toast = PhospheneToast(
+        let toast = UzumeToast(
             severity: .degradation, copy: "Silence", duration: .infinity, conditionID: "silence.extended")
         tm.enqueue(toast)
         #expect(tm.isConditionAsserted("silence.extended") == true)
@@ -41,7 +41,7 @@ struct ToastManagerConditionTests {
     @Test("isConditionAsserted returns false after dismissByCondition")
     func test_isConditionAsserted_falseAfterDismiss() {
         let tm = ToastManager()
-        let toast = PhospheneToast(
+        let toast = UzumeToast(
             severity: .degradation, copy: "Silence", duration: .infinity, conditionID: "silence.extended")
         tm.enqueue(toast)
         tm.dismissByCondition("silence.extended")

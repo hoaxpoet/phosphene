@@ -2,7 +2,7 @@
 //
 // Engine-level guards that prevent the literal-44100 regression cataloged
 // as Failed Approach #52. The app-layer call sites (StemSeparator.separate,
-// DefaultBeatGridAnalyzer.analyzeBeatGrid) live in `PhospheneApp` and are
+// DefaultBeatGridAnalyzer.analyzeBeatGrid) live in `UzumeApp` and are
 // not directly reachable from this SPM test target; what *is* reachable is
 // the rate-aware `StemSampleBuffer` API the app threads tapSampleRate
 // through. If the buffer ever silently falls back to its stored 44100
