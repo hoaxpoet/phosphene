@@ -172,6 +172,7 @@
 		K10002 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20002; };
 		K10003 /* SettingsMigrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20003; };
 		K10900 /* IdentityMigrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20900; };
+		K10902 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = K20902; };
 		K10004 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20004; };
 		K10010 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20010; };
 		K10012 /* VisualsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20012; };
@@ -375,6 +376,7 @@
 		K20002 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		K20003 /* SettingsMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMigrator.swift; sourceTree = "<group>"; };
 		K20900 /* IdentityMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityMigrator.swift; sourceTree = "<group>"; };
+		K20902 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		K20004 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		K20010 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		K20012 /* VisualsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualsSettingsSection.swift; sourceTree = "<group>"; };
@@ -441,6 +443,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				I10007 /* Localizable.strings in Resources */,
+				K10902 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -461,6 +464,7 @@
 		A40002 /* PhospheneApp */ = {
 			isa = PBXGroup;
 			children = (
+				K20902 /* Assets.xcassets */,
 				A20001 /* PhospheneApp.swift */,
 				A20002 /* ContentView.swift */,
 				A20031 /* VisualizerEngine.swift */,
@@ -1231,6 +1235,7 @@
 				DEVELOPMENT_TEAM = 2LBTN9PB4Z;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PhospheneApp/Info.plist;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				PRODUCT_MODULE_NAME = PhospheneApp;
 				PRODUCT_NAME = Uzume;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
@@ -1261,6 +1266,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PhospheneApp/Info.plist;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				PRODUCT_MODULE_NAME = PhospheneApp;
 				PRODUCT_NAME = Uzume;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
