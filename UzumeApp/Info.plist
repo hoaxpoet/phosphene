@@ -7,7 +7,8 @@
 	     INFOPLIST_KEY_* build settings: this target sets an explicit
 	     INFOPLIST_FILE, and the file wins over the generated keys — setting them
 	     in the pbxproj silently left CFBundleName as $(PRODUCT_NAME). The bundle
-	     on disk stays Uzume.app until RN.2 renames the target. -->
+	     on disk stays Uzume.app; RN.2 renamed the target to UzumeApp
+	     without touching PRODUCT_NAME. -->
 	<key>CFBundleName</key>
 	<string>Uzume</string>
 	<key>CFBundleDisplayName</key>

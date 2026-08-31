@@ -77,8 +77,8 @@ osascript -e 'tell application id "io.uzume.mac" to quit'; pkill -x Uzume
 ```
 
 Address it **by bundle id**. At RN.1 the product became `Uzume.app` with executable
-`Uzume`, so the pre-rename incantations (`tell application "UzumeApp"`,
-`pkill -x UzumeApp`) silently match nothing and leave the blocker running — the
+`Uzume`, so the pre-rename incantations (`tell application "PhospheneApp"`,
+`pkill -x PhospheneApp`) silently match nothing and leave the blocker running — the
 next test run then fails for a reason the command you just ran appeared to rule out.
 If a wedged instance ignores `quit` outright, `kill -9 <pid>` from
 `pgrep -f 'Uzume.app/Contents/MacOS'` is the escape hatch.
@@ -120,7 +120,7 @@ security delete-generic-password -s io.uzume.spotify ~/Library/Keychains/login.k
 
 **3. Update the Spotify redirect URI — on Spotify's side.** This one is not in the repo and
 no sweep can fix it. The app now sends `uzume://spotify-callback`, but an app registration
-created before the rename still whitelists `uzume://spotify-callback`, and Spotify rejects
+created before the rename still whitelists `phosphene://spotify-callback`, and Spotify rejects
 the login with **"redirect_uri: Not matching configuration"** *after* the user has already typed
 their password — so it reads like a credentials failure rather than a config one. On
 developer.spotify.com/dashboard → your app → Settings → Redirect URIs, add
@@ -128,9 +128,43 @@ developer.spotify.com/dashboard → your app → Settings → Redirect URIs, add
 pre-rename build working.
 
 **4. Nothing to do for settings or the stem cache.** `IdentityMigrator` runs at launch and
-carries the UserDefaults domain plus `~/Library/Application Support/Uzume` →
+carries the UserDefaults domain plus `~/Library/Application Support/Phosphene` →
 `.../Uzume` (the stem cache — hundreds of MB, each entry an ML separation pass). It is
 idempotent and never overwrites a value already set under the new identity.
+
+### After the internal rename (RN.2) — one-time, per checkout
+
+RN.2 renamed the directories, so anything holding an absolute path into the old tree is
+stale. None of this migrates itself.
+
+**1. Delete the SPM build caches.** `git mv` moves untracked files too, so
+`UzumeEngine/.build` arrived under the new name still recording the old one. The symptom is
+`precompiled file … was compiled with module cache path …/PhospheneEngine/.build/…, but the
+path is currently …/UzumeEngine/.build/…` followed by `missing required module 'SwiftShims'`.
+
+```bash
+rm -rf UzumeEngine/.build UzumeTools/.build
+```
+
+**2. Expect a new DerivedData directory.** Xcode hashes it from the project path, so the build
+lands in `UzumeApp-<newhash>` and the old `PhospheneApp-*` directories are dead weight. Prune
+them — and never glob `DerivedData/*App-*` when launching a built app, or you will run a stale
+binary (memory `feedback_never_glob_deriveddata`).
+
+**3. Worktrees created before RN.2 cannot be served fixtures.**
+`Scripts/link_fixtures.sh` resolves the gitignored trees against the **primary** checkout by
+path, so while `main` still holds `PhospheneEngine/`, a renamed worktree asks for
+`UzumeEngine/Tests/Fixtures` and gets a hard `required tree is EMPTY in the primary checkout`
+error. This clears the moment RN.2 lands on `main`; until then a worktree that was renamed by
+`git mv` already carries its fixtures and needs no linking.
+
+**4. Recreate `UzumeApp/Uzume.local.xcconfig`** if Spotify connect starts failing — it is
+gitignored, and the file you had was named `Phosphene.local.xcconfig`. Same contents (see
+§Spotify connector setup step 4).
+
+**Nothing changed about identity.** `PRODUCT_NAME` is still `Uzume`, the bundle is still
+`Uzume.app` with bundle ID `io.uzume.mac`, and TCC grants, the keychain and the Spotify
+redirect URI are untouched by RN.2 — the RN.1 steps above are not repeated.
 
 **Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `UzumeApp/Uzume.xcconfig`.
 

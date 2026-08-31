@@ -271,7 +271,7 @@ answering a different question than the column header implied.
 
 **⚠ This also scopes BUG102.1's headline.** bleed's F 0.99 / CMLt 1.00 is a real result **over
 its first ~30 s**, not over the full track — its ground truth was extended full-length by madmom
-but the grid was never longer than 30 s. The conclusion there ("Uzume's grid was right, suite
+but the grid was never longer than 30 s. The conclusion there ("Phosphene's grid was right, suite
 4 was never a tracking problem") stands for the opening of the track and should be quoted with
 that scope.
 
