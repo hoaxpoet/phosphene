@@ -37,8 +37,6 @@ enum IdentityMigrator {
     static let legacyBundleID = "com.phosphene.app"
     static let legacyAppSupportDirName = "Phosphene"
     static let currentAppSupportDirName = "Uzume"
-    static let legacyKeychainService = "com.phosphene.spotify"
-    static let currentKeychainService = "io.uzume.spotify"
 
     // MARK: - API
 
