@@ -1,4 +1,4 @@
-/* Phosphene — Localizable.strings (en)
+/* Uzume — Localizable.strings (en)
    Canonical source for all user-facing strings.
    Keys follow the convention: <context>.<case_or_element>[.<sub_element>]
    Never use jargon: no MPSGraph, FFT, tap, DRM, sandbox, NSURLError in values.
@@ -21,12 +21,12 @@
 
 // MARK: - §9.1 Permission errors
 
-"error.permission.screen_capture.headline" = "Phosphene needs permission to hear music playing on your Mac.";
-"error.permission.screen_capture.body"     = "To follow along with your music, Phosphene listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
+"error.permission.screen_capture.headline" = "Uzume needs permission to hear music playing on your Mac.";
+"error.permission.screen_capture.body"     = "To follow along with your music, Uzume listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
 "error.permission.screen_capture.why_label" = "Why does this need screen recording permission?";
-"error.permission.screen_capture.why_body"  = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Phosphene uses only the audio portion.";
+"error.permission.screen_capture.why_body"  = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Uzume uses only the audio portion.";
 
-"error.permission.applescript.headline" = "Phosphene needs permission to talk to Apple Music.";
+"error.permission.applescript.headline" = "Uzume needs permission to talk to Apple Music.";
 "error.permission.applescript.body"     = "You can grant this in System Settings \u2192 Privacy & Security \u2192 Automation.";
 
 // MARK: - §9.2 Connection errors
@@ -38,9 +38,9 @@
 "error.connection.no_playlist.status"   = "Checking every 2 seconds\u2026";
 
 "error.connection.spotify_url_malformed"    = "That doesn’t look like a Spotify playlist link.";
-"error.connection.spotify_url_is_track"     = "That’s a track, not a playlist. Phosphene needs a playlist URL.";
-"error.connection.spotify_url_is_album"     = "That’s an album, not a playlist. Phosphene needs a playlist URL.";
-"error.connection.spotify_url_is_artist"    = "That’s an artist page, not a playlist. Phosphene needs a playlist URL.";
+"error.connection.spotify_url_is_track"     = "That’s a track, not a playlist. Uzume needs a playlist URL.";
+"error.connection.spotify_url_is_album"     = "That’s an album, not a playlist. Uzume needs a playlist URL.";
+"error.connection.spotify_url_is_artist"    = "That’s an artist page, not a playlist. Uzume needs a playlist URL.";
 "error.connection.spotify_url_unknown"      = "That link doesn’t look like a Spotify playlist.";
 
 /* Headline only. CA-Shared-FU-1: retry progress (e.g. "attempt 2 of 3") appended
@@ -58,7 +58,7 @@
 "error.preparation.rate_limited"        = "Preparing more slowly than usual";
 
 "error.preparation.network_offline.headline"    = "You’re offline.";
-"error.preparation.network_offline.body"        = "Phosphene can’t fetch previews.";
+"error.preparation.network_offline.body"        = "Uzume can’t fetch previews.";
 
 "error.preparation.stem_failure"    = "Skipped — couldn’t analyze";
 
@@ -75,7 +75,7 @@
 
 "error.playback.silence_brief"          = "Listening\u2026";
 "error.playback.silence_extended"       = "Haven’t heard anything for a while. Is the music playing?";
-"error.playback.tap_reinstall_failed"   = "Couldn’t re-hear the audio. Try quitting and re-opening Phosphene.";
+"error.playback.tap_reinstall_failed"   = "Couldn’t re-hear the audio. Try quitting and re-opening Uzume.";
 "error.playback.mpsgraph_failure"       = "Analyzer hiccup — using backup mode.";
 /* %d = sample rate in Hz, e.g. 96000 */
 "error.playback.sample_rate_mismatch"   = "Audio is at %d Hz. For best results set Audio MIDI Setup to 48 kHz.";
@@ -89,25 +89,25 @@
 
 // MARK: - Audio-stall overlay (silent-tap family — BUG-057/055/058)
 
-"playback.audioStall.headline"      = "Phosphene isn’t hearing any audio";
+"playback.audioStall.headline"      = "Uzume isn’t hearing any audio";
 "playback.audioStall.body"          = "The visualizer is paused because no sound is reaching it. A few things to try:";
 "playback.audioStall.step1"         = "Restart the Mac’s audio engine — paste this into Terminal:";
-"playback.audioStall.step2"         = "If you just rebuilt Phosphene, re-grant Screen & System Audio Recording in System Settings → Privacy & Security, then quit and reopen the app.";
+"playback.audioStall.step2"         = "If you just rebuilt Uzume, re-grant Screen & System Audio Recording in System Settings → Privacy & Security, then quit and reopen the app.";
 "playback.audioStall.step3"         = "Check that the right output device is selected in System Settings → Sound → Output.";
 "playback.audioStall.autoClearHint" = "This message clears itself as soon as audio comes back.";
 
-"a11y.audioStallCard.label"         = "Phosphene is not receiving audio. On-screen steps explain how to restore it.";
+"a11y.audioStallCard.label"         = "Uzume is not receiving audio. On-screen steps explain how to restore it.";
 
 // MARK: - Onboarding
 
-"onboarding.permission.headline"        = "Phosphene needs permission to hear music playing on your Mac.";
-"onboarding.permission.body"            = "To follow along with your music, Phosphene listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
+"onboarding.permission.headline"        = "Uzume needs permission to hear music playing on your Mac.";
+"onboarding.permission.body"            = "To follow along with your music, Uzume listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
 "onboarding.permission.open_settings"   = "Open System Settings";
 "onboarding.permission.why_label"       = "Why does this need screen recording permission?";
-"onboarding.permission.why_body"        = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Phosphene uses only the audio portion.";
+"onboarding.permission.why_body"        = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Uzume uses only the audio portion.";
 
 "onboarding.photosensitivity.headline"      = "Heads up";
-"onboarding.photosensitivity.body"          = "Phosphene renders high-contrast, fast-changing visuals. If you’re sensitive to flashing lights or strobe patterns, enable Reduce motion in Settings before starting.";
+"onboarding.photosensitivity.body"          = "Uzume renders high-contrast, fast-changing visuals. If you’re sensitive to flashing lights or strobe patterns, enable Reduce motion in Settings before starting.";
 "onboarding.photosensitivity.enable_reduce" = "Enable Reduce motion";
 "onboarding.photosensitivity.acknowledge"   = "I understand";
 
@@ -129,7 +129,7 @@
 "connector.picker.apple_music_disabled"     = "Open Apple Music first";
 "connector.picker.open_apple_music_button"  = "Open Apple Music";
 "connector.picker.local_folder_disabled"    = "Coming later";
-"connector.picker.footer"                   = "Phosphene reads what’s playing. It doesn’t control playback.";
+"connector.picker.footer"                   = "Uzume reads what’s playing. It doesn’t control playback.";
 "connector.picker.local_placeholder"        = "Local Folder connector coming later.";
 
 // MARK: - Apple Music connection
@@ -141,8 +141,8 @@
 "connector.apple_music.not_running.headline" = "Apple Music isn’t running.";
 "connector.apple_music.not_running.body"    = "Open it, start a playlist, then come back.";
 "connector.apple_music.open_button"         = "Open Apple Music";
-"connector.apple_music.permission.headline" = "Phosphene needs permission to read Apple Music.";
-"connector.apple_music.permission.body"     = "Open System Settings \u2192 Privacy \u2192 Automation and enable Phosphene.";
+"connector.apple_music.permission.headline" = "Uzume needs permission to read Apple Music.";
+"connector.apple_music.permission.body"     = "Open System Settings \u2192 Privacy \u2192 Automation and enable Uzume.";
 "connector.apple_music.permission.button"   = "Open System Settings";
 "connector.apple_music.error.headline"      = "Something went wrong talking to Apple Music.";
 "connector.apple_music.try_again_button"    = "Try again";
@@ -156,14 +156,14 @@
 "connector.spotify.recognized_headline" = "Spotify playlist recognized";
 "connector.spotify.continue_button"     = "Continue";
 "connector.spotify.connecting_button"   = "Connecting\u2026";
-"connector.spotify.not_found"           = "Phosphene couldn’t find that playlist. It may be private or deleted.";
+"connector.spotify.not_found"           = "Uzume couldn’t find that playlist. It may be private or deleted.";
 "connector.spotify.private_playlist"    = "That playlist is private. Paste a link to a public playlist.";
 "connector.spotify.auth_failure"        = "Couldn’t connect to Spotify. Check your configuration and try again.";
 /* DEBUG-only developer-setup copy (see SpotifyConnectionViewModel.authFailureMessage).
    Shipped builds show connector.spotify.auth_failure instead. */
-"connector.spotify.auth_failure.missing_client_id" = "No Spotify Client ID in this build. Create PhospheneApp/Phosphene.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again.";
+"connector.spotify.auth_failure.missing_client_id" = "No Spotify Client ID in this build. Create UzumeApp/Uzume.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again.";
 "connector.spotify.login_required_headline" = "Log in to Spotify";
-"connector.spotify.login_required_body"     = "Phosphene needs your Spotify account to load this playlist. Your login is saved securely so you won’t need to do this again.";
+"connector.spotify.login_required_body"     = "Uzume needs your Spotify account to load this playlist. Your login is saved securely so you won’t need to do this again.";
 "connector.spotify.login_button"            = "Log in with Spotify";
 "connector.spotify.waiting_for_callback_headline" = "Waiting for Spotify…";
 "connector.spotify.waiting_for_callback_body"     = "Finish logging in on the page that just opened, then come back here.";
@@ -238,7 +238,7 @@
 
 // MARK: - Idle (QR.4)
 
-"appName"                               = "Phosphene";
+"appName"                               = "Uzume";
 
 // MARK: - Plan preview empty / reactive states (QR.4)
 
@@ -352,7 +352,7 @@
 "settings.about.macos.label"    = "macOS";
 "settings.about.gpu.label"      = "GPU";
 "settings.about.license.title"  = "License";
-"settings.about.license.body"   = "MIT License. © 2026 Phosphene contributors.";
+"settings.about.license.body"   = "MIT License. © 2026 Uzume contributors.";
 "settings.about.copy_debug_info" = "Copy debug info";
 
 // MARK: - Accessibility (a11y) — VoiceOver labels and hints. (U.9)
@@ -386,9 +386,9 @@
 "lf.open.panel.title"                   = "Choose a local audio file";
 
 "lf.open.error.unsupported.title"           = "That file can’t be played";
-"lf.open.error.unsupported_format"          = "Phosphene supports .m4a, .mp3, and .flac files.";
+"lf.open.error.unsupported_format"          = "Uzume supports .m4a, .mp3, and .flac files.";
 "lf.open.error.multiple_files"              = "Drop one file at a time.";
-"lf.open.error.unreadable"                  = "Phosphene couldn’t read that file. Try a different one.";
+"lf.open.error.unreadable"                  = "Uzume couldn’t read that file. Try a different one.";
 
 "lf.toast.switched_to_local_file"           = "Now playing local file: %@";
 
@@ -408,15 +408,15 @@
 "lf.open.folder.panel.title"                = "Choose a folder of audio files";
 
 "lf.open.error.empty_folder"                = "That folder doesn’t have any playable audio files.";
-"lf.open.error.m3u_parse_failed"            = "Phosphene couldn’t read that playlist. Check the file and try again.";
+"lf.open.error.m3u_parse_failed"            = "Uzume couldn’t read that playlist. Check the file and try again.";
 
 /* %1$d = files queued (capped at 200), %2$d = total files found */
 "lf.queue.truncation.title"                 = "Queued the first %1$d tracks";
-"lf.queue.truncation.body"                  = "Phosphene queued the first %1$d of %2$d audio files. Open a smaller folder to listen to the whole batch in one session.";
+"lf.queue.truncation.body"                  = "Uzume queued the first %1$d of %2$d audio files. Open a smaller folder to listen to the whole batch in one session.";
 
 // MARK: - LF.5.fix D-LF5-3 — Local-file transport bar
 // Hover-revealed Stop / Prev / Play-Pause / Next at the bottom of PlaybackView
-// for local-file sessions. UX-2 carve-out: Phosphene IS the player for LF.
+// for local-file sessions. UX-2 carve-out: Uzume IS the player for LF.
 
 "playback.transport.stop.tooltip"           = "Stop and end session";
 "playback.transport.stop.a11y"              = "Stop playback and end session";
@@ -436,7 +436,7 @@
 
 "lf_source.nav.title"                       = "Local files";
 "lf_source.headline"                        = "Open from your library";
-"lf_source.subhead"                         = "Pick what you'd like to play. Phosphene cues it up from disk.";
+"lf_source.subhead"                         = "Pick what you'd like to play. Uzume cues it up from disk.";
 
 "lf_source.tile.folder.title"               = "Folder";
 "lf_source.tile.folder.subtitle"            = "Read every supported file in alphabetical order";
@@ -469,7 +469,7 @@
 
 "settings.lf.cache.title"                   = "Cache";
 "settings.lf.cache.size_label"              = "On disk";
-"settings.lf.cache.body"                    = "Phosphene stores stem analysis for files it has played before so they start instantly the next time. Clearing the cache frees disk space but the next play of each file will take ~2 seconds to re-prepare.";
+"settings.lf.cache.body"                    = "Uzume stores stem analysis for files it has played before so they start instantly the next time. Clearing the cache frees disk space but the next play of each file will take ~2 seconds to re-prepare.";
 "settings.lf.cache.clear_button"            = "Clear cache";
 "settings.lf.cache.confirm_title"           = "Clear local-file cache?";
 "settings.lf.cache.confirm_button"          = "Clear";
