@@ -219,6 +219,25 @@ Only after `IDENTICAL` should the old directory go. The per-worktree slugs
 (`…-phosphene--claude-worktrees-*`) hold **session transcripts only, no memory**;
 renaming them just preserves `/resume` for those worktrees and is optional.
 
+**Repoint the fixture/weight symlinks — the step that actually fails the gate.**
+`Scripts/link_fixtures.sh` populates a worktree's gitignored assets as **absolute**
+symlinks into the primary checkout. Renaming the checkout dangles every one of
+them, and the failure does not look like a path problem: `swift test` reports
+dozens of *test failures* (`StemModelTests` cannot load weights, tempo fixtures
+"do not exist"), which reads as a code regression. `link_fixtures.sh` cannot
+repair it either, because after RN.2 it looks for `UzumeEngine/…` in a primary
+still on pre-rename `main`. Repoint them in place:
+
+```bash
+OLD=/Users/braesidebandit/Documents/Projects/phosphene/PhospheneEngine
+NEW=/Users/braesidebandit/Documents/Projects/uzume/PhospheneEngine
+while IFS= read -r l; do t=$(readlink "$l"); case "$t" in "$OLD"*) ln -sfn "$NEW${t#$OLD}" "$l";; esac; done < <(find . -type l)
+find . -type l ! -exec test -e {} \; -print   # expect only .claude/skills/* (pre-existing)
+```
+
+That was 961 links in the RN.3 worktree. Adjust `NEW` to wherever the primary's
+engine directory actually is — it stays `PhospheneEngine/` until RN.2 merges.
+
 Finally: delete the stale `PhospheneApp-*` / `UzumeApp-*` DerivedData, and re-run
 `Scripts/closeout_evidence.sh` once from the renamed tree.
 
