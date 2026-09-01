@@ -193,7 +193,7 @@ at all, and whether PT Sans replaces the system font in Settings and onboarding 
 
 `tokens.css` publishes a complete light palette and the Swift package is built on
 adaptive system colours, so upstream's intent is clearly that the app adapts. DS.1
-decided otherwise (Matt, 2026-09-01, D-231 option A): every screen keeps the near-black
+decided otherwise (Matt, 2026-09-01, D-232 option A): every screen keeps the near-black
 canvas whatever macOS is set to, and the app root sets `.preferredColorScheme(.dark)`.
 
 Reasons: the ≥4.5:1 overlay contrast floor was measured against a dark composite and

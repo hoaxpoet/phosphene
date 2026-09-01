@@ -59,7 +59,7 @@ img {{ display:block; width:100%; height:auto; }}
 accessibility identifier, copy string, keyboard shortcut or test expectation was touched. Every
 pair below is the same screen at the same window size, before and after the token swap.</p>
 <p><strong>before</strong> is <code>main</code> at <code>caa69638</code>. <strong>after</strong> is the DS.1 branch.
-Uzume is always dark (D-231 option A), so there is one appearance to review. This Mac is set to
+Uzume is always dark (D-232 option A), so there is one appearance to review. This Mac is set to
 <em>Light</em> appearance, which is why the window chrome changes.</p>
 <p class="warn"><strong>Twelve of twenty states are captured.</strong> Eight are not: four need a
 live connector credential, a failing track or a revoked permission grant to reach at all, three are

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check_design_token_drift.sh — DS.1 / D-231.
+# check_design_token_drift.sh — DS.1 / D-232.
 #
 # `UzumeApp/DesignSystem/UzumeTokens.swift` is a vendored copy of the design
 # system's token file (D-228: uzume-site owns the design system, the app only

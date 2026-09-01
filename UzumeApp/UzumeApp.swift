@@ -64,7 +64,7 @@ struct UzumeApp: App {
                     accessibilityState: accessibilityState
                 )
             )
-            // DS.1 / D-231 — Uzume is always dark. The token roles in
+            // DS.1 / D-232 — Uzume is always dark. The token roles in
             // `UzumeAppColor` are pinned to the dark block of tokens.css, so the
             // native controls composed beside them must resolve dark too; without
             // this a Mac set to Light Mode renders light buttons and pickers over

@@ -79,7 +79,7 @@ behaviour or hierarchy and each needs its own review; DS.1 deliberately does not
 
 ## Recently Completed
 
-### Increment DS.1 — the app adopts UzumeTokens; presentation only 🔨 M7 pending (2026-09-01, D-231)
+### Increment DS.1 — the app adopts UzumeTokens; presentation only 🔨 M7 pending (2026-09-01, D-232)
 
 **Done-when (met, except the review):** the app has one source of visual truth; no hard-coded
 `Color.black` / `Color.white` / literal `cornerRadius:` survives outside the exempt diagnostic
@@ -87,7 +87,7 @@ paths; `OverlayBackdropStyle` is `PerformanceBackdrop` with its measured numbers
 test file was modified (`git diff --stat main -- UzumeAppTests UzumeEngine/Tests` is empty).
 **Not met:** Matt's M7 visual review — see below.
 
-**The token source is vendored, not depended on** (D-231). `UzumeApp/DesignSystem/UzumeTokens.swift`
+**The token source is vendored, not depended on** (D-232). `UzumeApp/DesignSystem/UzumeTokens.swift`
 is byte-identical to `uzume-site@03d5478` under a provenance header (repo, path, commit, SHA-256);
 `Scripts/check_design_token_drift.sh` verifies the vendored body against its recorded hash always
 and against upstream when a sibling checkout is present (`SKIP`/0 when absent, so a fresh clone and
