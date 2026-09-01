@@ -364,7 +364,8 @@ public final class ArachneState: @unchecked Sendable {
     var listenLiftEMA: Float = 0
 
     #if DEBUG
-    /// Force the spider active regardless of organic trigger conditions. DEBUG builds only.
+    /// Force the spider active regardless of organic trigger conditions. Available in all
+    /// build configurations (the DEBUG gate was removed at BUG079.1 so release tests can use it).
     /// Does not modify the organic trigger accumulator or cooldown state.
     public var forceSpiderActive: Bool = false
     #endif
