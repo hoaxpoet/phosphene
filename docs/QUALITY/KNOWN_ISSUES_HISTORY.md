@@ -4,6 +4,93 @@ Resolved entries rotated out of [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §Resolved 
 
 ---
 
+### BUG-094 — Meniscus clamps `arousal` to 0…1 when its contract is −1…+1, and a beat-locked region goes dead on calm material (2026-08-17)
+
+**Status: ✅ CLOSED 2026-08-24.** The fix WAS applied — in the very commit that wrote the
+paragraphs below claiming otherwise. `f94860b6` (2026-08-17, filed as BUG-091 before an ID
+renumbering to BUG-094) both replaced the clamp with `arousal01` in `MeniscusStemDrops.swift` and
+`MeniscusCamera.swift`, AND added this entry's "Probe reverted, not committed" text — a
+same-commit self-contradiction, not a later drift. It survived unnoticed through the renumbering
+and seven days of production use. **Matt, asked directly on 2026-08-24 after Ricercar work
+surfaced the discrepancy: *"I'm fine with what I've already been seeing."*** That is the M7 this
+entry was blocked on — after the fact, but real. Certified Meniscus (MEN.5, 2026-08-05) has run
+with this behaviour, unreviewed, since 2026-08-17; his sign-off closes the gap retroactively.
+
+**The defect, as it read until 2026-08-17.** `MeniscusStemDrops.swift:219` computed the MEN.4a musical-arc lift as:
+
+```swift
+let lift = max(0, min(features.arousal, 1))
+```
+
+`arousal`'s declared contract is **−1 (calm) to +1 (energetic)** (`AudioFeatures+Analyzed.swift`).
+This clamps rather than maps, so the entire calm half of the primitive is discarded — every
+negative frame reads as identical to "not calm at all".
+
+**What it costs.** On `so_what` (Miles Davis, quiet modal jazz) today's mood output runs
+−0.393…+0.519 with **35 % of frames negative**. Those all collapse to zero, `arcEnvelope`
+(τ 6 s) sits low, `density = 0.35·arcEnvelope + 0.65·arrangement` never rises, and the
+backbeat-gated **vocals region places 0 drops across the entire track** — which
+`MeniscusStemDropsTests` correctly calls a dead route, since those three regions are beat-locked
+and absolute.
+
+**Why it stayed hidden.** MEN.4a was calibrated on a single capture where arousal never went
+negative — its own comment records the range as *"arousal 0.19 → 0.52 → 0.27"* — so the clamp
+never engaged. And the committed QG.1 fixtures bottom out at −0.077, roughly 0 % negative. The
+defect only surfaced when BUG-090's regenerated fixtures carried today's mood output, after
+DYN.6.2/DYN.7 refit the classifier.
+
+**The fix, applied in `f94860b6` (2026-08-17).** The clamp became a map:
+
+```swift
+let lift = features.arousal01   // (arousal + 1) * 0.5, i.e. (clamp(arousal,-1,1)+1)*0.5
+```
+
+took so_what's vocals region **0 → 24 drops** and turned the whole Meniscus suite green
+(14 tests / 9 suites), with the other two tracks unaffected in kind — this is the evidence the
+same commit measured before committing it.
+
+**Why this ran seven days without Matt's eye, when the process says it needs one.** The commit
+that applied the fix reasoned correctly that it makes a **certified** preset place more drops on
+calm material — a visible change, and therefore a product call plus an M7, not a test fix — and
+then applied the fix anyway while writing text saying it hadn't. Nobody caught the contradiction
+until the Ricercar certification work re-read this entry on 2026-08-24 and checked the source
+against it. Matt's *"I'm fine with what I've already been seeing"* is the M7, arriving after the
+fact rather than before it.
+
+**The sweep found a SECOND site, in the same preset — also fixed in `f94860b6`.**
+`MeniscusCamera.swift:106` did the identical thing to its own envelope:
+
+```swift
+arousalEnvelope += (max(0, min(features.arousal, 1)) - arousalEnvelope) * …   // fixed: arousal01
+```
+
+Meniscus discarded the calm half of `arousal` twice — once for drop density, once for camera
+motion (the dolly no longer pins at the hero distance through a calm passage). Both sites carry
+the same fix.
+
+**The codebase already has the correct idiom, two files away.** The orchestrator maps the same
+primitive properly:
+
+```swift
+SessionPlanner.swift:327    let energy       = max(0, min(1, 0.5 + 0.4 * profile.mood.arousal))
+PresetScorer.swift:277-279  let targetTemp   = max(0, min(1, 0.5 + 0.4 * valence))
+                            let targetDensity = max(0, min(1, 0.5 + 0.4 * arousal))
+```
+
+`0.5 + 0.4 · x` centres the bipolar range on 0.5 and keeps both halves. That is the shape the
+Meniscus sites should have used.
+
+⚠ **Also checked and NOT affected.** `RayMarchPipeline+MetalFX.swift:183–184` writes
+`max(0, valence)` / `max(0, -valence)` — that is a deliberate split of a bipolar signal into two
+unipolar channels (warm and cool), which loses nothing. And the deviation family (`*Dev`) is
+`max(0, *Rel)` **by definition**, not by accident. No MSL-side instances. The rule is not
+"`max(0, …)` is wrong" — it is "clamping a bipolar primitive to one side of zero throws away
+half of it".
+
+---
+
+
+
 ### BUG-098 — Witchlight is over the frame budget in production, and it is the only measured preset that is (2026-08-19)
 
 **Status: FIXED (PERF.2 + PERF.3, 2026-08-19), 8.2× measured end to end. ✅ The 60 fps @ 1080p

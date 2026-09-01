@@ -858,60 +858,8 @@ whole-app defect that no preset change can fix. The size change alone does not e
 Suite 1866/1866, lint 0.
 
 ### Increment CHR.3f — recurate the Stave reference set ✅ (2026-08-17)
-
-The CHR.1.3 set was five renders of the Milkdrop source (beaded cyan traces on a ruled field)
-and described the preset Matt rejected. Comparing the rebuilt Stave against it produced FAILs
-by design, so `compare_render` had stopped being a gate at all.
-
-**Fully recurated, and the set is now in-engine throughout** (D-065 permits in-engine capture):
-four positives from the M7-signed-off build across four materials, plus **four anti-references
-that are each a real measured failure from CHR.3b–e** — the fixed-fan rainbow layer cake, the
-equalised fringe comb, the clipped off-frame overflow, and zero dispersion. Every one is
-reproducible: the render harness keeps `STAVE_RENDER_TILT` / `_FANMIN` / `_FANMAX` / `_KNEE`
-overrides specifically so an anti-reference can be regenerated rather than remembered, and the
-README records the exact command per row.
-
-`CheckVisualReferences` clean; `compare_render` 8 references × 3 frames, all eight traits PASS
-including all four anti-reference rows. Deliberately not made: an image of the retired
-scrolling plot — its code is deleted and rebuilding it to photograph a preset nobody should
-imitate is not worth the increment.
-
 ### Increment CHR.3e — frame fit ✅ (2026-08-17)
-
-**Matt's first positive M7 on Stave** (*"looks good … otherwise, it works for me"*), with one
-change: the waves should not leave the frame on energetic music, while still covering most of
-the vertical area. Peak `|y|` measured at **1.53–1.98** against a frame of 1.0, so his initial
-2–5 % zoom moves almost nothing (1.83 → 1.75, 125 → 113 overflowing frames of 360) and full
-containment by zoom needs 35–50 %, which he ruled out as excessive.
-
-Shipped a **piecewise soft ceiling at 0.75 NDC with zoom left at 1.0**: untouched below the
-knee, folding only the excursion above it. Across five tracks peak lands at 0.999–1.000 with
-**zero** frames drawn outside the frame, and Take Five — which never reached the edge — is
-bit-identical at 0.510. A plain `tanh` was tried and rejected (compresses through the origin,
-−12 % at mid-amplitude, shrinking the approved look). Flash gate re-run: MEASURED, 0.00
-flashes/s, SAFE.
-
-Also confirmed from that session: **CHR.3c's `waveform_occupancy` works in production** —
-published on 2031/2032 frames, live range 0.067–0.153 against 0.073–0.124 offline.
-
 ### Increment CHR.3c — the routable waveform-derived primitive ✅ (2026-08-17)
-
-`FeatureVector.waveformOccupancy` (float 23, **reclaimed from `_pad0`** so the struct stays
-208 bytes and no field moves offset — the pattern that reclaimed floats 39, 40–41 and 43).
-Computed by `RenderPipeline` from the same `waveformBuffer` preset fragments bind at slot 2,
-recorded to `features.csv`, and registered in `AudioRoutePrimitives`. Stave's fan now reads it
-instead of a private copy, so what the preset would declare is literally what it reads; fan
-ranges are unchanged to within rounding (Take Five 0.076–0.157, Clair De Lune 0.157–0.398).
-
-**Why a new primitive rather than an existing one.** Measured against every recorded primitive
-on Carry The Zero, the quantity correlates with none: best existing correlate `arousal`
-r = +0.395, and `spectralDensity` runs **negative** at −0.364. **Why `RenderPipeline` and not
-`MIRPipeline`:** the faithful value needs time-domain samples and the MIR path receives only
-FFT magnitudes — a spectral reconstruction reached r = +0.628, close but not substitutable
-without changing what the preset draws. **The tilt exponent is load-bearing:** defined as a pure
-ratio it normalises every track to ~1 and destroys quiet-vs-dense discrimination (measured:
-Take Five 0.076–0.158 → 0.184–0.358, the wrong direction).
-
 ### Increment CHR.3d — regenerate the route-coverage fixtures ✅ (2026-08-19; done at BUG-090 / CHR.3g)
 
 **Blocks certification of every waveform-driven preset, Stave included.** The committed
