@@ -35,7 +35,7 @@ struct FullScreenErrorView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            UzumeAppColor.canvas.ignoresSafeArea()
 
             VStack(spacing: 28) {
                 Spacer()
@@ -64,14 +64,14 @@ struct FullScreenErrorView: View {
             Text(headline)
                 .font(.title2)
                 .fontWeight(.medium)
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let body = LocalizedCopy.bodyString(for: error) {
                 Text(body)
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(UzumeAppColor.textTertiary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -88,6 +88,7 @@ struct FullScreenErrorView: View {
                     action()
                 }
                 .buttonStyle(.borderedProminent)
+                .uzumeTint()
                 .keyboardShortcut(.defaultAction)
             }
 
@@ -95,7 +96,7 @@ struct FullScreenErrorView: View {
                 Button(LocalizedCopy.cta(secondaryKey)) {
                     action()
                 }
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(UzumeAppColor.textTertiary)
                 .font(.subheadline)
             }
         }
@@ -122,7 +123,7 @@ struct FullScreenErrorView: View {
         case .fatal:       return .red
         case .warning:     return .orange
         case .degradation: return .yellow
-        case .info:        return .white
+        case .info:        return UzumeAppColor.textPrimary
         }
     }
 }

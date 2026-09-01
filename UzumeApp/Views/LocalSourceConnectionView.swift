@@ -33,7 +33,7 @@ struct LocalSourceConnectionView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            UzumeAppColor.canvas.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer().frame(minHeight: 24)
@@ -66,10 +66,10 @@ struct LocalSourceConnectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(String(localized: "lf_source.headline"))
                 .font(.system(size: 28, weight: .medium))
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
             Text(String(localized: "lf_source.subhead"))
                 .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(UzumeAppColor.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -104,7 +104,7 @@ struct LocalSourceConnectionView: View {
     private var dropHint: some View {
         Text(String(localized: "lf_source.drop_hint"))
             .font(.system(size: 12))
-            .foregroundColor(.white.opacity(0.32))
+            .foregroundColor(UzumeAppColor.textDisabled)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
     }
@@ -146,23 +146,23 @@ private struct LocalSourceActionTile: View {
                 Image(systemName: systemImage)
                     .font(.title2)
                     .frame(width: 32)
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.headline)
-                        .foregroundColor(.white)
+                        .foregroundColor(UzumeAppColor.textPrimary)
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(UzumeAppColor.textTertiary)
                 }
                 Spacer()
             }
             .padding(16)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white.opacity(isHovered ? 0.10 : 0.07))
+                RoundedRectangle(cornerRadius: UzumeAppRadius.md)
+                    .fill(isHovered ? UzumeAppColor.surfaceSelected : UzumeAppColor.surfaceRaised)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: UzumeAppRadius.md))
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }

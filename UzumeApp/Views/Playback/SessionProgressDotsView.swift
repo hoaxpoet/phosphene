@@ -38,7 +38,7 @@ struct SessionProgressDotsView: View {
     private var reactiveDot: some View {
         HStack(spacing: 4) {
             Circle()
-                .fill(Color.white.opacity(pulseOpacity))
+                .fill(UzumeAppColor.Performance.glyph.opacity(pulseOpacity))
                 .frame(width: 10, height: 10)
                 .onAppear {
                     guard !reduceMotion else { return }
@@ -48,7 +48,7 @@ struct SessionProgressDotsView: View {
                 }
             Text(String(localized: "playback.progress.reactive"))
                 .font(.caption2.weight(.medium).monospaced())
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(UzumeAppColor.textTertiary)
         }
     }
 
@@ -57,7 +57,7 @@ struct SessionProgressDotsView: View {
                     progress.currentIndex + 1,
                     progress.totalTracks))
             .font(.caption.monospaced())
-            .foregroundColor(.white.opacity(0.7))
+            .foregroundColor(UzumeAppColor.textSecondary)
     }
 
     private var dotRow: some View {
@@ -79,7 +79,7 @@ struct SessionProgressDotsView: View {
             .overlay {
                 if isCurrent && !reduceMotion {
                     Circle()
-                        .strokeBorder(Color.white.opacity(0.4), lineWidth: 1)
+                        .strokeBorder(UzumeAppColor.Performance.indicatorOutline, lineWidth: 1)
                         .scaleEffect(pulseOpacity > 0.5 ? 1.3 : 1.0)
                         .opacity(pulseOpacity > 0.5 ? 0 : 0.6)
                         .onAppear {
@@ -93,8 +93,8 @@ struct SessionProgressDotsView: View {
     }
 
     private func dotColor(isCurrent: Bool, isPast: Bool) -> Color {
-        if isCurrent { return .white }
-        if isPast { return .white.opacity(0.6) }
-        return .white.opacity(0.25)
+        if isCurrent { return UzumeAppColor.textPrimary }
+        if isPast { return UzumeAppColor.textTertiary }
+        return UzumeAppColor.textDisabled
     }
 }

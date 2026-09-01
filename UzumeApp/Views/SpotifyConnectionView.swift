@@ -22,7 +22,7 @@ struct SpotifyConnectionView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            UzumeAppColor.canvas.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 24) {
                 pasteField
                 stateContent
@@ -48,15 +48,15 @@ struct SpotifyConnectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(String(localized: "connector.spotify.paste_label"))
                 .font(.body)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(UzumeAppColor.textSecondary)
             TextField("", text: $viewModel.text, prompt: Text("https://open.spotify.com/playlist/\u{2026}")
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundColor(UzumeAppColor.textDisabled)
             )
             .textFieldStyle(.plain)
             .font(.system(.body, design: .monospaced))
-            .foregroundColor(.white)
+            .foregroundColor(UzumeAppColor.textPrimary)
             .padding(12)
-            .background(Color.white.opacity(0.07))
+            .background(UzumeAppColor.surfaceRaised)
             .cornerRadius(8)
             .focused($isURLFieldFocused)
             .accessibilityIdentifier("uzume.spotify.urlField")
@@ -72,10 +72,10 @@ struct SpotifyConnectionView: View {
             EmptyView()
         case .parsing:
             HStack(spacing: 8) {
-                ProgressView().controlSize(.mini).tint(.white.opacity(0.4))
+                ProgressView().controlSize(.mini).tint(UzumeAppColor.textDisabled)
                 Text(String(localized: "connector.spotify.checking"))
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(UzumeAppColor.textDisabled)
             }
         case .preview(let id):
             previewCard(playlistID: id)
@@ -106,19 +106,19 @@ struct SpotifyConnectionView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green.opacity(0.8))
+                    .foregroundColor(UzumeAppColor.success.opacity(0.8))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "connector.spotify.recognized_headline"))
                         .font(.headline)
-                        .foregroundColor(.white)
+                        .foregroundColor(UzumeAppColor.textPrimary)
                     Text(playlistID)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(UzumeAppColor.textDisabled)
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.07))
+            .background(UzumeAppColor.surfaceRaised)
             .cornerRadius(10)
 
             let btnLabel = viewModel.isConnecting
@@ -128,6 +128,7 @@ struct SpotifyConnectionView: View {
                 viewModel.connect(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
             .disabled(viewModel.isConnecting)
             .accessibilityIdentifier("uzume.spotify.continueButton")
@@ -148,20 +149,20 @@ struct SpotifyConnectionView: View {
     private func validationMessage(_ text: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.circle")
-                .foregroundColor(.orange.opacity(0.7))
+                .foregroundColor(UzumeAppColor.warning.opacity(0.7))
             Text(text)
                 .font(.body)
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(UzumeAppColor.textTertiary)
         }
     }
 
     private func rateLimitBody(attempt: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                ProgressView().controlSize(.mini).tint(.white.opacity(0.5))
+                ProgressView().controlSize(.mini).tint(UzumeAppColor.textTertiary)
                 Text(LocalizedCopy.string(for: .spotifyRateLimited(attempt: attempt)))
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(UzumeAppColor.textTertiary)
             }
         }
     }
@@ -170,26 +171,27 @@ struct SpotifyConnectionView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
                 Image(systemName: "person.crop.circle.badge.questionmark")
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(UzumeAppColor.textTertiary)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "connector.spotify.login_required_headline"))
                         .font(.headline)
-                        .foregroundColor(.white)
+                        .foregroundColor(UzumeAppColor.textPrimary)
                     Text(String(localized: "connector.spotify.login_required_body"))
                         .font(.body)
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(UzumeAppColor.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.07))
+            .background(UzumeAppColor.surfaceRaised)
             .cornerRadius(10)
 
             Button(String(localized: "connector.spotify.login_button")) {
                 viewModel.login(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("uzume.spotify.loginButton")
         }
@@ -198,19 +200,19 @@ struct SpotifyConnectionView: View {
     private var waitingForCallbackBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                ProgressView().controlSize(.small).tint(.white.opacity(0.6))
+                ProgressView().controlSize(.small).tint(UzumeAppColor.textTertiary)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "connector.spotify.waiting_for_callback_headline"))
                         .font(.headline)
-                        .foregroundColor(.white)
+                        .foregroundColor(UzumeAppColor.textPrimary)
                     Text(String(localized: "connector.spotify.waiting_for_callback_body"))
                         .font(.body)
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(UzumeAppColor.textTertiary)
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.07))
+            .background(UzumeAppColor.surfaceRaised)
             .cornerRadius(10)
         }
     }
@@ -219,20 +221,21 @@ struct SpotifyConnectionView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle")
-                    .foregroundColor(.orange.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.warning.opacity(0.7))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "connector.spotify.error.headline"))
                         .font(.headline)
-                        .foregroundColor(.white)
+                        .foregroundColor(UzumeAppColor.textPrimary)
                     Text(message)
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(UzumeAppColor.textDisabled)
                 }
             }
             Button(String(localized: "connector.spotify.try_again_button")) {
                 viewModel.retry(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
         }
     }

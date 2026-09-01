@@ -93,7 +93,7 @@ public final class LocalFileErrorStore: ObservableObject {
 
 // MARK: - LocalFileErrorBanner
 
-/// GAP F (2026-05-28) inline error surface. Renders a coral pip + the
+/// GAP F (2026-05-28) inline error surface. Renders a danger-toned pip + the
 /// localized message; tap-to-dismiss. Used by IdleView and
 /// LocalSourceConnectionView. No background, no side-stripe, no modal —
 /// just text with a small mark that signals "this is an error message,
@@ -107,11 +107,11 @@ struct LocalFileErrorBanner: View {
         Button(action: onDismiss) {
             HStack(spacing: 10) {
                 Circle()
-                    .fill(Color(nsColor: DashboardTokens.Color.coral))
+                    .fill(UzumeAppColor.danger)
                     .frame(width: 6, height: 6)
                 Text(verbatim: message)
                     .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(UzumeAppColor.textSecondary)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }

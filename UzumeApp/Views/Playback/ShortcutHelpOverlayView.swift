@@ -43,7 +43,7 @@ struct ShortcutHelpOverlayView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text(String(localized: "playback.shortcut_help.title"))
                     .font(.title2.bold())
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
 
                 ForEach(ShortcutCategory.allCases, id: \.self) { category in
                     let categoryShortcuts = shortcuts.filter { $0.category == category }
@@ -54,14 +54,14 @@ struct ShortcutHelpOverlayView: View {
 
                 Text(String(localized: "playback.shortcut_help.dismiss_hint"))
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(UzumeAppColor.textDisabled)
             }
             .padding(28)
         }
         .frame(maxWidth: 560)
         .background(.ultraThinMaterial)
-        .overlay { Color.black.opacity(0.4) }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay { UzumeAppColor.Performance.panelTint }
+        .clipShape(RoundedRectangle(cornerRadius: UzumeAppRadius.lg))
         .shadow(radius: 40)
     }
 
@@ -71,7 +71,7 @@ struct ShortcutHelpOverlayView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(category.rawValue.uppercased())
                 .font(.caption2.weight(.bold).monospaced())
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(UzumeAppColor.textDisabled)
                 .padding(.bottom, 2)
 
             ForEach(shortcuts, id: \.id) { shortcut in
@@ -86,15 +86,15 @@ struct ShortcutHelpOverlayView: View {
         HStack {
             Text(shortcut.label)
                 .font(.callout)
-                .foregroundColor(.white.opacity(0.85))
+                .foregroundColor(UzumeAppColor.textSecondary)
             Spacer()
             Text(keyLabel(shortcut))
                 .font(.caption.weight(.semibold).monospaced())
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
-                .background(Color.white.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .background(UzumeAppColor.Performance.fillStrong)
+                .clipShape(RoundedRectangle(cornerRadius: UzumeAppRadius.sm))
         }
     }
 

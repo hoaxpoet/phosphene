@@ -25,15 +25,15 @@ struct AudioStallOverlayView: View {
             HStack(spacing: 10) {
                 Image(systemName: "speaker.slash.fill")
                     .font(.title3)
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(UzumeAppColor.textSecondary)
                 Text(String(localized: "playback.audioStall.headline"))
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(UzumeAppColor.textPrimary)
             }
 
             Text(String(localized: "playback.audioStall.body"))
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(UzumeAppColor.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 12) {
@@ -46,11 +46,11 @@ struct AudioStallOverlayView: View {
 
             Text(String(localized: "playback.audioStall.autoClearHint"))
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(UzumeAppColor.textTertiary)
         }
         .padding(24)
         .frame(maxWidth: 460, alignment: .leading)
-        .overlayBackdrop()
+        .performanceBackdrop()
         .opacity(isVisible ? 1 : 0)
         .animation(reduceMotion ? .none : .easeInOut(duration: 0.4), value: isVisible)
         .allowsHitTesting(false)
@@ -69,22 +69,22 @@ struct AudioStallOverlayView: View {
         HStack(alignment: .top, spacing: 10) {
             Text(verbatim: "\(number)")
                 .font(.caption.weight(.bold).monospaced())
-                .foregroundStyle(.black)
+                .foregroundStyle(UzumeAppColor.onAccent)
                 .frame(width: 20, height: 20)
-                .background(Color.white.opacity(0.85), in: Circle())
+                .background(UzumeAppColor.Performance.indicatorFill, in: Circle())
             VStack(alignment: .leading, spacing: 6) {
                 Text(text)
                     .font(.callout)
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(UzumeAppColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let command {
                     Text(verbatim: command)
                         .font(.callout.monospaced())
-                        .foregroundStyle(.white)
+                        .foregroundStyle(UzumeAppColor.textPrimary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.12),
-                                    in: RoundedRectangle(cornerRadius: 6))
+                        .background(UzumeAppColor.Performance.fillStrong,
+                                    in: RoundedRectangle(cornerRadius: UzumeAppRadius.sm))
                 }
             }
             Spacer(minLength: 0)

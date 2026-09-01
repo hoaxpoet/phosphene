@@ -22,21 +22,21 @@ struct ConnectorTileView: View {
             Image(systemName: type.systemImage)
                 .font(.title2)
                 .frame(width: 32)
-                .foregroundColor(isEnabled ? .white : .white.opacity(0.3))
+                .foregroundColor(isEnabled ? UzumeAppColor.textPrimary : UzumeAppColor.textDisabled)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(type.title)
                     .font(.headline)
-                    .foregroundColor(isEnabled ? .white : .white.opacity(0.4))
+                    .foregroundColor(isEnabled ? UzumeAppColor.textPrimary : UzumeAppColor.textDisabled)
 
                 if isEnabled {
                     Text(type.subtitle)
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(UzumeAppColor.textTertiary)
                 } else if let caption = disabledCaption {
                     Text(caption)
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(UzumeAppColor.textDisabled)
                 }
             }
 
@@ -45,7 +45,7 @@ struct ConnectorTileView: View {
             if isEnabled {
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.3))
+                    .foregroundColor(UzumeAppColor.textDisabled)
             } else if let label = secondaryActionLabel, let action = onSecondaryAction {
                 Button(label) { action() }
                     .buttonStyle(.bordered)
@@ -54,8 +54,8 @@ struct ConnectorTileView: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isEnabled ? Color.white.opacity(0.07) : Color.white.opacity(0.03))
+            RoundedRectangle(cornerRadius: UzumeAppRadius.md)
+                .fill(isEnabled ? UzumeAppColor.surfaceRaised : UzumeAppColor.surface)
         )
         .accessibilityIdentifier("\(Self.accessibilityIDPrefix).\(type.rawValue)")
         .accessibilityElement(children: .combine)

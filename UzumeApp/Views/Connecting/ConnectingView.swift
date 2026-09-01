@@ -29,7 +29,7 @@ struct ConnectingView: View {
 
             Image(systemName: connectorSystemImage)
                 .font(.system(size: 48, weight: .thin))
-                .foregroundColor(.white.opacity(0.85))
+                .foregroundColor(UzumeAppColor.textSecondary)
                 .rotationEffect(.degrees(spinnerAngle))
                 .onAppear {
                     withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
@@ -41,11 +41,11 @@ struct ConnectingView: View {
             Text(String(localized: "connecting.headline"))
                 .font(.largeTitle)
                 .fontWeight(.thin)
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
 
             Text(connectorSubtext)
                 .font(.body)
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(UzumeAppColor.textTertiary)
                 .multilineTextAlignment(.center)
 
             Spacer().frame(height: 24)
@@ -59,7 +59,7 @@ struct ConnectingView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
+        .background(UzumeAppColor.canvas)
         .accessibilityIdentifier(Self.accessibilityID)
     }
 

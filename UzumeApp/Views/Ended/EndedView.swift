@@ -48,15 +48,15 @@ struct EndedView: View {
             Text(String(localized: "ended.headline"))
                 .font(.largeTitle)
                 .fontWeight(.thin)
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
 
             VStack(spacing: 6) {
                 Text(formattedTrackCount)
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.textSecondary)
                 Text(formattedDuration)
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(UzumeAppColor.textTertiary)
             }
 
             Spacer().frame(height: 8)
@@ -66,8 +66,8 @@ struct EndedView: View {
                     onStartNewSession()
                 }
                 .buttonStyle(.borderedProminent)
+                .uzumeTint()
                 .keyboardShortcut(.defaultAction)
-                .tint(coralAccent)
                 .accessibilityIdentifier(Self.newSessionButtonID)
 
                 // GAP H (2026-05-28): LF replay CTA. Renders only when the
@@ -81,7 +81,7 @@ struct EndedView: View {
                         Text(verbatim: replayLabel)
                     }
                     .buttonStyle(.plain)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.textSecondary)
                     .font(.subheadline)
                     .accessibilityIdentifier(Self.replayLocalFileButtonID)
                 }
@@ -90,7 +90,7 @@ struct EndedView: View {
                     onOpenSessionsFolder()
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(UzumeAppColor.textTertiary)
                 .font(.subheadline)
                 .accessibilityIdentifier(Self.openFolderButtonID)
             }
@@ -98,7 +98,7 @@ struct EndedView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
+        .background(UzumeAppColor.canvas)
         .accessibilityIdentifier(Self.accessibilityID)
     }
 
@@ -118,15 +118,6 @@ struct EndedView: View {
         formatter.zeroFormattingBehavior = .dropLeading
         let formatted = formatter.string(from: seconds) ?? "—"
         return String(format: String(localized: "ended.summary.duration"), formatted)
-    }
-
-    // MARK: - Coral accent
-
-    /// Coral CTA tint per UX_SPEC line 948. Falls back to system accent if the
-    /// asset/token is not available — DashboardTokens lives in the renderer module
-    /// and is not directly importable from UzumeApp.
-    private var coralAccent: Color {
-        Color(red: 0.97, green: 0.45, blue: 0.36)
     }
 
     // MARK: - GAP H — Replay label

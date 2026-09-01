@@ -36,10 +36,10 @@ struct ListeningBadgeView: View {
             Text(String(localized: "playback.listening"))
                 .font(.caption.weight(.medium).monospaced())
         }
-        .foregroundColor(.white.opacity(0.8))
+        .foregroundColor(UzumeAppColor.textSecondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .overlayBackdrop()
+        .performanceBackdrop()
         .opacity(isVisible ? 1 : 0)
         .animation(
             reduceMotion ? .none : .easeInOut(duration: 0.4),

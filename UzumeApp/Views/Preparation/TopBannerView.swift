@@ -29,12 +29,12 @@ struct TopBannerView: View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.callout.weight(.semibold))
-                .foregroundColor(.black.opacity(0.75))
+                .foregroundColor(UzumeAppColor.onAccent.opacity(0.75))
 
             Text(bannerMessage)
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .foregroundColor(.black.opacity(0.85))
+                .foregroundColor(UzumeAppColor.onAccent.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
@@ -45,7 +45,7 @@ struct TopBannerView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.footnote.weight(.semibold))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(UzumeAppColor.onAccent.opacity(0.55))
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(Self.dismissID)
@@ -54,7 +54,7 @@ struct TopBannerView: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 44)
-        .background(Color.orange.opacity(0.88))
+        .background(UzumeAppColor.warning.opacity(0.88))
         .accessibilityIdentifier(Self.bannerID)
     }
 

@@ -25,7 +25,7 @@ struct ConnectorPickerView: View {
     var body: some View {
         NavigationStack(path: $viewModel.connectorPath) {
             ZStack {
-                Color.black.ignoresSafeArea()
+                UzumeAppColor.canvas.ignoresSafeArea()
                 VStack(spacing: 0) {
                     tileList
                     Spacer()
@@ -39,7 +39,7 @@ struct ConnectorPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "connector.picker.close_button")) { dismiss() }
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(UzumeAppColor.textSecondary)
                 }
             }
             .navigationDestination(for: ConnectorType.self) { type in
@@ -101,7 +101,7 @@ struct ConnectorPickerView: View {
     private var footer: some View {
         Text(String(localized: "connector.picker.footer"))
             .font(.caption2)
-            .foregroundColor(.white.opacity(0.3))
+            .foregroundColor(UzumeAppColor.textDisabled)
             .multilineTextAlignment(.center)
             .padding(.top, 24)
     }
