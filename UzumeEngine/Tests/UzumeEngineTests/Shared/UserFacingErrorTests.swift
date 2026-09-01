@@ -98,11 +98,15 @@ struct UserFacingErrorTests {
 
     // MARK: §9.4 playback toasts
 
-    @Test("silenceExtended is bottomRightToast with warning severity")
+    /// D-236 reclassified this from `warning` to `fatal`: the visuals are audio-driven,
+    /// so sustained silence means Uzume has stopped delivering its product. It stays
+    /// condition-bound — fatal describes what the user is getting, not whether the
+    /// process can continue.
+    @Test("silenceExtended is bottomRightToast with fatal severity")
     func test_silenceExtended_toastSeverity() {
         let e = UserFacingError.silenceExtended
         #expect(e.presentationMode == .bottomRightToast)
-        #expect(e.severity == .warning)
+        #expect(e.severity == .fatal)
         #expect(e.isConditionBound == true)
     }
 
