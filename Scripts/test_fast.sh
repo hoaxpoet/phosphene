@@ -32,6 +32,9 @@ SKIP_PATTERNS=(
   # audio-fixture-dependent (gitignored fixtures; fail loud in worktrees, slow elsewhere)
   "LiveDrift" "LiveBeatDrift" "BeatGridAccuracy" "PreviewAudio" "loveRehab" "love_rehab"
   "Churn"
+  # RN.4: two more that drifted in and broke the script's own "green in a worktree"
+  # contract — both fail-loud on the absent tempo fixtures, measured on a fresh clone.
+  "MeniscusDrops" "LocalFilePlaybackStartRace"
   # preset visual / fidelity (GPU + the 2,477-line Skein canvas-hold long pole)
   "Skein" "Ferrofluid" "Dragon Bloom" "DragonBloom" "Nimbus" "Fata" "Lumen"
   "Murmuration" "Arachne" "PresetVisualReview" "Fidelity Rubric"
