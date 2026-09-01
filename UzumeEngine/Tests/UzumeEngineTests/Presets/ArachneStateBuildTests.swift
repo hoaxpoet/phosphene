@@ -180,10 +180,12 @@ private func audibleStems() -> StemFeatures {
         state.buildState.radialIndex = 5
         state.buildState.radialProgress = 0.4
 
-        // Force-active spider so spiderBlend > 0.01 every tick.
-        #if DEBUG
-        state.forceSpiderActive = true
-        #endif
+        // Force-active spider so spiderBlend > 0.01 every tick in every build
+        // configuration, including the release test target. The former `#if DEBUG`
+        // guard compiled out under `-c release`, leaving this test asserting the
+        // pause guard on a condition it had not established (BUG079.1 un-gated
+        // `forceActivateForTest`, so no guard is needed).
+        state.forceActivateForTest(at: SIMD2<Float>(0.42, 0.40))
 
         let beforeIdx = state.buildState.radialIndex
         let beforeProgress = state.buildState.radialProgress
