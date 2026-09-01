@@ -76,8 +76,65 @@ placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `Ready
 playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
+**DS.2** ✅ code-complete 2026-09-01 (D-233), M7 review outstanding — its captures are blocked on
+the machine being unlocked, not on the work.
 
 ## Recently Completed
+
+### Increment DS.2 — `SourceChoice`: one tile component, four affordances 🔨 M7 pending (2026-09-01, D-233)
+
+**Done-when (met, except the review):** one tile component; both consumers migrated; both old
+implementations deleted; every accessibility identifier unchanged and now pinned;
+`ConnectorPickerViewModel` untouched. **Matt's M7 visual + VoiceOver review is outstanding**, and
+its captures are blocked — see Blocked below.
+
+**Two files out, two files in.** `ConnectorTileView.swift` (71 lines) and the private
+`LocalSourceActionTile` (47 lines of `LocalSourceConnectionView.swift`) — 118 lines encoding one
+family twice — become `Views/Components/SourceChoice.swift` (206 lines, of which ~55 are the
+four-affordance preview and ~40 the header rationale) plus
+`UzumeAppTests/SourceChoiceIdentifierTests.swift` (60 lines). The census's "near-identical" call
+was right about layout and wrong about behaviour: the pair disagreed on hover *and* on VoiceOver
+hint, which is what the consolidation actually had to decide.
+
+**State stayed put, by construction.** `SourceChoice` never builds a `NavigationLink` — the
+`.navigation` affordance draws the chevron and the consumer wraps it. `connectorPath`,
+`appleMusicRunning` and the debounced NSWorkspace observers stay in `ConnectorPickerViewModel`,
+proven by `git diff main -- UzumeApp/ViewModels/ConnectorPickerViewModel.swift` returning empty;
+`AppleMusicConnectionWrapper` and `OAuthSpotifyConnectionWrapper` keep their `@StateObject`
+declarations verbatim (CA.6-FU-3).
+
+**The six identifiers are pinned for the first time.** Nothing asserted them before, and three of
+them — the connector tiles — are *interpolated* from a prefix and `ConnectorType.rawValue`, so a
+rawValue edit could have moved them without touching a view. `SourceChoiceIdentifierTests` asserts
+all six full strings and both halves of the interpolation.
+
+**A prompt gate was wrong, and `main` proves it.** DS.2's gate 2 greps `UzumeApp` for all six
+identifier literals. It reports the three connector identifiers MISSING — **and does so
+identically on unmodified `main`**, because they have never existed as literals in the app target.
+The gate as written tests for something that was never true. Corrected form:
+`grep -rq "$id" UzumeApp UzumeAppTests`, which passes, since the literals now live where they are
+asserted.
+
+**Fixed-font ratchet gap closed.** `LocalSourceConnectionView.swift` was never in
+`DynamicTypeRegressionTests.viewFiles` and carried three `.system(size:)` calls (28/13/12 →
+`.title.weight(.medium)` / `.callout` / `.caption`). Both it and `SourceChoice.swift` joined the
+list. Note the ratchet `continue`s past files it cannot read, so a path typo would pass silently —
+recorded, not fixed here.
+
+**Recorded, not fixed:** `ConnectorPickerViewModel.localFolderEnabled` is dead and its comment
+claims a v1 gate the shipped build does not have (`KNOWN_ISSUES` **DEAD-001**). It pairs with the
+still-open **CA.3-FU-2** on `LocalFolderConnector.swift` — the same question at two layers.
+
+**🚫 Blocked — the M7 captures.** Task 1's before-captures and task 8's after-captures could not be
+taken: the Mac was at the **lock screen** for the whole session, so every display capture returns
+black and the app's view hierarchy is absent from the accessibility tree (only its menu bar is
+reachable). The VoiceOver table and the before/after page need Matt to unlock the machine; nothing
+else in the increment depends on them. The app also had to be recovered first — its persisted
+window frame pointed at a display that no longer exists, so it launched fully off-screen; clearing
+`~/Library/Saved Application State/io.uzume.mac.savedState` fixed it.
+
+**Evidence:** app suite 436 tests (429 + 7 new identifier tests); engine suite 1873 tests; SwiftLint
+0 violations in 521 files; four increment gates (three pass, gate 2 defective as above).
 
 ### Increment DS.1 — the app adopts UzumeTokens; presentation only ✅ (2026-09-01, D-232)
 
