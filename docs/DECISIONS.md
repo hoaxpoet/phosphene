@@ -122,6 +122,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-211 | Accepted | **Reference/diagnostic images leave git; the LFS purge is a separate, explicit step** (LFS.2, Matt 2026-07-31). Raster images under `docs/VISUAL_REFERENCES/` + `docs/diagnostics/` are gitignored and **untracked** — dev-only material no build target reads. Supersedes an earlier attempt that added the `.gitignore` rules but never ran `git rm --cached`: because gitignore does not affect already-tracked paths, dropping the LFS filter converted 189 pointers into real blobs and would have added **~100 MB to git history** (25.7 KB → 100.6 MB measured) while leaving the LFS objects — and the bill — in place. **Untracking stops NEW objects; it does not reclaim the old ones.** GitHub does not GC unreferenced LFS objects, so reclaiming storage needs a history rewrite (`Scripts/reclaim-lfs-visual-refs.sh`) followed by a GitHub Support purge request — deliberately NOT done here. Text records in those dirs stay in git. Worktree consequence handled: `Scripts/link_fixtures.sh` now symlinks the images too, since the preset workflow is "read the README and LOOK at the images" and a worktree without them degrades silently rather than failing. §Rationale below. |
 | D-213 | Accepted — executed (RECON.14, 2026-08-25) | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
+| D-231 | Accepted | **The design system reaches the app as a VENDORED copy, and Uzume is always dark (DS.1, 2026-09-01, Matt chose A).** [D-228] makes `uzume-site` the design-system source of truth, but the app may not take a package dependency on it: a fresh clone and CI would then need a second repo present, and the app is the thing that has to build. So `UzumeApp/DesignSystem/UzumeTokens.swift` is a byte-identical copy of `uzume-site@03d5478`'s token file under a provenance header (repo, path, commit, SHA-256), and `Scripts/check_design_token_drift.sh` is the cost made visible: it verifies the vendored body against its recorded hash always, and against the upstream file when a sibling checkout is present — `SKIP`/0 when it is not. **The price is a manual re-sync**, accepted because tokens change on the order of once per design increment and a silent divergence now fails a script instead of being discovered in a screenshot. **App-only roles never go in the vendored file** — they live in `UzumeTokens+App.swift`, each commenting the `--color-*` name it was transcribed from, so any app colour greps back to a line of `tokens.css`. **Uzume is always dark:** every screen keeps the near-black canvas whatever macOS is set to, so the engine's output is the only bright thing in the frame and the ≥4.5:1 overlay measurement stays valid against one appearance. That diverges from upstream — the Swift package builds on adaptive AppKit system colours and `tokens.css` publishes a full light palette — so the app pins its roles to the DARK block and the app root sets `.preferredColorScheme(.dark)`; light-appearance support is a real increment with its own review, not a side effect of a token swap. Two upstream disagreements found and recorded rather than papered over: the package's system-colour mapping resolves to **neither** palette (`.windowBackgroundColor` in dark appearance is far lighter than `--color-canvas` #0b0c10), and `UzumeRadius` (6/10/14) agrees with `--radius-*` (6/12/16) only on the smallest rung. §Rationale below. |
 | D-230 | Accepted | **On-disk output paths renamed to `uzume_*`; code and data moved together (RN.5, 2026-08-31, Matt's go).** RN.2 deferred these as user-visible. Renamed: `~/Documents/phosphene_sessions/` → `uzume_sessions/` (5.7 GB, 16 captures), `~/phosphene_beatbench_fixtures/` → `uzume_beatbench_fixtures/` (946 MB, 21 fixtures), `phosphene_soak`, `phosphene_features.csv`, `phosphene_diag.log`, `/tmp/phosphene_visual`, and the ephemeral test-temp prefixes. **The code sweep and the `mv` are one operation** — doing either alone orphans 6.7 GB of captures from the tools that read them. **Not renamed:** `phosphene_grid_bpm` (a key *inside recorded BeatBench ground-truth fixtures* — renaming edits recorded evidence), `~/phosphene-ml-env` (Matt's venv), the Extreme-SSD corpus manifest, and `phosphene_section_lab`/`phosphene_session_mining` (external workspaces cited only in historical rationale) — all external artifacts this repo does not own. ~250 references in `docs/diagnostics/` and `docs/prompts/` keep the old paths: they are frozen records of past runs, the same trade [D-227] made. §Rationale below. |
 | D-229 | Accepted | **The pre-publication history rewrite is RETIRED, not deferred (RN.4, 2026-08-31).** `PUBLISHING.md` §2 was CONFIRMED on 2026-07-12 — "run once, before first publish" — on the explicit premise that **"pre-publication is the one moment a rewrite is free (no external clones exist)."** The repo was published without it, so the premise expired. Measured before deciding, not asserted: the payload is one **non-routable** `.local` hostname (`braesidebandit@Matthews-Mac-mini.local`, 1684 commits — `.local` is mDNS, it cannot receive mail; it leaks a username and a machine name) and one **already-public** business address (`matt@plaitandpattern.com`, 183 commits; plaitandpattern.com serves 200). Against that: a rewrite invalidates **30 commit SHAs cited across DECISIONS / ENGINEERING_PLAN / KNOWN_ISSUES / release notes** — the project's own evidence trail — breaks all 11 local worktrees plus the Codex clone, and requires temporarily disabling `main`'s branch protection, which CLAUDE.md treats as a stop signal. Cost high, benefit ~zero. **New commits already add no exposure** (`user.email` is the GitHub noreply). Two things WERE fixed without a rewrite: PUB.1's own changelog was re-publishing the `matt.deming@gmail.com` it recorded redacting, and §2's filter-repo recipe quoted it a third time — both now say "personal gmail". §Rationale below. |
 | D-228 | Accepted | **`uzume-site` is the brand/design source of truth; the app owns product facts (RN.3, 2026-08-31).** Each repo owns what it can verify: the site owns brand story, voice, palette, the First Opening design system, production identity assets and public copy; the app owns product behaviour, engineering decisions, contributor commands, and **whether any claim is true of the shipped build**. The app's `docs/planning/` becomes a **frozen RN.0 snapshot** — the site's copies are live. Three corrections flowed site-ward from app ground truth: the site's naming/website plans carried the **pre-2026-08-12 domain call** (uzume.app "available and canonical", bundle ID `app.uzume.mac`) against the registrar-confirmed reality (uzume.app parked, **uzume.io canonical**, shipped ID `io.uzume.mac`); "certified presets are measured at **0 flashes per second**" has **no basis in this repo** (the real gate is [D-157] steady luminance — a bounded max per-frame brightness change) and was published in four places; and "free, open-source **public beta**" overstates a repo that is not public with no signed or notarized build ([CLEAN.2.5b] is blocked on a paid Apple Developer membership). Two corrections flowed app-ward: the README's name sentence still explained the **phosphene phenomenon** under the name Uzume (an RN.2 sweep orphan — no `Phosphene` token in it, so no lexical scan could catch it), and the **"AI orchestrator"** framing the site retired as a product claim survived in README + CLAUDE.md though the planner is deterministic and rules-based. §Rationale below. |
@@ -4559,6 +4560,71 @@ the same way before it was made public: no key patterns, no secret files).
 [D-228] (RN.3); PUB.1's privacy sweep in `ENGINEERING_PLAN_HISTORY.md`.
 
 ---
+
+## D-231: Vendored design tokens, and Uzume is always dark (DS.1)
+
+**Status:** Accepted · 2026-09-01 · Step 1 of the seven-step migration order in
+`uzume-site`'s `PHOSPHENE-COMPONENT-CENSUS.md` §Migration order.
+
+**Why vendoring, not a package dependency.** [D-228] gives `uzume-site` the design
+system. The obvious adoption route — add `DesignSystem/SwiftUI` as a local-path or git
+Swift package dependency — fails on the thing the app cannot compromise: a fresh clone
+and CI must build with one repo. A local path reference breaks the moment the sibling is
+not there; a git dependency puts a second repo's availability in front of every build of
+the product. Vendoring keeps the app self-contained.
+
+**What vendoring costs, and where that cost is paid.** A copy goes stale silently. The
+whole point of `Scripts/check_design_token_drift.sh` is to make it not silent:
+
+- The vendored body is hashed and compared against the SHA-256 in its own provenance
+  header. This runs everywhere, including a fresh clone, and catches an edit to the copy.
+- The upstream file is hashed and compared against the same value, but only when a
+  sibling `uzume-site` checkout is present. Absent sibling prints `SKIP` and exits 0, so
+  the check never becomes a reason CI or a new contributor is red.
+
+Re-syncing is manual. That is the accepted price. Tokens move about once per design
+increment, and the alternative — a build-time fetch — reintroduces exactly the second-repo
+dependency vendoring exists to avoid.
+
+**App-only roles never enter the vendored file.** Adding a role there would make the
+provenance claim false and fail the drift check on the next run, which is the intended
+behaviour, not an obstacle. `UzumeTokens+App.swift` is the one place they live, and every
+value carries the `--color-*` name it came from so a reviewer can trace any app colour
+back to a line of `tokens.css` with one grep.
+
+**Always dark (Matt's choice A).** The alternatives were B (chrome adapts, the performance
+does not) and C (everything adapts). A wins on two counts. It is what the app already does
+— every chrome surface is drawn on an unconditional near-black canvas — so DS.1 stays a
+presentation swap with one appearance to screenshot. And the ≥4.5:1 contrast floor behind
+`PerformanceBackdrop` was measured against a dark composite; C would re-open that
+measurement as a side effect of a token adoption, which is the wrong increment to do it in.
+The principle underneath: the frame stays dark so the performance is the only bright thing.
+
+Implementation is two parts. `UzumeAppColor` transcribes the DARK block of `tokens.css`
+rather than consuming the vendored `UzumeColor`'s adaptive roles, and the app root sets
+`.preferredColorScheme(.dark)` so the native controls composed beside those roles resolve
+against the same palette instead of turning light on a Light-Mode Mac. Light-appearance
+support stays open as its own increment; the divergence is written up in
+`docs/reviews/DS.1/UPSTREAM-FINDINGS.md` so B remains available.
+
+**Two upstream disagreements, recorded not patched.** The app reads `tokens.css` where it
+and the Swift package differ, and reports the difference upward rather than editing the
+vendored file:
+
+- `UzumeColor.canvas` is `.windowBackgroundColor`, `surface` is `.controlBackgroundColor`.
+  In dark appearance these resolve far lighter than `--color-canvas` #0b0c10 /
+  `--color-surface` #14151a. The package's system-colour mapping produces neither the
+  light nor the dark published palette.
+- `UzumeRadius` is 6 / 10 / 14; `--radius-sm/md/lg` are 6 / 12 / 16. Only the smallest
+  rung agrees. `UzumeAppRadius` follows `tokens.css`; `UzumeRadius.standard` (10) is used
+  directly where a measured value depends on it, which is `PerformanceBackdrop`'s corner.
+
+**What DS.1 did not touch.** `DashboardTokens` keeps its retired purple/coral palette, its
+telemetry-dense type scale, and all four of its consumers — the census's own finding is
+that developer instrumentation is a separate system. The package's prototype components
+(`CuratorControlSurface`, `StreamingHandoff`, `PreparationStage`, `PerformancePreflight`,
+`UzumeSystemNotice`) are not adopted; its own README calls them sketches, and
+`CuratorControlSurface` is explicitly not the migration target.
 
 ## D-230: On-disk output paths renamed; code and data moved together (RN.5)
 
