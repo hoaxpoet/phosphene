@@ -76,17 +76,16 @@ placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `Ready
 playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
-**DS.2** ✅ code-complete 2026-09-01 (D-233), M7 review outstanding — its captures are blocked on
-the machine being unlocked, not on the work.
+**DS.2** ✅ code-complete 2026-09-01 (D-233); M7 captured, Matt's verdict outstanding.
 
 ## Recently Completed
 
-### Increment DS.2 — `SourceChoice`: one tile component, four affordances 🔨 M7 pending (2026-09-01, D-233)
+### Increment DS.2 — `SourceChoice`: one tile component, four affordances 🔨 M7 captured, Matt's verdict pending (2026-09-01, D-233)
 
 **Done-when (met, except the review):** one tile component; both consumers migrated; both old
 implementations deleted; every accessibility identifier unchanged and now pinned;
-`ConnectorPickerViewModel` untouched. **Matt's M7 visual + VoiceOver review is outstanding**, and
-its captures are blocked — see Blocked below.
+`ConnectorPickerViewModel` untouched. Captures are taken and the page is
+assembled; **Matt's verdict on the hover change and the new hint wording is outstanding**.
 
 **Two files out, two files in.** `ConnectorTileView.swift` (71 lines) and the private
 `LocalSourceActionTile` (47 lines of `LocalSourceConnectionView.swift`) — 118 lines encoding one
@@ -125,13 +124,30 @@ recorded, not fixed here.
 claims a v1 gate the shipped build does not have (`KNOWN_ISSUES` **DEAD-001**). It pairs with the
 still-open **CA.3-FU-2** on `LocalFolderConnector.swift` — the same question at two layers.
 
-**🚫 Blocked — the M7 captures.** Task 1's before-captures and task 8's after-captures could not be
-taken: the Mac was at the **lock screen** for the whole session, so every display capture returns
-black and the app's view hierarchy is absent from the accessibility tree (only its menu bar is
-reachable). The VoiceOver table and the before/after page need Matt to unlock the machine; nothing
-else in the increment depends on them. The app also had to be recovered first — its persisted
-window frame pointed at a display that no longer exists, so it launched fully off-screen; clearing
-`~/Library/Saved Application State/io.uzume.mac.savedState` fixed it.
+**M7 captures taken 2026-09-01, and they measure rather than assert.** Thirteen matched pairs in
+`docs/reviews/DS.2/` — six connector states, six local states, plus Apple Music unavailable. Two
+findings from the pixel diff: default states are **identical inside the tile bands** before vs
+after (the only before/after delta is rows 0–47, above the first tile — window-titlebar vibrancy
+between two app launches), and hover changes **only the hovered tile's band**, at maxΔ 14/255,
+which is exactly `--color-surface-selected` #292b33 minus `--color-surface-raised` #1d1f25. On
+`main` the three connector tiles are byte-identical hovered and unhovered — the hover state did not
+exist. The VoiceOver table is **observed, not derived**: read from the live accessibility tree of
+both builds, every label byte-identical across them, only the three local tiles changing, and only
+by gaining a hint.
+
+**Getting there cost two environment failures worth recording.** The Mac was at the lock screen for
+the first attempt — display capture returns black *and* the app's view hierarchy is absent from the
+accessibility tree. Then Claude Code auto-updated 2.1.247 → 2.1.255 mid-session and deleted the
+running bundle, which silently revoked Screen Recording and Accessibility (TCC keys both to the
+bundle path) and made them unrecoverable in-process. Both are in memory under
+`env_ui_automation_accessibility_grant`.
+
+**Two defects found by the review, neither DS.2's to fix.** **COPY-001** (P2, Matt's catch): the
+picker footer promises "It doesn't control playback" directly above the Local files tile, where
+Uzume *is* the player and ships a full transport — true for the two streaming sources, false for
+the third. **A11Y-001** (P3): the three local tiles announce the parent view's accessibility
+identifier rather than their own, identically before and after, so it is pre-existing and not a
+consolidation regression.
 
 **Evidence:** app suite 436 tests (429 + 7 new identifier tests); engine suite 1873 tests; SwiftLint
 0 violations in 521 files; four increment gates (three pass, gate 2 defective as above).

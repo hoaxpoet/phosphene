@@ -134,3 +134,43 @@ unavailable tile with no stated reason, that is a new variant and a new decision
 — not a silent `nil`.
 
 *Motivated by:* `UzumeApp/Services/AccessibilityLabels.swift`
+
+---
+
+## 8. A source screen contradicts §Add music's own rule — in the app's copy, not its structure
+
+`EXPERIENCE_MODEL.md` §Add music: *"Each source names its actual capabilities; a source never
+promises what it cannot honour."* The app's source picker breaks the converse — it makes a blanket
+*disclaimer* that is false for one of the three sources under it. The footer reads "Uzume reads
+what's playing. It doesn't control playback," while the Local files tile leads to a path where
+Uzume owns the audio and ships stop / previous / play-pause / next.
+
+The rule as written guards against a source over-promising. This is a source **under**-promising,
+on a shared surface that cannot be true for every tile above it. Worth extending the rule:
+*capability statements belong to a source, not to a screen that lists several.*
+
+Filed app-side as **COPY-001**; the wording is a product decision, and `LocalPlaybackTransport`'s
+own contract line in `COMPONENTS.md` ("available only when Uzume owns local playback") is the
+correct model.
+
+*Motivated by:* `UzumeApp/Views/ConnectorPickerView.swift:124`,
+`UzumeApp/Views/Playback/LocalFileTransportBar.swift`
+
+---
+
+## 9. The release contract should ask whether identifiers reach the accessibility tree
+
+§Release contract asks for "Keyboard and VoiceOver behavior". DS.2's M7 read the live accessibility
+tree of both builds and found the three local tiles announcing their **parent view's** identifier
+rather than their own, while the connector tiles announce theirs (repeated four times, joined by
+`-`). Unit tests pin the identifier constants and pass; the constants simply never arrive.
+
+A contract item that says "VoiceOver behavior" is satisfied by a label and a hint being correct —
+which they are. The gap is one level down. **Suggested:** add *identifiers resolve in the
+accessibility tree, verified against a running build* as its own obligation. It is the only item in
+the list that a unit test can appear to satisfy while being false at runtime.
+
+Filed app-side as **A11Y-001**; pre-existing, identical before and after the consolidation.
+
+*Motivated by:* `UzumeApp/Views/LocalSourceConnectionView.swift`,
+`UzumeAppTests/SourceChoiceIdentifierTests.swift`

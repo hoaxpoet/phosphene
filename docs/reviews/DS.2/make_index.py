@@ -102,13 +102,20 @@ always had.</p>
 announced nothing after their label before, while the connector tiles on the previous screen
 announced one — so a Curator using VoiceOver got guidance on the first source screen and silence on
 the second. This is the DECISION-NEEDED's default (option A); the wording is the part to judge.</p>
-<div class="banner"><strong>Captures are missing, and the reason is not the work.</strong>
-The Mac was at the lock screen for the entire DS.2 session, so every display capture returns black
-and the app's view hierarchy is absent from the accessibility tree — only its menu bar is reachable.
-Unlock the machine and run <code>docs/reviews/DS.2/capture.sh before</code> (on <code>main</code>)
-and <code>… after</code> (on this branch), then re-run <code>make_index.py</code>. Every pair below
-fills in. The VoiceOver table is derived from source and is exact; it still wants one live
-confirmation.</div>
+<div class="banner"><strong>Measured, not eyeballed.</strong>
+Default states are <em>pixel-identical</em> before vs after inside the tile bands — the only
+before/after difference is in rows 0–47, above the first tile, which is window-titlebar vibrancy
+between two app launches. Hover changes exactly the hovered tile's band and nothing else, at
+maxΔ&nbsp;14/255 — which is precisely
+<code>--color-surface-selected</code>&nbsp;#292b33 minus <code>--color-surface-raised</code>&nbsp;#1d1f25.
+On <code>main</code> the three connector tiles are byte-identical hovered and unhovered; they had no
+hover state at all.</div>
+<div class="banner"><strong>Copy bug, found while capturing — not DS.2's to fix.</strong>
+The footer under these tiles reads "Uzume reads what's playing. It doesn't control playback." That is
+true for Apple Music and Spotify and <em>false for the Local files tile directly above it</em>:
+on the local path Uzume owns the audio and ships a full transport (stop / previous / play-pause /
+next, <code>uzume.playback.lfTransport</code>). DS.2 may not edit <code>connector.picker.*</code>
+copy, so it is recorded as COPY-001.</div>
 <nav>{nav}</nav>
 </header>
 

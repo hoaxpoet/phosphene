@@ -46,6 +46,8 @@ reads" are not reads — see the entry.)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| COPY-001 | P2 · found at DS.2's M7, 2026-09-01 | app.copy / product-claim | **The source picker's footer tells the user Uzume never controls playback, directly above a tile for which that is false.** `connector.picker.footer` = *"Uzume reads what's playing. It doesn't control playback."* renders on `ConnectorPickerView`, which offers Apple Music, Spotify **and Local files**. On the local path Uzume owns the audio and ships a full transport — stop / previous / play-pause / next in `LocalFileTransportBar` (`uzume.playback.lfTransport`). `EXPERIENCE_MODEL.md` states the correct rule: *"Local playback owns transport; streaming handoff listens for external audio and must not promise transport control."* The claim is right for two of three sources and wrong for the third. Matt spotted it on the DS.2 M7 page. **Not fixed here** — DS.2 may not edit `connector.picker.*` copy; the wording is a product call (scope the sentence to streaming, or move it onto the two streaming tiles). |
+| A11Y-001 | P3 · observed at DS.2's M7, 2026-09-01 | app.accessibility | **The three local-source tiles do not expose their own accessibility identifiers to the macOS accessibility tree — they report the parent view's.** Read live from both builds: each of the three announces `AXIdentifier = uzume.view.lf_source`, not `uzume.lf_source.tile.folder` / `.file` / `.playlist`. The connector tiles on the previous screen *do* surface theirs (as the value repeated four times, joined by `-`). **Unchanged by DS.2** — identical before on `main` and after on the branch — so it is pre-existing, not a consolidation regression. The constants exist and are unit-pinned by `SourceChoiceIdentifierTests`, but a UI test querying the LF tiles by identifier would not find them. **No root cause asserted** (BUG-061 rule): the observable difference is that `LocalSourceConnectionView` sets `.accessibilityIdentifier` on its root while the connector tiles sit inside a `NavigationLink`, but which of those actually drives it is untested. |
 | DEAD-001 | P3 · recorded not fixed (DS.2, 2026-09-01) | app.viewmodel / dead-code | **`ConnectorPickerViewModel.localFolderEnabled` is dead, and the comment above it claims a v1 gate the shipped build does not have.** Three hits, no reader: the declaration, the comment, and the test asserting its `false`. The view has enabled the local-folder tile unconditionally since GAP A (2026-05-28), and `ENABLE_LOCAL_FOLDER_CONNECTOR` — which the comment blames — gates a different thing entirely (the v2 playlist-connector scaffold in `UzumeEngine`, set in no xcconfig, not on the local-source path that ships). Left in place deliberately: deleting a property whose `false` a test asserts is a behaviour change wearing a cleanup costume, and it belongs with the connector-capability work, not a presentation increment. Pairs with the still-open **CA.3-FU-2**. Detail below |
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
@@ -74,6 +76,75 @@ reads" are not reads — see the entry.)*
 ---
 
 ## Open
+
+---
+
+### COPY-001 — The source picker promises Uzume never controls playback, above a tile where it does (2026-09-01, DS.2 M7)
+
+**Status: open, recorded not fixed.** DS.2 may not edit `connector.picker.*` copy. Matt found it
+on the DS.2 M7 review page. **P2** — it is a false product claim on a screen the user reads while
+deciding, not a cosmetic defect.
+
+**The string.** `UzumeApp/en.lproj/Localizable.strings:133`
+
+```
+"connector.picker.footer" = "Uzume reads what’s playing. It doesn’t control playback.";
+```
+
+Rendered at `UzumeApp/Views/ConnectorPickerView.swift:124`, centered under all three source tiles.
+
+**Why it is wrong for one of them.** `UzumeApp/Views/Playback/LocalFileTransportBar.swift`
+(`uzume.playback.lfTransport`) ships stop, previous, play/pause and next. On the local-file path
+Uzume decodes and drives the audio itself — it is the player. The footer's claim holds only for
+Apple Music and Spotify, where Uzume listens to another app's output and the user starts playback
+themselves.
+
+`uzume-site`'s `EXPERIENCE_MODEL.md` already states the correct rule and the app's own footer
+contradicts it: *"Local playback owns transport; streaming handoff listens for external audio and
+must not promise transport control."* `COMPONENTS.md` repeats it for `LocalPlaybackTransport`:
+*"available only when Uzume owns local playback."*
+
+**Fix when picked up — a product call, not a mechanical one.** Options: scope the sentence to
+streaming ("For Apple Music and Spotify, Uzume reads what's playing — it doesn't control
+playback."); move it off the shared footer and onto the two streaming tiles; or drop it from this
+screen and state each source's capability on the source's own screen, which is what
+`EXPERIENCE_MODEL.md` §Add music implies (*"Each source names its actual capabilities; a source
+never promises what it cannot honour"*). Belongs with DS.5 (`StreamingHandoff`) or RN.4's
+public-copy wording pass.
+
+---
+
+### A11Y-001 — The local-source tiles do not expose their own accessibility identifiers (2026-09-01, DS.2 M7)
+
+**Status: open, pre-existing, recorded not fixed.** **P3.**
+
+**Observed** by reading the macOS accessibility tree of a running build, on `main` and on the DS.2
+branch, with identical results:
+
+```
+role=AXButton | id=uzume.view.lf_source | desc=Folder. Read every supported file in alphabetical order
+role=AXButton | id=uzume.view.lf_source | desc=Single file. .m4a, .mp3, or .flac
+role=AXButton | id=uzume.view.lf_source | desc=Playlist. .m3u or .m3u8
+```
+
+Each announces the **parent view's** identifier. The connector tiles on the previous screen do
+surface theirs:
+
+```
+role=AXButton | id=uzume.connector.tile.apple_music-uzume.connector.tile.apple_music-…(×4)
+```
+
+**Consequence.** `LocalSourceConnectionView.folderTileID` / `.fileTileID` / `.playlistTileID` exist
+and are pinned by `SourceChoiceIdentifierTests`, but that test asserts the *constants*, not that
+they reach the accessibility tree. A UI test querying the LF tiles by identifier would not find
+them, and neither would assistive tooling keyed on identifier.
+
+**Not a DS.2 regression** — byte-identical behaviour before and after the consolidation.
+
+**No root cause asserted** (BUG-061). The visible structural difference is that
+`LocalSourceConnectionView` applies `.accessibilityIdentifier(Self.accessibilityID)` to its root
+`ZStack` while the connector tiles sit inside a `NavigationLink`, but which of those drives the
+outcome is untested. The cheap experiment is to remove the root identifier and re-read the tree.
 
 ---
 

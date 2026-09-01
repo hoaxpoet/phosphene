@@ -1,33 +1,68 @@
 {
-  "note": "Derived from source: AccessibilityLabels.sourceChoiceLabel/sourceChoiceHint plus en.lproj/Localizable.strings, before and after. Live VoiceOver confirmation is part of the outstanding M7 — the machine was locked for the whole DS.2 session.",
+  "note": "OBSERVED, not derived \u2014 read live from the macOS accessibility tree of both builds (AXDescription = the VoiceOver label, AXHelp = the hint), before on main and after on this branch. Every label is byte-identical across the two builds; the three local tiles are the only rows that change, and they change by gaining a hint.",
   "rows": [
-    {"tile": "Apple Music (available)", "id": "uzume.connector.tile.apple_music",
-     "before_label": "Apple Music. Read your current Apple Music playlist", "before_hint": "Connect using this source",
-     "after_label": "Apple Music. Read your current Apple Music playlist", "after_hint": "Connect using this source",
-     "change": "unchanged"},
-    {"tile": "Apple Music (unavailable, with recovery)", "id": "uzume.connector.tile.apple_music",
-     "before_label": "Apple Music. Open Apple Music first", "before_hint": "Not available",
-     "after_label": "Apple Music. Open Apple Music first", "after_hint": "Not available",
-     "change": "unchanged"},
-    {"tile": "Spotify", "id": "uzume.connector.tile.spotify",
-     "before_label": "Spotify. Connect with a Spotify playlist link", "before_hint": "Connect using this source",
-     "after_label": "Spotify. Connect with a Spotify playlist link", "after_hint": "Connect using this source",
-     "change": "unchanged"},
-    {"tile": "Local files", "id": "uzume.connector.tile.local_folder",
-     "before_label": "Local files. Play a file, folder, or playlist from disk", "before_hint": "Connect using this source",
-     "after_label": "Local files. Play a file, folder, or playlist from disk", "after_hint": "Connect using this source",
-     "change": "unchanged"},
-    {"tile": "Folder", "id": "uzume.lf_source.tile.folder",
-     "before_label": "Folder. Read every supported file in alphabetical order", "before_hint": null,
-     "after_label": "Folder. Read every supported file in alphabetical order", "after_hint": "Opens a file chooser",
-     "change": "gains a hint"},
-    {"tile": "Single file", "id": "uzume.lf_source.tile.file",
-     "before_label": "Single file. .m4a, .mp3, or .flac", "before_hint": null,
-     "after_label": "Single file. .m4a, .mp3, or .flac", "after_hint": "Opens a file chooser",
-     "change": "gains a hint"},
-    {"tile": "Playlist", "id": "uzume.lf_source.tile.playlist",
-     "before_label": "Playlist. .m3u or .m3u8", "before_hint": null,
-     "after_label": "Playlist. .m3u or .m3u8", "after_hint": "Opens a file chooser",
-     "change": "gains a hint"}
+    {
+      "tile": "Apple Music (available)",
+      "id": "uzume.connector.tile.apple_music",
+      "before_label": "Apple Music. Read your current Apple Music playlist",
+      "before_hint": "Connect using this source",
+      "after_label": "Apple Music. Read your current Apple Music playlist",
+      "after_hint": "Connect using this source",
+      "change": "unchanged"
+    },
+    {
+      "tile": "Apple Music (unavailable, with recovery)",
+      "id": "uzume.connector.tile.apple_music",
+      "before_label": "Apple Music. Open Apple Music first",
+      "before_hint": "Not available",
+      "after_label": "Apple Music. Open Apple Music first",
+      "after_hint": "Not available",
+      "change": "unchanged"
+    },
+    {
+      "tile": "Spotify",
+      "id": "uzume.connector.tile.spotify",
+      "before_label": "Spotify. Connect with a Spotify playlist link",
+      "before_hint": "Connect using this source",
+      "after_label": "Spotify. Connect with a Spotify playlist link",
+      "after_hint": "Connect using this source",
+      "change": "unchanged"
+    },
+    {
+      "tile": "Local files",
+      "id": "uzume.connector.tile.local_folder",
+      "before_label": "Local files. Play a file, folder, or playlist from disk",
+      "before_hint": "Connect using this source",
+      "after_label": "Local files. Play a file, folder, or playlist from disk",
+      "after_hint": "Connect using this source",
+      "change": "unchanged"
+    },
+    {
+      "tile": "Folder",
+      "id": "uzume.lf_source.tile.folder",
+      "before_label": "Folder. Read every supported file in alphabetical order",
+      "before_hint": null,
+      "after_label": "Folder. Read every supported file in alphabetical order",
+      "after_hint": "Opens a file chooser",
+      "change": "gains a hint"
+    },
+    {
+      "tile": "Single file",
+      "id": "uzume.lf_source.tile.file",
+      "before_label": "Single file. .m4a, .mp3, or .flac",
+      "before_hint": null,
+      "after_label": "Single file. .m4a, .mp3, or .flac",
+      "after_hint": "Opens a file chooser",
+      "change": "gains a hint"
+    },
+    {
+      "tile": "Playlist",
+      "id": "uzume.lf_source.tile.playlist",
+      "before_label": "Playlist. .m3u or .m3u8",
+      "before_hint": null,
+      "after_label": "Playlist. .m3u or .m3u8",
+      "after_hint": "Opens a file chooser",
+      "change": "gains a hint"
+    }
   ]
 }
