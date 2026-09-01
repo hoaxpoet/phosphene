@@ -379,7 +379,7 @@ fragment float4 nacre_comp_fragment(
     //  back to the faithful combine + sRGB decode.]
 
     // sRGB round-trip cancellation (the FM fix, D-139). butterchurn writes to an
-    // sRGB-NAIVE canvas (the shader value IS the display value); Phosphene's drawable is
+    // sRGB-NAIVE canvas (the shader value IS the display value); Uzume's drawable is
     // .bgra8Unorm_srgb, so Metal would sRGB-ENCODE this return — lifting the near-black
     // ground to a pale grey midtone (NACRE.2b: pale-green wash). Decode here so the
     // target's encode round-trips back to the butterchurn display value, keeping the

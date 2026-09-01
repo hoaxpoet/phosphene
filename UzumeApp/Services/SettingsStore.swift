@@ -1,6 +1,6 @@
 // SettingsStore — Typed UserDefaults wrapper for all Uzume settings.
 //
-// Key scheme: "phosphene.settings.<group>.<key>"
+// Key scheme: "uzume.settings.<group>.<key>"
 // Apply semantics:
 //   - excludedPresetCategories, qualityCeiling, deviceTierOverride: next preset transition
 //   - sessionRecorderEnabled:   next session start
@@ -26,17 +26,17 @@ final class SettingsStore: ObservableObject {
 
     enum Keys {
         // Visuals
-        static let deviceTierOverride  = "phosphene.settings.visuals.deviceTierOverride"
-        static let qualityCeiling      = "phosphene.settings.visuals.qualityCeiling"
-        static let reducedMotion       = "phosphene.settings.visuals.reducedMotion"
-        static let excludedPresetCategories = "phosphene.settings.visuals.excludedPresetCategories"
-        static let showLiveAdaptationToasts = "phosphene.settings.visuals.showLiveAdaptationToasts"
-        static let showUncertifiedPresets   = "phosphene.settings.visuals.showUncertifiedPresets"
+        static let deviceTierOverride  = "uzume.settings.visuals.deviceTierOverride"
+        static let qualityCeiling      = "uzume.settings.visuals.qualityCeiling"
+        static let reducedMotion       = "uzume.settings.visuals.reducedMotion"
+        static let excludedPresetCategories = "uzume.settings.visuals.excludedPresetCategories"
+        static let showLiveAdaptationToasts = "uzume.settings.visuals.showLiveAdaptationToasts"
+        static let showUncertifiedPresets   = "uzume.settings.visuals.showUncertifiedPresets"
         // Diagnostics
-        static let sessionRecorderEnabled  = "phosphene.settings.diagnostics.sessionRecorderEnabled"
-        static let sessionRetention        = "phosphene.settings.diagnostics.sessionRetention"
+        static let sessionRecorderEnabled  = "uzume.settings.diagnostics.sessionRecorderEnabled"
+        static let sessionRetention        = "uzume.settings.diagnostics.sessionRetention"
         // Onboarding (not settings — cleared by resetOnboarding only)
-        static let photosensitivityAcknowledged = "phosphene.onboarding.photosensitivityAcknowledged"
+        static let photosensitivityAcknowledged = "uzume.onboarding.photosensitivityAcknowledged"
     }
 
     // MARK: - Visuals

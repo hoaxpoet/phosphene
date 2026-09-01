@@ -153,7 +153,7 @@ fragment float4 fata_morgana_comp_fragment(
     constexpr sampler nWrap(filter::linear, address::repeat);
     constexpr sampler pwWrap(filter::nearest, address::repeat);   // POINT-wrap (butterchurn pw_noise_lq)
     // butterchurn's comp does `uv.y = 1.0 - vUv.y` on a BOTTOM-left-origin vUv.
-    // Phosphene's fullscreen_vertex emits TOP-left-origin uv (uv.y=0 at top), i.e.
+    // Uzume's fullscreen_vertex emits TOP-left-origin uv (uv.y=0 at top), i.e.
     // in.uv.y = 1 - vUv.y already — so the butterchurn flip resolves to in.uv
     // directly. (An explicit `1.0 - in.uv.y` double-flips → sky/water reversed.)
     float2 uv = in.uv;
@@ -196,7 +196,7 @@ fragment float4 fata_morgana_comp_fragment(
 
     // sRGB round-trip cancellation. butterchurn writes to an sRGB-NAIVE WebGL canvas —
     // its comp output bytes are scanned out and displayed directly (the shader's value
-    // IS the display value). Phosphene's drawable is .bgra8Unorm_srgb, so Metal would
+    // IS the display value). Uzume's drawable is .bgra8Unorm_srgb, so Metal would
     // sRGB-ENCODE this return (linear 0.2 → byte ~0.48), lifting blacks and washing the
     // image toward midtone (Matt M7: "deeper black needed"; the purple haze). Decode
     // here so the target's encode round-trips back to the butterchurn display value:
@@ -223,7 +223,7 @@ fragment float4 fata_morgana_comp_fragment(
 // Per-instance frame_eqs transcribed from source (orbit + colour cycle); the 3
 // additive shapes' radius = baseVals.rad × the band attack. The source uses
 // {mid,bass,treb}_att — a ~1.0-centred peak-follower that spikes on transients and
-// decays between them. The faithful Phosphene analog is `(1 + *_energy_dev)` (D-026):
+// decays between them. The faithful Uzume analog is `(1 + *_energy_dev)` (D-026):
 // `_energy_dev` is the deviation about the running average, so `1 + dev` ≡ `_energy_rel`
 // ≡ `_att` (~1.0 baseline, spikes on hits). max(0,·) clamps the rare sub-baseline dip.
 // This was the AGC `*_energy` (~0.5-centred, steady) ×gain-5 before — which kept blobs

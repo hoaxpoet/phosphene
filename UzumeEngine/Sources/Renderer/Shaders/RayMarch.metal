@@ -587,7 +587,7 @@ static float3 rm_ferrofluidSky(float3 R,
     //
     // Round 55 (2026-05-17): the round-53 `spatialPhase = R.y * 0.18`
     // term was retired. The intent was "real auroras vary across the sky"
-    // but in Phosphene's substrate geometry it caused green-glow-under-
+    // but in Uzume's substrate geometry it caused green-glow-under-
     // spikes: substrate flat pixels reflect at high R.y (~0.7-0.9 with
     // the oblique camera) → spatial phase pushed substrate reflections
     // toward green while cone-side reflections (lower R.y) stayed at
@@ -609,7 +609,7 @@ static float3 rm_ferrofluidSky(float3 R,
 //
 // Verbatim port of Robert Leitl's `fluid-shading.glsl` four-layer material model
 // from his audio-reactive WebGL ferrofluid project — the closest published
-// reference to Phosphene's use case.
+// reference to Uzume's use case.
 //
 // Source: https://github.com/robert-leitl/ferrofluid/blob/main/src/app/shader/fluid-shading.glsl
 // License: MIT (https://github.com/robert-leitl/ferrofluid/blob/main/LICENSE)
@@ -655,7 +655,7 @@ static inline float fluid_pow_fast(float a, float b) {
 
 /// Procedural studio environment for the matID == 2 ferrofluid ambient
 /// layer. Inline replacement for the IBL prefiltered cubemap sample —
-/// Phosphene's global IBL is hardcoded as a warm concrete-corridor interior
+/// Uzume's global IBL is hardcoded as a warm concrete-corridor interior
 /// (see `IBL.metal::ibl_proc_env`) which made the metallic ferrofluid
 /// mirror reflect a corridor instead of a ferrofluid-appropriate scene.
 ///
@@ -732,7 +732,7 @@ static inline float3 fluid_palette(float t,
 /// the global IBL prefiltered cubemap (hardcoded as a warm concrete-
 /// corridor interior, see `IBL.metal::ibl_proc_env`) to `fluid_studio_env`
 /// — a small procedural studio env with a concentrated bright zone aligned
-/// with the Phong key direction. Diagnosis: with Phosphene's corridor IBL
+/// with the Phong key direction. Diagnosis: with Uzume's corridor IBL
 /// the ferrofluid substrate reflected a corridor → "bright chrome floor
 /// with dark pits" visual (Matt's `2026-05-15T01-16-02Z` review). Other
 /// three layers (specular / fresnel / iridescence) unchanged.
@@ -791,7 +791,7 @@ static float3 fluid_shading(float3 V, float3 N,
 
     // ── Layer 3: fresnel (cool white edge sheen) ───────────────────
     // Leitl uses `ft = dot(N, vec3(0, 0, 1))` — in his WebGL coord system
-    // `(0, 0, 1)` is "toward the camera." For Phosphene the analogue is
+    // `(0, 0, 1)` is "toward the camera." For Uzume the analogue is
     // `dot(N, V)` (surface-to-camera) — same SEMANTIC meaning (how
     // perpendicular-to-camera the normal is). The verbatim `N.z` port
     // was Leitl-coord-specific and made fresnel fire at max for any

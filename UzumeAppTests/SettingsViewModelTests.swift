@@ -46,11 +46,11 @@ struct SettingsViewModelTests {
         let defaults = makeDefaults()
         let store = SettingsStore(defaults: defaults)
         let vm = SettingsViewModel(store: store)
-        defaults.set(true, forKey: "phosphene.onboarding.photosensitivityAcknowledged")
+        defaults.set(true, forKey: "uzume.onboarding.photosensitivityAcknowledged")
 
         vm.resetOnboarding()
 
-        #expect(defaults.object(forKey: "phosphene.onboarding.photosensitivityAcknowledged") == nil)
+        #expect(defaults.object(forKey: "uzume.onboarding.photosensitivityAcknowledged") == nil)
     }
 
     @Test func aboutSection_populatedFromInjectedData() {

@@ -369,10 +369,10 @@ shasum -a 256 path/to/file.m4a   # → c1685f07d559...
 rm -rf "$HOME/Library/Application Support/Uzume/StemCache/sha256/c1/c1685f07d559..."
 
 # Override the default 500 MB eviction cap (1 GB example)
-defaults write io.uzume.mac phosphene.cache.localFile.maxBytes -int 1073741824
+defaults write io.uzume.mac uzume.cache.localFile.maxBytes -int 1073741824
 
 # Read the current cap (LF.4)
-defaults read io.uzume.mac phosphene.cache.localFile.maxBytes
+defaults read io.uzume.mac uzume.cache.localFile.maxBytes
 ```
 
 **When to clear the cache.**
@@ -406,14 +406,14 @@ latency reference per increment.
 ## Recents menu management (LF.5, D-132)
 
 `File → Open Recent ▸` persists the last 10 file / folder / M3U opens to
-the `phosphene.lf.recents` UserDefaults key as a JSON-encoded list.
+the `uzume.lf.recents` UserDefaults key as a JSON-encoded list.
 
 ```sh
 # Inspect (the value is JSON inside a `<data>` blob — base64-decode if needed)
-defaults read io.uzume.mac phosphene.lf.recents
+defaults read io.uzume.mac uzume.lf.recents
 
 # Reset (use the menu's "Clear Recents" item, or wipe via defaults)
-defaults delete io.uzume.mac phosphene.lf.recents
+defaults delete io.uzume.mac uzume.lf.recents
 ```
 
 Stale entries (file no longer at the recorded path) render disabled with a

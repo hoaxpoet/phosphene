@@ -1,4 +1,4 @@
-// Glaze.metal — Phosphene port of the Milkdrop/butterchurn builtin
+// Glaze.metal — Uzume port of the Milkdrop/butterchurn builtin
 // `Flexi + stahlregen - jelly showoff parade` (cream-of-crop legends; the glossy
 // "wet jelly" contour-gel). See docs/presets/GLAZE_PLAN.md +
 // docs/VISUAL_REFERENCES/glaze/ (source_shaders.txt + the raw warp/comp HLSL = the port spec).

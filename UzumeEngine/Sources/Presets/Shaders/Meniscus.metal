@@ -15,7 +15,7 @@
 // `Filigree` ground-fragment precedent).
 //
 // NO AUDIO COUPLING AT MEN.2a — deliberately. The source's own audio path lands at
-// MEN.2b, the Phosphene stem routing at MEN.3. `features` is read for `time` only.
+// MEN.2b, the Uzume stem routing at MEN.3. `features` is read for `time` only.
 //
 // Preset-library shader: compiled WITH the utility preamble, so `fbm4`/`fbm8` are
 // available here (they are not in `Renderer/Shaders/MeniscusSurface.metal`).
