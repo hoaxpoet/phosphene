@@ -20,19 +20,16 @@ clones (history rewrite) and therefore runs only with Matt at the wheel.
 > the `ml-weights-v1` Release asset exists and has download traffic. Treat §§0,
 > 1 and 3 as descriptions of a state already reached.
 >
-> **§2 (history rewrite) did NOT run, and the repo went public anyway.** Its own
-> validation command tells the story: `git log --format='%ae' | sort -u` on the
-> public history returns `braesidebandit@Matthews-Mac-mini.local` and
-> `matt@plaitandpattern.com` alongside the GitHub noreply address. The 2026-07-12
-> decision — "the history rewrite RUNS before first publish" — was therefore
-> **not honoured**, and the window it was meant to close is past: rewriting now
-> breaks every existing clone and fork, and the addresses are already mirrored by
-> anyone who cloned. This is recorded, not fixed. RN.4 deliberately did not
-> rewrite history. **Matt's call**, with three honest options: (a) accept it and
-> strike §2 with a D-number recording why; (b) rewrite anyway and accept the
-> clone breakage; (c) leave §2 standing as an unmet obligation. Doing nothing
-> silently is the one option that should not survive — an unmet CONFIRMED
-> decision sitting unmarked in a runbook is how the next reader is misled.
+> **§2 (history rewrite) did NOT run, the repo went public anyway, and §2 is now
+> RETIRED — see [D-229].** Its own premise was "pre-publication is the one moment a
+> rewrite is free (no external clones exist)." Publication happened without it, so the
+> premise expired rather than the obligation being forgotten. Measured before deciding:
+> the rewrite would invalidate **30 commit SHAs cited across DECISIONS / ENGINEERING_PLAN
+> / KNOWN_ISSUES / release notes**, break all 11 local worktrees, and require temporarily
+> disabling `main`'s branch protection — against a privacy payload of one non-routable
+> `.local` hostname (1684 commits, cannot receive mail) and one already-public business
+> address (183 commits). **Do not run §2.** The section below is kept as the record of
+> what was decided and why it lapsed; it is not an instruction.
 
 ## 0. State after PUB.1 (already done, for context)
 
@@ -101,7 +98,7 @@ Commit as `[PUB.2] Infra: weights LFS→Release cutover`. Note: historical LFS
 objects still exist server-side; GitHub only charges bandwidth when they are
 pulled, and fresh clones no longer pull them.
 
-## 2. History rewrite — CONFIRMED (Matt 2026-07-12): run once, before first publish
+## 2. History rewrite — ~~CONFIRMED: run once, before first publish~~ **RETIRED (D-229, 2026-08-31) — do not run**
 
 **Scope honesty (updated 2026-07-11):** when this was recommended, the main
 payload was excising the corpus manifests; those now stay. What a rewrite
