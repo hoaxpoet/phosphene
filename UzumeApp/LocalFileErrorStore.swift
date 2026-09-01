@@ -19,7 +19,6 @@
 
 import Foundation
 import Shared
-import SwiftUI
 
 // MARK: - UserFacingLocalFileError
 
@@ -88,37 +87,5 @@ public final class LocalFileErrorStore: ObservableObject {
         clearTask?.cancel()
         clearTask = nil
         lastError = nil
-    }
-}
-
-// MARK: - LocalFileErrorBanner
-
-/// GAP F (2026-05-28) inline error surface. Renders a danger-toned pip + the
-/// localized message; tap-to-dismiss. Used by IdleView and
-/// LocalSourceConnectionView. No background, no side-stripe, no modal —
-/// just text with a small mark that signals "this is an error message,
-/// not just decorative text."
-struct LocalFileErrorBanner: View {
-
-    let message: String
-    let onDismiss: () -> Void
-
-    var body: some View {
-        Button(action: onDismiss) {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(UzumeAppColor.danger)
-                    .frame(width: 6, height: 6)
-                Text(verbatim: message)
-                    .font(.system(size: 13))
-                    .foregroundColor(UzumeAppColor.textSecondary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(.plain)
-        .transition(.opacity)
     }
 }
