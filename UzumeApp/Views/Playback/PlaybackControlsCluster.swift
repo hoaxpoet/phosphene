@@ -30,7 +30,7 @@ struct PlaybackControlsCluster: View {
             } label: {
                 Image(systemName: "gearshape")
                     .font(.callout)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.textSecondary)
             }
             .buttonStyle(.plain)
             .help(String(localized: "playback.controls.settings.tooltip"))
@@ -41,14 +41,14 @@ struct PlaybackControlsCluster: View {
             } label: {
                 Image(systemName: "xmark.circle")
                     .font(.callout)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.textSecondary)
             }
             .buttonStyle(.plain)
             .help(String(localized: "playback.controls.endSession.tooltip"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .overlayBackdrop()
+        .performanceBackdrop()
         .accessibilityIdentifier(Self.accessibilityID)
     }
 }

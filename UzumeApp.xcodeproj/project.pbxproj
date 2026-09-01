@@ -130,7 +130,7 @@
 		H10009 /* DisplayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20009; };
 		H10010 /* LiveAdaptationToastBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20010; };
 		H10011 /* MultiDisplayToastBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20011; };
-		H10012 /* OverlayBackdropStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20012; };
+		H10012 /* PerformanceBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20012; };
 		DS10001 /* UzumeTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = DS20001; };
 		DS10002 /* UzumeTokens+App.swift in Sources */ = {isa = PBXBuildFile; fileRef = DS20002; };
 		H10013 /* TrackInfoCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20013; };
@@ -336,7 +336,7 @@
 		H20009 /* DisplayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayManager.swift; sourceTree = "<group>"; };
 		H20010 /* LiveAdaptationToastBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAdaptationToastBridge.swift; sourceTree = "<group>"; };
 		H20011 /* MultiDisplayToastBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiDisplayToastBridge.swift; sourceTree = "<group>"; };
-		H20012 /* OverlayBackdropStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayBackdropStyle.swift; sourceTree = "<group>"; };
+		H20012 /* PerformanceBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceBackdrop.swift; sourceTree = "<group>"; };
 		DS20001 /* UzumeTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UzumeTokens.swift; sourceTree = "<group>"; };
 		DS20002 /* UzumeTokens+App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UzumeTokens+App.swift"; sourceTree = "<group>"; };
 		H20013 /* TrackInfoCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackInfoCardView.swift; sourceTree = "<group>"; };
@@ -656,7 +656,7 @@
 			isa = PBXGroup;
 			children = (
 				C20006 /* PlaybackView.swift */,
-				H20012 /* OverlayBackdropStyle.swift */,
+				H20012 /* PerformanceBackdrop.swift */,
 				H20013 /* TrackInfoCardView.swift */,
 				H20014 /* SessionProgressDotsView.swift */,
 				H20015 /* PlaybackControlsCluster.swift */,
@@ -966,7 +966,7 @@
 				H10009 /* DisplayManager.swift in Sources */,
 				H10010 /* LiveAdaptationToastBridge.swift in Sources */,
 				H10011 /* MultiDisplayToastBridge.swift in Sources */,
-				H10012 /* OverlayBackdropStyle.swift in Sources */,
+				H10012 /* PerformanceBackdrop.swift in Sources */,
 				DS10001 /* UzumeTokens.swift in Sources */,
 				DS10002 /* UzumeTokens+App.swift in Sources */,
 				H10013 /* TrackInfoCardView.swift in Sources */,

@@ -19,7 +19,7 @@ struct ToastView: View {
             HStack(spacing: 8) {
                 Text(toast.copy)
                     .font(.footnote.weight(.medium))
-                    .foregroundColor(.white.opacity(0.9))
+                    .foregroundColor(UzumeAppColor.textSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -41,7 +41,7 @@ struct ToastView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.caption2)
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(UzumeAppColor.textDisabled)
                 }
                 .buttonStyle(.plain)
             }
@@ -49,8 +49,8 @@ struct ToastView: View {
             .padding(.vertical, 8)
         }
         .background(.ultraThinMaterial)
-        .overlay { Color.black.opacity(0.35) }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay { UzumeAppColor.Performance.toastTint }
+        .clipShape(RoundedRectangle(cornerRadius: UzumeAppRadius.sm))
         .frame(maxWidth: 320)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(AccessibilityLabels.toastLabel(copy: toast.copy, severity: toast.severity))
@@ -61,14 +61,17 @@ struct ToastView: View {
     private var accentBar: some View {
         accentColor
             .frame(width: 4)
-            .clipShape(RoundedRectangle(cornerRadius: 8).path(in: CGRect(x: 0, y: 0, width: 4, height: 100)))
+            .clipShape(
+                RoundedRectangle(cornerRadius: UzumeAppRadius.sm)
+                    .path(in: CGRect(x: 0, y: 0, width: 4, height: 100))
+            )
     }
 
     private var accentColor: Color {
         switch toast.severity {
-        case .info:        return .gray
-        case .warning:     return .orange
-        case .degradation: return .red
+        case .info:        return UzumeAppColor.Status.infoForeground
+        case .warning:     return UzumeAppColor.Status.warningForeground
+        case .degradation: return UzumeAppColor.Status.dangerForeground
         }
     }
 }
