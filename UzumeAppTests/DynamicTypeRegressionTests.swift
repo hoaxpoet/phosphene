@@ -17,7 +17,7 @@ struct DynamicTypeRegressionTests {
 
     private static let viewFiles: [String] = [
         "UzumeApp/Views/Playback/TrackInfoCardView.swift",
-        "UzumeApp/Views/Playback/ToastView.swift",
+        "UzumeApp/Views/Playback/PerformanceToast.swift",
         "UzumeApp/Views/Playback/ListeningBadgeView.swift",
         "UzumeApp/Views/Playback/SessionProgressDotsView.swift",
         "UzumeApp/Views/Playback/PlaybackControlsCluster.swift",
@@ -30,9 +30,11 @@ struct DynamicTypeRegressionTests {
         "UzumeApp/Views/AppleMusicConnectionView.swift",
         "UzumeApp/Views/LocalSourceConnectionView.swift",
         "UzumeApp/Views/Components/SourceChoice.swift",
-        "UzumeApp/Views/Preparation/TopBannerView.swift",
-        "UzumeApp/Views/Preparation/PreparationFailureView.swift",
-        "UzumeApp/Views/FullScreenErrorView.swift",
+        "UzumeApp/LocalFileErrorStore.swift",
+        "UzumeApp/Views/Components/InlineNotice.swift",
+        "UzumeApp/Views/Components/NoticeBanner.swift",
+        "UzumeApp/Views/Components/RecoveryScreen.swift",
+        "UzumeApp/Views/Components/StatusTone.swift",
     ]
 
     private func projectRoot(file: StaticString = #filePath) throws -> URL {
@@ -57,11 +59,12 @@ struct DynamicTypeRegressionTests {
     func noFixedSystemFontCalls() throws {
         let root = try projectRoot()
         var violations: [String] = []
+        var missing: [String] = []
 
         for relativePath in Self.viewFiles {
             let fileURL = root.appendingPathComponent(relativePath)
             guard let source = try? String(contentsOf: fileURL, encoding: .utf8) else {
-                // Skip if file doesn't exist (e.g. path mismatch in CI) — don't fail.
+                missing.append(relativePath)
                 continue
             }
             if source.contains(".system(size:") {
@@ -72,6 +75,13 @@ struct DynamicTypeRegressionTests {
         #expect(
             violations.isEmpty,
             "Fixed font calls found (use semantic styles instead): \(violations.joined(separator: ", "))"
+        )
+
+        // DS.3: a path that no longer exists used to be skipped silently, so a file
+        // deleted or moved left the ratchet passing over nothing at all.
+        #expect(
+            missing.isEmpty,
+            "Ratchet names files that do not exist: \(missing.joined(separator: ", "))"
         )
     }
 }
