@@ -34,6 +34,7 @@ struct StatusToneTests {
         (UzumeToast.Severity.info, StatusTone.info),
         (.warning, .warning),
         (.degradation, .warning),   // D-235 — was the danger red before DS.3
+        (.fatal, .danger),          // D-236 — added so fatal survives to the view
     ])
     func toastSeverityMapping(severity: UzumeToast.Severity, expected: StatusTone) {
         #expect(StatusTone.from(severity) == expected)
@@ -45,6 +46,19 @@ struct StatusToneTests {
     /// full-screen surfaces and red in toasts. Both vocabularies must now agree.
     @Test func degradation_readsTheSameInBothVocabularies() {
         #expect(StatusTone.from(ErrorSeverity.degradation) == StatusTone.from(UzumeToast.Severity.degradation))
+    }
+
+    /// The two vocabularies carry the same four cases as of D-236, so every
+    /// `ErrorSeverity` must reach the same tone through the toast enum as it does
+    /// directly. A fold in `PlaybackErrorBridge` used to break this for `fatal`.
+    @Test("the two vocabularies agree case for case", arguments: [
+        (ErrorSeverity.info, UzumeToast.Severity.info),
+        (.warning, .warning),
+        (.degradation, .degradation),
+        (.fatal, .fatal),
+    ])
+    func vocabulariesAgree(engine: ErrorSeverity, toast: UzumeToast.Severity) {
+        #expect(StatusTone.from(engine) == StatusTone.from(toast))
     }
 
     /// Colour may support but never replace text or icon (COMPONENTS.md § Trust

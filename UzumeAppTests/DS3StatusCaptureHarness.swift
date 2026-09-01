@@ -65,7 +65,8 @@ struct DS3StatusCaptureHarness {
 
         for (severity, copy) in [(UzumeToast.Severity.info, "Display connected."),
                                  (.warning, "Display disconnected mid-session."),
-                                 (.degradation, "No audio detected.")] {
+                                 (.degradation, "Stem separation failed."),
+                                 (.fatal, "No audio detected.")] {
             let label = AccessibilityLabels.toastLabel(copy: copy, severity: severity)
             rows.append("toast — \(severity)\t\(label)\t\(Self.toastAnnounceNote)")
         }
@@ -193,7 +194,8 @@ struct DS3StatusCaptureHarness {
         static let all: [ToastCase] = [
             ToastCase(name: "toast-info", severity: .info, copy: "Display connected."),
             ToastCase(name: "toast-warning", severity: .warning, copy: "Display disconnected mid-session."),
-            ToastCase(name: "toast-degradation", severity: .degradation, copy: "No audio detected."),
+            ToastCase(name: "toast-degradation", severity: .degradation, copy: "Stem separation failed."),
+            ToastCase(name: "toast-fatal", severity: .fatal, copy: "No audio detected."),
         ]
     }
 

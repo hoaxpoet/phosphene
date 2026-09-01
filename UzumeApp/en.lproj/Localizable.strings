@@ -372,6 +372,7 @@
 "a11y.toast.severity.info"                  = "Info";
 "a11y.toast.severity.warning"               = "Warning";
 "a11y.toast.severity.degradation"           = "Alert";
+"a11y.toast.severity.fatal"                 = "Critical";
 "a11y.toast.dismiss.label"                  = "Dismiss notification";
 
 "a11y.preparation.topBanner.dismiss.label"  = "Dismiss warning";
