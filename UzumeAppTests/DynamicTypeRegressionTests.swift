@@ -28,6 +28,8 @@ struct DynamicTypeRegressionTests {
         "UzumeApp/Views/Ready/PlanPreviewView.swift",
         "UzumeApp/Views/Ready/ReadyView.swift",
         "UzumeApp/Views/AppleMusicConnectionView.swift",
+        "UzumeApp/Views/LocalSourceConnectionView.swift",
+        "UzumeApp/Views/Components/SourceChoice.swift",
         "UzumeApp/Views/Preparation/TopBannerView.swift",
         "UzumeApp/Views/Preparation/PreparationFailureView.swift",
         "UzumeApp/Views/FullScreenErrorView.swift",
