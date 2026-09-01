@@ -13,7 +13,7 @@
 #                  (matches docs/VISUAL_REFERENCES/<preset>/ and the render PNG
 #                   prefix, case-insensitive with spaces→underscores).
 #   [session-dir]  explicit RENDER_VISUAL output dir; overrides "newest under
-#                  /tmp/phosphene_visual". Optional.
+#                  /tmp/uzume_visual". Optional.
 #
 # Missing references or render frames → non-zero exit with a one-line reason.
 # Reader-facing only: no auto-scoring (D-064 — the reader is Claude's eyes).
@@ -45,7 +45,7 @@ while IFS= read -r f; do REFS+=("$f"); done < <(
 [ ${#REFS[@]} -gt 0 ] || die "no reference images in $REF_DIR"
 
 # Session dir: explicit override, else newest under the RENDER_VISUAL output root.
-VISUAL_ROOT="/tmp/phosphene_visual"
+VISUAL_ROOT="/tmp/uzume_visual"
 if [ -z "$SESSION_DIR" ]; then
   [ -d "$VISUAL_ROOT" ] || die "no RENDER_VISUAL output at $VISUAL_ROOT — run a RENDER_VISUAL=1 render first"
   SESSION_DIR="$(find "$VISUAL_ROOT" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)"

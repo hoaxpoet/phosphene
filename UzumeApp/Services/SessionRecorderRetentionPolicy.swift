@@ -22,7 +22,7 @@ enum SessionRecorderRetentionPolicy {
     ///
     /// - Parameters:
     ///   - policy: The retention rule from SettingsStore.
-    ///   - sessionsDir: The ~/Documents/phosphene_sessions/ URL. Defaults to the standard location.
+    ///   - sessionsDir: The ~/Documents/uzume_sessions/ URL. Defaults to the standard location.
     ///   - now: Current date (injectable for testing).
     static func apply(
         policy: SessionRetentionPolicy,
@@ -59,14 +59,14 @@ enum SessionRecorderRetentionPolicy {
     static var defaultSessionsDir: URL {
         FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("phosphene_sessions")
+            .appendingPathComponent("uzume_sessions")
     }
 
     // MARK: - Private helpers
 
     /// Session folders only — directories whose name parses as a session timestamp.
     ///
-    /// The name check is load-bearing, not defensive (BUG-082). `phosphene_sessions/` also
+    /// The name check is load-bearing, not defensive (BUG-082). `uzume_sessions/` also
     /// holds permanent non-session directories — `fixturegen-love_rehab`, `fixturegen-so_what`,
     /// `fixturegen-there_there`, `beat-match-test-session` — and the sort below is
     /// lexicographic, where letters rank above digits. Unfiltered, those four sorted ABOVE

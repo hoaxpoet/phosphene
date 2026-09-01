@@ -79,7 +79,7 @@ Not every increment requires a full release check. Infrastructure, test, and doc
 
 - [ ] `SOAK_TESTS=1 swift test --filter SoakTestHarnessTests` — 2-minute soak passes. Memory footprint stable (no monotonic growth). No `droppedFrames` count > 5 in the report.
 - [ ] `swift test --filter DSPPerformanceTests RenderLoopPerformanceTests` — no regressions.
-- [ ] Alternatively: run `Scripts/run_soak_test.sh` for a 2-hour full soak. Review `~/Documents/phosphene_soak_reports/<timestamp>/report.md`.
+- [ ] Alternatively: run `Scripts/run_soak_test.sh` for a 2-hour full soak. Review `~/Documents/uzume_soak_reports/<timestamp>/report.md`.
 
 ---
 

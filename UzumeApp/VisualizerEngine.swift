@@ -678,7 +678,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Continuous diagnostic capture — video + per-frame CSVs + stem wavs +
     /// session.log. Runs from app launch; artifacts live under
-    /// `~/Documents/phosphene_sessions/<timestamp>/`.
+    /// `~/Documents/uzume_sessions/<timestamp>/`.
     let sessionRecorder: SessionRecorder?
 
     // MARK: - Signal Quality Monitor
@@ -1227,7 +1227,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// crashed" signal. Remove once BUG-012 closes.
     deinit {
         BUG012Probe.recordVisualizerEngineDeinit()
-        diagLog?.closeFile()   // CLEAN.3.5: release the ~/phosphene_diag.log handle
+        diagLog?.closeFile()   // CLEAN.3.5: release the ~/uzume_diag.log handle
     }
 
     /// Build the flock used by the Murmuration preset — the **3D version of the

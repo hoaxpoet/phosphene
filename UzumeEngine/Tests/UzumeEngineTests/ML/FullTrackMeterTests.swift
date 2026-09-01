@@ -50,7 +50,7 @@ struct FullTrackMeterTests {
         }
         guard let device = MTLCreateSystemDefaultDevice() else { Issue.record("no Metal"); return }
         let dir = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
-            ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent("uzume_beatbench_fixtures")
         let model = try BeatThisModel(device: device)
         let decoder = BeatActivationDecoder()
 

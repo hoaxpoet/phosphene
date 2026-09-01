@@ -64,7 +64,7 @@ it where the restless density ratio could not.
 through a real vDSP FFT, cross-checked against an independent time-domain measure:
 
 ```
-FT_SESSION=~/Documents/phosphene_sessions/<id> FT_EVENT=<seconds> \
+FT_SESSION=~/Documents/uzume_sessions/<id> FT_EVENT=<seconds> \
   swift test --package-path UzumeEngine --filter SpectralDensityRealAudio
 ```
 

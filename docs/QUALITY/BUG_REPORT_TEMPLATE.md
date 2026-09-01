@@ -35,7 +35,7 @@ Copy this template when filing a new defect in `KNOWN_ISSUES.md` or in a commit 
 
 ### Session artifacts
 
-**Session directory:** `~/Documents/phosphene_sessions/<timestamp>/` (or "n/a — not yet captured")
+**Session directory:** `~/Documents/uzume_sessions/<timestamp>/` (or "n/a — not yet captured")
 
 Attach or reference the following (as applicable to the domain tag):
 

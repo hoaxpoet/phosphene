@@ -208,7 +208,7 @@ struct WitchlightSkyLuminanceTests {
             String(format: ">%.0f %.3f%%", $0, 100.0 * Double($1) / Double(pixels))
         }.joined(separator: "  "))
         if ProcessInfo.processInfo.environment["RENDER_VISUAL"] != nil {
-            let dir = URL(fileURLWithPath: "/tmp/phosphene_visual/witchlight_ribbon")
+            let dir = URL(fileURLWithPath: "/tmp/uzume_visual/witchlight_ribbon")
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let out = dir.appendingPathComponent("ribbon.png")
             try writePNG(bgra: last, width: 640, height: 360, to: out)

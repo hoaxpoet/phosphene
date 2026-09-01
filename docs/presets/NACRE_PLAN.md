@@ -122,7 +122,7 @@ No two visual layers share a primitive at the same timescale. ✓ (mids→volume
 - **Sidecar:** mirror `DragonBloom.json`. Tentative: `family: "hypnotic"` (revisit "fluid" — affects orchestrator grouping; Dragon Bloom is also "hypnotic", so confirm Nacre shouldn't differ to avoid over-grouping two feedback presets), `passes: ["direct","mv_warp"]`, `decay ≈ 0.95`, `stem_affinity` minimal (Nacre is band-energy-driven more than stem-driven — likely `{}` or a light vocals→core link), `rubric_profile: "lightweight"`, `certified: false` until NACRE.4.
 - **GPU contract:** direct-pass mv_warp fragment slots — buf 0 `FeatureVector`, buf 2 `waveformData`, buf 3 `StemFeatures`, tex 0 feedback, tex 4–11 noise. (`SceneUniforms` buf 4 is **not** bound in direct-pass — don't reach for it.)
 - **Test harness:** adapt `DragonBloomMVWarpAccumulationTest` → `NacreMVWarpAccumulationTest`, env-gate `NACRE_MVWARP_DIAG=1`, silence vs music, gate on no-white-out + mid→zoom coupling + bass→displacement.
-- **Visual harness:** `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview` → `/tmp/phosphene_visual/<ISO>/` (silence/mid/beat). Required before first tuning commit.
+- **Visual harness:** `RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter PresetVisualReview` → `/tmp/uzume_visual/<ISO>/` (silence/mid/beat). Required before first tuning commit.
 - **Faithful oracle:** re-render `(431)` any time via `tools/milkdrop-render` (`royal_variants/$$$ Royal - Mashup (431).json` already extracted).
 
 ## 9. Risks / open decisions

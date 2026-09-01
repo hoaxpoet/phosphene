@@ -621,13 +621,13 @@ struct MeniscusMultiFrameRenderTest {
     }
 
     /// `RENDER_VISUAL=1` dumps frames where `Scripts/compare_render.sh meniscus` looks
-    /// for them: a fresh timestamped dir under `/tmp/phosphene_visual`, frames named
+    /// for them: a fresh timestamped dir under `/tmp/uzume_visual`, frames named
     /// `meniscus_*.png`. Returns nil when not dumping, so the gate costs nothing.
     private static func makeOutputDirectory() throws -> URL? {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return nil }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let url = URL(fileURLWithPath: "/tmp/phosphene_visual")
+        let url = URL(fileURLWithPath: "/tmp/uzume_visual")
             .appendingPathComponent("meniscus_\(formatter.string(from: Date()))")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url

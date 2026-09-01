@@ -19,7 +19,7 @@
 //
 //   RENDER_VISUAL=1 swift test --package-path UzumeEngine \
 //       --filter WitchlightMotionSequence
-//   Scripts/motion_gate.sh witchlight /tmp/phosphene_visual/<stamp>/<track>
+//   Scripts/motion_gate.sh witchlight /tmp/uzume_visual/<stamp>/<track>
 //
 // Sequence-not-stills is the point: Truchet Loom passed still review and jittered
 // "like a bug" in live M7 (D-194).
@@ -36,7 +36,7 @@ import Testing
 @Suite("Witchlight motion sequence (pre-M7 gate)")
 struct WitchlightMotionSequenceTests {
 
-    private static let outputRoot = "/tmp/phosphene_visual"
+    private static let outputRoot = "/tmp/uzume_visual"
     private let width = 960
     private let height = 540
 

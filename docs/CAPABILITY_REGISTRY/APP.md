@@ -191,7 +191,7 @@ Services/ (23):
 - `PreparationETAEstimator.swift` — Rolling EMA over per-stage durations (resolving / downloading / stemSeparation / caching). `minSamplesRequired: 3`, `emaAlpha: 0.3`.
 - `PresetScoringContextProvider.swift` — Canonical builder of `PresetScoringContext` for Orchestrator scoring calls. Resolves `DeviceTierOverride` (`.auto`/`.forceTier1`/`.forceTier2`) against detected hardware tier. U.8 Part C.
 - `ReachabilityMonitor.swift` — `NWPathMonitor` wrapper with 1 s debounce. `ReachabilityPublishing` protocol + `StubReachabilityMonitor` test-double pair.
-- `SessionRecorderRetentionPolicy.swift` — Session-folder pruning. `SessionRetentionPolicy` enum: `.keepAll / .lastN10 / .lastN25 / .oneDay / .oneWeek`. 60 s active-session guard prevents deletion of in-progress folders. `defaultSessionsDir` returns `~/Documents/phosphene_sessions/`.
+- `SessionRecorderRetentionPolicy.swift` — Session-folder pruning. `SessionRetentionPolicy` enum: `.keepAll / .lastN10 / .lastN25 / .oneDay / .oneWeek`. 60 s active-session guard prevents deletion of in-progress folders. `defaultSessionsDir` returns `~/Documents/uzume_sessions/`.
 - `SettingsMigrator.swift` — One-shot UserDefaults key migration on app launch. One mapping today: `"phosphene.showLiveAdaptationToasts"` → `"phosphene.settings.visuals.showLiveAdaptationToasts"`.
 - `SettingsStore.swift` — `@MainActor final class SettingsStore: ObservableObject`. **One app-wide instance** per D-091 / Failed Approach #55 (`SettingsStoreEnvironmentRegressionTests` is the regression gate). 9 `@Published` fields covering device-tier override, quality ceiling, Milkdrop inclusion, reduced motion, excluded preset categories, show-live-adaptation-toasts, show-uncertified-presets, session-recorder-enabled, session-retention.
 - `SpotifyKeychainStore.swift` — `SpotifyKeychainStoring` protocol + concrete `SpotifyKeychainStore` using `SecItem*` APIs. Default service `"io.uzume.spotify"`, default account `"refresh_token"`. U.11.
@@ -286,7 +286,7 @@ Owns audio routing, MIR analysis, mood classification, and per-frame stem analys
 | `runMoodClassifier(mood:fv:mir:magnitudes:)` | `production-active` | `processAnalysisFrame` | Calls `MoodClassifier.classify`; writes capture row at 10% sampling; diag log at 60% |
 | `makeDiagnostics(fv:mir:magnitudes:) -> MIRDiagnostics` | `production-active` | `runMoodClassifier` | Debug overlay diag |
 | `updateSpectralCartographBeatGrid(mir:fv:)` | `production-active` | `processAnalysisFrame` | DSP.3.1 SpectralCartograph overlay buffer + BeatSyncSnapshot |
-| `writeDiagnosticLine(state:mir:)` | `production-active` | `runMoodClassifier` (analysisFrameCount % 60 == 0) | `~/phosphene_diag.log` |
+| `writeDiagnosticLine(state:mir:)` | `production-active` | `runMoodClassifier` (analysisFrameCount % 60 == 0) | `~/uzume_diag.log` |
 | `publishMoodResult(state:diag:stability:mir:)` | `production-active` | `runMoodClassifier` | **BUG-015: writes `lastClassifiedMood` under `orchestratorLock` at line 432** |
 | `runOrchestratorLiveUpdate(mir:)` call at line 184 | `production-active` | `processAnalysisFrame` | **BUG-015 wire entry** |
 | `static func buildFetcherList()` | `production-active` | `setupAudioRouting`; `VisualizerEngine.init` | iTunes + MusicBrainz + (Soundcharts / Spotify if env vars) |
@@ -794,7 +794,7 @@ The kickoff requires this section. BUG-015 was filed by CA.4 on 2026-05-20 and R
 
    The test strips line + block comments before counting so doc-comment mentions don't satisfy the assertion (the CA.4 grep found four doc-comment references in unrelated files; this regression test must not be fooled by the same).
 
-**Verification criterion #2 from the BUG-015 entry** confirms the wire fires in production: Matt's session capture `~/Documents/phosphene_sessions/2026-05-21T14-19-32Z/session.log` shows two `Orchestrator: wire active` lines (one pre-first-track-change at 8.2 s elapsed, one post-track-change at 0.0 s elapsed proving the per-track latch reset). 7,519 frames + 23 stem dumps in that session confirm the full audio path was alive.
+**Verification criterion #2 from the BUG-015 entry** confirms the wire fires in production: Matt's session capture `~/Documents/uzume_sessions/2026-05-21T14-19-32Z/session.log` shows two `Orchestrator: wire active` lines (one pre-first-track-change at 8.2 s elapsed, one post-track-change at 0.0 s elapsed proving the per-track latch reset). 7,519 frames + 23 stem dumps in that session confirm the full audio path was alive.
 
 **Verdict: BUG-015 wire shape is structurally correct. No App-layer regression risk identified.**
 

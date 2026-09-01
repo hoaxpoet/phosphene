@@ -10,11 +10,11 @@ deltas. Reports only; proposes no retune (every threshold change is its own incr
 
 Usage:
   python3 tools/census_report.py \
-    --results "/Volumes/Extreme SSD/phosphene_census/pilot_results.csv" \
+    --results "/Volumes/Extreme SSD/uzume_census/pilot_results.csv" \
     --manifest tools/data/corpus_pilot_1000.csv \
     --scaler tools/data/mood_scaler.json \
     --out docs/diagnostics/CENSUS_PILOT_REPORT.md \
-    [--failures "/Volumes/Extreme SSD/phosphene_census/census_failures.log"]
+    [--failures "/Volumes/Extreme SSD/uzume_census/census_failures.log"]
 
 Stdlib only.
 """

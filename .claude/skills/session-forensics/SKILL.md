@@ -16,7 +16,7 @@ A `SessionRecorder` capture (auto-on per session) writes a session directory con
 - **`raw_tap.wav`** — the raw system-audio tap PCM. The replay substrate: re-decode it to re-run a tracker/decoder offline, or run a reference tool on it for ground truth (BEAT_SYNC.md Component 5b).
 - **`session.log`** — startup banner, signal `.active/.suspect/.silent` transitions, track/preset changes, and the `WIRING:`-prefixed beat-grid + BPM-disagreement trail.
 
-(Distinct from the `R`-shortcut `~/phosphene_features.csv` MIR-only path — different schema/cadence; not interchangeable.)
+(Distinct from the `R`-shortcut `~/uzume_features.csv` MIR-only path — different schema/cadence; not interchangeable.)
 
 ## 2. CLI inventory
 

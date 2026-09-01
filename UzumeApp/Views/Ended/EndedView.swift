@@ -158,13 +158,13 @@ struct EndedView: View {
 // MARK: - Sessions folder helper
 
 extension EndedView {
-    /// Default opener for `~/Documents/phosphene_sessions/`. Creates the directory
+    /// Default opener for `~/Documents/uzume_sessions/`. Creates the directory
     /// if it does not yet exist so Finder always has something to display.
     @MainActor
     static func openSessionsFolder() {
         let url = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("phosphene_sessions")
+            .appendingPathComponent("uzume_sessions")
         if !FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }

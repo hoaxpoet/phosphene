@@ -19,7 +19,7 @@
 | `production-orphan` (runtime path) | 1 cluster | `SelfSimilarityMatrix` + `NoveltyDetector` + `StructuralAnalyzer` run every frame inside `MIRPipeline.process` but their per-frame output (`MIRPipeline.latestStructuralPrediction`) is read by exactly one consumer at *preparation* time only. The runtime per-frame work has no live reader. |
 | `production-orphan` (field-level) | 1 field | `MIRPipeline.spectralRolloff` is public; zero non-DSP consumers. The underlying rolloff value IS consumed internally by `StructuralAnalyzer` (which is itself in the orphan cluster above), but the public exposure is dead. |
 | `boundary-deferred` | 2 files | `GridOnsetCalibrator.swift` and `BeatGridAnalyzer.swift` live in `Sources/Session/`, not `Sources/DSP/`, despite functioning as DSP capabilities. File-location call deferred to a CA-future increment that audits Session. |
-| `built-but-undocumented` | 1 file | `MIRPipeline+Recording.swift` writes a parallel `~/phosphene_features.csv` (wired to the `R` keyboard shortcut) that is distinct from `SessionRecorder`'s `features.csv`. The duplication is real and works; only the documentation surface omits the distinction. |
+| `built-but-undocumented` | 1 file | `MIRPipeline+Recording.swift` writes a parallel `~/uzume_features.csv` (wired to the `R` keyboard shortcut) that is distinct from `SessionRecorder`'s `features.csv`. The duplication is real and works; only the documentation surface omits the distinction. |
 | `documented-but-missing` | 1 reference | `docs/CAPABILITY_GAP_AUDIT.md` is cited as a live file at [`docs/ENGINEERING_PLAN.md:446`](../ENGINEERING_PLAN.md) but does not exist on disk. The kickoff anticipated this finding; it is already acknowledged in `docs/ENGINEERING_PLAN.md:3724`. |
 | `unverified-claim` | 0 | No new instances. PT.1 (the canonical case cited in the kickoff) is now `production-active` after the 2026-05-19 ring-buffer fix landed; verified at [`PitchTracker.swift:137-139`](../../UzumeEngine/Sources/DSP/PitchTracker.swift) and `:178-212`. |
 | `dead` | 0 | — |
@@ -71,7 +71,7 @@ None. `DSP.swift` (5 lines, just imports) is a module marker, not a stub functio
 
 ### built-but-undocumented
 
-1. **`MIRPipeline+Recording.swift`** (69 LoC) — implements `startRecording()` / `stopRecording()` / `writeRecordingRow(...)` which write a parallel `~/phosphene_features.csv` file. Wired into `VisualizerEngine+Capture.swift:18` via `toggleMIRRecording()`, bound to the `R` keyboard shortcut (per `CLAUDE.md` / `ARCHITECTURE.md:230`). This CSV path is **distinct** from `SessionRecorder`'s per-session `~/Documents/phosphene_sessions/<ts>/features.csv` (described at `ARCHITECTURE.md:266-280`). Both exist; both are functional; both write similar but not identical column sets (MIRPipeline+Recording adds `track`/`artist` columns and a 1 Hz throttle, vs SessionRecorder's per-frame stream). The `R` shortcut is documented but the *fact that it produces a different file with a different schema than the auto-recorded session* is not surfaced anywhere in `ARCHITECTURE.md` or `CLAUDE.md`. **Suggested doc-location:** `ARCHITECTURE.md §Session Recording` should add a note that `R` (manual MIR record) and auto-recording are independent and write to different paths. Applied as a small doc-drift edit in this increment.
+1. **`MIRPipeline+Recording.swift`** (69 LoC) — implements `startRecording()` / `stopRecording()` / `writeRecordingRow(...)` which write a parallel `~/uzume_features.csv` file. Wired into `VisualizerEngine+Capture.swift:18` via `toggleMIRRecording()`, bound to the `R` keyboard shortcut (per `CLAUDE.md` / `ARCHITECTURE.md:230`). This CSV path is **distinct** from `SessionRecorder`'s per-session `~/Documents/uzume_sessions/<ts>/features.csv` (described at `ARCHITECTURE.md:266-280`). Both exist; both are functional; both write similar but not identical column sets (MIRPipeline+Recording adds `track`/`artist` columns and a 1 Hz throttle, vs SessionRecorder's per-frame stream). The `R` shortcut is documented but the *fact that it produces a different file with a different schema than the auto-recorded session* is not surfaced anywhere in `ARCHITECTURE.md` or `CLAUDE.md`. **Suggested doc-location:** `ARCHITECTURE.md §Session Recording` should add a note that `R` (manual MIR record) and auto-recording are independent and write to different paths. Applied as a small doc-drift edit in this increment.
 
 ### boundary-deferred
 
@@ -244,9 +244,9 @@ The 808-line file represents months of incremental BUG-007 work and is **absent 
 
 ### `MIRPipeline+Recording.swift` (69 lines) — `production-active` (built-but-undocumented)
 
-[`MIRPipeline+Recording.swift:10-30`](../../UzumeEngine/Sources/DSP/MIRPipeline+Recording.swift) — `startRecording()` / `stopRecording()` write a 1 Hz throttled CSV to `~/phosphene_features.csv`. Bound to the `R` keyboard shortcut via `VisualizerEngine+Capture.swift:18`. The CSV schema is `timestamp, track, artist, subBass, lowBass, lowMid, midHigh, highMid, high, centroid, flux, majorCorr, minorCorr, stableKey, stableBPM, valence, arousal` (17 columns).
+[`MIRPipeline+Recording.swift:10-30`](../../UzumeEngine/Sources/DSP/MIRPipeline+Recording.swift) — `startRecording()` / `stopRecording()` write a 1 Hz throttled CSV to `~/uzume_features.csv`. Bound to the `R` keyboard shortcut via `VisualizerEngine+Capture.swift:18`. The CSV schema is `timestamp, track, artist, subBass, lowBass, lowMid, midHigh, highMid, high, centroid, flux, majorCorr, minorCorr, stableKey, stableBPM, valence, arousal` (17 columns).
 
-Coexists with `SessionRecorder` which auto-writes `~/Documents/phosphene_sessions/<ts>/features.csv` (22 columns, per-frame, per `ARCHITECTURE.md:273`). The two paths have different schemas, different output paths, and different cadences. The fact that **both exist** and **what each is for** is not documented anywhere outside the `R` shortcut listing. **Doc-drift correction applied below.**
+Coexists with `SessionRecorder` which auto-writes `~/Documents/uzume_sessions/<ts>/features.csv` (22 columns, per-frame, per `ARCHITECTURE.md:273`). The two paths have different schemas, different output paths, and different cadences. The fact that **both exist** and **what each is for** is not documented anywhere outside the `R` shortcut listing. **Doc-drift correction applied below.**
 
 ### `NoveltyDetector.swift` (287 lines) — `production-orphan` (runtime), `production-active` (prep)
 
@@ -311,11 +311,11 @@ Applied in this increment as small, doc-only corrections:
    - `BeatGridResolver` — Stateless transformer from Beat This! per-frame probabilities to `BeatGrid`.
    - `BeatThisPreprocessor` — Beat This! log-mel preprocessor (sr=22050, nFFT=1024, hop=441, nMels=128, Slaney).
    - `LiveBeatDriftTracker` — DSP.2 S7 onset-matched drift tracker (the BUG-007.x focal point).
-   - `MIRPipeline+Recording` — `~/phosphene_features.csv` manual recording (R key); distinct from SessionRecorder.
+   - `MIRPipeline+Recording` — `~/uzume_features.csv` manual recording (R key); distinct from SessionRecorder.
    - `StemAnalyzer+RichMetadata` — MV-3a rich per-stem metadata computation.
 2. **`§Audio Analysis Hierarchy` (lines 80-89)** — extend the "MIR pipeline components" list to mention `LiveBeatDriftTracker` (the production primary path) and `StructuralAnalyzer`. Note that `BeatPredictor` is the reactive-mode fallback for tracks without an offline `BeatGrid`.
 3. **`§Chroma` (line 619)** — the "Skip bins below 65 Hz" claim does not match the code's 500 Hz floor (`ChromaExtractor.swift:55-63`). Either update the prose to 500 Hz or note the dual values (65 Hz claim may have been from an earlier iteration). Applied as a drift correction: docs updated to 500 Hz to match code, with the rationale (`46.875 Hz bin spacing causes pitch-class bias`) cited inline.
-4. **`§Session Recording (Diagnostics)`** — add a one-line note that `R` keyboard shortcut triggers a separate, schema-different `~/phosphene_features.csv` recording (via `MIRPipeline+Recording`), and that this is independent of the auto-on per-session SessionRecorder path.
+4. **`§Session Recording (Diagnostics)`** — add a one-line note that `R` keyboard shortcut triggers a separate, schema-different `~/uzume_features.csv` recording (via `MIRPipeline+Recording`), and that this is independent of the auto-on per-session SessionRecorder path.
 
 ### Updates needed in ENGINEERING_PLAN.md
 

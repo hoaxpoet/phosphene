@@ -138,7 +138,7 @@ character** (frequency mapped to physical wavelength, which the source does not 
 **Regenerate every image in this set** — all are in-engine captures of the shipped build:
 
 ```sh
-STAVE_RENDER_WAV=~/Documents/phosphene_sessions/2026-08-17T16-19-13Z/raw_tap.wav \
+STAVE_RENDER_WAV=~/Documents/uzume_sessions/2026-08-17T16-19-13Z/raw_tap.wav \
 STAVE_RENDER_OUT=/tmp/ref/m7 STAVE_RENDER_START=12 STAVE_RENDER_SECONDS=4 \
 STAVE_RENDER_W=1280 STAVE_RENDER_H=720 \
   swift test --package-path UzumeEngine --filter renderStaveSequence

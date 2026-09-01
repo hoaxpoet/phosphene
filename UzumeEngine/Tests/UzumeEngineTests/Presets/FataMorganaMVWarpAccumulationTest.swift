@@ -207,7 +207,7 @@ struct FataMorganaMVWarpAccumulationTest {
     /// bar-direction-reversal gestures (test/prod parity, FA #66).
     static func loadSessionBands() -> [(Float, Float, Float, Float, Float, Float)] {
         let dir = ProcessInfo.processInfo.environment["FATA_SESSION"]
-            ?? "\(NSHomeDirectory())/Documents/phosphene_sessions/2026-06-03T03-01-32Z"
+            ?? "\(NSHomeDirectory())/Documents/uzume_sessions/2026-06-03T03-01-32Z"
         let url = URL(fileURLWithPath: dir).appendingPathComponent("features.csv")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
         var out: [(Float, Float, Float, Float, Float, Float)] = []
@@ -238,7 +238,7 @@ struct FataMorganaMVWarpAccumulationTest {
     /// drumsEnergyDev 19, bassEnergyDev 21, vocalsEnergyDev 23.
     static func loadSessionStems() -> [StemRow] {
         let dir = ProcessInfo.processInfo.environment["FATA_SESSION"]
-            ?? "\(NSHomeDirectory())/Documents/phosphene_sessions/2026-06-03T03-23-25Z"
+            ?? "\(NSHomeDirectory())/Documents/uzume_sessions/2026-06-03T03-23-25Z"
         let url = URL(fileURLWithPath: dir).appendingPathComponent("stems.csv")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
         var out: [StemRow] = []

@@ -60,7 +60,7 @@ extension SoakTestHarness {
         }
 
         let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("phosphene_soak_loop_\(Int(Date().timeIntervalSince1970)).caf")
+            .appendingPathComponent("uzume_soak_loop_\(Int(Date().timeIntervalSince1970)).caf")
 
         let outFile = try AVAudioFile(forWriting: tempURL,
                                      settings: format.settings,

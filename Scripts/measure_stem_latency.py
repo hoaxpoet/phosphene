@@ -2,7 +2,7 @@
 """measure_stem_latency.py — BUG-086 validation: how far behind the audio are
 the per-stem features, measured on a real session capture?
 
-    Scripts/measure_stem_latency.py ~/Documents/phosphene_sessions/<capture>
+    Scripts/measure_stem_latency.py ~/Documents/uzume_sessions/<capture>
 
 BUG-086 (2026-08-11): per-stem features reached presets ≈5.4 s late while the
 real-time band features beside them were correct to ≈0.3 s. BUG086.1 dropped the
@@ -311,7 +311,7 @@ def measure(capture):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("capture", help="a ~/Documents/phosphene_sessions/<dir>")
+    parser.add_argument("capture", help="a ~/Documents/uzume_sessions/<dir>")
     args = parser.parse_args()
     sys.exit(measure(args.capture))
 

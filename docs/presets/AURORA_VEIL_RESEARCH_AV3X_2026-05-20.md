@@ -39,9 +39,9 @@ The references show **vertical curtain ribbons with crisp ray pillars** (refs `0
 
 | Source | Date | Content | Path |
 |---|---|---|---|
-| Live session video | 2026-05-20T01-23-03Z | 132 s, AV.2.h live (pre AV.2.h.1) | `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-20T01-23-03Z/video.mp4` |
+| Live session video | 2026-05-20T01-23-03Z | 132 s, AV.2.h live (pre AV.2.h.1) | `/Users/braesidebandit/Documents/uzume_sessions/2026-05-20T01-23-03Z/video.mp4` |
 | Live session frames | 2026-05-20 (extracted today) | 4 frames at 1080×688 | `/tmp/av3_live_frames/frame_001.png` ... `004.png` |
-| Test fixture | 2026-05-20T12:42:13Z | silence / mid / beat at 1920×1280 | `/tmp/phosphene_visual/20260520T124213/Aurora_Veil_*.png` |
+| Test fixture | 2026-05-20T12:42:13Z | silence / mid / beat at 1920×1280 | `/tmp/uzume_visual/20260520T124213/Aurora_Veil_*.png` |
 | References | curated 2026-05-08 | `01` / `02` / `03` / `04` + `09` anti-ref | `docs/VISUAL_REFERENCES/aurora_veil/` |
 
 Live frames and test fixture are visually indistinguishable in structural character — confirms the test fixture is representative (no test/prod parity gap per CLAUDE.md FA #66) and rules out a fix-via-fixture-only path.

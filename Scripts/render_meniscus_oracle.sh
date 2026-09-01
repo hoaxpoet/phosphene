@@ -14,7 +14,7 @@
 #   Scripts/render_meniscus_oracle.sh [audio-source] [start-seconds]
 #
 #   [audio-source]  wav/m4a/mp3 to drive the render. Default: the newest session's
-#                   raw_tap.wav under ~/Documents/phosphene_sessions, so the oracle is
+#                   raw_tap.wav under ~/Documents/uzume_sessions, so the oracle is
 #                   driven by the same audio the app was last watched on.
 #   [start-seconds] offset into that audio. Default 8.
 #
@@ -45,7 +45,7 @@ command -v node   >/dev/null || die "node not found"
 AUDIO="${1:-}"
 START="${2:-8}"
 if [ -z "$AUDIO" ]; then
-  SESSION_ROOT="$HOME/Documents/phosphene_sessions"
+  SESSION_ROOT="$HOME/Documents/uzume_sessions"
   [ -d "$SESSION_ROOT" ] || die "no session dir and no audio argument"
   # NEWEST BY MTIME, not alphabetically last: session dirs are ISO-timestamped, but
   # hand-named ones (`beat-match-test-session`) sort after them and would silently win.

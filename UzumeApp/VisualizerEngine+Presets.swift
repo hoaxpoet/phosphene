@@ -756,7 +756,7 @@ extension VisualizerEngine {
             // greppable from the on-disk artifact. The logger.error
             // line above writes only to the unified log (category
             // "VisualizerEngine"); the SessionRecorder writer below
-            // lands the same event in ~/Documents/phosphene_sessions/
+            // lands the same event in ~/Documents/uzume_sessions/
             // <ts>/session.log. Engine-side parallel log at
             // LumenPatternEngine.swift:586 (category "session").
             sessionRecorder?.log(

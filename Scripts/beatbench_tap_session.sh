@@ -19,7 +19,7 @@
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../UzumeEngine" || exit 1
-export BEATBENCH_FIXTURES_DIR="${BEATBENCH_FIXTURES_DIR:-$HOME/phosphene_beatbench_fixtures}"
+export BEATBENCH_FIXTURES_DIR="${BEATBENCH_FIXTURES_DIR:-$HOME/uzume_beatbench_fixtures}"
 
 GROUP="${1:-hard}"
 

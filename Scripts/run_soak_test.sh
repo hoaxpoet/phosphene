@@ -27,7 +27,7 @@ if [[ ! -x "$RUNNER" ]]; then
 fi
 
 echo "▶ Starting soak test (caffeinate -i prevents App Nap)..."
-echo "  Report will be written to ~/Documents/phosphene_soak/<timestamp>/"
+echo "  Report will be written to ~/Documents/uzume_soak/<timestamp>/"
 echo ""
 
 # caffeinate -i keeps system awake; SoakRunner forwards all remaining args.

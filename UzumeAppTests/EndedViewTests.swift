@@ -73,11 +73,11 @@ struct EndedViewTests {
     func test_openSessionsFolder_createsDirectoryIfMissing() {
         let url = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("phosphene_sessions")
+            .appendingPathComponent("uzume_sessions")
         let preExisted = FileManager.default.fileExists(atPath: url.path)
         EndedView.openSessionsFolder()
         let postExists = FileManager.default.fileExists(atPath: url.path)
-        #expect(postExists, "phosphene_sessions/ must exist after openSessionsFolder()")
+        #expect(postExists, "uzume_sessions/ must exist after openSessionsFolder()")
         if !preExisted {
             try? FileManager.default.removeItem(at: url)
         }

@@ -10,7 +10,7 @@ Usage:
 Defaults to writing the report to docs/diagnostics/LF1.5_AB_COMPARISON_<DATE>.md
 where <DATE> is today's date (UTC).
 
-The two session dirs are expected under ~/Documents/phosphene_sessions/ ; absolute
+The two session dirs are expected under ~/Documents/uzume_sessions/ ; absolute
 paths and bare timestamp dirs both work. Each is expected to contain features.csv
 and session.log (the LF.1 SessionRecorder layout).
 
@@ -62,7 +62,7 @@ def resolve_session_dir(arg: str) -> Path:
     p = Path(arg).expanduser()
     if p.is_absolute() and p.exists():
         return p
-    home = Path.home() / "Documents" / "phosphene_sessions" / arg
+    home = Path.home() / "Documents" / "uzume_sessions" / arg
     if home.exists():
         return home
     raise FileNotFoundError(f"Session dir not found: {arg}")
@@ -555,7 +555,7 @@ def write_report(lf: dict, tap: dict, out_path: Path) -> None:
     lines.append(
         "Reproducer: `python3 Scripts/lf1_5_ab_compare.py "
         f"{lf['session_id']} {tap['session_id']}` "
-        "(sessions resolved under `~/Documents/phosphene_sessions/`)."
+        "(sessions resolved under `~/Documents/uzume_sessions/`)."
     )
 
     out_path.write_text("\n".join(lines) + "\n")

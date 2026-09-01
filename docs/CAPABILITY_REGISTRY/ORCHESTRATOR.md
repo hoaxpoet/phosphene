@@ -94,7 +94,7 @@ The body of `applyLiveUpdate(...)` at `VisualizerEngine+Orchestrator.swift:179` 
 
 **Verification criteria (filed in BUG-015 entry):**
 - Automated: a new integration test exercises a 30 s reactive session against synthetic FeatureVectors and asserts `reactiveOrchestrator.evaluate(...)` was called at least once after the listening window.
-- Manual: a session capture (`~/Documents/phosphene_sessions/<ts>/session.log`) for a real reactive playback shows at least one `LiveAdapter:` or `Reactive` log line in the live-adaptation event family.
+- Manual: a session capture (`~/Documents/uzume_sessions/<ts>/session.log`) for a real reactive playback shows at least one `LiveAdapter:` or `Reactive` log line in the live-adaptation event family.
 
 **Fix scope:** investigation increment to locate the missing wire. Two candidate sites: (a) `VisualizerEngine+Audio.swift` analysis-queue tick — should call `applyLiveUpdate(trackIndex:elapsedTrackTime:boundary:mood:)` after each feature update or at a sub-Hz cadence; (b) a Combine sink on `MIRPipeline`'s feature publisher. The right cadence is at most a few Hz (per the kickoff "Do not call applyLiveUpdate without a per-track cooldown. The path runs at ~94 Hz on the analysis queue" rule — the OBSERVED rate from the design comment; the code was never wired up to verify the rate).
 

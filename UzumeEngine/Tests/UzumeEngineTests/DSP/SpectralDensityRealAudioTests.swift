@@ -41,7 +41,7 @@ struct SpectralDensityRealAudioTests {
 
     // MARK: - Ground truth: the real analyzer over a real capture
 
-    /// `FT_SESSION=~/Documents/phosphene_sessions/<id> [FT_EVENT=20] swift test --filter SpectralDensityRealAudio`
+    /// `FT_SESSION=~/Documents/uzume_sessions/<id> [FT_EVENT=20] swift test --filter SpectralDensityRealAudio`
     ///
     /// `FT_EVENT` is the audio-time in seconds where the section change happens (default
     /// 20, the distorted-guitar entry in the capture above). The assertion is that the

@@ -15,7 +15,7 @@
 //   .build/release/CorpusCensusRunner \
 //     --root "/Volumes/Extreme SSD" \
 //     --manifest tools/data/corpus_pilot_1000.csv \
-//     --out "/Volumes/Extreme SSD/phosphene_census/pilot_results.csv" \
+//     --out "/Volumes/Extreme SSD/uzume_census/pilot_results.csv" \
 //     [--limit N] [--dual-rate] [--window-seconds 30]
 
 import ArgumentParser

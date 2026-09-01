@@ -59,7 +59,7 @@ Decided by Matt, 2026-07-31. Rationale, and why not the two alternatives (a pale
 
 **Method.** Four recorded sessions replayed from their `features.csv` / `stems.csv` (`docs/ENGINE/SESSION_REPLAY.md`). Per-driver `min / p5 / p50 / p95 / max`, plus circular statistics for the phase quantities. No value below is taken from a feature's name, its nominal range, or a prior doc.
 
-**Captures** (all under `~/Documents/phosphene_sessions/`):
+**Captures** (all under `~/Documents/uzume_sessions/`):
 
 | Capture ID | Character | Frames | Duration | fps | Chain health |
 |---|---|---|---|---|---|

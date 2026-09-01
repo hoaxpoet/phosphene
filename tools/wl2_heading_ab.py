@@ -11,7 +11,7 @@ introduced it and it is the sharper diagnostic for this exact failure:
 """
 import csv, math, os, sys, colorsys
 
-BASE = os.path.expanduser("~/Documents/phosphene_sessions")
+BASE = os.path.expanduser("~/Documents/uzume_sessions")
 W, H = 960, 540
 TRAIL, EMIT = 30.0, 34.0
 

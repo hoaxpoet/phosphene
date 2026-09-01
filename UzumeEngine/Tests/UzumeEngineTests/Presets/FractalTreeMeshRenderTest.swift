@@ -305,7 +305,7 @@ struct FractalTreeMeshRenderTest {
     /// Loom pass still-review and jitter in live M7 (D-194). Measuring a driver's
     /// turns/s is not the same as seeing what it does to the frame.
     ///
-    ///   FT_SESSION=~/Documents/phosphene_sessions/<id> \
+    ///   FT_SESSION=~/Documents/uzume_sessions/<id> \
     ///   RENDER_VISUAL=1 swift test --package-path UzumeEngine --filter sessionSequence
     ///
     /// Writes numbered PNGs plus strips of consecutive frames. Reader is the eyes (D-064).
@@ -601,7 +601,7 @@ struct FractalTreeMeshRenderTest {
     /// band … nothing to see"). A sample-and-hold keeps the range by construction; this
     /// assertion is what makes that a checked property rather than a claim.
     ///
-    ///   FT_SESSION=~/Documents/phosphene_sessions/<id> \
+    ///   FT_SESSION=~/Documents/uzume_sessions/<id> \
     ///   swift test --package-path UzumeEngine --filter trunkStepsOnTheBeat
     @Test("FTR.10: the trunk holds between beats and steps on them (FT_SESSION=<dir>)")
     func trunkStepsOnTheBeat() throws {
@@ -2012,7 +2012,7 @@ struct FractalTreeMeshRenderTest {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return nil }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let url = URL(fileURLWithPath: "/tmp/phosphene_visual")
+        let url = URL(fileURLWithPath: "/tmp/uzume_visual")
             .appendingPathComponent("fractal_tree_\(formatter.string(from: Date()))")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url

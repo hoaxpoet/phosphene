@@ -302,8 +302,8 @@ emit ""
 # is normal for non-preset increments — reported as "none", never fatal.
 emit "--- Step 5: Comparison sheet (compare_render.sh) ---"
 COMPARE_SHEET=""
-if [ -d /tmp/phosphene_visual ]; then
-  COMPARE_SHEET="$(find /tmp/phosphene_visual -maxdepth 2 -type f -name '*_compare.png' 2> /dev/null \
+if [ -d /tmp/uzume_visual ]; then
+  COMPARE_SHEET="$(find /tmp/uzume_visual -maxdepth 2 -type f -name '*_compare.png' 2> /dev/null \
     | sort | tail -1)"
 fi
 if [ -n "$COMPARE_SHEET" ]; then

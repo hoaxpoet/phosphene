@@ -123,7 +123,7 @@ extension SoakTestHarnessTests {
             duration: 3600,
             sampleInterval: 30,
             reportBaseDirectory: FileManager.default.temporaryDirectory
-                .appendingPathComponent("phosphene_soak_cancel_\(Int(Date().timeIntervalSince1970))")
+                .appendingPathComponent("uzume_soak_cancel_\(Int(Date().timeIntervalSince1970))")
         )
 
         let router = AudioInputRouter()
@@ -164,7 +164,7 @@ struct SoakTestHarnessSoakTests {
         guard #available(macOS 14.2, *) else { return }
 
         let reportDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("phosphene_soak_smoke_\(Int(Date().timeIntervalSince1970))")
+            .appendingPathComponent("uzume_soak_smoke_\(Int(Date().timeIntervalSince1970))")
 
         let config = SoakTestHarness.Configuration(
             duration: 60,
@@ -202,7 +202,7 @@ struct SoakTestHarnessSoakTests {
         guard #available(macOS 14.2, *) else { return }
 
         let reportDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("phosphene_soak_5min_\(Int(Date().timeIntervalSince1970))")
+            .appendingPathComponent("uzume_soak_5min_\(Int(Date().timeIntervalSince1970))")
 
         let config = SoakTestHarness.Configuration(
             duration: 300,

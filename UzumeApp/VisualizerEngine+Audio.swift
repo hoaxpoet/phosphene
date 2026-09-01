@@ -77,7 +77,7 @@ extension VisualizerEngine {
 
     /// Open the analysis diagnostic log file in the user's home directory.
     static func openDiagnosticLog() -> FileHandle? {
-        let path = NSHomeDirectory() + "/phosphene_diag.log"
+        let path = NSHomeDirectory() + "/uzume_diag.log"
         FileManager.default.createFile(atPath: path, contents: nil)
         return FileHandle(forWritingAtPath: path)
     }
@@ -618,7 +618,7 @@ extension VisualizerEngine {
         beatSyncLock.withLock { latestBeatSyncSnapshot = snapshot }
     }
 
-    /// Once-per-second textual diagnostic line written to ~/phosphene_diag.log.
+    /// Once-per-second textual diagnostic line written to ~/uzume_diag.log.
     func writeDiagnosticLine(state: EmotionalState, mir: MIRPipeline) {
         let line = String(
             format: "bassTs=%d iBPM=%.0f sBPM=%.0f td=%@"

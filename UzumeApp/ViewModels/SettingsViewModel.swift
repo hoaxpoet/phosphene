@@ -112,7 +112,7 @@ final class SettingsViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// Opens ~/Documents/phosphene_sessions/ in Finder.
+    /// Opens ~/Documents/uzume_sessions/ in Finder.
     func openSessionsFolder() {
         let sessions = sessionsDirectoryURL
         // Create directory if it doesn't exist so Finder has something to open.
@@ -138,7 +138,7 @@ final class SettingsViewModel: ObservableObject {
 
     private var sessionsDirectoryURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("phosphene_sessions")
+            .appendingPathComponent("uzume_sessions")
     }
 }
 

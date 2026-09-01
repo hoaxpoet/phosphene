@@ -674,7 +674,7 @@ The Phase A mid-session contact sheet rendered the four standard fixtures + the 
 
 ### M7 review outcome (2026-05-13, post-landing) — FAILED
 
-Live session capture (`/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T01-20-28Z/video.mp4`) showed four structural failures, summarized in Matt's words: "No reflective-black ferrofluid material visible. No idea what the droplets are and why they are here — no part of the original vision. The light source washes everything out and does not shine bright colorful neon light onto the surface of the ferrofluid material. It feels like effects are competing with one another rather than working in harmony in alignment with the music."
+Live session capture (`/Users/braesidebandit/Documents/uzume_sessions/2026-05-14T01-20-28Z/video.mp4`) showed four structural failures, summarized in Matt's words: "No reflective-black ferrofluid material visible. No idea what the droplets are and why they are here — no part of the original vision. The light source washes everything out and does not shine bright colorful neon light onto the surface of the ferrofluid material. It feels like effects are competing with one another rather than working in harmony in alignment with the music."
 
 Root cause diagnosis (Matt + Claude chat, 2026-05-13):
 
@@ -880,7 +880,7 @@ Conceptual change: matID == 2 becomes a **mirror-reflects-procedural-sky** path.
 1. **Render the full reference contact sheet.**
    - The 4 standard fixtures (silence / steady-mid / beat-heavy / quiet) at 1920×1080.
    - The cool/warm valence pair (D-022 mood-tint propagation check).
-   - A "live music" reconstruction: replay FV / Stems values from a real session capture (current candidate: `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T01-20-28Z/features.csv` + `stems.csv`) at multiple time points across the playthrough.
+   - A "live music" reconstruction: replay FV / Stems values from a real session capture (current candidate: `/Users/braesidebandit/Documents/uzume_sessions/2026-05-14T01-20-28Z/features.csv` + `stems.csv`) at multiple time points across the playthrough.
    - Save outputs to a documented path under `/var/folders/.../UzumeFerrofluidOceanV9Session4.5C/` and link the path in the closeout report.
 
 2. **Per-image annotation match.** For each of the 12 images in `docs/VISUAL_REFERENCES/ferrofluid_ocean/`, document whether the rendered output matches the **trait the README's annotation calls out** (per the stylization caveat — not the literal photograph). Document matches / gaps in the closeout report.
@@ -938,7 +938,7 @@ Defer with `// TODO(V.9 Session 5):` markers.
 1. **`docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md`** — CRITICAL READING. Every reference image annotation. The stylization caveat in particular. The mandatory traits checklist. The anti-references list. **Session 4 skipped this and shipped failures; do not repeat.**
 2. **The 12 reference images themselves.** Read them. Form your own mental model. Cite specific image filenames in code comments where they motivate a design choice. The musical role re-articulation above is a paraphrase of the README annotations; the images are the ground truth.
 3. **`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`** — Sessions 1–3 landed-work blocks. Session 4 landed-work + M7 review outcome (above this prompt).
-4. **The live failure capture** at `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T01-20-28Z/` — particularly `video.mp4` (what Session 4 shipped), `features.csv` and `stems.csv` (the audio inputs driving the failure).
+4. **The live failure capture** at `/Users/braesidebandit/Documents/uzume_sessions/2026-05-14T01-20-28Z/` — particularly `video.mp4` (what Session 4 shipped), `features.csv` and `stems.csv` (the audio inputs driving the failure).
 5. **CLAUDE.md "Authoring Discipline"** — the entire section. The next response to pushback must change the answer, not justify it. Three-part bar for any new concept. Treat fidelity warnings as constraints.
 6. **CLAUDE.md "Failed Approaches"** — especially #4 (beat-onset not primary), #24 (D-022 IBL ambient tint mechanic), #39 (read references before authoring), #44 (no Metal type-name shadow), #49 (tuning vs structural failure), #58 (visual subject without musical role), and the two new entries this session will add about §5.8 paradigm + README-reading discipline.
 7. **`docs/DECISIONS.md` D-124** (V.9 redirect) and **D-125** (stage-rig contract). Note: D-125's "4–6 point lights with inverse-square falloff" implementation framing is **amended by this rescue**. The §5.8 musical contract is preserved; the GPU consumption paradigm changes from Cook-Torrance per-light loop to procedural sky function sampled at reflection vector. Document this amendment in the Phase C closeout commit (CLAUDE.md or a new DECISIONS.md entry).
@@ -1142,7 +1142,7 @@ Per CLAUDE.md Increment Completion Protocol. Multiple commits expected (one per 
 
 ### Why this increment
 
-Real-music testing of Session 4.5b Phase 2c (audio-reactive particle forces) exposed three problems on the Love Rehab session capture (`/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T18-17-51Z`):
+Real-music testing of Session 4.5b Phase 2c (audio-reactive particle forces) exposed three problems on the Love Rehab session capture (`/Users/braesidebandit/Documents/uzume_sessions/2026-05-14T18-17-51Z`):
 
 1. **The preset feels frozen for ~8 s** after track start. Cause is the stem-warmup transition: `fo_stem_warmup_blend` flips from proxy-driven (`f.bass_att_rel`) to stem-driven (`stems.bassEnergyDev`) when total stem energy crosses 0.02 → 0.06. The two sources have different ranges and character, so the visual behaviour changes abruptly at the boundary. Matt's stated requirement (2026-05-14): "8s warmup is NOT desirable — it creates a sudden change in the preset behavior after the stem-separation pipeline runs."
 2. **Audio reactivity is not the right shape for the preset.** Matt's reframing (2026-05-14): "I'm expecting the music to cause the ocean to undulate like waves on the deep sea; maybe the energy of the song has some impact on the length of the ferrofluid spikes. The color from the sky reflecting on the ferrofluid, and the color of the sky itself, can be influenced by something in the music." Phase 2c implemented Leitl-style XZ scatter/drift; Matt wants ocean-wave undulation as the macro response.
@@ -1228,7 +1228,7 @@ Three phases. Each has its own STOP gate; do not advance without Matt's visual a
 ### Prerequisites — read in order
 
 1. `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` (Failed Approach #63). **Note**: the README still references the §5.8 stage rig in its Audio Routing section. That documentation is stale post-this-session's commit 1; read for the *visual references* and *mandatory traits*, ignore the rig-driven routing descriptions.
-2. The Love Rehab session capture: `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T18-17-51Z` — particularly `features.csv` (frame timing + arousal + accumulatedAudioTime) and `stems.csv` (per-stem energies + deviations + vocals pitch). This is the artifact that flagged Phase 2c.
+2. The Love Rehab session capture: `/Users/braesidebandit/Documents/uzume_sessions/2026-05-14T18-17-51Z` — particularly `features.csv` (frame timing + arousal + accumulatedAudioTime) and `stems.csv` (per-stem energies + deviations + vocals pitch). This is the artifact that flagged Phase 2c.
 3. `docs/DECISIONS.md` D-127 (rig retirement, added this session).
 4. CLAUDE.md Authoring Discipline section.
 5. `UzumeEngine/Sources/Renderer/Shaders/RayMarch.metal` — current state of `rm_ferrofluidSky` (returns base sky only; aurora to come back here).

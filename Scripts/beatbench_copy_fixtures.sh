@@ -2,7 +2,7 @@
 # beatbench_copy_fixtures.sh
 #
 # Copy the BeatBench suite tracks that already live in the corpus into
-# BEATBENCH_FIXTURES_DIR (~/phosphene_beatbench_fixtures/ by default), with
+# BEATBENCH_FIXTURES_DIR (~/uzume_beatbench_fixtures/ by default), with
 # canonical filenames. Candidate paths were located by
 # tools/beatbench_find_fixtures.py against the committed corpus manifest.
 #
@@ -12,7 +12,7 @@
 #
 # Usage: Scripts/beatbench_copy_fixtures.sh [corpus_root] [dest_dir]
 #   corpus_root default: /Volumes/Extreme SSD   (must be mounted)
-#   dest_dir    default: ~/phosphene_beatbench_fixtures
+#   dest_dir    default: ~/uzume_beatbench_fixtures
 #
 # ponytail: resolved relpaths are inlined (located once via the finder). If the
 # library reorganizes, re-run the finder and update the table below.
@@ -20,7 +20,7 @@
 set -uo pipefail
 
 CORPUS_ROOT="${1:-/Volumes/Extreme SSD}"
-DEST="${2:-$HOME/phosphene_beatbench_fixtures}"
+DEST="${2:-$HOME/uzume_beatbench_fixtures}"
 
 # canonical_name<TAB>corpus_relpath   (⚠ around_the_world = Alive 2007 live medley, not studio)
 ENTRIES=(

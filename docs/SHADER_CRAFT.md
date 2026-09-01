@@ -2119,7 +2119,7 @@ this scale the failure is structural, not parametric.
 1. Render the Uzume preset on a chosen test track at 1920×1080
    (use the standard `RENDER_VISUAL=1 swift test --filter
    PresetVisualReview` harness or a representative live-music
-   capture from `~/Documents/phosphene_sessions/<timestamp>/`).
+   capture from `~/Documents/uzume_sessions/<timestamp>/`).
 2. Render the source `.milk` on the same test track in projectM
    (or a comparable Milkdrop-compatible renderer) at the same
    resolution.

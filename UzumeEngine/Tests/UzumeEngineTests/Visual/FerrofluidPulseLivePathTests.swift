@@ -314,11 +314,11 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
 
     // MARK: - Eyeball dump (FBS lesson: trajectories AND frames, not summary stats)
 
-    /// Writes a BGRA8 frame to `/tmp/phosphene_visual/fbs_pulse/` when
+    /// Writes a BGRA8 frame to `/tmp/uzume_visual/fbs_pulse/` when
     /// `FBS_PULSE_DUMP=1`. Lets the recalibrated thresholds be sanity-checked
     /// by eye against the frames the gate actually measures.
     private static func dumpPNG(_ pixels: [UInt8], name: String) throws {
-        let dir = URL(fileURLWithPath: "/tmp/phosphene_visual/fbs_pulse")
+        let dir = URL(fileURLWithPath: "/tmp/uzume_visual/fbs_pulse")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let cs = CGColorSpace(name: CGColorSpace.sRGB)!
         var data = pixels

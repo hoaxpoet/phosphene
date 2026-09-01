@@ -94,7 +94,7 @@ final class SessionRecorderTests: XCTestCase {
 
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("phosphene_recorder_tests_\(UUID().uuidString)",
+            .appendingPathComponent("uzume_recorder_tests_\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }

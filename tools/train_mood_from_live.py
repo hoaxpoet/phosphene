@@ -33,7 +33,7 @@ FEATURE_COLS = [
 NUM_FEATURES = 10
 NUM_OUTPUTS = 2
 
-DEFAULT_INPUT = os.path.expanduser("~/phosphene_features_annotated.csv")
+DEFAULT_INPUT = os.path.expanduser("~/uzume_features_annotated.csv")
 DEFAULT_OUTPUT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "UzumeEngine", "Sources", "ML", "Models",

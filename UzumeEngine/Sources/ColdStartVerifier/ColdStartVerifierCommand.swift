@@ -45,7 +45,7 @@
 // runner pattern (TempoDumpRunner, BeatThisActivationDumper).
 //
 // USAGE
-//   .build/release/ColdStartVerifier --session ~/Documents/phosphene_sessions/<dir>
+//   .build/release/ColdStartVerifier --session ~/Documents/uzume_sessions/<dir>
 
 import ArgumentParser
 import Foundation

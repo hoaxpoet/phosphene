@@ -573,7 +573,7 @@ capture.
 **2026-08-05 — THE FROZEN INSTRUMENTED CAPTURE, at last.** Session `2026-08-05T21-21-03Z`
 (Fractal Tree on Cherub Rock, local file). Matt left the app frozen; two independent runs of
 `Scripts/capture_hang.sh` 98 s apart are preserved at
-`~/Documents/phosphene_sessions/_freeze_captures/bug085_20260805T224531Z/` and
+`~/Documents/uzume_sessions/_freeze_captures/bug085_20260805T224531Z/` and
 `…T224709Z/`.
 
 **The stack is the same block, at a different site.** `drawWithMeshShader` →
@@ -691,7 +691,7 @@ Six of nine correct; three wrong across a **2.11× spread**. Ground truth is una
 
 **Why the session logged 174.6:** the prep path analyses the 30 s Spotify preview, a mid-track excerpt, which fell in the unstable region. This is the plan's §2 premise made concrete: a grid built once from one arbitrary 30 s excerpt and extrapolated.
 
-**Reproduction:** `swift run BeatBench --audio ~/phosphene_beatbench_fixtures/bleed.wav --seconds 30` for the whole file, or cut a window with `ffmpeg -ss <offset> -t 30` and pass that. Fixture sha256 in `Tests/Fixtures/beatbench/manifest.json`.
+**Reproduction:** `swift run BeatBench --audio ~/uzume_beatbench_fixtures/bleed.wav --seconds 30` for the whole file, or cut a window with `ffmpeg -ss <offset> -t 30` and pass that. Fixture sha256 in `Tests/Fixtures/beatbench/manifest.json`.
 
 **Suspected failure class:** `algorithm` — `BeatGridResolver` peak-picking a dominant period from Beat This! activations without a sequence model. Palm-muted 16ths put comparable energy at several metrical levels, so the winner depends on the excerpt.
 
@@ -986,14 +986,14 @@ because the correlation is expected to improve, but so the claim is checked rath
 
 **Reproduction steps:** unknown trigger. Lead: a `preset → Gossamer` switch under live load (continuous stem separation running) — possibly transient GPU contention between the stem-separation MPSGraph and Gossamer's first-frame render, or a preset-apply race.
 
-**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-17T22-10-50Z/` (features.csv ends at frame 9459 / `22:14:01Z`; session.log last line `preset → Gossamer`); clean counter-example `2026-06-18T13-57-23Z`.
+**Session artifacts:** `~/Documents/uzume_sessions/2026-06-17T22-10-50Z/` (features.csv ends at frame 9459 / `22:14:01Z`; session.log last line `preset → Gossamer`); clean counter-example `2026-06-18T13-57-23Z`.
 
 **Suspected failure class:** `concurrency` or `render-state` (a hang, not a crash).
 
 **Verification criteria (when diagnosable):**
 - [ ] **On the next recurrence, capture a stack BEFORE force-quitting.** A hang produces no crash log, so there is nothing to recover afterwards — the artifact has to be taken while the app is still wedged. Two routes, either is sufficient:
   - **Launched from Xcode:** hit Pause (⏸), then capture the Debug-Navigator thread stacks (main thread + any thread in Metal/MPSGraph). Add `Debug → Capture GPU Frame` if a GPU hang is suspected.
-  - **Launched normally (the likely case for a live session):** from Terminal, `sample UzumeApp 10 -file ~/Desktop/phosphene_hang.txt` — ten seconds of stacks for every thread, no Xcode needed. `spindump` works too but needs sudo. This is the same instrument that diagnosed the BUG-059 deadlock class.
+  - **Launched normally (the likely case for a live session):** from Terminal, `sample UzumeApp 10 -file ~/Desktop/uzume_hang.txt` — ten seconds of stacks for every thread, no Xcode needed. `spindump` works too but needs sudo. This is the same instrument that diagnosed the BUG-059 deadlock class.
 - [ ] Root cause identified from a captured stack; regression guard added.
 
 *Note (RECON.2, 2026-08-03):* the earlier framing of this criterion assumed an Xcode-attached session, which is not how the recurrence was hit. The `sample` route above is the one that will realistically be available.
@@ -1023,7 +1023,7 @@ On the swap the visualizer freezes and never recovers. Session `2026-06-17T14-28
 3. Observe: visuals freeze on the last frame, no recovery; `raw_tap.wav` stops at the switch; `features.csv` tail constant.
 
 ### Session artifacts
-`~/Documents/phosphene_sessions/2026-06-17T14-28-30Z/` (the failure; `raw_tap.wav` 39.1 s of 134 s, frozen-buffer tail) + `…T14-15-28Z/` (prior run that ended at/before the switch — tap healthy throughout, failure not captured).
+`~/Documents/uzume_sessions/2026-06-17T14-28-30Z/` (the failure; `raw_tap.wav` 39.1 s of 134 s, frozen-buffer tail) + `…T14-15-28Z/` (prior run that ended at/before the switch — tap healthy throughout, failure not captured).
 
 ### Suspected failure class
 `resource-management` / `api-contract` (pending instrumentation). Leading hypothesis: `performReinstall` **fired and ran `teardownTapResources()` (→ the clean IO-proc stop at 39.1 s), but the tap RECREATE stalled/hung** during the device transition (a `createProcessTap` / `createAggregateDevice` / `startDevice` blocking on macOS 26.5), never reaching the success or catch log. Alternative: the `DefaultOutputDeviceMonitor` listener never fired. The os_log lines that would distinguish these are `.info` → not persisted (`log show` empty), hence:
@@ -1112,7 +1112,7 @@ Instrumented re-test (session `2026-06-17T14-54-49Z`): **12 rapid back-and-forth
 4. **No harmonic summation / spectral whitening.**
 Krumhansl-Schmuckler template matching at the end is fine; the chroma front-end is the bottleneck. The offline per-track pass (`analyzeMIR`) uses the *same* 1024-pt full-mix `ChromaExtractor`, so the cached key is equally wrong. No metadata fallback in normal use: only `SoundchartsFetcher` returns a key (env-gated, off by default); iTunes/MusicBrainz don't carry key; Spotify's audio-features (key) endpoint is deprecated for new apps.
 
-**Reproduction steps:** play any track with a known key (e.g. Black Hole Sun = G); read the `key=` line in `~/phosphene_diag.log` (the MIR's own estimate, not metadata-overridden). It is reliably off, independent of sample rate.
+**Reproduction steps:** play any track with a known key (e.g. Black Hole Sun = G); read the `key=` line in `~/uzume_diag.log` (the MIR's own estimate, not metadata-overridden). It is reliably off, independent of sample rate.
 **Session artifacts:** `2026-06-16T16-52-09Z` (Black Hole Sun, true G, read F). A labeled validation set is a prerequisite for the fix (see below).
 **Verification criteria (for the eventual fix):**
 - [ ] A **labeled ground-truth set** (~15–20 tracks, known keys) added as a test fixture; report **exact-match %** + **within-a-fifth/relative %** before and after.
@@ -1232,7 +1232,7 @@ Result: `BeatGrid.beatsPerBar` retains the ML-detected value. For Money (actual 
 
 ### Session artifacts
 
-**Session directory:** `~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`
+**Session directory:** `~/Documents/uzume_sessions/2026-05-15T17-54-49Z/`
 
 ```log
 [2026-05-15T17:57:01Z] BeatGrid installed: source=preparedCache, track='Money', bpm=123.2, beats=62, meter=2/X
@@ -1968,7 +1968,7 @@ that only the bare epicycle stroke renders — no wing arcs, no ellipses, at any
 **Minimum reproducer:** `test_rosette_wingsVisibleAtNearSquareAspect`
 (`RosetteMVWarpAccumulationTest.swift`) at 1080×1018.
 
-**Session artifacts.** Session directory: `~/Documents/phosphene_sessions/2026-08-26T12-58-21Z/`.
+**Session artifacts.** Session directory: `~/Documents/uzume_sessions/2026-08-26T12-58-21Z/`.
 `session.log`: `RENDER_TARGET width=1080 height=1018 megapixels=1.10 render_scale=1.00`, set before
 Rosette became active and unchanged for the rest of the session. `features.csv`: checked first to
 rule out a routing failure — `tonal_consonance` (mean 0.076, actively varying), `tonal_phase_fifths`

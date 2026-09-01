@@ -3,7 +3,7 @@
 
 The BeatBench suite tracks (BEAT_SYNC_PROGRAM_PLAN.md §1) are full-length,
 copyrighted, and live OUTSIDE the repo at BEATBENCH_FIXTURES_DIR
-(~/phosphene_beatbench_fixtures by default). What ships in the repo is this
+(~/uzume_beatbench_fixtures by default). What ships in the repo is this
 manifest — per-track sha256 + duration — so a presence gate can verify a
 fixture dir has the exact expected audio (a re-encode changes the hash).
 
@@ -14,7 +14,7 @@ Deterministic: same files in → same manifest out.
 ponytail: sha256 via hashlib, duration via macOS `afinfo` (no third-party dep).
 
 Usage: python3 tools/beatbench_manifest.py [fixtures_dir]
-  fixtures_dir default: $BEATBENCH_FIXTURES_DIR or ~/phosphene_beatbench_fixtures
+  fixtures_dir default: $BEATBENCH_FIXTURES_DIR or ~/uzume_beatbench_fixtures
 Writes: UzumeEngine/Tests/Fixtures/beatbench/manifest.json
 """
 import hashlib
@@ -29,7 +29,7 @@ OUT = os.path.join(REPO, "UzumeEngine", "Tests", "Fixtures", "beatbench", "manif
 
 # Tap-derived fixtures were segmented from this recorded session's raw_tap.wav.
 # Canonical id is the recorder's timestamp; the directory was later renamed locally
-# to ~/Documents/phosphene_sessions/beat-match-test-session.
+# to ~/Documents/uzume_sessions/beat-match-test-session.
 SOURCE_SESSION = "2026-07-27T12-58-56Z"
 
 # 30 s preview clips rather than full tracks — usable for F-measure, but they cannot
@@ -76,7 +76,7 @@ def duration_s(path):
 def main():
     fixtures = (sys.argv[1] if len(sys.argv) > 1
                 else os.environ.get("BEATBENCH_FIXTURES_DIR")
-                or os.path.expanduser("~/phosphene_beatbench_fixtures"))
+                or os.path.expanduser("~/uzume_beatbench_fixtures"))
     entries, present, missing = [], 0, 0
     for tid, title, artist, suite, source, filename in TRACKS:
         e = {"id": tid, "title": title, "artist": artist, "suite": suite,

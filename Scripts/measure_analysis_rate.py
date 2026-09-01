@@ -26,7 +26,7 @@ import csv
 import os
 import sys
 
-ROOT = os.path.expanduser("~/Documents/phosphene_sessions")
+ROOT = os.path.expanduser("~/Documents/uzume_sessions")
 
 
 def analysis_rate(capture):

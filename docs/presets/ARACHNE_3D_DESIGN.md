@@ -348,7 +348,7 @@ Claude Code cannot see rendered output. Past Arachne increments converged on loc
 
 The standing process for every V.8.x phase:
 
-1. **Claude Code renders a contact sheet via the existing harness** (`PresetVisualReviewTests` with `RENDER_VISUAL=1`) into `/tmp/phosphene_visual/<ISO8601>/` at phase end. The contact sheet must include silence / steady / beat-heavy / sustained-bass fixtures at minimum, plus high-V/A and low-V/A mood states once IBL lands.
+1. **Claude Code renders a contact sheet via the existing harness** (`PresetVisualReviewTests` with `RENDER_VISUAL=1`) into `/tmp/uzume_visual/<ISO8601>/` at phase end. The contact sheet must include silence / steady / beat-heavy / sustained-bass fixtures at minimum, plus high-V/A and low-V/A mood states once IBL lands.
 2. **Matt uploads the contact sheet plus relevant references** to a separate Claude.ai chat session — not Claude Code, not this design doc, a fresh conversation with no implementation context.
 3. **Claude.ai produces a structured visual diff** in the language of the reference cascade: macro / meso / micro / specular / atmosphere / palette gaps, plus an explicit anti-reference check against `09_anti_clipart_symmetry.jpg` and `10_anti_neon_stylized_glow.jpg`.
 4. **Matt pastes the diff into the next Claude Code session** as the gap to address. The diff is the input; Claude Code does not regenerate it.

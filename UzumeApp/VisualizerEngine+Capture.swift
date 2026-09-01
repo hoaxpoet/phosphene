@@ -13,7 +13,7 @@ extension VisualizerEngine {
 
     // MARK: - Recording and Capture
 
-    /// Toggle MIR feature recording to ~/phosphene_features.csv.
+    /// Toggle MIR feature recording to ~/uzume_features.csv.
     func toggleRecording() {
         if mirPipeline.isRecording { mirPipeline.stopRecording() } else { mirPipeline.startRecording() }
     }
@@ -25,7 +25,7 @@ extension VisualizerEngine {
 
     func startCapture() {
         let dir = FileManager.default.temporaryDirectory
-        let name = "phosphene_features_\(Int(Date().timeIntervalSince1970)).csv"
+        let name = "uzume_features_\(Int(Date().timeIntervalSince1970)).csv"
         let url = dir.appendingPathComponent(name)
         FileManager.default.createFile(atPath: url.path, contents: nil)
         guard let handle = FileHandle(forWritingAtPath: url.path) else {

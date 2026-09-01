@@ -8,7 +8,7 @@
 // streaming, video writer) — splitting further would obscure the
 // recorder's threading model.
 //
-// Writes to ~/Documents/phosphene_sessions/<ISO-timestamp>/ while the app is
+// Writes to ~/Documents/uzume_sessions/<ISO-timestamp>/ while the app is
 // running, producing:
 //
 //   video.mp4             H.264 video of the rendered output (30 fps cap).
@@ -251,7 +251,7 @@ public final class SessionRecorder: @unchecked Sendable {
 
     // MARK: Init
 
-    /// Create a new session directory under ~/Documents/phosphene_sessions/.
+    /// Create a new session directory under ~/Documents/uzume_sessions/.
     /// Returns `nil` if disabled or if the directory could not be created.
     ///
     /// - Parameter videoEnabled: gate the per-frame video capture (BUG-050).
@@ -268,7 +268,7 @@ public final class SessionRecorder: @unchecked Sendable {
         } else {
             let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             guard let documents = documents else { return nil }
-            root = documents.appendingPathComponent("phosphene_sessions", isDirectory: true)
+            root = documents.appendingPathComponent("uzume_sessions", isDirectory: true)
         }
 
         let formatter = ISO8601DateFormatter()
@@ -296,7 +296,7 @@ public final class SessionRecorder: @unchecked Sendable {
     /// actual write. Serial `queue` only. Returns `false` if the session cannot be written.
     ///
     /// This used to happen in `init`, which meant every `VisualizerEngine` construction left
-    /// a folder in the user's `~/Documents/phosphene_sessions/` whether or not a session was
+    /// a folder in the user's `~/Documents/uzume_sessions/` whether or not a session was
     /// ever recorded — including every app-target test run, and every app launch closed
     /// without recording. Those empty folders were indistinguishable at a glance from a
     /// session whose audio capture had failed, and worse, they consumed retention slots
