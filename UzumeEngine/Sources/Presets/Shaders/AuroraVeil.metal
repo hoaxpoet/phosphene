@@ -2,13 +2,13 @@
 //
 // Source: nimitz (@stormoid), "Auroras", Shadertoy XtGGRt (2017) — the
 // canonical procedural aurora. This is a straight port of that shader's
-// algorithm and constants to Metal. Adapted ONLY for the Phosphene harness:
+// algorithm and constants to Metal. Adapted ONLY for the Uzume harness:
 //   • iTime            → f.time
 //   • gl_FragCoord.xy  → in.position.xy   (per-pixel march dither)
 //   • iResolution      → baked 1920×1080  (the 60 fps @ 1080p target; only
 //                        affects aspect ratio + star density)
 //   • no iMouse        → nimitz's untouched-mouse default view, mo = (-0.1, 0.1)
-//   • y flip           → Phosphene uv.y = 0 is top, so p.y = 0.5 - uv.y
+//   • y flip           → Uzume uv.y = 0 is top, so p.y = 0.5 - uv.y
 //
 // NOTHING is added. The AV.2–AV.6 accretion is deleted: no footprint F(x), no
 // multi-column parallax, no band undulation, no traveling waves, no drum kink,
@@ -26,7 +26,7 @@
 // Prior-art credit: nimitz (algorithm + all constants). Lawlor & Genetti
 // (WSCG 2011) — the per-step `sin(...)` palette is their H(z) height curve.
 // nimitz's Shadertoy source is CC-BY-NC-SA; this port carries the attribution
-// and adds no Phosphene-specific behaviour.
+// and adds no Uzume-specific behaviour.
 
 // ── Tunables (the only departures from nimitz's defaults) ─────────────────────
 // Matt live-review 2026-07-19: static upward view (no pan → no star twinkle),
@@ -193,7 +193,7 @@ fragment float4 aurora_fragment(
     float paletteWarm = clamp(f.valence, -1.0, 1.0) * kMoodWarmth;
     const float aspect = 1920.0 / 1080.0;  // 60 fps @ 1080p target
 
-    // Phosphene uv.y = 0 at top; nimitz q.y = 0 at bottom → flip y.
+    // Uzume uv.y = 0 at top; nimitz q.y = 0 at bottom → flip y.
     float2 p = float2((in.uv.x - 0.5) * aspect, 0.5 - in.uv.y);
 
     float3 ro = float3(0.0, 0.0, -6.7);

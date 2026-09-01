@@ -2,7 +2,7 @@
   "name": "Dragon Bloom",
   "family": "hypnotic",
   "duration": 45,
-  "description": "Warm fiery bilaterally-symmetric feathered feedback bloom — a faithful port of the Milkdrop preset `$$$ Royal - Mashup (220)`'s render loop (butterchurn-replicated: no-decay custom warp + R→G→B colour transfer + waves composited normal-alpha on top, comp-stage echo/gamma/invert) on Phosphene's mv_warp, uplifted with stem separation (three tumbling spectral strands ← drums/bass/vocals — each arm is an instrument), bass breathing, per-arm transient flares, an energy-weighted tumble, and a comp-stage beat pump. See docs/presets/DRAGON_BLOOM_PLAN.md + D-137/D-138.",
+  "description": "Warm fiery bilaterally-symmetric feathered feedback bloom — a faithful port of the Milkdrop preset `$$$ Royal - Mashup (220)`'s render loop (butterchurn-replicated: no-decay custom warp + R→G→B colour transfer + waves composited normal-alpha on top, comp-stage echo/gamma/invert) on Uzume's mv_warp, uplifted with stem separation (three tumbling spectral strands ← drums/bass/vocals — each arm is an instrument), bass breathing, per-arm transient flares, an energy-weighted tumble, and a comp-stage beat pump. See docs/presets/DRAGON_BLOOM_PLAN.md + D-137/D-138.",
   "author": "Matt",
   "inspired_by": {
     "milkdrop_filename": "$$$ Royal - Mashup (220)",

@@ -420,7 +420,7 @@ static inline float3 fo_gerstner_swell(float2 xz, float t, float swellScale) {
 // got tested and falsified. Matt eventually pointed out that ferrofluid
 // rendering is a solved problem and I should do desk research instead of
 // guessing. The desk research found Robert Leitl's audio-reactive WebGL
-// ferrofluid project — the closest published reference to Phosphene's use
+// ferrofluid project — the closest published reference to Uzume's use
 // case — which builds its height field from Inigo Quilez's **smooth
 // Voronoi**. Smooth Voronoi blends distances to all neighbor cells via
 // exponential weighting, producing a C¹-continuous height field with no

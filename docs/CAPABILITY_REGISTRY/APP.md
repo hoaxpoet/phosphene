@@ -179,11 +179,11 @@ Services/ (23):
 - `DisplayManager.swift` — `@MainActor ObservableObject` for screen tracking + window-move with fullscreen-quirk handling. Publishes `allScreens`, `currentScreen`, `primaryScreen`. `attach(to:)`, `moveToSecondaryDisplay()`, `moveToPrimaryDisplay()`. Plus `onScreensAdded` / `onScreensRemoved` callbacks consumed by `MultiDisplayToastBridge`.
 - `FirstAudioDetector.swift` — `@MainActor ObservableObject`; subscribes to `AudioSignalState` publisher; sets `hasDetectedAudio` after ≥ 250 ms sustained `.active` state. Per UX_SPEC §6.3.
 - `FullscreenObserver.swift` — `@MainActor ObservableObject` wrapping `NSWindow.didEnterFullScreenNotification` / `didExitFullScreenNotification`; publishes `isFullscreen: Bool`.
-- `LiveAdaptationToastBridge.swift` — User-action ack toast bridge; `emitAck(_:)` gated on `phosphene.settings.visuals.showLiveAdaptationToasts` UserDefaults; 2 s coalescing window. (See `unverified-claim` finding above.)
+- `LiveAdaptationToastBridge.swift` — User-action ack toast bridge; `emitAck(_:)` gated on `uzume.settings.visuals.showLiveAdaptationToasts` UserDefaults; 2 s coalescing window. (See `unverified-claim` finding above.)
 - `LocalizedCopy.swift` — `UserFacingError` → localized string resolver. Jargon deny-list enforcement (`containsJargon(_:)`) per UX_SPEC §9.5.
 - `MultiDisplayToastBridge.swift` — `DisplayManager.onScreensAdded/Removed` → `ToastManager` queue. Info toast on screen-added; warning toast + auto-move on current-screen-removed. (See `production-orphan` finding above for dead `coalesceTask`/`pendingEvents` fields.)
 - `NetworkRecoveryCoordinator.swift` — `@MainActor`; wires `ReachabilityMonitor.isOnlinePublisher` to `SessionManager.resumeFailedNetworkTracks()`; 2 s additional debounce on top of monitor's 1 s (3 s total); max 3 attempts per session; `.preparing` state guard. D-061(d,e).
-- `OnboardingReset.swift` — Static UserDefaults-key reset utility. Keys: `"phosphene.onboarding.photosensitivityAcknowledged"`.
+- `OnboardingReset.swift` — Static UserDefaults-key reset utility. Keys: `"uzume.onboarding.photosensitivityAcknowledged"`.
 - `PlaybackErrorBridge.swift` — Routes UX_SPEC §9.4 audio-signal errors to `ToastManager` with condition-ID semantics. `silenceToastThresholdSeconds: 15`.
 - `PlaybackErrorConditionTracker.swift` — Lightweight register of asserted condition IDs. `assert` / `clear` / `isAsserted` / `reset`.
 - `PlaybackKeyMonitor.swift` — `NSEvent.addLocalMonitorForEvents` install/uninstall for in-session keyboard shortcuts. Routes via `PlaybackShortcutRegistry`.
@@ -192,7 +192,7 @@ Services/ (23):
 - `PresetScoringContextProvider.swift` — Canonical builder of `PresetScoringContext` for Orchestrator scoring calls. Resolves `DeviceTierOverride` (`.auto`/`.forceTier1`/`.forceTier2`) against detected hardware tier. U.8 Part C.
 - `ReachabilityMonitor.swift` — `NWPathMonitor` wrapper with 1 s debounce. `ReachabilityPublishing` protocol + `StubReachabilityMonitor` test-double pair.
 - `SessionRecorderRetentionPolicy.swift` — Session-folder pruning. `SessionRetentionPolicy` enum: `.keepAll / .lastN10 / .lastN25 / .oneDay / .oneWeek`. 60 s active-session guard prevents deletion of in-progress folders. `defaultSessionsDir` returns `~/Documents/uzume_sessions/`.
-- `SettingsMigrator.swift` — One-shot UserDefaults key migration on app launch. One mapping today: `"phosphene.showLiveAdaptationToasts"` → `"phosphene.settings.visuals.showLiveAdaptationToasts"`.
+- `SettingsMigrator.swift` — One-shot UserDefaults key migration on app launch. One mapping today: `"phosphene.showLiveAdaptationToasts"` → `"uzume.settings.visuals.showLiveAdaptationToasts"`.
 - `SettingsStore.swift` — `@MainActor final class SettingsStore: ObservableObject`. **One app-wide instance** per D-091 / Failed Approach #55 (`SettingsStoreEnvironmentRegressionTests` is the regression gate). 9 `@Published` fields covering device-tier override, quality ceiling, Milkdrop inclusion, reduced motion, excluded preset categories, show-live-adaptation-toasts, show-uncertified-presets, session-recorder-enabled, session-retention.
 - `SpotifyKeychainStore.swift` — `SpotifyKeychainStoring` protocol + concrete `SpotifyKeychainStore` using `SecItem*` APIs. Default service `"io.uzume.spotify"`, default account `"refresh_token"`. U.11.
 - `SpotifyOAuthPlaylistConnector.swift` — `PlaylistConnecting` wrapper that remaps `spotifyLoginRequired` to `spotifyPlaylistInaccessible` when the user is authenticated. U.11.
@@ -501,7 +501,7 @@ Declarative keyboard shortcut catalog. `ShortcutCategory` enum + `PlaybackShortc
 
 #### LiveAdaptationToastBridge.swift (80 lines) — `production-active` + `unverified-claim` docstring
 
-User-action ack toast bridge per U.6 Part C. `emitAck(_:)` gated on `phosphene.settings.visuals.showLiveAdaptationToasts` UserDefaults (default true for new installs). 2-second coalescing window. **Docstring drift:** see `unverified-claim` finding above — engine-event observation source mentioned in docstring is not wired in practice.
+User-action ack toast bridge per U.6 Part C. `emitAck(_:)` gated on `uzume.settings.visuals.showLiveAdaptationToasts` UserDefaults (default true for new installs). 2-second coalescing window. **Docstring drift:** see `unverified-claim` finding above — engine-event observation source mentioned in docstring is not wired in practice.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -692,7 +692,7 @@ App-layer bridge from `UserFacingError` enum to localized user-facing strings. `
 
 #### OnboardingReset.swift (20 lines) — `production-active`
 
-Static UserDefaults-key reset. Currently the only key is `"phosphene.onboarding.photosensitivityAcknowledged"`.
+Static UserDefaults-key reset. Currently the only key is `"uzume.onboarding.photosensitivityAcknowledged"`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -700,7 +700,7 @@ Static UserDefaults-key reset. Currently the only key is `"phosphene.onboarding.
 
 #### SettingsMigrator.swift (52 lines) — `production-active`
 
-One-shot UserDefaults key migration on app launch. One mapping today: `"phosphene.showLiveAdaptationToasts"` → `"phosphene.settings.visuals.showLiveAdaptationToasts"`.
+One-shot UserDefaults key migration on app launch. One mapping today: `"phosphene.showLiveAdaptationToasts"` → `"uzume.settings.visuals.showLiveAdaptationToasts"`.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
@@ -728,7 +728,7 @@ Session-folder pruning at app launch. 60 s active-session guard. Supports `.keep
 
 #### PhotosensitivityAcknowledgementStore.swift (40 lines) — `production-active`
 
-UserDefaults-backed photosensitivity acknowledgement. Key `"phosphene.onboarding.photosensitivityAcknowledged"`. Injectable defaults suite for tests.
+UserDefaults-backed photosensitivity acknowledgement. Key `"uzume.onboarding.photosensitivityAcknowledged"`. Injectable defaults suite for tests.
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|

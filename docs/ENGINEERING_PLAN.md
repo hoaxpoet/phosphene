@@ -124,6 +124,19 @@ was added, promoted, or blocked — DS.1 is app-layer presentation only.
 behaviour; Matt's call whether to scope it); `PresetContrastCertificationTests`' comments still name
 `OverlayBackdropStyle`, left stale deliberately so the no-test-diff proof holds; the sixteen
 uncaptured states.
+### Increment RN.6 — runtime string identity; Phase RN closes ✅ (2026-09-01, D-231)
+
+**Done-when (met):** no `phosphene` string survives in active code, persisted state, shader comments or preset sidecars; every persisted key a prior install wrote is carried across rather than reset; no preset renders differently.
+
+**Persisted keys (11) renamed WITH their migration in the same commit** — `phosphene.settings.*` ×8, `phosphene.lf.recents`, `phosphene.onboarding.photosensitivityAcknowledged`, `phosphene.cache.localFile.maxBytes`. RN.2 deferred these precisely because a rename alone resets every setting on first launch; that reason is answered, not ignored. The pre-scheme U.6 key now targets its `uzume.*` destination directly, so no migration entry depends on another running first.
+
+**The migration test was proven able to fail.** Deleting one entry turns it red with `phosphene.lf.recents did not reach uzume.lf.recents — the setting would silently reset`. Coverage that cannot fail certifies nothing.
+
+**Shader/sidecar prose (22 `.metal` comments, 5 `.json` fields)** swept under the `preset-session` skill. **Nothing visual moved, and it is proven twice:** every changed `.metal` line matched a comment-marker pattern (zero code lines), and the preset **golden-hash regression suite passes unchanged** — byte-level renders that any behaviour change would break. `PresetLoader` / `FidelityRubric` / `RouteCoverage` also green.
+
+**Evidence:** app suite 429 tests (426 + 3 new migration tests); full closeout gate green.
+
+---
 
 
 ### Increment RN.5 — on-disk output paths become Uzume ✅ (2026-08-31, D-230)
@@ -136,7 +149,7 @@ uncaptured states.
 
 **Evidence:** post-move inventory verified (16 sessions / 5.7 GB, 21 fixtures / 946 MB, all present at the new paths); full closeout gate green.
 
-**Still open from Phase RN:** the persisted `UserDefaults` key scheme (`phosphene.settings.*` — renaming resets every user's settings and needs `SettingsMigrator` entries) and the `.metal` / preset-`.json` brand-prose batch (needs the `preset-session` skill).
+**Phase RN is complete.** The last two surfaces — the persisted `UserDefaults` key scheme and the `.metal`/preset-`.json` brand prose — closed at **RN.6** (D-231).
 
 ---
 

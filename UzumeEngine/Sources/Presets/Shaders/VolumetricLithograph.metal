@@ -497,7 +497,7 @@ constant float VL_RIDGE_OUTER      = 0.565f; // ridgeline upper edge
 // ── hg_sdf domain operators (ported verbatim) ─────────────────────────────
 //
 // hg_sdf — Metal port of the two operators VL calls. Original (c) Mercury,
-// MIT option (dual MIT / CC-BY-NC-4.0; MIT taken — Phosphene is MIT).
+// MIT option (dual MIT / CC-BY-NC-4.0; MIT taken — Uzume is MIT).
 // Source: https://mercury.sexy/hg_sdf/hg_sdf.glsl
 //
 // SCOPE (design doc §Open-decisions #1, Matt 2026-07-23): only the operators

@@ -8,14 +8,14 @@ import Foundation
 
 /// Persists whether the user has acknowledged the photosensitivity notice.
 ///
-/// Key: `phosphene.onboarding.photosensitivityAcknowledged`.
+/// Key: `uzume.onboarding.photosensitivityAcknowledged`.
 /// Tests must construct with a named `UserDefaults` suite and tear it down after each test.
 final class PhotosensitivityAcknowledgementStore {
 
     // MARK: - Private
 
     private enum Keys {
-        static let acknowledged = "phosphene.onboarding.photosensitivityAcknowledged"
+        static let acknowledged = "uzume.onboarding.photosensitivityAcknowledged"
     }
 
     private let defaults: UserDefaults

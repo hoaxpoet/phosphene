@@ -1027,7 +1027,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // Wire the frame-budget governor and ML dispatch scheduler. Read QualityCeiling
         // from UserDefaults to determine if ultra mode (recording) disables both. D-057(d), D-059(d).
         let qualityCeilingRaw = UserDefaults.standard.string(
-            forKey: "phosphene.settings.visuals.qualityCeiling"
+            forKey: "uzume.settings.visuals.qualityCeiling"
         )
         let isUltra = qualityCeilingRaw == "ultra"
         self.deviceTier = tier

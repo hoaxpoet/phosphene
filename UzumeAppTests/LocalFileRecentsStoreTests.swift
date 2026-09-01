@@ -1,7 +1,7 @@
 // LocalFileRecentsStoreTests — LF.5 / D-132 Recents persistence regression.
 //
 // Each test owns a fresh `UserDefaults(suiteName:)` so the user's real
-// `phosphene.lf.recents` entry is never read or written.
+// `uzume.lf.recents` entry is never read or written.
 
 import Foundation
 import Testing
@@ -35,7 +35,7 @@ struct LocalFileRecentsStoreTests {
     @Test func init_emptyDefaults_returnsEmptyList() throws {
         let (defaults, suite) = makeSuite()
         defer { cleanup(suite: suite) }
-        let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
         #expect(store.recents.isEmpty)
     }
 
@@ -44,7 +44,7 @@ struct LocalFileRecentsStoreTests {
     @Test func addOrPromote_addsNewItem_atPositionOne() throws {
         let (defaults, suite) = makeSuite()
         defer { cleanup(suite: suite) }
-        let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
 
         store.addOrPromote(url: makeURL("a.m4a"), kind: .file)
 
@@ -56,7 +56,7 @@ struct LocalFileRecentsStoreTests {
     @Test func addOrPromote_movesExistingToFront_lruStyle() throws {
         let (defaults, suite) = makeSuite()
         defer { cleanup(suite: suite) }
-        let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
 
         store.addOrPromote(url: makeURL("a.m4a"), kind: .file)
         store.addOrPromote(url: makeURL("b.m4a"), kind: .file)
@@ -70,7 +70,7 @@ struct LocalFileRecentsStoreTests {
     @Test func addOrPromote_capsAtMaxRecents() throws {
         let (defaults, suite) = makeSuite()
         defer { cleanup(suite: suite) }
-        let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
 
         // Add 15 items — only the most recent 10 should survive.
         for index in 0..<15 {
@@ -87,7 +87,7 @@ struct LocalFileRecentsStoreTests {
         // A .file at /tmp/a vs a .folder at /tmp/a are distinct entries.
         let (defaults, suite) = makeSuite()
         defer { cleanup(suite: suite) }
-        let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
 
         store.addOrPromote(url: makeURL("a"), kind: .file)
         store.addOrPromote(url: makeURL("a"), kind: .folder)
@@ -102,7 +102,7 @@ struct LocalFileRecentsStoreTests {
     @Test func remove_dropsTargetedItem() throws {
         let (defaults, suite) = makeSuite()
         defer { cleanup(suite: suite) }
-        let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
 
         store.addOrPromote(url: makeURL("a.m4a"), kind: .file)
         store.addOrPromote(url: makeURL("b.m4a"), kind: .file)
@@ -116,7 +116,7 @@ struct LocalFileRecentsStoreTests {
     @Test func clearAll_emptiesList() throws {
         let (defaults, suite) = makeSuite()
         defer { cleanup(suite: suite) }
-        let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
 
         for index in 0..<5 {
             store.addOrPromote(url: makeURL("file-\(index).m4a"), kind: .file)
@@ -133,14 +133,14 @@ struct LocalFileRecentsStoreTests {
         defer { cleanup(suite: suite) }
 
         do {
-            let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+            let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
             store.addOrPromote(url: makeURL("a.m4a"), kind: .file)
             store.addOrPromote(url: makeURL("playlist.m3u"), kind: .m3u)
             store.addOrPromote(url: makeURL("Music"), kind: .folder)
         }
 
         // Second instance over the same UserDefaults — list should restore.
-        let restored = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let restored = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
         #expect(restored.recents.count == 3)
         #expect(restored.recents[0].url == makeURL("Music"))
         #expect(restored.recents[0].kind == .folder)
@@ -161,9 +161,9 @@ struct LocalFileRecentsStoreTests {
             ))
         }
         let data = try JSONEncoder().encode(oversized)
-        defaults.set(data, forKey: "phosphene.lf.recents")
+        defaults.set(data, forKey: "uzume.lf.recents")
 
-        let store = LocalFileRecentsStore(userDefaults: defaults, key: "phosphene.lf.recents")
+        let store = LocalFileRecentsStore(userDefaults: defaults, key: "uzume.lf.recents")
         #expect(store.recents.count == LocalFileRecentsStore.maxRecents)
     }
 

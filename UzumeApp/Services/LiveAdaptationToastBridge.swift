@@ -8,7 +8,7 @@
 // itself is the user-visible feedback per UX_SPEC §7.4 ("on keystroke") and the
 // CA.5-FU-2 product decision (2026-05-21).
 //
-// The flag "phosphene.settings.visuals.showLiveAdaptationToasts" gates emission.
+// The flag "uzume.settings.visuals.showLiveAdaptationToasts" gates emission.
 // Default true for fresh installs (U.6b); existing users keep their explicit choice.
 // Coalescing: messages within 2 s → single toast ("Plan updated (N changes)").
 //
@@ -35,7 +35,7 @@ final class LiveAdaptationToastBridge {
 
     // MARK: - Settings flag
 
-    static let userDefaultsKey = "phosphene.settings.visuals.showLiveAdaptationToasts"
+    static let userDefaultsKey = "uzume.settings.visuals.showLiveAdaptationToasts"
 
     // U.6b: default flipped to true for fresh installs.
     // Existing users who explicitly set the key (either way) keep their choice.
