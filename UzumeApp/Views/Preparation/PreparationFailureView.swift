@@ -38,7 +38,7 @@ struct PreparationFailureView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            UzumeAppColor.canvas.ignoresSafeArea()
 
             VStack(spacing: 28) {
                 Spacer()
@@ -68,14 +68,14 @@ struct PreparationFailureView: View {
             Text(headline)
                 .font(.title2)
                 .fontWeight(.medium)
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let body = LocalizedCopy.bodyString(for: error) {
                 Text(body)
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(UzumeAppColor.textTertiary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -98,7 +98,7 @@ struct PreparationFailureView: View {
                 Button(String(localized: "preparation.failure.start_reactive_button")) {
                     startReactive()
                 }
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(UzumeAppColor.textTertiary)
                 .font(.subheadline)
                 .accessibilityIdentifier(Self.reactiveButtonID)
             }
@@ -126,7 +126,7 @@ struct PreparationFailureView: View {
         case .fatal:       return .red
         case .warning:     return .orange
         case .degradation: return .yellow
-        case .info:        return .white
+        case .info:        return UzumeAppColor.textPrimary
         }
     }
 }

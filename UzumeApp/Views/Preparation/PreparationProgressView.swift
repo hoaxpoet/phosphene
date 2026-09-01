@@ -120,7 +120,7 @@ struct PreparationProgressView: View {
 
     private var normalBody: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            UzumeAppColor.canvas.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 bannerSlot
@@ -177,12 +177,12 @@ struct PreparationProgressView: View {
             Text(verbatim: resolvedHeaderTitle)
                 .font(.title2)
                 .fontWeight(.semibold)
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
 
             if let subtitle = resolvedHeaderSubtitle {
                 Text(verbatim: subtitle)
                     .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(UzumeAppColor.textTertiary)
             }
         }
         .padding(.top, 32)
@@ -244,11 +244,11 @@ struct PreparationProgressView: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(UzumeAppColor.surfaceSelected)
                     .frame(height: 4)
 
                 Capsule()
-                    .fill(Color.white.opacity(0.7))
+                    .fill(UzumeAppColor.textSecondary)
                     .frame(width: geo.size.width * viewModel.aggregateProgress, height: 4)
                     .animation(.easeInOut(duration: 0.3), value: viewModel.aggregateProgress)
             }
@@ -264,7 +264,7 @@ struct PreparationProgressView: View {
                 VStack {
                     Spacer()
                     Text(String(localized: "preparation.empty_state"))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(UzumeAppColor.textDisabled)
                     Spacer()
                 }
             } else {
@@ -276,7 +276,7 @@ struct PreparationProgressView: View {
 
                             if row.id != viewModel.rows.last?.id {
                                 Divider()
-                                    .background(Color.white.opacity(0.07))
+                                    .background(UzumeAppColor.lineSubtle)
                                     .padding(.horizontal, 24)
                             }
                         }
@@ -295,7 +295,7 @@ struct PreparationProgressView: View {
                 if !viewModel.showCancelConfirmation { onCancel() }
             }
             .buttonStyle(.bordered)
-            .foregroundColor(.white.opacity(0.7))
+            .foregroundColor(UzumeAppColor.textSecondary)
             .accessibilityIdentifier(Self.cancelButtonID)
 
             if viewModel.canStartNow {

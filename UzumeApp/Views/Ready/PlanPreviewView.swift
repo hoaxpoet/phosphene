@@ -85,7 +85,7 @@ struct PlanPreviewView: View {
                         onPreview: { viewModel.previewRow($0) }
                     )
                     Divider()
-                        .background(Color.white.opacity(0.06))
+                        .background(UzumeAppColor.surfaceRaised)
                 }
             }
         }

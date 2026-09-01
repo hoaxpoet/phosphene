@@ -22,30 +22,30 @@ struct TrackPreparationStatusIcon: View {
                 Image(systemName: "circle")
                     .resizable()
                     .scaledToFit()
-                    .foregroundColor(.white.opacity(0.25))
+                    .foregroundColor(UzumeAppColor.textDisabled)
 
             case .resolving, .downloading, .analyzing:
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white.opacity(0.7)))
+                    .progressViewStyle(CircularProgressViewStyle(tint: UzumeAppColor.textSecondary))
                     .scaleEffect(0.75)
 
             case .ready:
                 Image(systemName: "checkmark.circle.fill")
                     .resizable()
                     .scaledToFit()
-                    .foregroundColor(.green)
+                    .foregroundColor(UzumeAppColor.success)
 
             case .partial:
                 Image(systemName: "exclamationmark.triangle.fill")
                     .resizable()
                     .scaledToFit()
-                    .foregroundColor(.orange)
+                    .foregroundColor(UzumeAppColor.warning)
 
             case .failed:
                 Image(systemName: "xmark.circle.fill")
                     .resizable()
                     .scaledToFit()
-                    .foregroundColor(.red.opacity(0.8))
+                    .foregroundColor(UzumeAppColor.danger.opacity(0.8))
             }
         }
         .frame(width: Self.size, height: Self.size)

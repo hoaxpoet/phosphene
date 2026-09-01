@@ -70,7 +70,7 @@ struct ReadyView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            UzumeAppColor.canvas.ignoresSafeArea()
             ReadyBackgroundPresetView()
 
             VStack(spacing: 0) {
@@ -121,18 +121,18 @@ struct ReadyView: View {
         VStack(spacing: 20) {
             Text(String(localized: "ready.headline"))
                 .font(.largeTitle.weight(.thin))
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
                 .accessibilityIdentifier(Self.headlineID)
 
             Text(String(format: String(localized: "ready.press_play"), viewModel.sourceName))
                 .font(.title3)
-                .foregroundColor(.white.opacity(0.85))
+                .foregroundColor(UzumeAppColor.textSecondary)
                 .multilineTextAlignment(.center)
 
             if viewModel.trackCount > 0 {
                 Text(planSummary)
                     .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(UzumeAppColor.textTertiary)
             }
 
             Button(String(localized: "ready.preview_plan_button")) {
@@ -151,23 +151,23 @@ struct ReadyView: View {
         Button(String(localized: "ready.end_session_button")) {
             viewModel.endSession()
         }
-        .foregroundColor(.white.opacity(0.35))
+        .foregroundColor(UzumeAppColor.textDisabled)
         .font(.caption)
         .accessibilityIdentifier(Self.endSessionButtonID)
     }
 
     private var timeoutOverlay: some View {
         ZStack {
-            Color.black.opacity(0.6)
+            UzumeAppColor.Performance.sheetScrim
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
                 Text(String(localized: "ready.timeout.headline"))
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                 Text(String(format: String(localized: "ready.timeout.subtext"), viewModel.sourceName))
                     .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.textSecondary)
                     .multilineTextAlignment(.center)
 
                 HStack(spacing: 16) {
@@ -180,12 +180,12 @@ struct ReadyView: View {
                     Button(String(localized: "ready.end_session_button")) {
                         viewModel.endSession()
                     }
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(UzumeAppColor.textTertiary)
                 }
             }
             .padding(32)
             .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: UzumeAppRadius.lg))
             .padding(40)
         }
         .accessibilityIdentifier(Self.timeoutOverlayID)

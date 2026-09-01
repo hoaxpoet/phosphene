@@ -15,11 +15,11 @@ struct PlanPreviewTransitionView: View {
         HStack(spacing: 6) {
             Image(systemName: "arrow.down")
                 .font(.caption2.weight(.light))
-                .foregroundColor(.white.opacity(0.3))
+                .foregroundColor(UzumeAppColor.textDisabled)
 
             Text(label)
                 .font(.caption)
-                .foregroundColor(.white.opacity(0.35))
+                .foregroundColor(UzumeAppColor.textDisabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 56)
