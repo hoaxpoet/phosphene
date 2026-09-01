@@ -68,7 +68,6 @@ struct EndedView: View {
                 .buttonStyle(.borderedProminent)
                 .uzumeTint()
                 .keyboardShortcut(.defaultAction)
-                .tint(coralAccent)
                 .accessibilityIdentifier(Self.newSessionButtonID)
 
                 // GAP H (2026-05-28): LF replay CTA. Renders only when the
@@ -119,15 +118,6 @@ struct EndedView: View {
         formatter.zeroFormattingBehavior = .dropLeading
         let formatted = formatter.string(from: seconds) ?? "—"
         return String(format: String(localized: "ended.summary.duration"), formatted)
-    }
-
-    // MARK: - Coral accent
-
-    /// Coral CTA tint per UX_SPEC line 948. Falls back to system accent if the
-    /// asset/token is not available — DashboardTokens lives in the renderer module
-    /// and is not directly importable from UzumeApp.
-    private var coralAccent: Color {
-        Color(red: 0.97, green: 0.45, blue: 0.36)
     }
 
     // MARK: - GAP H — Replay label

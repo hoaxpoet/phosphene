@@ -104,7 +104,7 @@ private struct PlayPauseTransportButton: View {
             .frame(width: 44, height: 44)
             .background(
                 Circle()
-                    .fill(Color(nsColor: DashboardTokens.Color.coral))
+                    .fill(UzumeAppColor.accent)
                     .brightness(isHovered ? 0.06 : 0)
             )
             .contentShape(Circle())
