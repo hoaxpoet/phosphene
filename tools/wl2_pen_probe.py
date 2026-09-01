@@ -223,7 +223,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("outdir")
-    ap.add_argument("--sessions", default=os.path.expanduser("~/Documents/phosphene_sessions"))
+    ap.add_argument("--sessions", default=os.path.expanduser("~/Documents/uzume_sessions"))
     ap.add_argument("--captures", default="fixturegen-so_what,fixturegen-there_there,"
                                           "fixturegen-love_rehab,beat-match-test-session")
     ap.add_argument("--seconds", type=float, default=TRAIL_S)

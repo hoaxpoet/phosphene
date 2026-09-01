@@ -26,7 +26,7 @@
 // The classifier EMA-smooths toward its output with alpha 0.1 from a zero seed, so one call
 // returns 10 % of the answer. Each row is classified repeatedly until converged.
 //
-//   MOOD_AB_CSV="/Volumes/Extreme SSD/phosphene_census/full_results.csv" \
+//   MOOD_AB_CSV="/Volumes/Extreme SSD/uzume_census/full_results.csv" \
 //     swift test --package-path UzumeEngine --filter MoodScalerRefitAB
 
 import Testing

@@ -31,7 +31,7 @@ enum ReducedMotionPreference: String, Codable, CaseIterable, Sendable {
 
 // MARK: - SessionRetentionPolicy
 
-/// How many session recording folders to keep in ~/Documents/phosphene_sessions/.
+/// How many session recording folders to keep in ~/Documents/uzume_sessions/.
 enum SessionRetentionPolicy: String, Codable, CaseIterable, Sendable {
     /// Keep the 10 most recent sessions. Default.
     case lastN10

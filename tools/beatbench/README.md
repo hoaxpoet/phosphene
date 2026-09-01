@@ -45,7 +45,7 @@ Both venvs are gitignored; the annotations they produce are committed.
 ## Running
 
 ```bash
-export BEATBENCH_FIXTURES_DIR=~/phosphene_beatbench_fixtures
+export BEATBENCH_FIXTURES_DIR=~/uzume_beatbench_fixtures
 tools/beatbench/.venv/bin/python tools/beatbench/reference_annotate.py --list-backends
 tools/beatbench/.venv/bin/python tools/beatbench/reference_annotate.py --backend librosa
 tools/beatbench/.venv/bin/python tools/beatbench/reference_annotate.py --tracks bleed,take_five
@@ -83,5 +83,5 @@ Real-time-ish, so detach it and poll:
 
 ```bash
 nohup tools/beatbench/.venv-madmom/bin/python tools/beatbench/reference_annotate.py \
-    --backend madmom > ~/phosphene_beatbench_fixtures/madmom_run.log 2>&1 &
+    --backend madmom > ~/uzume_beatbench_fixtures/madmom_run.log 2>&1 &
 ```

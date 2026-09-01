@@ -27,7 +27,7 @@ struct SoakRunnerCommand: AsyncParsableCommand {
         discussion: """
         Drives AudioInputRouter with a looping audio file for the specified duration,
         sampling memory + frame timing periodically. Writes JSON + Markdown report to
-        ~/Documents/phosphene_soak/<timestamp>/.
+        ~/Documents/uzume_soak/<timestamp>/.
 
         For a full 2-hour run with App Nap prevention:
             caffeinate -i .build/release/SoakRunner --duration 7200
@@ -43,7 +43,7 @@ struct SoakRunnerCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Path to audio file to loop. Omit for procedural generation.")
     var audioFile: String?
 
-    @Option(name: .long, help: "Report output directory (default: ~/Documents/phosphene_soak).")
+    @Option(name: .long, help: "Report output directory (default: ~/Documents/uzume_soak).")
     var reportDir: String?
 
     @MainActor
@@ -57,7 +57,7 @@ struct SoakRunnerCommand: AsyncParsableCommand {
 
         let baseDir: URL = reportDir.map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Documents/phosphene_soak")
+                .appendingPathComponent("Documents/uzume_soak")
 
         // Resolve audio file.
         let resolvedAudio: URL?

@@ -1,7 +1,7 @@
 # Ferrofluid Ocean — M7 review (R69)
 
 **Date:** 2026-05-18
-**Session:** `~/Documents/phosphene_sessions/2026-05-18T13-50-15Z/`
+**Session:** `~/Documents/uzume_sessions/2026-05-18T13-50-15Z/`
 **Build:** post-round-65 (`fe89d525` — audio reactivity swap: arousal-only swell + bass-reactive spikes)
 **Reviewer:** Claude (subjective M7 trait-match pass; final sign-off by Matt)
 
@@ -74,7 +74,7 @@ All 11 anti-reference failure modes addressed and absent from the rendered outpu
 ## Outstanding caveats for Matt's sign-off
 
 1. **Subjective M7 confirmation is mine, not Matt's.** This document represents Claude's trait-match assessment; the binding cert sign-off requires Matt's review of the contact sheet against the references (per CLAUDE.md "Manual validation is required for: Visual fidelity").
-2. **Temporal behavior** (aurora drift smoothness, no on-beat strobing, swell continuity) is asserted from design + audio-routing audit, not directly verified frame-by-frame. The full session video at `~/Documents/phosphene_sessions/2026-05-18T13-50-15Z/video.mp4` should be reviewed end-to-end for temporal-character confirmation before final sign-off.
+2. **Temporal behavior** (aurora drift smoothness, no on-beat strobing, swell continuity) is asserted from design + audio-routing audit, not directly verified frame-by-frame. The full session video at `~/Documents/uzume_sessions/2026-05-18T13-50-15Z/video.mp4` should be reviewed end-to-end for temporal-character confirmation before final sign-off.
 3. **Money 7/4 → 2/4 beat detection defect** documented as out-of-scope (beat-detection limitation, not a Ferrofluid Ocean concern). The frames at t=80s and t=110s render correctly despite the underlying tempo-detection limitation because round-65 routing avoids beat coupling on the substrate.
 4. **Cert-grade benchmark at full 1920×1080** deferred. The 7.0 ms target was satisfied at 1080×823 with ~7% headroom; full-1080p expected to remain under target but a formal perf-card harness increment should run before cross-platform release.
 

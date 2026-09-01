@@ -15,7 +15,7 @@
 Five Arachne attempts (3.5.5 mesh, 3.5.10 3D ray-march, 3.5.12 2D SDF rebuild, V.7 v4, V.7.5 v5) have failed to reach the visual bar. Decision D-072 diagnosed the V.7.5 failure as architectural (missing compositing layers, not bad constants); the empirical M7 review showed a near-pixel match for `10_anti_neon_stylized_glow.jpg`, the explicit anti-reference. The 2026-05-02 design conversation (recorded in this document's predecessor) committed to a three-pillar reframing.
 
 **Subsystems already shipped:**
-- **V.7.6.1 — visual feedback harness** (2026-05-02). Renders any preset against silence/steady/beat-heavy fixtures into PNG contact sheets in `/tmp/phosphene_visual/<ISO8601>/`. Gated behind `RENDER_VISUAL=1`. Used to diagnose that V.7.5's output reads as flat 2D ring spirals.
+- **V.7.6.1 — visual feedback harness** (2026-05-02). Renders any preset against silence/steady/beat-heavy fixtures into PNG contact sheets in `/tmp/uzume_visual/<ISO8601>/`. Gated behind `RENDER_VISUAL=1`. Used to diagnose that V.7.5's output reads as flat 2D ring spirals.
 - **V.7.6.2 — orchestrator multi-segment + completion-signal + maxDuration framework** (2026-05-02 → 2026-05-03). `PlannedTrack.segments: [PlannedPresetSegment]`, `PresetSignaling` protocol, `LiveAdapter` segment-aware, `PresetDescriptor.maxDuration(forSection:)` computed property.
 - **V.7.6.C — framework calibration pass** (2026-05-03). Per-section linger factors set per Option B (ambient=0.80, peak=0.75, comedown=0.65, buildup=0.40, bridge=0.35); diagnostic class `is_diagnostic` flag added with default false; Spectral Cartograph flagged true.
 - **V.7.6.D — diagnostic preset orchestrator semantics** (2026-05-03). Diagnostic presets categorically excluded from `DefaultPresetScorer`, `DefaultLiveAdapter`, `SessionPlanner`, `DefaultReactiveOrchestrator`; reachable only via manual switch.
@@ -762,7 +762,7 @@ All design dimensions locked. Subsystems V.7.6.1 → V.7.6.D shipped. Remaining 
 - V.7.9 should not start until V.7.7 + V.7.8 are visually approved — the vibration model and spider deepening only make sense once the WORLD and WEB read correctly.
 
 **Each increment ends with:**
-- Harness contact sheet rendered and committed under `/tmp/phosphene_visual/<ISO8601>/` and reviewed against named references.
+- Harness contact sheet rendered and committed under `/tmp/uzume_visual/<ISO8601>/` and reviewed against named references.
 - `PresetVisualReviewTests` golden hashes regenerated and committed.
 - Test suite green, 0 SwiftLint violations on touched files.
 - Matt runtime visual review pass.

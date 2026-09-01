@@ -10,10 +10,10 @@
 //   RENDER_VISUAL=1 swift test --package-path UzumeEngine \
 //       --filter PresetVisualReview
 //
-// Output: /tmp/phosphene_visual/<ISO8601>/<preset>_{silence,mid,beat}.png
-//         /tmp/phosphene_visual/<ISO8601>/<preset>_contact_sheet.png  (Arachne only)
-//         /tmp/phosphene_visual/<ISO8601>/Lumen_palette_<name>.png  (LM.4.7 — one per palette)
-//         /tmp/phosphene_visual/<ISO8601>/Lumen_palette_library_contact_sheet.png  (6×3 grid of 18 palettes)
+// Output: /tmp/uzume_visual/<ISO8601>/<preset>_{silence,mid,beat}.png
+//         /tmp/uzume_visual/<ISO8601>/<preset>_contact_sheet.png  (Arachne only)
+//         /tmp/uzume_visual/<ISO8601>/Lumen_palette_<name>.png  (LM.4.7 — one per palette)
+//         /tmp/uzume_visual/<ISO8601>/Lumen_palette_library_contact_sheet.png  (6×3 grid of 18 palettes)
 //
 // See V.7.6.1 in docs/ENGINEERING_PLAN.md and D-072 in docs/DECISIONS.md.
 
@@ -89,7 +89,7 @@ struct PresetVisualReviewTests {
 
     private static let renderWidth = 1920
     private static let renderHeight = 1280
-    private static let outputRoot = "/tmp/phosphene_visual"
+    private static let outputRoot = "/tmp/uzume_visual"
 
     private static let arachneReferenceRelPaths: [(label: String, path: String)] = [
         ("Ref 01", "docs/VISUAL_REFERENCES/arachne/01_macro_dewy_web_on_dark.jpg"),

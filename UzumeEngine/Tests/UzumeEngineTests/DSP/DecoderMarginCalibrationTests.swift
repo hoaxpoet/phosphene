@@ -44,7 +44,7 @@ struct DecoderMarginCalibrationTests {
         }
         guard let device = MTLCreateSystemDefaultDevice() else { Issue.record("no Metal"); return }
         let dir = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
-            ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent("uzume_beatbench_fixtures")
 
         let decoder = BeatActivationDecoder()
         print("""
@@ -132,7 +132,7 @@ struct DecoderMarginCalibrationTests {
         guard ProcessInfo.processInfo.environment["UZUME_DBN2_CALIBRATE"] == "1" else { return }
         guard let device = MTLCreateSystemDefaultDevice() else { Issue.record("no Metal"); return }
         let dir = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
-            ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent("uzume_beatbench_fixtures")
         guard let url = Self.locate("money", in: dir) else { Issue.record("no fixture"); return }
 
         let samples = try Self.decodeMono22050(url: url)

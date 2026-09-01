@@ -42,7 +42,7 @@ struct DownbeatStreamDiagnosticTests {
         }
         let env = ProcessInfo.processInfo.environment
         let fixturesDir = env["BEATBENCH_FIXTURES_DIR"]
-            ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent("uzume_beatbench_fixtures")
         let names = (env["UZUME_DBN1_TRACKS"] ?? "money,billie_jean")
             .split(separator: ",").map(String.init)
 

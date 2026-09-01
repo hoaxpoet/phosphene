@@ -556,7 +556,7 @@ v0.1's `ReadyView` only had pressure forward (press play, we're ready). v0.2 sup
 
 ### 8.6 Post-session reflection
 
-After `.ended`, `EndedView` shows a compact session summary: which presets played for which tracks, which were nudged, how many times the plan was regenerated. No data leaves the device (per D-003), but the session recorder has already logged everything to `~/Documents/phosphene_sessions/`. A small "What happened this session?" link opens that folder with the specific session selected.
+After `.ended`, `EndedView` shows a compact session summary: which presets played for which tracks, which were nudged, how many times the plan was regenerated. No data leaves the device (per D-003), but the session recorder has already logged everything to `~/Documents/uzume_sessions/`. A small "What happened this session?" link opens that folder with the specific session selected.
 
 This matters for Curators who want to tune their preferences over time — or for developers troubleshooting a session that didn't land.
 
@@ -672,10 +672,10 @@ All user-facing strings live in `Localizable.strings` (even though v1 is English
 
 ### 10.3 Diagnostics
 
-- **Session recorder** — On (default) / Off. When off, no `~/Documents/phosphene_sessions/` files written.
+- **Session recorder** — On (default) / Off. When off, no `~/Documents/uzume_sessions/` files written.
 - **Session retention** — Keep last N sessions (default 10) / Keep all / Keep 1 day / Keep 1 week
 - **Show performance warnings** — Off (default) / On. Surfaces governor activations and frame-budget overruns as toasts.
-- **Open sessions folder** — button, opens `~/Documents/phosphene_sessions/` in Finder
+- **Open sessions folder** — button, opens `~/Documents/uzume_sessions/` in Finder
 - **Reset onboarding** — button, clears onboarding flags. For testing or when re-introducing the app to a new user.
 
 ### 10.4 About

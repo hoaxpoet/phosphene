@@ -6,7 +6,7 @@
 # at session end. Writes chain_health.json + a `CHAIN_HEALTH:` line into the dir
 # and prints the verdict. Exit 0 iff verdict=clean (so reel/CI scripts can gate).
 #
-#   Scripts/analyze_session_chain.sh ~/Documents/phosphene_sessions/<timestamp>
+#   Scripts/analyze_session_chain.sh ~/Documents/uzume_sessions/<timestamp>
 #
 # Run from repo root.
 

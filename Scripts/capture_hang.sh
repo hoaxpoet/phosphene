@@ -12,7 +12,7 @@
 
 set -uo pipefail
 
-OUT="${TMPDIR:-/tmp}/phosphene_hang_$(date -u +%Y%m%dT%H%M%SZ)"
+OUT="${TMPDIR:-/tmp}/uzume_hang_$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$OUT"
 
 PID=$(pgrep -x UzumeApp | head -1)
@@ -46,7 +46,7 @@ fi
 pmset -g log 2>/dev/null | grep -iE "display|sleep|wake" | tail -40 > "$OUT/power.txt" && echo "  ✓ power.txt"
 
 # 5. The session that was running — log tail plus frame count, which dates the freeze.
-SESSION=$(ls -dt "$HOME"/Documents/phosphene_sessions/2*/ 2>/dev/null | head -1)
+SESSION=$(ls -dt "$HOME"/Documents/uzume_sessions/2*/ 2>/dev/null | head -1)
 if [ -n "$SESSION" ]; then
     { echo "session: $SESSION"
       echo "features rows: $(( $(wc -l < "$SESSION/features.csv" 2>/dev/null || echo 1) - 1 ))"

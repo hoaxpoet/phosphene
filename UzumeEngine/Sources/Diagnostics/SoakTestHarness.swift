@@ -50,7 +50,7 @@ public final class SoakTestHarness {
         public var memoryGrowthAlertBytes: UInt64
         /// Soft-alert threshold: dropped frames per hour. Default 60.
         public var droppedFramesPerHourAlertCount: UInt64
-        /// Directory for report output. Defaults to `~/Documents/phosphene_soak/`.
+        /// Directory for report output. Defaults to `~/Documents/uzume_soak/`.
         public var reportBaseDirectory: URL
 
         public init(
@@ -65,7 +65,7 @@ public final class SoakTestHarness {
             self.memoryGrowthAlertBytes = memoryGrowthAlertBytes
             self.droppedFramesPerHourAlertCount = droppedFramesPerHourAlertCount
             let defaultDir = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Documents/phosphene_soak")
+                .appendingPathComponent("Documents/uzume_soak")
             self.reportBaseDirectory = reportBaseDirectory ?? defaultDir
         }
     }

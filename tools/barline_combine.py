@@ -16,7 +16,7 @@ feature works alone, and **phase was never measured**. This script answers those
 
 Usage:
     ~/uzume-ml-env/bin/python tools/barline_combine.py \\
-        --beats-dir /tmp/barprobe --fixtures ~/phosphene_beatbench_fixtures \\
+        --beats-dir /tmp/barprobe --fixtures ~/uzume_beatbench_fixtures \\
         --groundtruth UzumeEngine/Tests/Fixtures/beatbench/groundtruth
 """
 

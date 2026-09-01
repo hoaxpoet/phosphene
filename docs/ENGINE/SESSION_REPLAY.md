@@ -19,7 +19,7 @@ swift run --package-path UzumeEngine PresetSessionReplay \
     [--references-dir docs/VISUAL_REFERENCES/aurora_veil]
 ```
 
-Outputs (default destination `/tmp/phosphene_replay/<session>_<preset>/`):
+Outputs (default destination `/tmp/uzume_replay/<session>_<preset>/`):
 
 ```
 replay_report.md            # Canonical evidence pack — Markdown

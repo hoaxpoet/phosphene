@@ -521,7 +521,7 @@ struct DragonBloomMVWarpAccumulationTest {
         case .syntheticMusic:
             // Reproduces the MEASURED distribution of the real LF "Atlas"
             // session (the one that "danced") — frames 400-5000 of
-            // ~/Documents/phosphene_sessions/2026-06-01T22-37-01Z:
+            // ~/Documents/uzume_sessions/2026-06-01T22-37-01Z:
             //   bass         mean 0.26  stddev 0.11
             //   bass_rel     mean -0.49 stddev 0.22  (SIGNED)
             //   spectralFlux mean 0.65  stddev 0.15  (≈2× the Spotify mean)
@@ -545,7 +545,7 @@ struct DragonBloomMVWarpAccumulationTest {
             return fv
         case .spotifyTapPattern:
             // Reproduces the MEASURED distribution of a real bass-dominant
-            // Spotify session (~/Documents/phosphene_sessions/2026-06-02T01-12-51Z,
+            // Spotify session (~/Documents/uzume_sessions/2026-06-02T01-12-51Z,
             // frames 400-4361). Post-AGC-convergence, so per-band absolutes sit
             // low and `bass_rel` is mostly negative — but every driver is
             // TIME-VARYING at its measured stddev so the re-tuned shader's

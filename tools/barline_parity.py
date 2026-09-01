@@ -23,7 +23,7 @@ chosen in FT.3 task 3 — is unchanged from `barline_combine.py`.
 
 Usage:
     ~/uzume-ml-env/bin/python tools/barline_parity.py \\
-        --beats-dir /tmp/barprobe --fixtures ~/phosphene_beatbench_fixtures \\
+        --beats-dir /tmp/barprobe --fixtures ~/uzume_beatbench_fixtures \\
         --out /tmp/barprobe/parity.json
 """
 

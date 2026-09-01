@@ -8,7 +8,7 @@
 #
 # Usage: Scripts/read_frame_gpu.sh [session-dir]   (default: newest session)
 set -euo pipefail
-DIR="${1:-$(ls -dt "$HOME"/Documents/phosphene_sessions/*/ | head -1)}"
+DIR="${1:-$(ls -dt "$HOME"/Documents/uzume_sessions/*/ | head -1)}"
 echo "session: $DIR"
 grep -E "RENDER_TARGET|preset →|THERMAL_STATE" "$DIR/session.log" || true
 echo

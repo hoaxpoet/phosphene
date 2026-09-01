@@ -662,7 +662,23 @@ If tracks are still stuck after reconnect: check `session.log` for `NetworkRecov
 
 ## Diagnostic Session Captures
 
-Every Uzume launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/` and writes diagnostic data continuously while the app runs. Use these to triage user-reported issues (visualizer behaviour, audio dropouts, stem-quality concerns).
+> **Renamed at RN.5 (2026-08-31, D-230).** Captures now land in
+> `~/Documents/uzume_sessions/`, BeatBench fixtures in `~/uzume_beatbench_fixtures/`,
+> soak reports in `~/Documents/uzume_soak/`, plus `~/uzume_features.csv`,
+> `~/uzume_diag.log` and `/tmp/uzume_visual/`. The existing 5.7 GB of captures and
+> 946 MB of fixtures were **moved**, not re-created — nothing was orphaned. If you are
+> reading a document under `docs/diagnostics/` or `docs/prompts/`, its
+> `~/Documents/phosphene_sessions/...` paths are frozen records of a past run: the
+> capture still exists, under the new directory name.
+>
+> Two `phosphene_`-named things are deliberately unchanged and are **not** oversights:
+> `phosphene_grid_bpm`, a key inside recorded BeatBench ground-truth fixtures (renaming it
+> would edit recorded evidence), and `~/phosphene-ml-env`, the Python virtualenv — an
+> external artifact this repo does not own. Rename the venv yourself if you want it to
+> match, and update the two comments that reference it.
+
+
+Every Uzume launch creates `~/Documents/uzume_sessions/<ISO-timestamp>/` and writes diagnostic data continuously while the app runs. Use these to triage user-reported issues (visualizer behaviour, audio dropouts, stem-quality concerns).
 
 **Files:**
 
@@ -738,7 +754,7 @@ Metal/MPSGraph `StemSeparator` — no suppressions file needed.
 SOAK_TESTS=1 swift test --package-path UzumeEngine --filter SoakTestHarnessTests
 ```
 
-Reports are written to `$TMPDIR/phosphene_soak_smoke_<timestamp>/`.
+Reports are written to `$TMPDIR/uzume_soak_smoke_<timestamp>/`.
 
 ### 5-minute memory check (in test suite)
 
@@ -765,7 +781,7 @@ The script builds `SoakRunner` in release mode, then runs:
 caffeinate -i .build/release/SoakRunner --duration 7200
 ```
 
-Reports are written to `~/Documents/phosphene_soak/<ISO-timestamp>/report.json` and `report.md`.
+Reports are written to `~/Documents/uzume_soak/<ISO-timestamp>/report.json` and `report.md`.
 
 ### Custom run (shorter duration for iteration)
 
@@ -843,14 +859,14 @@ quality, this is acceptable. See D-066.
 
 *Post-recording sanity checks:*
 1. **raw_tap.wav peak level**: Open the session's `raw_tap.wav` (in
-   `~/Documents/phosphene_sessions/<timestamp>/`) in QuickLook or Audacity.
+   `~/Documents/uzume_sessions/<timestamp>/`) in QuickLook or Audacity.
    Peak level should be −3 to −9 dBFS. If peak is below −12 dBFS, Spotify
    normalization was still active — re-record.
-2. **DRM-silence scan**: `grep -i "drm\|silence\|silent\|recovering" ~/Documents/phosphene_sessions/<timestamp>/session.log`.
+2. **DRM-silence scan**: `grep -i "drm\|silence\|silent\|recovering" ~/Documents/uzume_sessions/<timestamp>/session.log`.
    Expect zero `DRM silence` lines for Spotify Lossless. If DRM silence appears,
    the track triggered FairPlay and the captured segment is visually inert — discard
    that segment.
-3. **Tap-reinstall scan**: `grep -i "tap reinstall" ~/Documents/phosphene_sessions/<timestamp>/session.log`.
+3. **Tap-reinstall scan**: `grep -i "tap reinstall" ~/Documents/uzume_sessions/<timestamp>/session.log`.
    Any reinstall entries indicate a scrub-induced silence; if they appear inside a
    recording segment, that segment's visuals will show a freeze gap — discard.
 4. **Love Rehab onset-count spot-check** *(informational only — see the warning below)*:
@@ -893,7 +909,7 @@ machine-written verdict in the dir, so no M7 review, reel recording, or fidelity
 closeout runs on degraded audio without a red flag in the artifacts.
 
 **Automatic.** At the end of every session (`SessionRecorder.finish()`) the analyzer
-writes two things into `~/Documents/phosphene_sessions/<timestamp>/`:
+writes two things into `~/Documents/uzume_sessions/<timestamp>/`:
 - `chain_health.json` — `{verdict, reasons[], peakDBFS, outputSampleRateHz, loveRehabMedianOnsetsPer5s, notes[]}`
 - a `session.log` line: `CHAIN_HEALTH: verdict=<clean|degraded|broken> reasons=[…]`
 
@@ -901,7 +917,7 @@ writes two things into `~/Documents/phosphene_sessions/<timestamp>/`:
 artifacts are noted, never fatal):
 
 ```bash
-Scripts/analyze_session_chain.sh ~/Documents/phosphene_sessions/<timestamp>
+Scripts/analyze_session_chain.sh ~/Documents/uzume_sessions/<timestamp>
 # exit 0 iff verdict=clean; prints the verdict + peak + onset median
 ```
 

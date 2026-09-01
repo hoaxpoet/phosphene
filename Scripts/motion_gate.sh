@@ -23,7 +23,7 @@
 #                   - a video/gif file (.gif/.mp4/.mov)  -> analyzed directly
 #                   - a directory of sequence PNGs        -> globbed, sorted
 #                   - omitted -> newest RENDER_SEQUENCE dump under
-#                     /tmp/phosphene_visual/*/  matching <preset>_seq_*.png
+#                     /tmp/uzume_visual/*/  matching <preset>_seq_*.png
 #
 # Requires ffmpeg (frame diff + extraction) and python3 (stats). Both are the
 # only deps; no ImageMagick.
@@ -51,7 +51,7 @@ FRAMES="$WORK/frames"; mkdir -p "$FRAMES"
 resolve_frames() {
   local src="$1"
   if [ -z "$src" ]; then
-    local root="/tmp/phosphene_visual"
+    local root="/tmp/uzume_visual"
     [ -d "$root" ] || die "no frames-src and no $root — run a RENDER_SEQUENCE=1 render first"
     local dir; dir="$(find "$root" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)"
     [ -n "$dir" ] || die "no session dirs under $root"

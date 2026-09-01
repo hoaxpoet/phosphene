@@ -13,7 +13,7 @@ set -u
 MODE="${1:-}"
 IN=$(cat)
 SID=$(printf '%s' "$IN" | jq -r '.session_id // "nosession"')
-DIR="/tmp/phosphene_hooks/${SID}"
+DIR="/tmp/uzume_hooks/${SID}"
 mkdir -p "$DIR" 2>/dev/null || exit 0
 
 case "$MODE" in

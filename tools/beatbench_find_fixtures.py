@@ -6,7 +6,7 @@ fixtures (BEAT_SYNC_PROGRAM_PLAN.md §1). Most are expected to already live in
 the 27,639-track corpus. This searches the committed corpus manifest
 (tools/data/corpus_manifest.csv.gz) for each target by title-in-path + artist
 and prints candidate relpaths (under the corpus root, e.g. /Volumes/Extreme SSD)
-so they can be copied into BEATBENCH_FIXTURES_DIR (~/phosphene_beatbench_fixtures/).
+so they can be copied into BEATBENCH_FIXTURES_DIR (~/uzume_beatbench_fixtures/).
 
 ponytail: substring matcher over the committed manifest, no deps beyond stdlib.
 Ceiling: title/artist collisions over-match; the human picks the right row.

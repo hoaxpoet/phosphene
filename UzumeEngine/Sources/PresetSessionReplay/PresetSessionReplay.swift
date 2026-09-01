@@ -66,7 +66,7 @@ struct PresetSessionReplay: AsyncParsableCommand {
     mutating func run() async throws {
         let sessionURL = URL(fileURLWithPath: session)
         let outputURL = URL(fileURLWithPath:
-            output ?? "/tmp/phosphene_replay/\(sessionURL.lastPathComponent)_\(preset)")
+            output ?? "/tmp/uzume_replay/\(sessionURL.lastPathComponent)_\(preset)")
 
         try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
 

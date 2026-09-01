@@ -3,7 +3,7 @@
 information in a real capture?
 
     Scripts/check_route_liveness.py <Preset> <capture> [...]
-    Scripts/check_route_liveness.py AuroraVeil ~/Documents/phosphene_sessions/<dir>
+    Scripts/check_route_liveness.py AuroraVeil ~/Documents/uzume_sessions/<dir>
 
 Why this exists (2026-08-12). BUG-086's `dsp.stem` manual gate was aimed at Aurora
 Veil on the strength of a stale note calling `other_energy_dev` its anchor. Git says

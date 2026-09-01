@@ -325,7 +325,7 @@ struct SkeinCanvasHoldTest {
             }
         }
         guard let (session, stems) = found else {
-            print("SkeinCanvasHoldTest: no recorded session with usable stems.csv frames under ~/Documents/phosphene_sessions — skipping real-stem routing test (local-only: real audio required, feedback_synthetic_audio)")
+            print("SkeinCanvasHoldTest: no recorded session with usable stems.csv frames under ~/Documents/uzume_sessions — skipping real-stem routing test (local-only: real audio required, feedback_synthetic_audio)")
             return
         }
         let w = 320, h = 320
@@ -2313,7 +2313,7 @@ struct SkeinCanvasHoldTest {
 
     // MARK: - Real-stem replay (real audio only — feedback_synthetic_audio)
 
-    /// The preferred real-audio session under ~/Documents/phosphene_sessions:
+    /// The preferred real-audio session under ~/Documents/uzume_sessions:
     /// the deterministic `fixturegen-*` capture (generated from a committed audio
     /// fixture) when present, else the largest live recording. nil when none exist
     /// (local-only artifact). Preferring the fixture keeps these real-audio gates
@@ -2337,7 +2337,7 @@ struct SkeinCanvasHoldTest {
     /// skip-when-none path is unchanged.
     private static func recordedSessionsBySize() -> [URL] {
         let base = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/phosphene_sessions")
+            .appendingPathComponent("Documents/uzume_sessions")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: base, includingPropertiesForKeys: nil) else { return [] }
         func stemsSize(_ url: URL) -> Int {

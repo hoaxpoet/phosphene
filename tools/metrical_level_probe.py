@@ -29,7 +29,7 @@ probe's own rule).
 
 Usage:
     ~/uzume-ml-env/bin/python tools/metrical_level_probe.py \\
-        --beats-dir /tmp/barprobe --fixtures ~/phosphene_beatbench_fixtures --synthetic
+        --beats-dir /tmp/barprobe --fixtures ~/uzume_beatbench_fixtures --synthetic
 """
 
 from __future__ import annotations

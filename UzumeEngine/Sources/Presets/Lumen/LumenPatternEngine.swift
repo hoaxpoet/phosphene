@@ -592,7 +592,7 @@ public final class LumenPatternEngine: @unchecked Sendable {
             // BUG-016 / CA-Presets-FU-4 instrumentation: this branch was silent
             // before 2026-05-21. Logs to unified log under category "session".
             // The App-side caller logs to category "VisualizerEngine" AND writes
-            // a corresponding line to ~/Documents/phosphene_sessions/<ts>/session.log
+            // a corresponding line to ~/Documents/uzume_sessions/<ts>/session.log
             // via SessionRecorder.log — see VisualizerEngine+Presets.swift line ~172.
             Logging.session.error(
                 """

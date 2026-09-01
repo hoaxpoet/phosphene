@@ -63,7 +63,7 @@ struct Final0ABTests {
             return
         }
         let fixturesDir = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
-            ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent("uzume_beatbench_fixtures")
 
         // Ground-truth meters as recorded in the GT.3 baseline; nil = no stable meter.
         let catalogue: [(String, Int?)] = [

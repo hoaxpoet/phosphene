@@ -95,7 +95,7 @@ struct TapCaptureCommand: ParsableCommand {
     private func resolvedFixturesDir() -> URL {
         let raw = fixturesDir
             ?? ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
-            ?? "~/phosphene_beatbench_fixtures"
+            ?? "~/uzume_beatbench_fixtures"
         return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
     }
 

@@ -7,10 +7,10 @@ extension MIRPipeline {
 
     // MARK: - Recording Mode
 
-    /// Start recording feature vectors to CSV at ~/phosphene_features.csv.
+    /// Start recording feature vectors to CSV at ~/uzume_features.csv.
     /// Writes one row per second with timestamp + 10 features.
     public func startRecording() {
-        let path = NSHomeDirectory() + "/phosphene_features.csv"
+        let path = NSHomeDirectory() + "/uzume_features.csv"
         FileManager.default.createFile(atPath: path, contents: nil)
         guard let handle = FileHandle(forWritingAtPath: path) else {
             recordingLogger.error("Failed to create recording file: \(path)")

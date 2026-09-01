@@ -72,7 +72,7 @@ Detailed protocol: plan §GT.2. Summary:
 ## CLI invocations
 
 Run from `UzumeEngine/` (that is where `Package.swift` lives), with
-`BEATBENCH_FIXTURES_DIR` set — default `~/phosphene_beatbench_fixtures`.
+`BEATBENCH_FIXTURES_DIR` set — default `~/uzume_beatbench_fixtures`.
 
 ```bash
 # validate the metrics themselves; needs no audio. Run this before trusting a number.
@@ -86,7 +86,7 @@ swift run BeatBench --mode offline-grid --report docs/diagnostics/BEATBENCH_BASE
 
 # one-off grid inspection on an arbitrary file (no scoring) — this is how the
 # window-position instability in BUG-076 was measured.
-swift run BeatBench --audio ~/phosphene_beatbench_fixtures/bleed.wav
+swift run BeatBench --audio ~/uzume_beatbench_fixtures/bleed.wav
 swift run BeatBench --audio <clip> --seconds 30
 
 # a window sweep is just ffmpeg + --audio:

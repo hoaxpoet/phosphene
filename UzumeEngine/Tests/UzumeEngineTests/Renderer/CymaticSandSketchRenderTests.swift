@@ -2,7 +2,7 @@
 // rebuild. Drives CymaticSandGeometry through the real compute+render path on a
 // synthetic musical arc (energy pulses on the beat, centroid ramps to change the
 // mode, harmony rotates the hue) and, under RENDER_VISUAL=1, dumps a PNG sequence
-// to /tmp/phosphene_visual/<ts>/ for the motion gate. Also a non-degenerate gate
+// to /tmp/uzume_visual/<ts>/ for the motion gate. Also a non-degenerate gate
 // (sand actually forms bright nodal lines) so it fails if the sim dies.
 
 import Testing
@@ -19,7 +19,7 @@ struct CymaticSandSketchRenderTests {
 
     static let W = 1280   // 16:9 so the sketch matches the live frame (exercises the cover-fit)
     static let H = 720
-    static let outputRoot = "/tmp/phosphene_visual"
+    static let outputRoot = "/tmp/uzume_visual"
 
     // Synthetic musical arc: 120 BPM beats (bass_dev spikes), energy pulsing on the
     // beat, spectral_centroid ramping 0.08→0.18 (mode climb) then a drop, harmony rotating.

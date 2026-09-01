@@ -20,7 +20,7 @@
 //   cadence (analyzeMIR) → `SessionRecorder.csvRow(features:stems:beatSync:...)`.
 //
 // WHY: (a) the session-content-dependent cert gates (Skein colour-freeze,
-// real-stem routing) arm only when `~/Documents/phosphene_sessions` holds a real
+// real-stem routing) arm only when `~/Documents/uzume_sessions` holds a real
 // capture; (b) QG.1's RouteCoverageTests replay checked-in copies of these
 // captures (Fixtures/route_coverage/) to assert every declared `audio_routes`
 // primitive actually fires on real music. Regenerate + re-copy when the CSV
@@ -33,14 +33,14 @@
 // render-defect protocols still require real session captures.
 //
 // USAGE (env-gated; a normal suite pass skips it):
-//   UZUME_GEN_SESSION_DIR="$HOME/Documents/phosphene_sessions" \
+//   UZUME_GEN_SESSION_DIR="$HOME/Documents/uzume_sessions" \
 //     swift test --package-path UzumeEngine --filter FixtureSessionCaptureGenerator
 //
 // Writes one `fixturegen-<name>/` session dir per fixture, each containing
 // features.csv + stems.csv + a provenance session.log. Re-running overwrites
 // in place. To refresh the checked-in route-coverage fixtures afterwards:
 //   for f in love_rehab so_what there_there; do
-//     cp ~/Documents/phosphene_sessions/fixturegen-$f/{features,stems}.csv \
+//     cp ~/Documents/uzume_sessions/fixturegen-$f/{features,stems}.csv \
 //        UzumeEngine/Tests/UzumeEngineTests/Fixtures/route_coverage/$f/
 //   done
 

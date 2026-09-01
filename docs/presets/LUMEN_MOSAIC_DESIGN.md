@@ -340,7 +340,7 @@ A 30-second clip of the preset, captured at energetic mood with steady moderate 
 
 **LM.4.6 sign-off (2026-05-12)** — Matt: "Working. It's close enough." The track-variation carry-forward from LM.3.2 was addressed by relaxing the palette breadth to the full RGB cube and accepting the panel-aggregate-similarity trade-off.
 
-**LM.6 sign-off (2026-05-12)** — ✅ Matt M7 pass on real-music session `~/Documents/phosphene_sessions/2026-05-12T17-15-14Z` (jointly with LM.7). The actual landed LM.6 is cell-depth gradient + optional hot-spot — two albedo-only modulations driven by Voronoi `f1/f2`. The earlier framing ("specular sparkle via Cook-Torrance on frost normal") was abandoned per the LM.3.2 round-7 / Failed Approach lock; LM.6 is per-pixel albedo shading, not a normal-driven specular pass. See D-LM-6.
+**LM.6 sign-off (2026-05-12)** — ✅ Matt M7 pass on real-music session `~/Documents/uzume_sessions/2026-05-12T17-15-14Z` (jointly with LM.7). The actual landed LM.6 is cell-depth gradient + optional hot-spot — two albedo-only modulations driven by Voronoi `f1/f2`. The earlier framing ("specular sparkle via Cook-Torrance on frost normal") was abandoned per the LM.3.2 round-7 / Failed Approach lock; LM.6 is per-pixel albedo shading, not a normal-driven specular pass. See D-LM-6.
 
 **LM.7 sign-off (2026-05-12)** — ✅ Same session. Per-track aggregate-mean RGB tint with chromatic projection (`trackTint = (rawTint - mean(rawTint)) × 0.25`). Each track plays at a visibly distinct aggregate panel mean. *"Fix has achieved the desired effect — each track now has a visually distinct color palette ... I think we can move to certify this preset."* See D-LM-7.
 

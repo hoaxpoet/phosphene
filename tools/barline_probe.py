@@ -24,7 +24,7 @@ features — and what counts is the margin over that null, not the raw d.
 Usage:
     ~/uzume-ml-env/bin/python tools/barline_probe.py \\
         --beats-dir /tmp/barprobe \\
-        --fixtures ~/phosphene_beatbench_fixtures
+        --fixtures ~/uzume_beatbench_fixtures
 """
 
 from __future__ import annotations

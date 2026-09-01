@@ -11,7 +11,7 @@
 //   UZUME_FT1_FULLTRACK=1 UZUME_BEATS_DUMP=/tmp/barprobe \
 //     swift test --package-path UzumeEngine --filter FullTrackMeter
 //   ~/phosphene-ml-env/bin/python tools/barline_parity.py \
-//     --beats-dir /tmp/barprobe --fixtures ~/phosphene_beatbench_fixtures \
+//     --beats-dir /tmp/barprobe --fixtures ~/uzume_beatbench_fixtures \
 //     --out /tmp/barprobe/parity.json
 //   UZUME_BARLINE_PARITY=/tmp/barprobe/parity.json \
 //     swift test --package-path UzumeEngine --filter BarLineParity
@@ -58,7 +58,7 @@ struct BarLineEstimatorParityTests {
         let beatsDir = ProcessInfo.processInfo.environment["UZUME_BEATS_DUMP"]
             .map { URL(fileURLWithPath: $0) } ?? parityURL.deletingLastPathComponent()
         let fixtures = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
-            ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent("uzume_beatbench_fixtures")
 
         #expect(!reference.isEmpty, "parity.json has no tracks")
         var worst = 0.0

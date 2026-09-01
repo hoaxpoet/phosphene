@@ -135,7 +135,7 @@ def load_manifest():
 
 
 def fixtures_dir():
-    raw = os.environ.get("BEATBENCH_FIXTURES_DIR", "~/phosphene_beatbench_fixtures")
+    raw = os.environ.get("BEATBENCH_FIXTURES_DIR", "~/uzume_beatbench_fixtures")
     return os.path.expanduser(raw)
 
 
