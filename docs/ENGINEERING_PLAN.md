@@ -84,8 +84,9 @@ behaviour or hierarchy and each needs its own review; DS.1 deliberately does not
 **Done-when (met, except the review):** the app has one source of visual truth; no hard-coded
 `Color.black` / `Color.white` / literal `cornerRadius:` survives outside the exempt diagnostic
 paths; `OverlayBackdropStyle` is `PerformanceBackdrop` with its measured numbers unchanged; no
-test file was modified (`git diff --stat main -- UzumeAppTests UzumeEngine/Tests` is empty).
-**Not met:** Matt's M7 visual review — see below.
+test file was modified (`git diff --stat $(git merge-base main HEAD)..HEAD -- UzumeAppTests
+UzumeEngine/Tests` is empty). **Not met:** Matt's M7 verdict — the page is built and he has
+directed two changes off it, but he has not signed off.
 
 **The token source is vendored, not depended on** (D-232). `UzumeApp/DesignSystem/UzumeTokens.swift`
 is byte-identical to `uzume-site@03d5478` under a provenance header (repo, path, commit, SHA-256);
@@ -99,31 +100,64 @@ CI stay green). A package dependency was rejected: the app must build with one r
 It transcribes the **dark** block: Uzume is always dark (Matt's choice A), and the vendored
 `UzumeColor`'s adaptive AppKit roles resolve to neither published palette.
 
-**31 files retokenized** — every file under `UzumeApp/Views` + `ContentView.swift` holding a
-`Color.black` / `Color.white` / `.white.opacity(…)` / literal `cornerRadius:`, minus the exempt
-diagnostic paths. The census's "twenty-six" counts a narrower criterion. Native controls are tinted
-(`uzumeTint()` at the app root) and otherwise untouched, per COMPONENTS.md §Native platform controls.
-`DashboardTokens` and its four consumers are unchanged; `LocalFileTransportBar`'s surface and coral
-glow still come from it, deliberately left to DS.6 rather than restyled inside a mechanical sweep.
+**34 app files touched, 32 of them retokenized.** The other two are `UzumeApp.swift` (the
+always-dark appearance pin) and `PhotosensitivityNoticeView.swift` (primary-action tint only).
+The census's "twenty-six view files" counts a narrower criterion — files under `Views/`
+holding a direct colour or shape value.
 
-**M7 is pending and the evidence is partial.** `docs/reviews/DS.1/index.html` pairs before/after for
-four of twenty routed states (idle, preparation, playback chrome visible and hidden). The other
-sixteen need a click or a keystroke, and driving the app's UI needs Accessibility permission for the
-terminal, which is not granted — the page names the reason under each. The four captured cover the
-canvas, the text ramp, the appearance pin, the native-control tint and `PerformanceBackdrop`.
+**The grep gate had a hole, and it cost a real miss.** The gate scans `UzumeApp/Views` +
+`ContentView.swift`. `LocalFileErrorBanner` — a user-facing inline error surface rendered by
+`IdleView` and `LocalSourceConnectionView` — is declared in `UzumeApp/LocalFileErrorStore.swift`,
+outside that path, and kept a coral pip and a raw `white@0.85` label through the entire sweep. It
+surfaced only because Matt asked why a button was orange. **Any future DS increment should scan the
+whole `UzumeApp` tree minus the exempt diagnostic paths, not `Views/`** — a view is wherever someone
+declared it, not wherever the directory layout suggests.
 
-**Findings went upstream as a report, not a commit.** `docs/reviews/DS.1/UPSTREAM-FINDINGS.md` — twelve
-items for a future `uzume-site` increment, the load-bearing two being that the Swift package's
-system-colour roles resolve to neither the light nor the dark `tokens.css` palette, and that the
-package publishes no typography at all.
+**Native controls are tinted, and only the primary ones** (Matt's call). `uzumeTint()` sits on the
+fifteen `.borderedProminent` sites, not at the app root: the root tint reached secondary bordered
+buttons too and turned quiet grey actions violet. Everything else keeps the system treatment.
+
+**The retired coral is out of the user-facing surfaces** (Matt's call, off the M7 page). Three sites:
+`EndedView`'s own hard-coded `coralAccent` and its `.tint()` on the primary CTA (it was already
+rendering violet, but only because `.uzumeTint()` sits closer to the Button — ordering luck, not a
+decision); `LocalFileTransportBar`'s play/pause, the primary control of that bar; and
+`LocalFileErrorBanner`'s pip. The transport card's surface, border and purple glow still come from
+`DashboardTokens` — migrating the whole component is DS.6. `DashboardTokens` itself and its
+dashboard consumers are untouched.
+
+**One thing the app cannot do.** macOS paints `List` sidebar selection from
+`NSColor.controlAccentColor` — the system-wide Accent colour — and SwiftUI's `.tint()` does not
+override it, verified on two builds (tint on the List; tint on the entire app). Matt asked for the
+Settings sidebar selection in Uzume violet and the only way to deliver it is to draw the selection
+ourselves, which is what `COMPONENTS.md` §Native platform controls forbids. Recorded as upstream
+finding 11b instead of forced.
+
+**M7 page: twelve of twenty routed states paired.** `docs/reviews/DS.1/index.html` — idle, source
+picker, all three connectors, preparation, playback chrome visible and hidden, shortcut help,
+settings, ended, photosensitivity notice. The eight missing say why under their own headings: four
+need a live connector credential, a deliberately failing track or a revoked Screen Recording grant;
+three are Settings sub-panes with no retokenized code; and Ready is passed through faster than the
+local-file route can be sampled. The first four pairs were captured before Accessibility was granted
+to the driving process — until then there was no way to press a button.
+
+**Findings went upstream as a report, not a commit.** `docs/reviews/DS.1/UPSTREAM-FINDINGS.md` —
+thirteen items for a future `uzume-site` increment, the load-bearing three being that the Swift
+package's system-colour roles resolve to neither the light nor the dark `tokens.css` palette, that
+the package publishes no typography at all, and 11b above.
+
+**D-number collision.** RN.6 took D-231 on `main` while this branch was open; the token decision is
+**D-232**. The DS.1 commits made before the collision was noticed still say D-231 in their messages —
+the files are the authority.
 
 **Capability registry:** no rows changed. No renderer, harness, certification or shader capability
 was added, promoted, or blocked — DS.1 is app-layer presentation only.
 
-**Follow-ups:** the accent tint reaches secondary bordered buttons as well as primary ones (native
-behaviour; Matt's call whether to scope it); `PresetContrastCertificationTests`' comments still name
-`OverlayBackdropStyle`, left stale deliberately so the no-test-diff proof holds; the sixteen
-uncaptured states.
+**Follow-ups:** `PresetContrastCertificationTests`' comments still name `OverlayBackdropStyle`, left
+stale deliberately so the no-test-diff proof holds; the eight uncaptured states; the transport card's
+`DashboardTokens` surface/glow/border (DS.6); and an unrelated copy bug found while capturing — the
+Apple Music connector renders a literal `u2026` where an ellipsis belongs, present before DS.1 and
+untouched because DS.1 may not edit copy strings.
+
 ### Increment RN.6 — runtime string identity; Phase RN closes ✅ (2026-09-01, D-231)
 
 **Done-when (met):** no `phosphene` string survives in active code, persisted state, shader comments or preset sidecars; every persisted key a prior install wrote is carried across rather than reset; no preset renders differently.
