@@ -70,6 +70,10 @@ struct UzumeApp: App {
             // this a Mac set to Light Mode renders light buttons and pickers over
             // an unconditionally near-black canvas.
             .preferredColorScheme(.dark)
+            // DS.1 — tint the native controls with the Uzume accent. COMPONENTS.md
+            // §Native platform controls: tint and compose, never redraw. This is the
+            // vendored package's own helper, so the violet comes from the design system.
+            .uzumeTint()
             .environmentObject(engine)
             .environmentObject(permissionMonitor)
             .environmentObject(settingsStore)

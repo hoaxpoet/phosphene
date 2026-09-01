@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>DS.1 — before / after</title>
+<style>
+:root { color-scheme: dark; --canvas:#0b0c10; --surface:#14151a; --raised:#1d1f25;
+  --line:#34363f; --text:#f4f6f1; --text2:#c5c9c3; --text3:#a4a8a2; --accent:#7f6aff; }
+* { box-sizing: border-box; }
+body { margin:0; padding:0 clamp(1rem,4vw,3rem) 6rem; background:var(--canvas); color:var(--text);
+  font:16px/1.55 system-ui, -apple-system, sans-serif; }
+header { padding:3rem 0 1.5rem; border-bottom:1px solid var(--line); margin-bottom:2rem; }
+h1 { font-size:2rem; margin:0 0 .5rem; font-weight:600; letter-spacing:-.02em; }
+header p { color:var(--text2); max-width:68ch; margin:.5rem 0; }
+nav { font-size:.8rem; color:var(--text3); line-height:2; margin-top:1rem; }
+nav a { color:var(--text3); text-decoration:none; border-bottom:1px solid transparent; }
+nav a:hover { color:var(--accent); border-bottom-color:var(--accent); }
+section { margin:0 0 3.5rem; scroll-margin-top:1rem; }
+h2 { font-size:1.05rem; font-weight:600; margin:0 0 .75rem; color:var(--text); }
+.pair { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; }
+@media (max-width:900px) { .pair { grid-template-columns:1fr; } }
+figure { margin:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+figcaption { font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; color:var(--text3);
+  padding:.6rem .9rem; background:var(--raised); border-bottom:1px solid var(--line); }
+img { display:block; width:100%; height:auto; }
+.missing { padding:3rem 1rem; text-align:center; color:var(--text3); font-size:.85rem; }
+.warn { color:var(--text2); background:#282400; border:1px solid #8c7600;
+  border-radius:12px; padding:.9rem 1.1rem; max-width:80ch; font-size:.9rem; }
+.warn strong { color:#ffd60a; }
+.note { color:var(--text2); font-size:.9rem; max-width:80ch; margin:.9rem 0 0; }
+</style></head><body>
+<header>
+<h1>DS.1 — the app adopts UzumeTokens</h1>
+<p>Presentation only. Nothing the user can do changed: no state machine, publisher, view model,
+accessibility identifier, copy string, keyboard shortcut or test expectation was touched. Every
+pair below is the same screen at the same window size, before and after the token swap.</p>
+<p><strong>before</strong> is <code>main</code> at <code>caa69638</code>. <strong>after</strong> is the DS.1 branch.
+Uzume is always dark (D-231 option A), so there is one appearance to review. This Mac is set to
+<em>Light</em> appearance, which is why the window chrome changes.</p>
+<p class="warn"><strong>Four of twenty states are captured.</strong> The rest need a click or a keystroke,
+and driving the app's UI needs Accessibility permission for the terminal Claude Code runs in — it is not
+granted, so there is no way to press a button. Grant it (System Settings &rarr; Privacy &amp; Security &rarr;
+Accessibility) and the remaining sixteen states can be captured the same way, unattended. Each uncaptured
+state below says why.</p>
+<nav><a href="#idle">idle</a> · <a href="#preparation_active">preparation active</a> · <a href="#playback_chrome">playback chrome</a> · <a href="#playback_chrome_hidden">playback chrome hidden</a> · <a href="#photosensitivity_notice">photosensitivity notice</a> · <a href="#source_picker">source picker</a> · <a href="#connector_apple_music">connector apple music</a> · <a href="#connector_spotify">connector spotify</a> · <a href="#connector_local">connector local</a> · <a href="#connecting">connecting</a> · <a href="#ready">ready</a> · <a href="#preparation_failure">preparation failure</a> · <a href="#playback_toast">playback toast</a> · <a href="#shortcut_help">shortcut help</a> · <a href="#ended">ended</a> · <a href="#permission_onboarding">permission onboarding</a> · <a href="#settings_audio">settings audio</a> · <a href="#settings_visuals">settings visuals</a> · <a href="#settings_diagnostics">settings diagnostics</a> · <a href="#settings_about">settings about</a></nav>
+</header>
+<section id="idle">
+<h2>Idle</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/idle.png" alt="idle before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/idle.png" alt="idle after"></figure></div>
+<p class="note">Three changes. The canvas moves from pure black to <code>--color-canvas</code> #0b0c10 — a warmer near-black, most visible against the window chrome. The wordmark takes <code>--color-text-primary</code> (ivory #f4f6f1, not pure white) and the secondary action takes <code>--color-text-tertiary</code>. And the window is now pinned dark: on this Mac, which is set to Light appearance, the title bar was light grey and the primary button was system blue. It is now dark with the Uzume violet, via <code>.preferredColorScheme(.dark)</code> and the package's own <code>uzumeTint()</code>. <strong>One thing to judge:</strong> the tint reaches the secondary <em>Start listening now</em> button too, so it reads violet rather than grey. That is native macOS behaviour for a tinted bordered button. If you want secondary actions to stay quiet, say so and I will scope the tint to the primary action only.</p></section><section id="preparation_active">
+<h2>Preparation (in progress)</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/preparation_active.png" alt="preparation_active before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/preparation_active.png" alt="preparation_active after"></figure></div>
+<p class="note">Canvas; the aggregate progress bar's track moves to <code>--color-surface-selected</code> and its fill to <code>--color-text-secondary</code>; the row divider to <code>--color-line-subtle</code>. The Cancel button is native and untouched apart from the appearance pin. Track status icons take the success / warning / danger roles — note the danger role is a warm salmon #ff8a75, not systemRed.</p></section><section id="playback_chrome">
+<h2>Playback — chrome visible</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/playback_chrome.png" alt="playback_chrome before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/playback_chrome.png" alt="playback_chrome after"></figure></div>
+<p class="note"><code>PerformanceBackdrop</code>, renamed from <code>OverlayBackdropStyle</code>. The measured values do not move: <code>.ultraThinMaterial</code> + 45% black at radius 10. The artwork placeholder fill and the text ramp are the only changes to the card. The transport bar's radius becomes <code>--radius-lg</code>; its surface and coral glow still come from <code>DashboardTokens</code> — migrating those is a visible restyle, so it is left for DS.6 rather than smuggled into a mechanical sweep. <strong>Note:</strong> the preset behind the chrome differs between the two shots (Membrane vs Stave). They are different file identities to the planner, so it picked differently. The chrome is what to compare.</p></section><section id="playback_chrome_hidden">
+<h2>Playback — chrome hidden</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/playback_chrome_hidden.png" alt="playback_chrome_hidden before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/playback_chrome_hidden.png" alt="playback_chrome_hidden after"></figure></div>
+<p class="note">The preset frame with the chrome auto-hidden. No token touches the renderer; this pair is here to prove it. Different presets, same reason as above.</p></section><section id="photosensitivity_notice">
+<h2>Photosensitivity notice (first run)</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Clearing the first-run acknowledgement key did not re-trigger the sheet in an automated launch. Nothing in this view was retokenized; it would appear in the review only to show the appearance pin.</p></section><section id="source_picker">
+<h2>Source picker</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="connector_apple_music">
+<h2>Apple Music connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="connector_spotify">
+<h2>Spotify connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="connector_local">
+<h2>Local source connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="connecting">
+<h2>Connecting</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="ready">
+<h2>Ready</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> The local-file path — the only session route reachable without a connector credential — plays its own audio, so it passes through Ready faster than a capture interval. Reaching it deliberately needs the streaming handoff.</p></section><section id="preparation_failure">
+<h2>Preparation failure</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Needs a deliberately failing track.</p></section><section id="playback_toast">
+<h2>Playback — toast</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Toasts fire on signal-state, adaptation and display events; none occurred during the capture runs.</p></section><section id="shortcut_help">
+<h2>Shortcut help</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="ended">
+<h2>Ended</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="permission_onboarding">
+<h2>Permission onboarding</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching it means revoking the app's Screen Recording grant, which is a system security setting I will not change.</p></section><section id="settings_audio">
+<h2>Settings — Audio</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="settings_visuals">
+<h2>Settings — Visuals</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="settings_diagnostics">
+<h2>Settings — Diagnostics</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="settings_about">
+<h2>Settings — About</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section>
+</body></html>
