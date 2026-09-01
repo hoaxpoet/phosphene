@@ -3,8 +3,8 @@
 // "Start now" CTA (active once SessionManager.progressiveReadinessLevel >= .readyForFirstTracks).
 //
 // U.7: Owns a PreparationErrorViewModel that watches network reachability and track
-// statuses to decide whether to show a TopBannerView above the list (non-blocking
-// warning) or replace the entire list with PreparationFailureView (catastrophic failure).
+// statuses to decide whether to show a NoticeBanner above the list (non-blocking
+// warning) or replace the entire list with RecoveryScreen (catastrophic failure).
 
 import Combine
 import Session
@@ -105,10 +105,12 @@ struct PreparationProgressView: View {
     var body: some View {
         Group {
             if case .fullScreen(let error) = errorViewModel.presentationState {
-                PreparationFailureView(
+                RecoveryScreen(
                     error: error,
-                    onPickAnotherPlaylist: onPickAnotherPlaylist ?? onCancel,
-                    onStartReactive: onStartReactive
+                    primaryLabel: String(localized: "preparation.failure.pick_playlist_button"),
+                    primaryAction: onPickAnotherPlaylist ?? onCancel,
+                    secondaryLabel: String(localized: "preparation.failure.start_reactive_button"),
+                    secondaryAction: onStartReactive
                 )
             } else {
                 normalBody
@@ -168,7 +170,7 @@ struct PreparationProgressView: View {
     @ViewBuilder
     private var bannerSlot: some View {
         if case .banner(let error) = errorViewModel.presentationState {
-            TopBannerView(error: error)
+            NoticeBanner(error: error)
         }
     }
 

@@ -11,7 +11,7 @@
 //   · 2s additional debounce on top of ReachabilityMonitor's 1s (= 3s total). Briefly
 //     bouncing networks don't trigger immediate re-attempts that may fail again. D-061(e).
 //   · Hard cap of 3 recovery attempts per session. After 3, the user's existing "Retry"
-//     button (PreparationFailureView) provides a hard-restart path. D-061(e).
+//     button (RecoveryScreen) provides a hard-restart path. D-061(e).
 //   · Only fires when SessionManager.state == .preparing. Recovery is preparation-only.
 
 import Combine
