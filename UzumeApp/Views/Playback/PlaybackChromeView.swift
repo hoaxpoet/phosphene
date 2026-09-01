@@ -4,7 +4,7 @@
 //   top-leading:  TrackInfoCardView
 //   top-trailing: PlaybackControlsCluster (+ "still preparing" teal dot when applicable)
 //   top-center:   ListeningBadgeView
-//   bottom-trailing: toast slot (ToastContainerView, wired in Part C)
+//   bottom-trailing: toast slot (ToastRegion, wired in Part C)
 //
 // The entire chrome layer opacity-animates to 0 on auto-hide. When hidden,
 // allowsHitTesting is false so no interactions are intercepted.
@@ -106,7 +106,7 @@ struct PlaybackChromeView: View {
             }
 
             // Bottom-trailing: toast container (Part C)
-            ToastContainerView(toastManager: toastManager)
+            ToastRegion(toastManager: toastManager)
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         }

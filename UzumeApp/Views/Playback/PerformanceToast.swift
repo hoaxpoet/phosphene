@@ -1,21 +1,33 @@
-// ToastView — Individual toast notification cell.
+// PerformanceToast — the transient status placement. (DS.3)
+//
+// Everything about the placement is unchanged across the DS.3 rename: it queues up
+// to three deep in `ToastRegion`, announces itself to VoiceOver on insert, carries an
+// optional action button and a dismiss button, and `ToastManager` still owns the
+// queue and the coalescing.
+//
+// DS.1 had already moved this off raw colours, so the change here is smaller than on
+// the other three surfaces: the inline severity switch — the third of the app's three
+// disagreeing maps — becomes a `StatusTone` lookup. It is the map that read
+// `degradation` as red while the full-screen surfaces read it as yellow; under D-235
+// both now read it as caution.
+//
+// This is the only placement that appears during a performance, so it stays the
+// quietest thing that can still be noticed: a 4pt accent bar, no icon, no fill.
 
 import SwiftUI
 
-// MARK: - ToastView
+// MARK: - PerformanceToast
 
-/// Renders a single `UzumeToast` with severity accent bar + copy + optional action.
-struct ToastView: View {
+/// A single toast: tone accent bar + copy + optional action + dismiss.
+struct PerformanceToast: View {
 
     let toast: UzumeToast
     let onDismiss: (UUID) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            // Severity accent bar
             accentBar
 
-            // Copy + action
             HStack(spacing: 8) {
                 Text(toast.copy)
                     .font(.footnote.weight(.medium))
@@ -31,11 +43,10 @@ struct ToastView: View {
                         onDismiss(toast.id)
                     }
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(accentColor)
+                    .foregroundColor(tone.foreground)
                     .buttonStyle(.plain)
                 }
 
-                // Dismiss button
                 Button {
                     onDismiss(toast.id)
                 } label: {
@@ -59,7 +70,7 @@ struct ToastView: View {
     // MARK: - Helpers
 
     private var accentBar: some View {
-        accentColor
+        tone.foreground
             .frame(width: 4)
             .clipShape(
                 RoundedRectangle(cornerRadius: UzumeAppRadius.sm)
@@ -67,11 +78,5 @@ struct ToastView: View {
             )
     }
 
-    private var accentColor: Color {
-        switch toast.severity {
-        case .info:        return UzumeAppColor.Status.infoForeground
-        case .warning:     return UzumeAppColor.Status.warningForeground
-        case .degradation: return UzumeAppColor.Status.dangerForeground
-        }
-    }
+    private var tone: StatusTone { .from(toast.severity) }
 }
