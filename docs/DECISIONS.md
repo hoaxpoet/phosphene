@@ -123,6 +123,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-213 | Accepted — executed (RECON.14, 2026-08-25) | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
 | D-232 | Accepted | **The design system reaches the app as a VENDORED copy, and Uzume is always dark (DS.1, 2026-09-01, Matt chose A).** [D-228] makes `uzume-site` the design-system source of truth, but the app may not take a package dependency on it: a fresh clone and CI would then need a second repo present, and the app is the thing that has to build. So `UzumeApp/DesignSystem/UzumeTokens.swift` is a byte-identical copy of `uzume-site@03d5478`'s token file under a provenance header (repo, path, commit, SHA-256), and `Scripts/check_design_token_drift.sh` is the cost made visible: it verifies the vendored body against its recorded hash always, and against the upstream file when a sibling checkout is present — `SKIP`/0 when it is not. **The price is a manual re-sync**, accepted because tokens change on the order of once per design increment and a silent divergence now fails a script instead of being discovered in a screenshot. **App-only roles never go in the vendored file** — they live in `UzumeTokens+App.swift`, each commenting the `--color-*` name it was transcribed from, so any app colour greps back to a line of `tokens.css`. **Uzume is always dark:** every screen keeps the near-black canvas whatever macOS is set to, so the engine's output is the only bright thing in the frame and the ≥4.5:1 overlay measurement stays valid against one appearance. That diverges from upstream — the Swift package builds on adaptive AppKit system colours and `tokens.css` publishes a full light palette — so the app pins its roles to the DARK block and the app root sets `.preferredColorScheme(.dark)`; light-appearance support is a real increment with its own review, not a side effect of a token swap. Two upstream disagreements found and recorded rather than papered over: the package's system-colour mapping resolves to **neither** palette (`.windowBackgroundColor` in dark appearance is far lighter than `--color-canvas` #0b0c10), and `UzumeRadius` (6/10/14) agrees with `--radius-*` (6/12/16) only on the smallest rung. §Rationale below. |
+| D-233 | Accepted | **One tile component carries four source affordances (DS.2, 2026-09-01).** `ConnectorTileView` and the private `LocalSourceActionTile` encoded the same family twice — same layout, same `"Title. Subtitle."` accessible label — and differed only in hover behaviour and trailing content. They are replaced by `SourceChoice`, carrying navigation, immediate action, unavailable-with-a-reason, and unavailable-with-a-recovery-action. **The component owns no state and never constructs a `NavigationLink`**: the `.navigation` affordance draws the chevron and the consumer wraps it, so `ConnectorPickerViewModel` keeps sole ownership of `connectorPath` and the two connection wrappers keep their `@StateObject` lifetimes (CA.6-FU-3). `ConnectorType` keeps title, subtitle and symbol — product content, passed in, not absorbed. **Two deliberate behaviour changes**, both consequences of having one component instead of two: the connector tiles gain the hover treatment only the local tiles had, and the local tiles gain a VoiceOver hint only the connector tiles had (`"Opens a file chooser"`) — a blind Curator previously got guidance on the first source screen and silence on the second. The component lives in `UzumeApp/Views/Components/`, not `DesignSystem/`: that directory holds the vendored token source, and a component authored here is app-owned until `uzume-site` adopts it ([D-228]). §Rationale below. |
 | D-231 | Accepted | **Runtime string identity completes the rename: persisted keys migrate, shader/preset prose sweeps (RN.6, 2026-09-01).** Closes the last two of [D-227]'s four deferred surfaces. **(1) Persisted `UserDefaults` keys** — all 11 (`phosphene.settings.*` ×8, `phosphene.lf.recents`, `phosphene.onboarding.photosensitivityAcknowledged`, `phosphene.cache.localFile.maxBytes`) become `uzume.*`, each paired with a `SettingsMigrator` entry **in the same commit**, because a rename without a migration silently resets every setting on the first post-rename launch — the exact failure RN.2 refused to ship. The pre-scheme U.6 key is retargeted straight at its `uzume.*` destination so no entry depends on another running first. **(2) Shader comments + preset sidecars** — 22 `.metal` comment hits and 5 `.json` descriptions, all prose, zero code: verified by grepping every changed `.metal` line for a comment marker and by the preset **golden-hash regression suite passing unchanged**, which is the real proof that rendering did not move. RN.2's "do not edit shaders or presets" constraint was scoped to that increment; this one opens under the `preset-session` skill. §Rationale below. |
 | D-230 | Accepted | **On-disk output paths renamed to `uzume_*`; code and data moved together (RN.5, 2026-08-31, Matt's go).** RN.2 deferred these as user-visible. Renamed: `~/Documents/phosphene_sessions/` → `uzume_sessions/` (5.7 GB, 16 captures), `~/phosphene_beatbench_fixtures/` → `uzume_beatbench_fixtures/` (946 MB, 21 fixtures), `phosphene_soak`, `phosphene_features.csv`, `phosphene_diag.log`, `/tmp/phosphene_visual`, and the ephemeral test-temp prefixes. **The code sweep and the `mv` are one operation** — doing either alone orphans 6.7 GB of captures from the tools that read them. **Not renamed:** `phosphene_grid_bpm` (a key *inside recorded BeatBench ground-truth fixtures* — renaming edits recorded evidence), `~/phosphene-ml-env` (Matt's venv), the Extreme-SSD corpus manifest, and `phosphene_section_lab`/`phosphene_session_mining` (external workspaces cited only in historical rationale) — all external artifacts this repo does not own. ~250 references in `docs/diagnostics/` and `docs/prompts/` keep the old paths: they are frozen records of past runs, the same trade [D-227] made. §Rationale below. |
 | D-229 | Accepted | **The pre-publication history rewrite is RETIRED, not deferred (RN.4, 2026-08-31).** `PUBLISHING.md` §2 was CONFIRMED on 2026-07-12 — "run once, before first publish" — on the explicit premise that **"pre-publication is the one moment a rewrite is free (no external clones exist)."** The repo was published without it, so the premise expired. Measured before deciding, not asserted: the payload is one **non-routable** `.local` hostname (`braesidebandit@Matthews-Mac-mini.local`, 1684 commits — `.local` is mDNS, it cannot receive mail; it leaks a username and a machine name) and one **already-public** business address (`matt@plaitandpattern.com`, 183 commits; plaitandpattern.com serves 200). Against that: a rewrite invalidates **30 commit SHAs cited across DECISIONS / ENGINEERING_PLAN / KNOWN_ISSUES / release notes** — the project's own evidence trail — breaks all 11 local worktrees plus the Codex clone, and requires temporarily disabling `main`'s branch protection, which CLAUDE.md treats as a stop signal. Cost high, benefit ~zero. **New commits already add no exposure** (`user.email` is the GitHub noreply). Two things WERE fixed without a rewrite: PUB.1's own changelog was re-publishing the `matt.deming@gmail.com` it recorded redacting, and §2's filter-repo recipe quoted it a third time — both now say "personal gmail". §Rationale below. |
@@ -4626,6 +4627,80 @@ that developer instrumentation is a separate system. The package's prototype com
 (`CuratorControlSurface`, `StreamingHandoff`, `PreparationStage`, `PerformancePreflight`,
 `UzumeSystemNotice`) are not adopted; its own README calls them sketches, and
 `CuratorControlSurface` is explicitly not the migration target.
+
+## D-233: One tile component carries four source affordances (DS.2)
+
+**Date:** 2026-09-01 · **Status:** Accepted · **Phase:** DS — Design system adoption
+
+### Context
+
+`PHOSPHENE-COMPONENT-CENSUS.md` §Reusable product components lists the two tiles
+as a consolidation candidate, and §Migration order makes it step 2 — the first DS
+step that changes composition rather than colour, and deliberately the smallest
+such change available.
+
+The duplication was real but not total. Both tiles drew an SF Symbol, a headline
+title and a caption subtitle in a rounded surface, and both announced the same
+`"Title. Subtitle."` label. They differed in three ways: the connector tile had a
+chevron, a disabled state with an alternate caption and an optional secondary
+button, and a VoiceOver hint; the local tile had a hover state and no hint.
+
+### Decision
+
+One component, `SourceChoice`, carrying four affordances:
+
+| Affordance | Trailing | Hover | Used by |
+|---|---|---|---|
+| `.navigation` | chevron | yes | the three enabled connector tiles |
+| `.action(() -> Void)` | none | yes | the three local source tiles |
+| `.unavailable(reason:recovery: nil)` | none | no | — (available, unused today) |
+| `.unavailable(reason:recovery:)` | recovery button | no | Apple Music when Music.app is not running |
+
+**The component never constructs a `NavigationLink`.** `.navigation` renders the
+chevron and the interactive treatment; the consumer wraps the tile. This is the
+load-bearing half of the decision: it is what keeps `connectorPath` owned by
+`ConnectorPickerViewModel` and keeps `AppleMusicConnectionWrapper` /
+`OAuthSpotifyConnectionWrapper` holding their view models for their full
+lifetimes. CA.6-FU-3 exists because rebuilding those view models orphans
+in-flight OAuth and auto-retry Tasks; a component that owned navigation would
+have put that back at risk.
+
+`ConnectorType` was not touched. Title, subtitle and symbol are product content
+and stay on the enum, read at the construction site and handed in.
+
+### Consequences
+
+Two behaviour changes, each the direct consequence of one component replacing two:
+
+1. **The connector tiles gain hover feedback.** They had none; the local tiles
+   did. Sharing one interactive treatment means the connector tiles now light on
+   hover exactly as the local ones always have.
+2. **The local tiles gain a VoiceOver hint.** The connector tiles announced
+   "Connect using this source" / "Not available"; the local tiles announced
+   nothing after their label. A Curator using VoiceOver got guidance on the first
+   source screen and silence on the second. `SourceChoice` carries a hint for
+   every affordance, and the action variant announces `"Opens a file chooser"`
+   — the one new user-facing string this increment adds.
+
+The alternative — preserving today's inconsistency inside a shared component —
+was rejected: it bakes the gap into the place it is hardest to notice and
+easiest to copy forward. Dropping hints everywhere was rejected because it
+removes information U.9 deliberately added.
+
+`AccessibilityLabels.connectorTileLabel(type:isEnabled:disabledCaption:)` and
+`connectorTileHint(isEnabled:)` were `ConnectorType`-shaped and could not serve a
+generic tile. They are replaced by `sourceChoiceLabel(title:detail:)` and
+`sourceChoiceHint(_:)`, which produce byte-identical strings. The one path lost
+is the old label's fallback for a disabled tile with no caption — `.unavailable`
+takes a non-optional `reason`, so the fallback has no call site.
+
+### Placement
+
+`UzumeApp/Views/Components/`, not `UzumeApp/DesignSystem/`. That directory holds
+the vendored token source and its app extension ([D-232]); a component authored
+in the app is app-owned until `uzume-site` adopts it ([D-228]). What the app
+learned building it goes upstream as a report, in
+`docs/reviews/DS.2/UPSTREAM-FINDINGS.md`.
 
 ## D-230: On-disk output paths renamed; code and data moved together (RN.5)
 
