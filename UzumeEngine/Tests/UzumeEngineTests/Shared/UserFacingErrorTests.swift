@@ -96,6 +96,32 @@ struct UserFacingErrorTests {
         #expect(UserFacingError.stemSeparationFailed(trackTitle: "X").presentationMode == .inlineOnRow)
     }
 
+    /// D-237 — the three errors routed to the banner do not share a severity, and the
+    /// split follows the CTA structure rather than the placement. Pinned because DS.3
+    /// found all three sitting on the `default: .info` arm, which no surface read until
+    /// the banner started deriving its tone from severity.
+    @Test("banner-routed errors carry the severity their CTA structure implies")
+    func test_bannerErrors_severitySplit() {
+        // Auto-retries, no primary CTA — nothing for the user to do.
+        #expect(UserFacingError.previewRateLimited.severity == .info)
+        #expect(UserFacingError.previewRateLimited.retryStatus?.isAutoRetrying == true)
+        #expect(UserFacingError.previewRateLimited.primaryCTAKey == nil)
+
+        // Both offer "Start reactive mode" — the user may want to act.
+        for error in [UserFacingError.preparationSlowOnFirstTrack(elapsedSeconds: 45),
+                      .preparationTotalTimeout] {
+            #expect(error.severity == .warning)
+            #expect(error.primaryCTAKey == "cta.start_reactive_mode")
+        }
+
+        // All three still route to the banner.
+        for error in [UserFacingError.previewRateLimited,
+                      .preparationSlowOnFirstTrack(elapsedSeconds: 45),
+                      .preparationTotalTimeout] {
+            #expect(error.presentationMode == .topBanner)
+        }
+    }
+
     // MARK: §9.4 playback toasts
 
     /// D-236 reclassified this from `warning` to `fatal`: the visuals are audio-driven,

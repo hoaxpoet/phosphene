@@ -110,7 +110,12 @@ extension UserFacingError {
             return .warning
         case .mpsGraphAllocationFailure, .stemSeparationFailed, .previewNotFound:
             return .degradation
-        case .frameBudgetExceeded, .displayDisconnectedMidSession:
+        // The two banner errors that offer "Start reactive mode" are warnings, not info
+        // (D-237): this case's own definition is "user may want to act, but the session
+        // can continue", and offering a CTA is exactly that. previewRateLimited stays
+        // info deliberately — it auto-retries and gives the user nothing to do.
+        case .preparationSlowOnFirstTrack, .preparationTotalTimeout,
+             .frameBudgetExceeded, .displayDisconnectedMidSession:
             return .warning
         default:
             return .info
