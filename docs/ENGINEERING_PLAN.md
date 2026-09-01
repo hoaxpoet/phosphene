@@ -115,7 +115,7 @@ is now **info blue**: the three errors routed to `.topBanner` appear in no arm o
 this by ignoring severity. Correct under this increment's constraints — DS.3 may not change which
 severity an error has — and flagged to Matt as an engine-side question. See [D-235].
 
-**The degradation decision went to A.** Red → yellow on the *"No audio detected."* toast; nothing
+**The degradation decision went to A, approved by Matt in session (2026-09-01).** Red → yellow on the *"No audio detected."* toast; nothing
 else moves, because the full-screen surfaces already read degradation as yellow.
 
 **Accessibility is byte-identical.** `diff docs/reviews/DS.3/{before,after}/a11y.txt` is empty — not
