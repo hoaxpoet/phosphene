@@ -27,7 +27,7 @@ struct IdleView: View {
             Text(String(localized: "appName"))
                 .font(.largeTitle)
                 .fontWeight(.thin)
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
 
             Spacer().frame(height: 8)
 
@@ -42,7 +42,7 @@ struct IdleView: View {
                 Button(String(localized: "idle.adhoc_button")) {
                     engine.sessionManager.startAdHocSession()
                 }
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(UzumeAppColor.textTertiary)
                 .font(.subheadline)
                 .accessibilityIdentifier(Self.adHocButtonID)
             }
@@ -61,7 +61,7 @@ struct IdleView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
+        .background(UzumeAppColor.canvas)
         .accessibilityIdentifier(Self.accessibilityID)
         .onAppear {
             if !acknowledgementStore.isAcknowledged {

@@ -19,7 +19,7 @@ struct AppleMusicConnectionView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            UzumeAppColor.canvas.ignoresSafeArea()
             VStack(spacing: 24) {
                 Spacer()
                 stateContent
@@ -80,10 +80,10 @@ struct AppleMusicConnectionView: View {
             ProgressView()
                 .progressViewStyle(.circular)
                 .controlSize(.large)
-                .tint(.white)
+                .tint(UzumeAppColor.textPrimary)
             Text(String(localized: "connector.apple_music.connecting"))
                 .font(.body)
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(UzumeAppColor.textTertiary)
         }
     }
 
@@ -91,20 +91,20 @@ struct AppleMusicConnectionView: View {
         VStack(spacing: 20) {
             Image(systemName: "music.note.list")
                 .font(.largeTitle)
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(UzumeAppColor.textDisabled)
             VStack(spacing: 8) {
                 Text(String(localized: "connector.apple_music.no_playlist.headline"))
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                     .multilineTextAlignment(.center)
                 Text(String(localized: "connector.apple_music.no_playlist.status"))
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(UzumeAppColor.textDisabled)
             }
             ProgressView()
                 .progressViewStyle(.circular)
                 .controlSize(.small)
-                .tint(.white.opacity(0.5))
+                .tint(UzumeAppColor.textTertiary)
         }
     }
 
@@ -112,14 +112,14 @@ struct AppleMusicConnectionView: View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.circle")
                 .font(.largeTitle)
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(UzumeAppColor.textDisabled)
             VStack(spacing: 8) {
                 Text(String(localized: "connector.apple_music.not_running.headline"))
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                 Text(String(localized: "connector.apple_music.not_running.body"))
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(UzumeAppColor.textTertiary)
                     .multilineTextAlignment(.center)
             }
             Button(String(localized: "connector.apple_music.open_button")) {
@@ -134,15 +134,15 @@ struct AppleMusicConnectionView: View {
         VStack(spacing: 20) {
             Image(systemName: "lock.circle")
                 .font(.largeTitle)
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(UzumeAppColor.textDisabled)
             VStack(spacing: 8) {
                 Text(String(localized: "connector.apple_music.permission.headline"))
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                     .multilineTextAlignment(.center)
                 Text(String(localized: "connector.apple_music.permission.body"))
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(UzumeAppColor.textTertiary)
                     .multilineTextAlignment(.center)
             }
             Button(String(localized: "connector.apple_music.permission.button")) {
@@ -158,15 +158,15 @@ struct AppleMusicConnectionView: View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(UzumeAppColor.textDisabled)
             VStack(spacing: 8) {
                 Text(String(localized: "connector.apple_music.error.headline"))
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                     .multilineTextAlignment(.center)
                 Text(message)
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(UzumeAppColor.textDisabled)
                     .multilineTextAlignment(.center)
             }
             Button(String(localized: "connector.apple_music.try_again_button")) {
