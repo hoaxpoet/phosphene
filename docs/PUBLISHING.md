@@ -12,6 +12,28 @@ runbook is the remaining, **maintainer-executed** cutover: everything here
 either needs GitHub-side actions (releases, settings) or is destructive to
 clones (history rewrite) and therefore runs only with Matt at the wheel.
 
+> **Status reconciliation (RN.4, 2026-08-31) — read before trusting the tenses
+> below.** This runbook is written as though publication is still ahead. It is
+> not. `hoaxpoet/uzume` is **already public** (`gh api repos/hoaxpoet/uzume`
+> → `"visibility": "public"`), Issues are enabled, `main` is protected with
+> `fast-gate` required (`strict: true`), and §1's weights cutover is **done** —
+> the `ml-weights-v1` Release asset exists and has download traffic. Treat §§0,
+> 1 and 3 as descriptions of a state already reached.
+>
+> **§2 (history rewrite) did NOT run, and the repo went public anyway.** Its own
+> validation command tells the story: `git log --format='%ae' | sort -u` on the
+> public history returns `braesidebandit@Matthews-Mac-mini.local` and
+> `matt@plaitandpattern.com` alongside the GitHub noreply address. The 2026-07-12
+> decision — "the history rewrite RUNS before first publish" — was therefore
+> **not honoured**, and the window it was meant to close is past: rewriting now
+> breaks every existing clone and fork, and the addresses are already mirrored by
+> anyone who cloned. This is recorded, not fixed. RN.4 deliberately did not
+> rewrite history. **Matt's call**, with three honest options: (a) accept it and
+> strike §2 with a D-number recording why; (b) rewrite anyway and accept the
+> clone breakage; (c) leave §2 standing as an unmet obligation. Doing nothing
+> silently is the one option that should not survive — an unmet CONFIRMED
+> decision sitting unmarked in a runbook is how the next reader is misled.
+
 ## 0. State after PUB.1 (already done, for context)
 
 - `LICENSE` (MIT) at root; `README.md` + `CONTRIBUTING.md` front door.
