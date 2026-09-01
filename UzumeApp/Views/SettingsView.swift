@@ -27,9 +27,6 @@ struct SettingsView: View {
                     .tag(section)
             }
             .navigationSplitViewColumnWidth(160)
-            // DS.1 — the selected row is a primary surface, so it takes the accent
-            // rather than the system's (Matt's call, 2026-09-01).
-            .uzumeTint()
         } detail: {
             Group {
                 switch selection ?? .localFiles {

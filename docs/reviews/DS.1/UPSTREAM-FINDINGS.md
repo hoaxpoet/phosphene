@@ -207,6 +207,26 @@ wants the app to adapt, the ask is finding 1 plus a re-measurement of
 
 ---
 
+## 11b. macOS draws sidebar selection from the system accent, not the design system
+
+`List` selection in a `NavigationSplitView` sidebar is painted from
+`NSColor.controlAccentColor` — the user's system-wide Accent colour — and SwiftUI's
+`.tint()` does not override it. Verified twice on this build: blue with the tint applied
+to the List, and blue in an earlier build that tinted the entire app.
+
+So on a Mac whose accent is Blue, Uzume's Settings sidebar highlights blue, next to a
+violet primary button on the same screen. The only way to make it the brand violet is to
+draw the selection ourselves, which is the one thing `COMPONENTS.md` §Native platform
+controls forbids ("tint and compose; do not rebuild standard macOS control behavior").
+
+**Motivated by:** `UzumeApp/Views/SettingsView.swift`.
+
+**The question for the design system:** is a system-accent selection highlight acceptable
+inside an otherwise fully-branded screen, or is the sidebar an exception to the
+native-controls rule? `COMPONENTS.md` should answer it explicitly — the app cannot.
+
+---
+
 ## 12. Smaller notes
 
 - `UzumeColor` and its members are declared `public`. In the vendored copy that lives in
