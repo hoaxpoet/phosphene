@@ -76,16 +76,16 @@ placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `Ready
 playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
-**DS.2** ✅ code-complete 2026-09-01 (D-233); M7 captured, Matt's verdict outstanding.
+**DS.2** ✅ 2026-09-01 (D-233), M7 approved.
 
 ## Recently Completed
 
-### Increment DS.2 — `SourceChoice`: one tile component, four affordances 🔨 M7 captured, Matt's verdict pending (2026-09-01, D-233)
+### Increment DS.2 — `SourceChoice`: one tile component, four affordances ✅ (2026-09-01, D-233)
 
 **Done-when (met, except the review):** one tile component; both consumers migrated; both old
 implementations deleted; every accessibility identifier unchanged and now pinned;
-`ConnectorPickerViewModel` untouched. Captures are taken and the page is
-assembled; **Matt's verdict on the hover change and the new hint wording is outstanding**.
+`ConnectorPickerViewModel` untouched. **Matt approved the M7 on 2026-09-01** — both changes kept as built:
+the hover on the connector tiles, and "Opens a file chooser" on the local tiles.
 
 **Two files out, two files in.** `ConnectorTileView.swift` (71 lines) and the private
 `LocalSourceActionTile` (47 lines of `LocalSourceConnectionView.swift`) — 118 lines encoding one
