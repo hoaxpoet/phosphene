@@ -123,6 +123,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-213 | Accepted — executed (RECON.14, 2026-08-25) | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
 | D-232 | Accepted | **The design system reaches the app as a VENDORED copy, and Uzume is always dark (DS.1, 2026-09-01, Matt chose A).** [D-228] makes `uzume-site` the design-system source of truth, but the app may not take a package dependency on it: a fresh clone and CI would then need a second repo present, and the app is the thing that has to build. So `UzumeApp/DesignSystem/UzumeTokens.swift` is a byte-identical copy of `uzume-site@03d5478`'s token file under a provenance header (repo, path, commit, SHA-256), and `Scripts/check_design_token_drift.sh` is the cost made visible: it verifies the vendored body against its recorded hash always, and against the upstream file when a sibling checkout is present — `SKIP`/0 when it is not. **The price is a manual re-sync**, accepted because tokens change on the order of once per design increment and a silent divergence now fails a script instead of being discovered in a screenshot. **App-only roles never go in the vendored file** — they live in `UzumeTokens+App.swift`, each commenting the `--color-*` name it was transcribed from, so any app colour greps back to a line of `tokens.css`. **Uzume is always dark:** every screen keeps the near-black canvas whatever macOS is set to, so the engine's output is the only bright thing in the frame and the ≥4.5:1 overlay measurement stays valid against one appearance. That diverges from upstream — the Swift package builds on adaptive AppKit system colours and `tokens.css` publishes a full light palette — so the app pins its roles to the DARK block and the app root sets `.preferredColorScheme(.dark)`; light-appearance support is a real increment with its own review, not a side effect of a token swap. Two upstream disagreements found and recorded rather than papered over: the package's system-colour mapping resolves to **neither** palette (`.windowBackgroundColor` in dark appearance is far lighter than `--color-canvas` #0b0c10), and `UzumeRadius` (6/10/14) agrees with `--radius-*` (6/12/16) only on the smallest rung. §Rationale below. |
+| D-237 | Accepted | **The banner's three errors do not share a severity, and the split follows the CTA (DS.3b, 2026-09-01, Matt's call).** DS.3 gave the banner a tone for the first time and every reachable banner came out **info blue** — faithful to the model and wrong about the product. The cause was not the mapping: **all three errors routed to `.topBanner` sat on the `default: return .info` arm** of `UserFacingError.severity`, named nowhere in that switch, and the hard-coded amber banner had concealed it for as long as it existed. The split now follows a distinction the code already made — **does the user have anything to do?** `previewRateLimited` **stays `info`**: it auto-retries (`retryStatus == .autoRetrying()`) and has **no `primaryCTAKey`**, so blue is the honest colour and this one was never mis-rated. `preparationSlowOnFirstTrack` and `preparationTotalTimeout` become **`warning`**: both carry `primaryCTAKey == "cta.start_reactive_mode"`, and `ErrorSeverity.warning`'s own definition is *"User may want to act, but the session can continue"* — literally these two. The banner consequently reaches the token warning treatment DS.3 originally predicted, but by correcting a classification rather than by painting over it, and it now carries **two** tones — which is what [D-234] gave it a tone for. Pinned by `test_bannerErrors_severitySplit`, which also pins the deliberate `info` so a later reader does not "fix" it. §Rationale below. |
 | D-236 | Accepted | **Sustained silence is fatal, and the toast vocabulary gains the `fatal` case it was missing (DS.3a, 2026-09-01, Matt's call).** DS.3 made the *"No audio detected."* toast yellow by reading the model — and that exposed the real defect: the toast had been red only because `PlaybackErrorBridge:287` **hard-coded `severity: .degradation` at the call site**, while `UserFacingError.severity` rated `silenceExtended` a mere `warning`, *milder than a dropped stem*. The pixels and the taxonomy had disagreed about silence for months, in the opposite direction anyone would guess. Matt's judgement — *"Uzume ceases to function without audio"* — is the correct reading: the visuals are audio-driven, so sustained silence means the product has stopped delivering even though the render loop still runs. **Three changes.** (1) `silenceExtended` → `.fatal`. It stays condition-bound and still clears itself when audio returns — `fatal` here describes what the user is (not) getting, not whether the process can proceed. (2) `UzumeToast.Severity` gains `fatal`, mirroring `ErrorSeverity` one-for-one, because the bridge was **folding `.degradation, .fatal` into `.degradation`** — the distinction died in the narrower enum before any view could see it, which is precisely why [D-234] could not fix this from the view layer. (3) The `ErrorSeverity → UzumeToast.Severity` mapping moves onto `UzumeToast.Severity.init(_:)`, so no call site chooses a toast severity by hand again. `ToastManager`'s never-drop rule covers `fatal`; VoiceOver gains *"Critical"* alongside *"Alert"*. **This crossed DS.3's stated boundaries deliberately and with approval** — DS.3 was barred from changing `ErrorSeverity`, `UzumeToast.Severity`, or any error's severity, and this changes all three. §Rationale below. |
 | D-234 | Accepted | **One severity vocabulary: `StatusTone` maps both source enums onto the published status roles (DS.3, 2026-09-01).** Three surfaces each mapped severity to colour inline and disagreed. `StatusTone` (`info`/`success`/`warning`/`danger`) is the single answer, resolving each tone to a `--color-status-*` triple from the vendored source ([D-232]) plus one SF Symbol, dark block only. It maps *from* `ErrorSeverity` (engine-owned) and `UzumeToast.Severity` (app-owned); **neither source enum changes** — unifying them has engine reach and is not this increment. **The four placements stay four components** — `NoticeBanner`, `InlineNotice`, `PerformanceToast`, `RecoveryScreen` — because interruption, lifetime and dismissal differ; sharing the tone vocabulary is the whole of the sharing (`COMPONENTS.md` § Status placements). `RecoveryScreen` absorbed two predecessors, one of which (`FullScreenErrorView`) **had no construction site and had never shipped** (DEAD-003), so that half of the merge carried zero behavioural risk. All five accessibility identifiers keep their `preparation.*` spelling despite the renames — an identifier is a contract, not a description — and are pinned by `StatusPlacementIdentifierTests`. §Rationale below. |
 | D-235 | Accepted | **Degraded operation reads as caution, not alarm (DS.3, 2026-09-01, Matt chose A).** `degradation` rendered yellow on the full-screen surfaces and red in toasts — one severity, two opposite readings, because two authors wrote two maps. It now maps to `warning` everywhere. The reasoning is the severity's own definition: *"Uzume is operating in degraded mode"*, explicitly not *"the session cannot continue"*. Reserving `danger` for `fatal` keeps red meaningful — a red toast raised while the visuals are still playing teaches people to ignore red. **The one visible consequence** is that the *"No audio detected."* toast goes red → yellow. If silence should shout, the fix is to reclassify `silenceExtended` as fatal, not to make all degradation red. A fifth tone between warning and danger was rejected: the design system does not publish one, and inventing palette is what [D-232]'s vendored-token discipline exists to prevent. **Discovered while implementing, and NOT settled here:** the three errors routed to the banner all carry `info`, not `warning`, so every reachable banner is now blue — correct per the severity map, larger than the increment predicted, and a question for the engine's severity assignments rather than for presentation. §Rationale below. |
@@ -4704,6 +4705,67 @@ the vendored token source and its app extension ([D-232]); a component authored
 in the app is app-owned until `uzume-site` adopts it ([D-228]). What the app
 learned building it goes upstream as a report, in
 `docs/reviews/DS.2/UPSTREAM-FINDINGS.md`.
+
+## D-237: The banner's three errors do not share a severity (DS.3b)
+
+**Date:** 2026-09-01 · **Increment:** DS.3b · **Status:** Accepted (Matt's call, at the DS.3 M7)
+
+### How this was found
+
+[D-234] made `NoticeBanner` derive its tone from `error.severity`. Its predecessor took a
+`UserFacingError` and never read `.severity` — the fill was a hard-coded amber, so **every banner
+looked identical whatever went wrong**, and nothing could disagree with anything.
+
+Giving it a real tone produced an unexpected result: every banner a user can reach came out **info
+blue**. The increment had predicted a flip to the token warning treatment.
+
+The mapping was not at fault. All three errors routed to `.topBanner` — `previewRateLimited`,
+`preparationSlowOnFirstTrack`, `preparationTotalTimeout` — appear in `presentationMode`, in
+`primaryCTAKey`, in `retryStatus`, and in **no arm of `severity`**. All three fell through to
+`default: return .info`. The hard-coded amber had hidden that for the life of the component.
+
+This is the same shape as [D-236]: a presentation value that had never been derived from the model,
+exposed only when a surface finally read the model.
+
+### The decision
+
+The three do not share a severity, and the discriminator is one the code already encodes:
+**does the user have anything to do?**
+
+| Error | Retry | Primary CTA | Severity | Reads as |
+|---|---|---|---|---|
+| `previewRateLimited` | `.autoRetrying()` | **none** | **`info`** *(unchanged)* | Uzume is handling it |
+| `preparationSlowOnFirstTrack` | none | `cta.start_reactive_mode` | **`warning`** | you may want to act |
+| `preparationTotalTimeout` | none | `cta.start_reactive_mode` | **`warning`** | you may want to act |
+
+`ErrorSeverity.warning` is documented, three lines from where it is now assigned, as *"User may want
+to act, but the session can continue."* That is the definition of an error that offers a CTA while
+preparation carries on. The two that offer "Start reactive mode" satisfy it exactly.
+
+**`previewRateLimited` stays `info` deliberately.** It auto-retries and gives the user no action, so
+amber would be asking for attention that cannot be spent. The test pins this alongside the two
+changes precisely so a later reader does not "correct" the inconsistency — the inconsistency is the
+point, and it is legible from the CTA structure.
+
+### What it looks like
+
+The banner reaches the bright-yellow-on-deep-field treatment DS.3 predicted — but by correcting a
+misclassification, not by hard-coding a colour a second time. And it now carries **two** tones,
+which is what having a tone was for: [D-234]'s stated goal was that "a degradation banner stops
+looking identical to a warning banner", and until this the banner had exactly one appearance.
+
+### The general lesson, shared with [D-236]
+
+Twice in one increment, a surface turned out to disagree with its own taxonomy — once because a call
+site overrode it, once because the taxonomy had no opinion and a hard-coded colour filled the gap.
+Both were invisible until the surface was made to read the model. **A presentation value that is not
+derived is a value nobody audits**, and consolidating is what forces each surface to name where its
+appearance comes from.
+
+**References.** [D-234] (the vocabulary); [D-236] (the same defect class, found the same way);
+`UserFacingErrorTests.test_bannerErrors_severitySplit`.
+
+---
 
 ## D-236: Sustained silence is fatal; the toast vocabulary gains `fatal` (DS.3a)
 

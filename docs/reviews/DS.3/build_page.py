@@ -2,9 +2,9 @@ import os
 
 PAIRS = [
     ("The banner — every state a user can actually reach", [
-        ("banner-rateLimited", "Preview rate limited", "reachable", "info"),
-        ("banner-slowFirstTrack", "Slow first track", "reachable", "info"),
-        ("banner-totalTimeout", "Total timeout", "reachable", "info"),
+        ("banner-rateLimited", "Preview rate limited — auto-retries, no CTA, so info is correct", "reachable", "info"),
+        ("banner-slowFirstTrack", "Slow first track — offers “Start reactive mode”", "reachable", "warning"),
+        ("banner-totalTimeout", "Total timeout — offers “Start reactive mode”", "reachable", "warning"),
     ]),
     ("The banner — tones no routed error reaches (shown only to prove the tone now varies)", [
         ("banner-fatal-networkOffline", "If a fatal error were routed here", "not reachable", "danger"),
@@ -102,21 +102,29 @@ html = f"""<!doctype html>
 <p class="sub">Three colour maps became one. Before/after for every status surface in every
 tone. Rendered from the built app at 2×; reachability noted per pair.</p>
 
-<div class="callout danger">
-  <h3>Read this first — the prompt predicted the wrong headline change</h3>
-  <p>DS.3 expected the banner to flip from an amber fill with black text to the
-  <strong>token warning</strong> treatment. It did not. Every banner a user can actually reach
-  is now <strong>info blue</strong>.</p>
-  <p>The three errors routed to the banner — preview rate limited, slow first track, total
-  timeout — all carry <code>info</code> severity, not <code>warning</code>. None of them is named
-  in <code>UserFacingError.severity</code>, so all three fall through to its <code>default</code>
-  arm. The old banner hid this by being hard-coded amber regardless of severity; making it derive
-  its tone from severity, which is what task 5 asked for, is what surfaced it.</p>
-  <p><strong>This is in-scope behaviour, not a bug.</strong> DS.3 was explicitly barred from
-  changing which severity an error has. If these three should read as caution rather than
-  information, that is a change to <code>ErrorSeverity</code> in the engine — its own increment,
-  and your call.</p>
+<div class="callout">
+  <h3>The banner: two tones now, and the split is the CTA structure</h3>
+  <p>DS.3 first rendered <strong>every</strong> reachable banner blue. That was faithful to the
+  model and wrong about the product — and it was only visible because the banner started deriving
+  its tone from severity at all. The old banner was hard-coded amber and could not disagree with
+  anything.</p>
+  <p>The cause was not the tone mapping. <strong>All three banner errors were sitting on the
+  <code>default: return .info</code> arm of <code>UserFacingError.severity</code></strong> — none of
+  them named anywhere in that switch. <strong>DS.3b</strong> splits them on what they actually offer
+  the user, which is a distinction the code already made:</p>
+  <ul>
+    <li><strong>Preview rate limited → stays <code>info</code>.</strong> It auto-retries and has no
+    primary CTA. There is nothing for the user to do, so blue is the honest colour — this one was
+    never mis-rated.</li>
+    <li><strong>Slow first track and total timeout → <code>warning</code>.</strong> Both offer
+    “Start reactive mode”. <code>ErrorSeverity.warning</code>'s own definition is <em>“user may want
+    to act, but the session can continue”</em>, which is exactly these two.</li>
+  </ul>
+  <p>So the banner reaches the token warning treatment the increment originally predicted — bright
+  yellow on a deep field — but by fixing a misclassification rather than by painting over it. And it
+  now carries <em>two</em> tones, which is what having a tone was for.</p>
 </div>
+
 
 <div class="callout">
   <h3>Settled, then sharpened — degradation is caution, but silence is fatal</h3>
@@ -179,8 +187,8 @@ each surface <em>declares</em>; VoiceOver applies its own rotor and punctuation 
 
 <h2>What to look at</h2>
 <ol>
-  <li><strong>The blue banners.</strong> Amber → blue on the only banner states a user reaches.
-      Correct per the severity map, and a bigger change than the increment predicted.</li>
+  <li><strong>The banner, now two-toned.</strong> Amber-for-everything → yellow when there is
+      something to do, blue when Uzume is handling it itself.</li>
   <li><strong>The silence toast.</strong> Red before, red after — but for a different reason, and it
       now speaks as &ldquo;Critical&rdquo;. The yellow one is a genuine degradation: a dropped stem.</li>
   <li><strong>The blocking screen.</strong> System red/orange/yellow → the token triples. Layout,

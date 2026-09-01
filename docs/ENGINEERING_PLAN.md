@@ -76,9 +76,33 @@ placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `Ready
 playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
-**DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** 🔨 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, the silence reclassification Matt called at the hard stop), M7 pending.
+**DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** 🔨 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop.
 
 ## Recently Completed
+
+### Increment DS.3b — the banner's three errors do not share a severity 🔨 (2026-09-01, D-237)
+
+**Done-when:** the banner's tone reflects what the user can actually do about each error, and the
+deliberate `info` is pinned so it is not "corrected" later. **Status: code complete, green.**
+
+**Matt's second call at the M7.** DS.3 gave the banner a tone for the first time and every reachable
+banner came out **info blue** — faithful to the model, wrong about the product. The mapping was not
+at fault: **all three `.topBanner` errors sat on `severity`'s `default: return .info` arm**, named
+nowhere in that switch, and the hard-coded amber had concealed it for the life of the component.
+
+**The split follows the CTA structure, which the code already encoded.** `previewRateLimited`
+auto-retries and has no primary CTA — nothing for the user to do, so it **stays `info`** and was
+never mis-rated. `preparationSlowOnFirstTrack` and `preparationTotalTimeout` both carry
+`cta.start_reactive_mode`, and `ErrorSeverity.warning` is documented three lines from where it is
+assigned as *"user may want to act, but the session can continue"* — literally these two.
+
+**Result:** the banner reaches the token warning treatment DS.3 originally predicted, by correcting a
+classification rather than painting over it, and now carries **two** tones — which is what D-234 gave
+it a tone for.
+
+**Same defect class as DS.3a, found the same way.** Twice in one increment a surface disagreed with
+its own taxonomy — once because a call site overrode it, once because the taxonomy had no opinion and
+a hard-coded colour filled the gap. Both were invisible until the surface was made to read the model.
 
 ### Increment DS.3a — sustained silence is fatal 🔨 (2026-09-01, D-236)
 
@@ -137,12 +161,11 @@ outside itself was its path in the fixed-font ratchet list. Recorded as **DEAD-0
 a deletion plus a rename, not a merge of two live components. `APP_VIEWS.md:440` still marks it
 `production-active`, which is wrong in the app's own registry.
 
-**The prompt predicted the wrong headline change, and the M7 page leads with it.** DS.3 expected the
-banner to flip from amber-fill/black-text to token warning. Every banner a user can actually reach
-is now **info blue**: the three errors routed to `.topBanner` appear in no arm of
-`UserFacingError.severity` and fall through to its `default: return .info`. The old banner concealed
-this by ignoring severity. Correct under this increment's constraints — DS.3 may not change which
-severity an error has — and flagged to Matt as an engine-side question. See [D-235].
+**The prompt predicted the wrong headline change, and finding out why produced DS.3b.** DS.3 expected
+the banner to flip from amber-fill/black-text to token warning; deriving tone from severity instead
+made every reachable banner **info blue**, because all three `.topBanner` errors sat on `severity`'s
+`default: .info` arm. Under DS.3's own constraints that was correct and had to stand; Matt called it
+at the M7 and [D-237] fixed the classification. See DS.3b above.
 
 **The degradation decision went to A, approved by Matt in session (2026-09-01)** — then sharpened by
 DS.3a above. Under D-235 alone the *"No audio detected."* toast went red → yellow; DS.3a reclassified

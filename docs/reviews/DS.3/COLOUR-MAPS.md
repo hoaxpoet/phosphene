@@ -28,3 +28,25 @@ Four surfaces. Two source enums. Three independent colour maps.
 - **`ToastView` is already tokenized.** DS.1 moved it onto `UzumeAppColor.Status.*`. Its DS.3 defect is not raw colour but that the map is written inline, and that it disagrees with the full-screen map on `degradation`.
 - **The full-screen surfaces are the only raw-system-colour holdouts** (`.red` / `.orange` / `.yellow`), and both copies are byte-identical.
 - **`.fatal` reaches a toast.** `PlaybackErrorBridge` : 203 maps both `.degradation` and `.fatal` onto `UzumeToast.Severity.degradation`, so the narrower app enum loses the distinction before `ToastView` ever sees it. `StatusTone` cannot recover it; the collapse happens upstream of presentation and is out of scope (do-NOT: bridge/severity assignment unchanged).
+
+---
+
+## Postscript — what giving the banner a tone actually exposed (DS.3b, D-237)
+
+Conflict 2 above says the banner ignored severity. Fixing that produced a result the table could not
+predict: **every reachable banner came out `info` blue**, because all three errors routed to
+`.topBanner` sit on `UserFacingError.severity`'s `default: return .info` arm — named in
+`presentationMode`, in `primaryCTAKey`, in `retryStatus`, and in no arm of `severity` at all.
+
+The hard-coded amber had concealed that for the life of the component. The three do not share a
+severity, and the discriminator was already in the code:
+
+| Error | Auto-retries | Primary CTA | Severity |
+|---|---|---|---|
+| `previewRateLimited` | yes | none | `info` — unchanged; nothing for the user to do |
+| `preparationSlowOnFirstTrack` | no | `cta.start_reactive_mode` | `warning` (was `info`) |
+| `preparationTotalTimeout` | no | `cta.start_reactive_mode` | `warning` (was `info`) |
+
+Together with D-236's silence toast, that is **two surfaces in one increment** found disagreeing with
+their own taxonomy — one because a call site overrode it, one because the taxonomy had no opinion and
+a hard-coded colour filled the gap. Neither was visible until the surface was made to read the model.
