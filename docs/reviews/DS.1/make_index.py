@@ -61,11 +61,10 @@ pair below is the same screen at the same window size, before and after the toke
 <p><strong>before</strong> is <code>main</code> at <code>caa69638</code>. <strong>after</strong> is the DS.1 branch.
 Uzume is always dark (D-231 option A), so there is one appearance to review. This Mac is set to
 <em>Light</em> appearance, which is why the window chrome changes.</p>
-<p class="warn"><strong>Four of twenty states are captured.</strong> The rest need a click or a keystroke,
-and driving the app's UI needs Accessibility permission for the terminal Claude Code runs in — it is not
-granted, so there is no way to press a button. Grant it (System Settings &rarr; Privacy &amp; Security &rarr;
-Accessibility) and the remaining sixteen states can be captured the same way, unattended. Each uncaptured
-state below says why.</p>
+<p class="warn"><strong>Twelve of twenty states are captured.</strong> Eight are not: four need a
+live connector credential, a failing track or a revoked permission grant to reach at all, three are
+Settings sub-panes that hold no retokenized code, and one (Ready) is passed through faster than the
+local-file route can be sampled. Each says so under its own heading.</p>
 <nav>{nav}</nav>
 </header>
 {"".join(rows)}

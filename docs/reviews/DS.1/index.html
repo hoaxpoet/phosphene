@@ -35,58 +35,69 @@ pair below is the same screen at the same window size, before and after the toke
 <p><strong>before</strong> is <code>main</code> at <code>caa69638</code>. <strong>after</strong> is the DS.1 branch.
 Uzume is always dark (D-231 option A), so there is one appearance to review. This Mac is set to
 <em>Light</em> appearance, which is why the window chrome changes.</p>
-<p class="warn"><strong>Four of twenty states are captured.</strong> The rest need a click or a keystroke,
-and driving the app's UI needs Accessibility permission for the terminal Claude Code runs in — it is not
-granted, so there is no way to press a button. Grant it (System Settings &rarr; Privacy &amp; Security &rarr;
-Accessibility) and the remaining sixteen states can be captured the same way, unattended. Each uncaptured
-state below says why.</p>
-<nav><a href="#idle">idle</a> · <a href="#preparation_active">preparation active</a> · <a href="#playback_chrome">playback chrome</a> · <a href="#playback_chrome_hidden">playback chrome hidden</a> · <a href="#photosensitivity_notice">photosensitivity notice</a> · <a href="#source_picker">source picker</a> · <a href="#connector_apple_music">connector apple music</a> · <a href="#connector_spotify">connector spotify</a> · <a href="#connector_local">connector local</a> · <a href="#connecting">connecting</a> · <a href="#ready">ready</a> · <a href="#preparation_failure">preparation failure</a> · <a href="#playback_toast">playback toast</a> · <a href="#shortcut_help">shortcut help</a> · <a href="#ended">ended</a> · <a href="#permission_onboarding">permission onboarding</a> · <a href="#settings_audio">settings audio</a> · <a href="#settings_visuals">settings visuals</a> · <a href="#settings_diagnostics">settings diagnostics</a> · <a href="#settings_about">settings about</a></nav>
+<p class="warn"><strong>Twelve of twenty states are captured.</strong> Eight are not: four need a
+live connector credential, a failing track or a revoked permission grant to reach at all, three are
+Settings sub-panes that hold no retokenized code, and one (Ready) is passed through faster than the
+local-file route can be sampled. Each says so under its own heading.</p>
+<nav><a href="#idle">idle</a> · <a href="#source_picker">source picker</a> · <a href="#connector_apple_music">connector apple music</a> · <a href="#connector_spotify">connector spotify</a> · <a href="#connector_local">connector local</a> · <a href="#preparation_active">preparation active</a> · <a href="#playback_chrome">playback chrome</a> · <a href="#playback_chrome_hidden">playback chrome hidden</a> · <a href="#shortcut_help">shortcut help</a> · <a href="#settings_local_files">settings local files</a> · <a href="#ended">ended</a> · <a href="#photosensitivity_notice">photosensitivity notice</a> · <a href="#connecting">connecting</a> · <a href="#ready">ready</a> · <a href="#preparation_failure">preparation failure</a> · <a href="#playback_toast">playback toast</a> · <a href="#permission_onboarding">permission onboarding</a> · <a href="#settings_visuals">settings visuals</a> · <a href="#settings_diagnostics">settings diagnostics</a> · <a href="#settings_about">settings about</a></nav>
 </header>
 <section id="idle">
 <h2>Idle</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><img src="before/idle.png" alt="idle before"></figure>
 <figure><figcaption>after — DS.1</figcaption><img src="after/idle.png" alt="idle after"></figure></div>
-<p class="note">Three changes. The canvas moves from pure black to <code>--color-canvas</code> #0b0c10 — a warmer near-black, most visible against the window chrome. The wordmark takes <code>--color-text-primary</code> (ivory #f4f6f1, not pure white) and the secondary action takes <code>--color-text-tertiary</code>. And the window is now pinned dark: on this Mac, which is set to Light appearance, the title bar was light grey and the primary button was system blue. It is now dark with the Uzume violet, via <code>.preferredColorScheme(.dark)</code> and the package's own <code>uzumeTint()</code>. <strong>One thing to judge:</strong> the tint reaches the secondary <em>Start listening now</em> button too, so it reads violet rather than grey. That is native macOS behaviour for a tinted bordered button. If you want secondary actions to stay quiet, say so and I will scope the tint to the primary action only.</p></section><section id="preparation_active">
+<p class="note">Three changes. The canvas moves from pure black to <code>--color-canvas</code> #0b0c10 — a warmer near-black, clearest against the window chrome. The wordmark takes <code>--color-text-primary</code> (ivory #f4f6f1, not pure white) and the secondary action takes <code>--color-text-tertiary</code>. And the window is pinned dark: this Mac is set to Light appearance, so before, the title bar was light grey and the primary button was system blue. The primary is now Uzume violet and the secondary is still quiet grey — that is the scoped tint you asked for.</p></section><section id="source_picker">
+<h2>Source picker</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/source_picker.png" alt="source_picker before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/source_picker.png" alt="source_picker after"></figure></div>
+<p class="note">Connector tiles move from <code>Color.white.opacity(0.07)</code> / <code>0.03</code> to <code>--color-surface-raised</code> / <code>--color-surface</code>, which land within a level or two of what the translucent fills produced over black. Corner radius 12 is now <code>--radius-md</code>. Note the disabled-tile regression is not visible here because all three sources are enabled; where it does appear, <code>--color-text-disabled</code> and <code>--color-text-tertiary</code> are the same value, so disabled reads slightly brighter than it did (upstream finding 8).</p></section><section id="connector_apple_music">
+<h2>Apple Music connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/connector_apple_music.png" alt="connector_apple_music before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/connector_apple_music.png" alt="connector_apple_music after"></figure></div>
+<p class="note">Canvas and the text ramp. <strong>Unrelated bug spotted while capturing:</strong> the status line reads <em>“Checking every 2 secondsu2026”</em> — a literal <code>u2026</code> where an ellipsis should be, in both before and after. It is a copy string, so DS.1 left it alone; worth its own fix.</p></section><section id="connector_spotify">
+<h2>Spotify connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/connector_spotify.png" alt="connector_spotify before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/connector_spotify.png" alt="connector_spotify after"></figure></div>
+<p class="note">Canvas, the four <code>white@0.07</code> panels onto <code>--color-surface-raised</code>, and the inline status marks onto <code>--color-success</code> / <code>--color-warning</code>. The playlist TextField and its buttons stay native.</p></section><section id="connector_local">
+<h2>Local source connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/connector_local.png" alt="connector_local before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/connector_local.png" alt="connector_local after"></figure></div>
+<p class="note">Canvas plus the action tile's hover state, which is <code>--color-surface-selected</code> on hover and <code>--color-surface-raised</code> at rest.</p></section><section id="preparation_active">
 <h2>Preparation (in progress)</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><img src="before/preparation_active.png" alt="preparation_active before"></figure>
 <figure><figcaption>after — DS.1</figcaption><img src="after/preparation_active.png" alt="preparation_active after"></figure></div>
-<p class="note">Canvas; the aggregate progress bar's track moves to <code>--color-surface-selected</code> and its fill to <code>--color-text-secondary</code>; the row divider to <code>--color-line-subtle</code>. The Cancel button is native and untouched apart from the appearance pin. Track status icons take the success / warning / danger roles — note the danger role is a warm salmon #ff8a75, not systemRed.</p></section><section id="playback_chrome">
+<p class="note">Canvas; the aggregate progress track moves to <code>--color-surface-selected</code> and its fill to <code>--color-text-secondary</code>; the row divider to <code>--color-line-subtle</code>. Track status icons take the success / warning / danger roles — the danger role is a warm salmon #ff8a75, not systemRed.</p></section><section id="playback_chrome">
 <h2>Playback — chrome visible</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><img src="before/playback_chrome.png" alt="playback_chrome before"></figure>
 <figure><figcaption>after — DS.1</figcaption><img src="after/playback_chrome.png" alt="playback_chrome after"></figure></div>
-<p class="note"><code>PerformanceBackdrop</code>, renamed from <code>OverlayBackdropStyle</code>. The measured values do not move: <code>.ultraThinMaterial</code> + 45% black at radius 10. The artwork placeholder fill and the text ramp are the only changes to the card. The transport bar's radius becomes <code>--radius-lg</code>; its surface and coral glow still come from <code>DashboardTokens</code> — migrating those is a visible restyle, so it is left for DS.6 rather than smuggled into a mechanical sweep. <strong>Note:</strong> the preset behind the chrome differs between the two shots (Membrane vs Stave). They are different file identities to the planner, so it picked differently. The chrome is what to compare.</p></section><section id="playback_chrome_hidden">
+<p class="note"><code>PerformanceBackdrop</code>, renamed from <code>OverlayBackdropStyle</code>. The measured values do not move: <code>.ultraThinMaterial</code> + 45% black at radius 10. The artwork placeholder fill and the text ramp are the only changes to the card. The transport bar's radius becomes <code>--radius-lg</code>; its surface and coral glow still come from <code>DashboardTokens</code>, deliberately left for DS.6. <strong>The preset behind the chrome differs between the two shots</strong> — they are different file identities to the planner, so it picked differently. Compare the chrome, not the visual.</p></section><section id="playback_chrome_hidden">
 <h2>Playback — chrome hidden</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><img src="before/playback_chrome_hidden.png" alt="playback_chrome_hidden before"></figure>
 <figure><figcaption>after — DS.1</figcaption><img src="after/playback_chrome_hidden.png" alt="playback_chrome_hidden after"></figure></div>
-<p class="note">The preset frame with the chrome auto-hidden. No token touches the renderer; this pair is here to prove it. Different presets, same reason as above.</p></section><section id="photosensitivity_notice">
+<p class="note">The preset frame with the chrome auto-hidden. No token touches the renderer; this pair is here to prove it.</p></section><section id="shortcut_help">
+<h2>Shortcut help</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/shortcut_help.png" alt="shortcut_help before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/shortcut_help.png" alt="shortcut_help after"></figure></div>
+<p class="note">Panel tint 0.40 kept and named; key caps move to the strong performance fill; the cap radius tightens from 5 to <code>--radius-sm</code> (6).</p></section><section id="settings_local_files">
+<h2>Settings — Local Files</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/settings_local_files.png" alt="settings_local_files before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/settings_local_files.png" alt="settings_local_files after"></figure></div>
+<p class="note">Nothing in Settings was retokenized — it held no hard-coded values. What this pair shows is the appearance pin: on a Light-Mode Mac this pane used to render light against the app's black chrome. <strong>One thing to judge:</strong> the sidebar selection is still system blue, not Uzume violet, because scoping the tint to primary actions leaves <code>List</code> selection on the system accent. Say if you want selection tinted too.</p></section><section id="ended">
+<h2>Ended</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/ended.png" alt="ended before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/ended.png" alt="ended after"></figure></div>
+<p class="note">Canvas and text ramp, and the clearest single example of the scoped tint: <em>Start another session</em> is violet, the two secondary links below it stay quiet.</p></section><section id="photosensitivity_notice">
 <h2>Photosensitivity notice (first run)</h2>
-<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
-<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Clearing the first-run acknowledgement key did not re-trigger the sheet in an automated launch. Nothing in this view was retokenized; it would appear in the review only to show the appearance pin.</p></section><section id="source_picker">
-<h2>Source picker</h2>
-<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
-<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="connector_apple_music">
-<h2>Apple Music connection</h2>
-<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
-<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="connector_spotify">
-<h2>Spotify connection</h2>
-<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
-<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="connector_local">
-<h2>Local source connection</h2>
-<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
-<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="connecting">
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/photosensitivity_notice.png" alt="photosensitivity_notice before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/photosensitivity_notice.png" alt="photosensitivity_notice after"></figure></div>
+<p class="note">Nothing here was retokenized. It appears because the appearance pin reaches it. The two shots are at different window sizes — the frame is persisted between launches and drifted between the runs.</p></section><section id="connecting">
 <h2>Connecting</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
 <figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="ready">
+<p class="note"><strong>Not captured.</strong> No route reaches it without a live connector credential or a deliberately failing input.</p></section><section id="ready">
 <h2>Ready</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
 <figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> The local-file path — the only session route reachable without a connector credential — plays its own audio, so it passes through Ready faster than a capture interval. Reaching it deliberately needs the streaming handoff.</p></section><section id="preparation_failure">
+<p class="note"><strong>Not captured.</strong> The local-file path — the only session route reachable without a connector credential — plays its own audio, so it passes through Ready faster than a capture interval.</p></section><section id="preparation_failure">
 <h2>Preparation failure</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
 <figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
@@ -94,33 +105,21 @@ state below says why.</p>
 <h2>Playback — toast</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
 <figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Toasts fire on signal-state, adaptation and display events; none occurred during the capture runs.</p></section><section id="shortcut_help">
-<h2>Shortcut help</h2>
-<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
-<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="ended">
-<h2>Ended</h2>
-<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
-<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="permission_onboarding">
+<p class="note"><strong>Not captured.</strong> Toasts fire on signal-state, adaptation and display events; none occurred during the capture runs.</p></section><section id="permission_onboarding">
 <h2>Permission onboarding</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
 <figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching it means revoking the app's Screen Recording grant, which is a system security setting I will not change.</p></section><section id="settings_audio">
-<h2>Settings — Audio</h2>
-<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
-<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="settings_visuals">
+<p class="note"><strong>Not captured.</strong> Reaching it means revoking the app's Screen Recording grant, which is a system security setting I will not change.</p></section><section id="settings_visuals">
 <h2>Settings — Visuals</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
 <figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="settings_diagnostics">
+<p class="note"><strong>Not captured.</strong> Driving the settings sidebar hung the automation repeatedly and the pane holds no retokenized code — it would show only the appearance pin that Settings — Local Files already shows. I stopped rather than keep grinding.</p></section><section id="settings_diagnostics">
 <h2>Settings — Diagnostics</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
 <figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section><section id="settings_about">
+<p class="note"><strong>Not captured.</strong> Same reason as Settings — Visuals.</p></section><section id="settings_about">
 <h2>Settings — About</h2>
 <div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
 <figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
-<p class="note"><strong>Not captured.</strong> Reaching this state needs a click or a keystroke, and driving the app's UI requires Accessibility permission for the terminal Claude Code runs in, which is not granted. See the note at the top of the page.</p></section>
+<p class="note"><strong>Not captured.</strong> Same reason as Settings — Visuals.</p></section>
 </body></html>
