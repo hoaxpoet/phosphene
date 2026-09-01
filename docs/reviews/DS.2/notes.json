@@ -1,0 +1,19 @@
+{
+  "connector_apple_music.title": "Apple Music — default",
+  "connector_apple_music": "Navigation affordance. Identifier uzume.connector.tile.apple_music, unchanged.",
+  "connector_apple_music_hover.title": "Apple Music — HOVER (the one intentional visual change)",
+  "connector_apple_music_hover": "The connector tiles had no hover state before. Sharing one interactive treatment with the local tiles means they now lift to --color-surface-selected on hover, exactly as the local tiles always have. This is what Matt is being asked to judge.",
+  "connector_apple_music_unavailable.title": "Apple Music — unavailable, with the Open Apple Music recovery",
+  "connector_apple_music_unavailable": "The .unavailable(reason:recovery:) affordance: the reason replaces the subtitle, the fill drops to --color-surface, there is no hover and no chevron, and the recovery button sits where the chevron would be. Requires Music.app to be closed.",
+  "connector_spotify.title": "Spotify — default",
+  "connector_spotify_hover.title": "Spotify — HOVER (new)",
+  "connector_local.title": "Local files — default",
+  "connector_local_hover.title": "Local files — HOVER (new)",
+  "lf_folder.title": "Folder — default",
+  "lf_folder_hover.title": "Folder — hover (unchanged behaviour)",
+  "lf_folder": "Action affordance. Hover was already present here; it should look identical before and after.",
+  "lf_file.title": "Single file — default",
+  "lf_file_hover.title": "Single file — hover (unchanged behaviour)",
+  "lf_playlist.title": "Playlist — default",
+  "lf_playlist_hover.title": "Playlist — hover (unchanged behaviour)"
+}
