@@ -1,37 +1,50 @@
-// PreparationFailureView — Full-screen replacement for the .preparing state when all
-// tracks have failed or the network has dropped entirely.
+// RecoveryScreen — the blocking status placement. (DS.3)
 //
-// Shown when PreparationErrorViewModel.presentationState == .fullScreen(error).
-// Provides two recovery paths:
-//   primary   → "Pick another playlist" (onPickAnotherPlaylist)
-//   secondary → "Start reactive mode"   (onStartReactive)
+// Two views carried this layout before DS.3: dimmed canvas, tone icon, headline,
+// optional body, primary CTA with `.keyboardShortcut(.defaultAction)`, optional
+// secondary text link. The only real difference between them was where the button
+// labels came from — one hard-coded the two preparation actions, the other read the
+// error's CTA keys — so this takes an explicit action set and lets the caller decide.
 //
-// All copy resolved via LocalizedCopy / Localizable.strings.
+// One of the two had no construction site anywhere in the app and had never appeared
+// in a shipped build (recorded in KNOWN_ISSUES.md); deleting it removed the
+// duplication at zero behavioural risk.
+//
+// Of the four status placements this is the only blocking one: it replaces the view
+// behind it and offers a way out. Interruption, lifetime and dismissal are what keep
+// the four separate (COMPONENTS.md § Status placements); the tone vocabulary is the
+// whole of the sharing.
 
 import Shared
 import SwiftUI
 
-// MARK: - PreparationFailureView
+// MARK: - RecoveryScreen
 
-/// Full-screen catastrophic-preparation failure, per UX_SPEC §9.3 §9.2.
-/// Replaces the track-list pane when PreparationErrorViewModel fires .fullScreen.
-struct PreparationFailureView: View {
+/// Full-screen blocking failure with one or two recovery paths, per UX_SPEC §9.1–§9.3.
+/// Never shown during `.playing` — use `PerformanceToast` there.
+struct RecoveryScreen: View {
     static let accessibilityID      = "uzume.view.preparationFailure"
     static let pickPlaylistButtonID = "uzume.preparationFailure.pickPlaylist"
     static let reactiveButtonID     = "uzume.preparationFailure.startReactive"
 
     let error: UserFacingError
-    let onPickAnotherPlaylist: () -> Void
-    let onStartReactive: (() -> Void)?
+    let primaryLabel: String
+    let primaryAction: () -> Void
+    let secondaryLabel: String?
+    let secondaryAction: (() -> Void)?
 
     init(
         error: UserFacingError,
-        onPickAnotherPlaylist: @escaping () -> Void,
-        onStartReactive: (() -> Void)? = nil
+        primaryLabel: String,
+        primaryAction: @escaping () -> Void,
+        secondaryLabel: String? = nil,
+        secondaryAction: (() -> Void)? = nil
     ) {
         self.error = error
-        self.onPickAnotherPlaylist = onPickAnotherPlaylist
-        self.onStartReactive = onStartReactive
+        self.primaryLabel = primaryLabel
+        self.primaryAction = primaryAction
+        self.secondaryLabel = secondaryLabel
+        self.secondaryAction = secondaryAction
     }
 
     // MARK: - Body
@@ -56,9 +69,9 @@ struct PreparationFailureView: View {
     // MARK: - Icon
 
     private var icon: some View {
-        Image(systemName: severityIcon)
+        Image(systemName: tone.symbol)
             .font(.largeTitle.weight(.light))
-            .foregroundColor(severityColor.opacity(0.7))
+            .foregroundColor(tone.foreground.opacity(0.7))
     }
 
     // MARK: - Text block
@@ -87,17 +100,17 @@ struct PreparationFailureView: View {
     @ViewBuilder
     private var actions: some View {
         VStack(spacing: 12) {
-            Button(String(localized: "preparation.failure.pick_playlist_button")) {
-                onPickAnotherPlaylist()
+            Button(primaryLabel) {
+                primaryAction()
             }
             .buttonStyle(.borderedProminent)
             .uzumeTint()
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier(Self.pickPlaylistButtonID)
 
-            if let startReactive = onStartReactive {
-                Button(String(localized: "preparation.failure.start_reactive_button")) {
-                    startReactive()
+            if let secondaryLabel, let secondaryAction {
+                Button(secondaryLabel) {
+                    secondaryAction()
                 }
                 .foregroundColor(UzumeAppColor.textTertiary)
                 .font(.subheadline)
@@ -106,28 +119,12 @@ struct PreparationFailureView: View {
         }
     }
 
-    // MARK: - Private helpers
+    // MARK: - Private
+
+    private var tone: StatusTone { .from(error.severity) }
 
     private var headline: String {
         let copy = LocalizedCopy.string(for: error)
         return copy.isEmpty ? String(localized: "fullscreen_error.default_headline") : copy
-    }
-
-    private var severityIcon: String {
-        switch error.severity {
-        case .fatal:       return "xmark.circle"
-        case .warning:     return "exclamationmark.circle"
-        case .degradation: return "exclamationmark.triangle"
-        case .info:        return "info.circle"
-        }
-    }
-
-    private var severityColor: Color {
-        switch error.severity {
-        case .fatal:       return .red
-        case .warning:     return .orange
-        case .degradation: return .yellow
-        case .info:        return UzumeAppColor.textPrimary
-        }
     }
 }

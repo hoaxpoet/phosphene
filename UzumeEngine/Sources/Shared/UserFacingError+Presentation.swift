@@ -96,7 +96,13 @@ extension UserFacingError {
     /// Visual severity, maps to `UzumeToast.Severity` in the App layer.
     public var severity: ErrorSeverity {
         switch self {
-        case .networkOffline, .allTracksFailedToPrepare, .tapReinstallAllFailed:
+        // silenceExtended is fatal, not warning (D-236): the visuals are audio-driven,
+        // so sustained silence means Uzume has stopped delivering its product even
+        // though the render loop is still running. It is condition-bound and clears
+        // itself when audio returns — fatal here is about what the user is (not) getting,
+        // not about whether the process can proceed.
+        case .networkOffline, .allTracksFailedToPrepare, .tapReinstallAllFailed,
+             .silenceExtended:
             return .fatal
         case .screenCapturePermissionDenied, .appleScriptPermissionDenied,
              .spotifyUnreachable, .sampleRateMismatch, .audioLevelsLow,
@@ -104,7 +110,12 @@ extension UserFacingError {
             return .warning
         case .mpsGraphAllocationFailure, .stemSeparationFailed, .previewNotFound:
             return .degradation
-        case .silenceExtended, .frameBudgetExceeded, .displayDisconnectedMidSession:
+        // The two banner errors that offer "Start reactive mode" are warnings, not info
+        // (D-237): this case's own definition is "user may want to act, but the session
+        // can continue", and offering a CTA is exactly that. previewRateLimited stays
+        // info deliberately — it auto-retries and gives the user nothing to do.
+        case .preparationSlowOnFirstTrack, .preparationTotalTimeout,
+             .frameBudgetExceeded, .displayDisconnectedMidSession:
             return .warning
         default:
             return .info

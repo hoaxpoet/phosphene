@@ -201,9 +201,9 @@ The Apple Music side does not have an equivalent URL-callback foregrounding scen
 **Listed (~20):** `MetalView`, `DebugOverlayView`, `Dashboard/` subblock (5 files: `DashboardOverlayView`, `DashboardCardView`, `DashboardRowView`, `DarkVibrancyView`, `DashboardOverlayViewModel`), `ConnectorType`, `ConnectorTileView`, `ConnectorPickerView`, `AppleMusicConnectionView`, `SpotifyConnectionView`, `Onboarding/PermissionOnboardingView`, `Onboarding/PhotosensitivityNoticeView`, `Idle/IdleView`, `Connecting/ConnectingView`, `Preparation/PreparationProgressView`, `Ready/ReadyView`, `Playback/PlaybackView`, `Ended/EndedView`.
 
 **Missing (27):**
-- Root-level (3): `FullScreenErrorView.swift`, `QualityGradeIndicator.swift`, `SettingsView.swift`, `TrackPreparationRow.swift`, `TrackPreparationStatusIcon.swift`.
-- `Playback/` (10 of 11 missing, only `PlaybackView` listed): `ListeningBadgeView`, `PerformanceBackdrop`, `PlaybackChromeView`, `PlaybackControlsCluster`, `SessionProgressDotsView`, `ShortcutHelpOverlayView`, `ToastContainerView`, `ToastView`, `TrackChangeAnimationView`, `TrackInfoCardView`.
-- `Preparation/` (2 missing): `PreparationFailureView`, `TopBannerView`.
+- Root-level (3): `QualityGradeIndicator.swift`, `SettingsView.swift`, `TrackPreparationRow.swift`, `TrackPreparationStatusIcon.swift`. *(`FullScreenErrorView.swift` deleted at DS.3 — see DEAD-003.)*
+- `Playback/` (10 of 11 missing, only `PlaybackView` listed): `ListeningBadgeView`, `PerformanceBackdrop`, `PlaybackChromeView`, `PlaybackControlsCluster`, `SessionProgressDotsView`, `ShortcutHelpOverlayView`, `ToastRegion`, `PerformanceToast`, `TrackChangeAnimationView`, `TrackInfoCardView`.
+- `Preparation/` — the two former entries are gone: `PreparationFailureView` → `Components/RecoveryScreen`, `TopBannerView` → `Components/NoticeBanner` (DS.3).
 - `Ready/` (4 missing): `PlanPreviewRowView`, `PlanPreviewTransitionView`, `PlanPreviewView`, `ReadyPulsingBorder`.
 - `Settings/` (6 missing): `AboutSettingsSection`, `AudioSettingsSection`, `DiagnosticsSettingsSection`, `PresetCategoryBlocklistPicker`, `SourceAppPicker`, `VisualsSettingsSection`.
 
@@ -420,7 +420,7 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|
 | `ToastManager` class | `production-active` | `PlaybackView.@StateObject` (line 41) | U.7 |
-| `@Published visibleToasts: [UzumeToast]` | `production-active` | `ToastContainerView.@ObservedObject` | — |
+| `@Published visibleToasts: [UzumeToast]` | `production-active` | `ToastRegion.@ObservedObject` | — |
 | `static maxVisible: 3` | `production-active` | Internal queue cap | — |
 | `enqueue(_:)`, `dismiss(id:)`, `dismissByCondition(_:)`, `isConditionAsserted(_:)` | `production-active` | `PlaybackErrorBridge` + `MultiDisplayToastBridge` + `LiveAdaptationToastBridge` + `DefaultPlaybackActionRouter.toastBridge?.emitAck` chain (CA.5-scope) | UX_SPEC §9.4 |
 | `dropOldest()` (private) | `production-active` | Internal overflow handler | — |
@@ -437,9 +437,9 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 `struct DebugOverlayView: View`. `@ObservedObject var engine: VisualizerEngine`. Bottom-leading SwiftUI debug overlay surface. Toggle via D key. Per CLAUDE.md / ARCHITECTURE.md, complementary to the top-trailing DashboardOverlayView — both gated on the same `showDebug` @State in PlaybackView (line 47, 145).
 
-##### FullScreenErrorView.swift (129 lines) — `production-active`
+##### FullScreenErrorView.swift — **DELETED at DS.3. This row was wrong: it was never `production-active`.**
 
-`struct FullScreenErrorView: View`. Reusable full-screen error layout per UX_SPEC §9.1 / §9.2. Takes `error: UserFacingError` + primary/secondary actions. Spacing 28; max-width 520.
+`struct FullScreenErrorView: View`, 129 lines. Documented as a reusable full-screen error layout per UX_SPEC §9.1 / §9.2 — and **it had zero construction sites for its entire life**. At the DS.3 branch point the only references outside its own file were its *path*, as a string in `DynamicTypeRegressionTests.viewFiles`. It duplicated `PreparationFailureView` almost verbatim, including both copies of the `degradation → .yellow` mapping DS.3 removed. Deleted as part of the `RecoveryScreen` consolidation, at zero behavioural risk because there was no behaviour. Recorded as **DEAD-003** in `docs/QUALITY/KNOWN_ISSUES.md`. The `production-active` classification is corrected here rather than deleted, because the mistake is the point: a view can carry a usage example in its own header and still have no consumer, and grep for the *type name* found it — only grep for the *construction site* did not.
 
 ##### ConnectorPickerView.swift (193 lines) — `production-active` + co-located `unverified-claim` #3
 
@@ -535,7 +535,7 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 ##### PlaybackChromeView.swift (100 lines) — `production-active`
 
-`struct PlaybackChromeView: View`. Overlay chrome composition. `@ObservedObject var viewModel: PlaybackChromeViewModel`. Composes 5 subviews (TrackInfoCardView, PlaybackControlsCluster, ListeningBadgeView, ToastContainerView, PreparationBackgroundIndicator). Accessibility ID `uzume.playback.chrome`. Plus private `PreparationBackgroundIndicator` subview (subtle teal dot for 6.1 progressive readiness).
+`struct PlaybackChromeView: View`. Overlay chrome composition. `@ObservedObject var viewModel: PlaybackChromeViewModel`. Composes 5 subviews (TrackInfoCardView, PlaybackControlsCluster, ListeningBadgeView, ToastRegion, PreparationBackgroundIndicator). Accessibility ID `uzume.playback.chrome`. Plus private `PreparationBackgroundIndicator` subview (subtle teal dot for 6.1 progressive readiness).
 
 ##### ListeningBadgeView.swift (54 lines) — `production-active`
 
@@ -557,13 +557,13 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 `struct ShortcutHelpOverlayView: View`. Full keyboard shortcut reference shown on Shift+?. Categorizes via `ShortcutCategory.allCases`. Accessibility ID `uzume.playback.shortcutHelp`.
 
-##### ToastContainerView.swift (36 lines) — `production-active`
+##### ToastRegion.swift (36 lines) — `production-active` *(was `ToastContainerView`, renamed DS.3)*
 
-`struct ToastContainerView: View`. Bottom-trailing stack of up to 3 visible toasts. `@ObservedObject var toastManager: ToastManager`. Posts accessibility announcements for new toasts.
+`struct ToastRegion: View`. Bottom-trailing stack of up to 3 visible toasts. `@ObservedObject var toastManager: ToastManager`. Posts accessibility announcements for new toasts. Behaviour unchanged across the rename — `ToastManager` still owns the queue, coalescing and drop policy.
 
-##### ToastView.swift (75 lines) — `production-active`
+##### PerformanceToast.swift (82 lines) — `production-active` *(was `ToastView`, renamed DS.3)*
 
-`struct ToastView: View`. Per-toast cell. Severity accent bar (gray/orange/red). 320 pt max width. UX_SPEC §9.4 surface.
+`struct PerformanceToast: View`. Per-toast cell. 4 pt accent bar coloured by `StatusTone.from(toast.severity)`; 320 pt max width. UX_SPEC §9.4 surface. The severity switch that made this the third of three disagreeing colour maps — and the one that read `degradation` as red — is gone (D-234/D-235).
 
 ##### TrackChangeAnimationView.swift (95 lines) — `production-active`
 
@@ -579,13 +579,21 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 `@MainActor struct PreparationProgressView: View`. `.preparing` state per UX_SPEC §3. Three presentation modes (`.normal` / `.banner(error)` / `.fullScreen(error)`) driven by `PreparationErrorViewModel.presentationState`. Owns `@StateObject viewModel: PreparationProgressViewModel`, `@StateObject errorViewModel: PreparationErrorViewModel`, `@State networkRecoveryCoordinator: NetworkRecoveryCoordinator?` (D-061(d,e) — initialized in `.onAppear`). Cancel confirmation dialog when ≥ 1 track is `.ready`.
 
-##### PreparationFailureView.swift (133 lines) — `production-active`
+##### RecoveryScreen.swift (130 lines) — `production-active` *(was `PreparationFailureView`; lives in `Views/Components/` since DS.3)*
 
-`struct PreparationFailureView: View`. Full-screen replacement when all tracks failed or network offline. Two recovery CTAs: pick playlist (primary) + start reactive (secondary, optional).
+`struct RecoveryScreen: View`. Full-screen replacement when all tracks failed or network offline. Two recovery CTAs: pick playlist (primary, `.keyboardShortcut(.defaultAction)`) + start reactive (secondary, optional). Now takes an explicit action set rather than choosing between the error's CTA keys and hard-coded strings, which is what let it absorb the never-constructed `FullScreenErrorView`. Icon tone from `StatusTone.from(error.severity)`. All three accessibility identifiers unchanged.
 
-##### TopBannerView.swift (67 lines) — `production-active`
+##### NoticeBanner.swift (84 lines) — `production-active` *(was `TopBannerView`; lives in `Views/Components/` since DS.3)*
 
-`struct TopBannerView: View`. Amber warning strip above the track list for non-blocking preparation errors. UX_SPEC §5.6 / §9.3.
+`struct NoticeBanner: View`. 44 pt strip above the track list for non-blocking preparation errors. UX_SPEC §5.6 / §9.3. **No longer always amber** — it derives its tone from `error.severity`, which its predecessor accepted and never read. The only placement that consumes the whole token triple (text+icon / fill / 1 pt bottom rule). Its `onDismiss` button has never rendered in a shipped build: **DEAD-002**.
+
+##### StatusTone.swift (108 lines) — `production-active` *(new at DS.3)*
+
+`enum StatusTone: Equatable, CaseIterable` in `Views/Components/`. THE severity vocabulary (D-234). Four tones — `info` / `success` / `warning` / `danger` — each exposing `foreground` / `background` / `border` from a `--color-status-*` triple plus one `symbol`. Dark block only, no appearance branch (D-232). Exactly two mappings: `from(ErrorSeverity)` and `from(UzumeToast.Severity)`; **neither source enum changes**. `degradation → warning` per D-235. `success` has no producer — carried because the published role set is four. Consumers: all four status placements. Pinned by `StatusToneTests` (both mappings, plus a test that the two vocabularies agree on `degradation`, which is the conflict DS.3 removed).
+
+##### InlineNotice.swift (51 lines) — `production-active` *(was `LocalFileErrorBanner`, extracted from `LocalFileErrorStore.swift` at DS.3)*
+
+`struct InlineNotice: View` in `Views/Components/`. 6 pt tone pip + message, tap anywhere to dismiss. Deliberately no background and no border — it sits inside an existing pane rather than announcing itself. Takes `tone` (default `.danger`) because its source enum, `UserFacingLocalFileError`, carries no severity. Consumers: `IdleView:56`, `LocalSourceConnectionView:47`. Lifetime is the store's: `LocalFileErrorStore` auto-clears after 6 s.
 
 #### Ready/ (5 files)
 
@@ -840,7 +848,7 @@ Applied in this increment as doc-only corrections:
    - Keyboard-shortcut list extended: add `Shift+→` / `Shift+←` (force-immediate nudge per UX_SPEC §7.4 / U.6b), `Z` (undo last adaptation), `M` (mood-lock), `Esc` (end session with confirm), `Shift+?` (shortcut help). The pre-CA.6 list (`→ / ← / Space / D / C / R / G`) was the U.6 baseline; QR.4 + U.6b layered the rest.
    - Add `DashboardOverlayView` as PlaybackView Layer 6 (DASH.7).
 
-2. **§Module Map UzumeApp/Views/ block** extended. The pre-CA.6 block listed ~20 of 47 views with sparse one-liners. The post-CA.6 block lists every view with a one-line behavioural description, mirroring the CA.5 fix for the engine-adapter Module Map block. Sub-blocks added: `Playback/` (11 entries including ListeningBadgeView + chrome subviews + ToastView family + TrackChangeAnimationView + TrackInfoCardView + ShortcutHelpOverlayView), `Preparation/` (3 entries adding `PreparationFailureView` + `TopBannerView`), `Ready/` (5 entries adding `PlanPreviewRowView` + `PlanPreviewTransitionView` + `PlanPreviewView` + `ReadyPulsingBorder`), `Settings/` (6 entries: per-section sub-views + pickers).
+2. **§Module Map UzumeApp/Views/ block** extended. The pre-CA.6 block listed ~20 of 47 views with sparse one-liners. The post-CA.6 block lists every view with a one-line behavioural description, mirroring the CA.5 fix for the engine-adapter Module Map block. Sub-blocks added: `Playback/` (11 entries including ListeningBadgeView + chrome subviews + the toast family + TrackChangeAnimationView + TrackInfoCardView + ShortcutHelpOverlayView), `Preparation/` (3 entries adding the two status placements DS.3 later moved to `Components/`), `Ready/` (5 entries adding `PlanPreviewRowView` + `PlanPreviewTransitionView` + `PlanPreviewView` + `ReadyPulsingBorder`), `Settings/` (6 entries: per-section sub-views + pickers).
 
 3. **§Module Map UzumeApp/ViewModels/ block** extended. Pre-CA.6: 4 of 12. Post-CA.6: all 12 with one-liners. Added: `EndSessionConfirmViewModel`, `PlanPreviewViewModel`, `PlaybackChromeViewModel`, `PreparationErrorViewModel`, `PreparationProgressViewModel`, `ReadyViewModel`, `SettingsViewModel`, `ToastManager`. Note that `DashboardOverlayViewModel` continues to live under `Views/Dashboard/` per the filesystem layout.
 

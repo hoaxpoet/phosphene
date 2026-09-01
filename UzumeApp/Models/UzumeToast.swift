@@ -1,22 +1,44 @@
 // UzumeToast — Toast notification model for in-session status messages.
 
 import Foundation
+import Shared
 
 // MARK: - UzumeToast
 
 /// A transient in-session notification shown in the bottom-right toast slot.
 ///
 /// Toasts are managed by `ToastManager`. Up to three are visible simultaneously.
-/// Degradation-severity toasts are never auto-dropped when the queue overflows.
+/// Degradation- and fatal-severity toasts are never auto-dropped when the queue overflows.
 struct UzumeToast: Identifiable, Equatable, Sendable {
 
     // MARK: - Severity
 
     /// Visual priority of the toast.
+    ///
+    /// Mirrors `ErrorSeverity` one-for-one as of DS.3a (D-236). It gained `fatal` because
+    /// `PlaybackErrorBridge` was folding fatal errors into `degradation` before any view
+    /// could see them — the distinction died in this enum's narrowness, which is why the
+    /// silence toast could not be told apart from a dropped stem.
+    ///
+    /// Tone comes from `StatusTone.from(_:)`; these cases carry priority, never colour.
     enum Severity: Equatable, Sendable {
-        case info         // Grey accent — informational (display connect, adaptation ack)
-        case warning      // Amber accent — soft degradation (display disconnect)
-        case degradation  // Red accent — hard degradation (no audio detected)
+        case info         // Informational (display connect, adaptation ack)
+        case warning      // The session continues (display disconnect)
+        case degradation  // Uzume is coping but compromised (dropped stem, missing preview)
+        case fatal        // Uzume is not delivering (no audio detected)
+
+        /// The one place an `ErrorSeverity` becomes a toast severity. Both enums carry
+        /// the same four cases (D-236), so nothing is folded — the `.degradation, .fatal`
+        /// collapse this replaced is what hid fatal from every view, and made the silence
+        /// toast indistinguishable from a dropped stem.
+        init(_ severity: ErrorSeverity) {
+            switch severity {
+            case .info:        self = .info
+            case .warning:     self = .warning
+            case .degradation: self = .degradation
+            case .fatal:       self = .fatal
+            }
+        }
     }
 
     // MARK: - Source

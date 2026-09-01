@@ -3,8 +3,8 @@
 // Subscribes to SessionPreparer's per-track status publisher and ReachabilityMonitor.
 // Publishes a PresentationState that drives whether PreparationProgressView shows:
 //   - .normal     → standard progress-row list
-//   - .banner(error) → TopBannerView above the list
-//   - .fullScreen(error) → PreparationFailureView replacing the list
+//   - .banner(error) → NoticeBanner above the list
+//   - .fullScreen(error) → RecoveryScreen replacing the list
 //
 // Decision rules (highest priority wins):
 //   1. Network offline → .fullScreen(.networkOffline)

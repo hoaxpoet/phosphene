@@ -69,6 +69,7 @@ enum AccessibilityLabels {
         case .info:        severityStr = String(localized: "a11y.toast.severity.info")
         case .warning:     severityStr = String(localized: "a11y.toast.severity.warning")
         case .degradation: severityStr = String(localized: "a11y.toast.severity.degradation")
+        case .fatal:       severityStr = String(localized: "a11y.toast.severity.fatal")
         }
         return "\(severityStr): \(copy)"
     }

@@ -1,22 +1,23 @@
-// ToastContainerView — Bottom-trailing stack of up to three toast notifications.
+// ToastRegion — bottom-trailing stack of up to three `PerformanceToast` cells. (DS.3)
+//
+// Renamed at DS.3; behaviour is untouched. `ToastManager` owns how many are visible
+// and which are dropped — this only lays them out, animates the trailing move, and
+// posts the VoiceOver announcement when one is inserted.
 
 import Accessibility
 import SwiftUI
 
-// MARK: - ToastContainerView
+// MARK: - ToastRegion
 
-/// Stacks `ToastView` cells for all currently-visible toasts.
-///
-/// Uses `.transition(.move(edge: .trailing).combined(with: .opacity))`.
-/// Placed bottom-trailing in `PlaybackChromeView`.
-struct ToastContainerView: View {
+/// Stacks the currently-visible toasts bottom-trailing in `PlaybackChromeView`.
+struct ToastRegion: View {
 
     @ObservedObject var toastManager: ToastManager
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 8) {
             ForEach(toastManager.visibleToasts) { toast in
-                ToastView(toast: toast) { id in
+                PerformanceToast(toast: toast) { id in
                     toastManager.dismiss(id: id)
                 }
                 .transition(.move(edge: .trailing).combined(with: .opacity))

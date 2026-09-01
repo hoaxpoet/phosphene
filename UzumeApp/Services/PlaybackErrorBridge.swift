@@ -196,13 +196,7 @@ final class PlaybackErrorBridge {
             logger.warning("PlaybackErrorBridge: one-shot error is not toast-mode — dropped")
             return
         }
-        let toastSeverity: UzumeToast.Severity
-        switch error.severity {
-        case .info:                 toastSeverity = .info
-        case .warning:              toastSeverity = .warning
-        case .degradation, .fatal:  toastSeverity = .degradation
-        }
-        toastManager.enqueue(toast(for: error, severity: toastSeverity, source: .signalState))
+        toastManager.enqueue(toast(for: error, severity: UzumeToast.Severity(error.severity), source: .signalState))
         logger.info("PlaybackErrorBridge: one-shot toast shown")
     }
 
@@ -284,7 +278,8 @@ final class PlaybackErrorBridge {
         guard let conditionID = error.conditionID else { return }
         guard !tracker.isAsserted(conditionID) else { return }
 
-        toastManager.enqueue(toast(for: error, severity: .degradation, source: .signalState))
+        // Severity comes from the error, not this call site (D-236).
+        toastManager.enqueue(toast(for: error, severity: UzumeToast.Severity(error.severity), source: .signalState))
         tracker.assert(conditionID)
         let threshold = Self.silenceToastThresholdSeconds
         logger.info("PlaybackErrorBridge: \(threshold, format: .fixed(precision: 0))s silence — toast shown")

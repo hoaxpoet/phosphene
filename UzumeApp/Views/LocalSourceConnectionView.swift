@@ -44,7 +44,7 @@ struct LocalSourceConnectionView: View {
                 // unreadable, M3U parse failed, empty folder). Auto-clears
                 // after 6 s; tap to dismiss.
                 if let error = errorStore.lastError {
-                    LocalFileErrorBanner(message: error.localizedMessage) {
+                    InlineNotice(message: error.localizedMessage) {
                         errorStore.clear()
                     }
                     .padding(.top, 12)

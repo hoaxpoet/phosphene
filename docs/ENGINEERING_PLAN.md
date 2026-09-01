@@ -76,9 +76,117 @@ placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `Ready
 playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
-**DS.2** ✅ 2026-09-01 (D-233), M7 approved.
+**DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** 🔨 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop.
 
 ## Recently Completed
+
+### Increment DS.3b — the banner's three errors do not share a severity 🔨 (2026-09-01, D-237)
+
+**Done-when:** the banner's tone reflects what the user can actually do about each error, and the
+deliberate `info` is pinned so it is not "corrected" later. **Status: code complete, green.**
+
+**Matt's second call at the M7.** DS.3 gave the banner a tone for the first time and every reachable
+banner came out **info blue** — faithful to the model, wrong about the product. The mapping was not
+at fault: **all three `.topBanner` errors sat on `severity`'s `default: return .info` arm**, named
+nowhere in that switch, and the hard-coded amber had concealed it for the life of the component.
+
+**The split follows the CTA structure, which the code already encoded.** `previewRateLimited`
+auto-retries and has no primary CTA — nothing for the user to do, so it **stays `info`** and was
+never mis-rated. `preparationSlowOnFirstTrack` and `preparationTotalTimeout` both carry
+`cta.start_reactive_mode`, and `ErrorSeverity.warning` is documented three lines from where it is
+assigned as *"user may want to act, but the session can continue"* — literally these two.
+
+**Result:** the banner reaches the token warning treatment DS.3 originally predicted, by correcting a
+classification rather than painting over it, and now carries **two** tones — which is what D-234 gave
+it a tone for.
+
+**Same defect class as DS.3a, found the same way.** Twice in one increment a surface disagreed with
+its own taxonomy — once because a call site overrode it, once because the taxonomy had no opinion and
+a hard-coded colour filled the gap. Both were invisible until the surface was made to read the model.
+
+### Increment DS.3a — sustained silence is fatal 🔨 (2026-09-01, D-236)
+
+**Done-when:** the *"No audio detected."* toast is red because the taxonomy says so, not because a
+call site does; `UzumeToast.Severity` mirrors `ErrorSeverity` case-for-case; no call site chooses a
+toast severity by hand. **Status: code complete, green, folded into DS.3's M7.**
+
+**Matt's call at the DS.3 hard stop, and he was right.** D-235 turned the silence toast yellow by
+reading the model. Matt rejected it — *"Uzume ceases to function without audio"* — and checking the
+premise found the real defect: **the toast was red only because `PlaybackErrorBridge:287` hard-coded
+`severity: .degradation`**, while `UserFacingError.severity` rated `silenceExtended` a mere
+`warning` — *milder than a dropped stem*. The pixels and the taxonomy had disagreed about silence
+for months, in the opposite direction anyone would guess, and nothing caught it because no surface
+read the rating. DS.3 making surfaces read their model is what exposed it.
+
+**Why it needed its own increment.** `UzumeToast.Severity` had no `fatal`, and the bridge folded
+`.degradation, .fatal` into `.degradation` — fatal-ness died before any view saw it, so `StatusTone`
+could not recover it from the view layer. Fixing it meant changing `ErrorSeverity`,
+`UzumeToast.Severity`, and an error's assigned severity: three of DS.3's explicit do-NOTs, each with
+engine reach. Matt approved crossing that boundary on this branch rather than deferring.
+
+**The mapping moved onto the model.** `UzumeToast.Severity.init(_ severity: ErrorSeverity)` is now
+the only `ErrorSeverity → UzumeToast.Severity` conversion — the same discipline D-234 applied to
+colour, one layer up. It also took `PlaybackErrorBridge` from 400 lines (exactly at the `file_length`
+limit) to 395.
+
+**Accessibility improved.** The silence toast announces as *"Critical: No audio detected."* rather
+than *"Alert: …"* — a blind Curator now gets the distinction the accent bar gives a sighted one. This
+is the only change in the before/after accessibility diff; all five pinned identifiers are untouched.
+
+### Increment DS.3 — one severity vocabulary, four interruption levels 🔨 (2026-09-01, D-234/D-235)
+
+**Done-when:** three severity-to-colour maps become one; the four status placements stay four
+components sharing only `StatusTone`; the five accessibility identifiers are unchanged and pinned;
+`LocalFileErrorStore.swift` contains no `View`; the two dead affordances are recorded, not fixed.
+**Status: code complete, all gates green, M7 pending Matt's review of
+`docs/reviews/DS.3/index.html`.**
+
+**Three maps became one.** `StatusTone` (`UzumeApp/Views/Components/StatusTone.swift`) maps both
+source vocabularies — `ErrorSeverity` (engine) and `UzumeToast.Severity` (app) — onto the four
+published `--color-status-*` roles plus one SF Symbol each. Neither source enum changed. No status
+surface switches on a severity any more.
+
+**Five files deleted, six components added.** `FullScreenErrorView` (129 lines) and
+`PreparationFailureView` (133) → `RecoveryScreen` (130). `TopBannerView` (66) → `NoticeBanner` (84).
+The banner inside `LocalFileErrorStore.swift` → `InlineNotice` (51), taking the store from 124 lines
+to 91. `ToastView` (77) → `PerformanceToast` (82). `ToastContainerView` (35) → `ToastRegion` (36).
+Plus `StatusTone` (108). **440 lines of view code replaced by 491**, the increase being the tone
+vocabulary that did not exist before and the header comments explaining each placement's contract.
+Tests added: `StatusToneTests` (57), `StatusPlacementIdentifierTests` (50),
+`DS3StatusCaptureHarness` (241, gated off by default).
+
+**The census's "active duplicate" was one live view and one dead one.** `FullScreenErrorView` had
+**zero construction sites** and had never appeared in a shipped build — its only non-doc reference
+outside itself was its path in the fixed-font ratchet list. Recorded as **DEAD-003**; the merge was
+a deletion plus a rename, not a merge of two live components. `APP_VIEWS.md:440` still marks it
+`production-active`, which is wrong in the app's own registry.
+
+**The prompt predicted the wrong headline change, and finding out why produced DS.3b.** DS.3 expected
+the banner to flip from amber-fill/black-text to token warning; deriving tone from severity instead
+made every reachable banner **info blue**, because all three `.topBanner` errors sat on `severity`'s
+`default: .info` arm. Under DS.3's own constraints that was correct and had to stand; Matt called it
+at the M7 and [D-237] fixed the classification. See DS.3b above.
+
+**The degradation decision went to A, approved by Matt in session (2026-09-01)** — then sharpened by
+DS.3a above. Under D-235 alone the *"No audio detected."* toast went red → yellow; DS.3a reclassified
+the error itself, so it ends red. The yellow degradation toast is now a genuine one — a dropped stem.
+
+**Accessibility is byte-identical.** `diff docs/reviews/DS.3/{before,after}/a11y.txt` is empty — not
+one label or identifier moved across four renames. Five identifiers pinned by
+`StatusPlacementIdentifierTests`; `StatusToneTests` pins every mapping in both vocabularies.
+
+**The fixed-font ratchet stopped being silent.** `DynamicTypeRegressionTests` skipped paths that did
+not exist, so a deleted or moved file left it passing over nothing. It now fails on a missing path.
+`LocalFileErrorStore.swift` joined the list (its `.system(size: 13)` became `.footnote`).
+
+**Two prompt claims were stale and are recorded upstream.** The local-file banner's pip already read
+`UzumeAppColor.danger`, not `DashboardTokens.Color.coral` (DS.1 moved it); and the gate for raw
+colours does not return empty on `main` either — `TrackInfoCardView.swift:136` has a pre-existing
+`.green`/`.orange` orchestrator-state pill in `Views/Playback` that the gate's exclusion list misses.
+Not a status surface and not touched. See §Known risks.
+
+**M7 page:** `docs/reviews/DS.3/index.html` — self-contained (34 images inlined as data URIs),
+17 before/after pairs, the resolved colour-map table, and the accessibility rows.
 
 ### Increment DS.2 — `SourceChoice`: one tile component, four affordances ✅ (2026-09-01, D-233)
 

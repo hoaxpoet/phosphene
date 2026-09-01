@@ -48,6 +48,8 @@ reads" are not reads — see the entry.)*
 |---|---|---|---|
 | COPY-001 | P2 · **RESOLVED 2026-09-01** | app.copy / product-claim | **The source picker's footer tells the user Uzume never controls playback, directly above a tile for which that is false.** `connector.picker.footer` = *"Uzume reads what's playing. It doesn't control playback."* renders on `ConnectorPickerView`, which offers Apple Music, Spotify **and Local files**. On the local path Uzume owns the audio and ships a full transport — stop / previous / play-pause / next in `LocalFileTransportBar` (`uzume.playback.lfTransport`). `EXPERIENCE_MODEL.md` states the correct rule: *"Local playback owns transport; streaming handoff listens for external audio and must not promise transport control."* The claim is right for two of three sources and wrong for the third. Matt spotted it on the DS.2 M7 page. **Not fixed here** — DS.2 may not edit `connector.picker.*` copy; the wording is a product call (scope the sentence to streaming, or move it onto the two streaming tiles). |
 | A11Y-001 | P3 · observed at DS.2's M7, 2026-09-01 | app.accessibility | **The three local-source tiles do not expose their own accessibility identifiers to the macOS accessibility tree — they report the parent view's.** Read live from both builds: each of the three announces `AXIdentifier = uzume.view.lf_source`, not `uzume.lf_source.tile.folder` / `.file` / `.playlist`. The connector tiles on the previous screen *do* surface theirs (as the value repeated four times, joined by `-`). **Unchanged by DS.2** — identical before on `main` and after on the branch — so it is pre-existing, not a consolidation regression. The constants exist and are unit-pinned by `SourceChoiceIdentifierTests`, but a UI test querying the LF tiles by identifier would not find them. **No root cause asserted** (BUG-061 rule): the observable difference is that `LocalSourceConnectionView` sets `.accessibilityIdentifier` on its root while the connector tiles sit inside a `NavigationLink`, but which of those actually drives it is untested. |
+| DEAD-002 | P3 · recorded not fixed (DS.3, 2026-09-01) | app.view / dead-affordance | **The preparation banner's dismiss button has never appeared in a shipped build.** The component renders it only when a non-nil `onDismiss` is passed, and its one construction site — `PreparationProgressView.bannerSlot` — passes none. So the button, its `uzume.preparation.topBanner.dismiss` identifier and its `"Dismiss warning"` VoiceOver label are all wired and all unreachable. **Left exactly as-is by DS.3**: wiring it is a behaviour change (a banner that persists until the view model changes state becomes user-dismissible), and deleting the identifier breaks a contract DS.3 just pinned. The product question — should a preparation banner be dismissible at all? — is open. Detail below |
+| DEAD-003 | P3 · recorded, and the code deleted (DS.3, 2026-09-01) | app.view / dead-affordance | **`FullScreenErrorView` was written as a reusable §9.1/§9.2 blocking surface and never acquired a consumer.** Zero construction sites anywhere in `UzumeApp`; the only non-doc references were its own declaration and its path in `DynamicTypeRegressionTests.viewFiles`. It duplicated `PreparationFailureView` almost verbatim — same body, icon, text block, actions, headline, and the same two severity switches — so for its whole life the app carried two copies of a blocking-failure layout and shipped one. **Deleted at DS.3** as part of the `RecoveryScreen` consolidation, which is why this is recorded as history rather than as open work: there was no behaviour to preserve because there was never any behaviour. Detail below |
 | DEAD-001 | P3 · recorded not fixed (DS.2, 2026-09-01) | app.viewmodel / dead-code | **`ConnectorPickerViewModel.localFolderEnabled` is dead, and the comment above it claims a v1 gate the shipped build does not have.** Three hits, no reader: the declaration, the comment, and the test asserting its `false`. The view has enabled the local-folder tile unconditionally since GAP A (2026-05-28), and `ENABLE_LOCAL_FOLDER_CONNECTOR` — which the comment blames — gates a different thing entirely (the v2 playlist-connector scaffold in `UzumeEngine`, set in no xcconfig, not on the local-source path that ships). Left in place deliberately: deleting a property whose `false` a test asserts is a behaviour change wearing a cleanup costume, and it belongs with the connector-capability work, not a presentation increment. Pairs with the still-open **CA.3-FU-2**. Detail below |
 | BUG-106 | P2 · **FIXED + LIVE-CONFIRMED 2026-08-26 (BUG106.1)** — `ml_forced=0` across a 25 ms/frame 4K session; only the felt half (Matt's eye on stem timing / new stutter) is outstanding | ml.dispatch / calibration | **`MLDispatchScheduler`'s budget is a hardcoded 14/16 ms with no resolution term, so at 4K the gate can never open.** `recentMaxFrameMs` is the WORST frame of the window and 4K's median was 17.6 ms in BUG-100's own session, so every stem dispatch defers to the 1.5–2.0 s ceiling and force-fires — against a 2.0 s stem period. Jank avoidance never happens and stems run ~a period late at 4K. ⚠ **Not** BUG-100's mechanism: the PERF.15 VL session was flat across 172 s at 4K while permanently over the same budget. Needs Matt's call between "stems on time" and "jank-free" at 4K. |
 | BUG-103 | P2 · open; intermittently kills the whole parallel engine suite (the regression gate) | audio.playback / test-infrastructure | **The parallel engine suite dies with an uncaught NSException from `-[AVAudioPlayerNode play]` — console: `com.apple.coreaudio.avfaudio: 'player did not see an IO cycle'` — thrown inside `LocalFilePlaybackProvider._startLocked()` on a racing-start test thread.** `play()` reports this state as an Objective-C exception, not a Swift error; the crashing tests drive `provider.start()` from raw `Thread.detachNewThread` threads (`try?` cannot catch an NSException), so the exception unwinds off the thread and aborts the entire test process — SIGABRT, no failing test line, same suite-level presentation as BUG-078. **Fourteen `.ips` on 2026-08-25 alone (11:19–17:05), every one the identical stack:** `_startLocked()` → `-[AVAudioPlayerNode play]` → `AVAudioPlayerNodeImpl::StartImpl` → `NSException`; throwers span `LocalFilePlaybackStartRaceTests.rescheduleRacingTeardown…` (11), `SessionLifecycleChurnTests.concurrentDoubleStart…` (2), and `SessionLifecycleChurnTests.completionCallbackVsStop…` (1). **Passes in isolation** (`swift test --filter SessionLifecycleChurn`), fires only under full-suite parallel load — and it is **pre-existing, baseline-verified at merge `8cbf936a` twice** (RECON.14's check, plus a first-hand clean-worktree run at that commit while filing; found at RECON.14 while running closeout evidence). NOT the BUG-078 trap: that was `StopImpl`/dealloc `dispatch_sync` on `CommandQueue` (SIGTRAP); this is `StartImpl` at play-time (SIGABRT). Same family — AVAudioPlayerNode lifecycle under parallel scheduler load. The throw site is the SHIPPED local-file start path (and `resume()` carries a second, unproven `play()` site), so the app-facing form would be a hard crash — P2 by BUG-078's rationale. Detail below |
@@ -167,6 +169,94 @@ them, and neither would assistive tooling keyed on identifier.
 `LocalSourceConnectionView` applies `.accessibilityIdentifier(Self.accessibilityID)` to its root
 `ZStack` while the connector tiles sit inside a `NavigationLink`, but which of those drives the
 outcome is untested. The cheap experiment is to remove the root identifier and re-read the tree.
+
+---
+
+### DEAD-002 — The preparation banner's dismiss button has never rendered (2026-09-01, DS.3)
+
+**Status: open, recorded not fixed.** Found during DS.3's status-placement consolidation.
+Deliberately left in place. **P3.**
+
+**The affordance.** The banner component renders its dismiss button only when a non-nil
+`onDismiss` closure is supplied — before DS.3 in `TopBannerView`, after DS.3 in
+`UzumeApp/Views/Components/NoticeBanner.swift:50`:
+
+```swift
+if onDismiss != nil {
+    Button { onDismiss?() } label: { Image(systemName: "xmark") … }
+        .accessibilityIdentifier(Self.dismissID)
+        .accessibilityLabel(Text(String(localized: "a11y.preparation.topBanner.dismiss.label")))
+}
+```
+
+**The proof it never fires.** The component has exactly one construction site, and it
+passes no closure — `UzumeApp/Views/Preparation/PreparationProgressView.swift:171`:
+
+```swift
+private var bannerSlot: some View {
+    if case .banner(let error) = errorViewModel.presentationState {
+        NoticeBanner(error: error)
+    }
+}
+```
+
+`onDismiss` defaults to `nil`, so the `if` is never entered. Verified as the only site:
+`grep -rn "NoticeBanner(" UzumeApp` returns that line alone. Unchanged across DS.3 —
+`TopBannerView(error: error)` at the same line before the rename.
+
+**What is therefore unreachable.** The button; its identifier `uzume.preparation.topBanner.dismiss`;
+and the localized string `a11y.preparation.topBanner.dismiss.label` = `"Dismiss warning"`,
+which no user has ever heard.
+
+**Why DS.3 did not fix it.** Two directions, both out of scope. Wiring the closure is a
+**behaviour change**: the banner currently persists until `PreparationErrorViewModel` changes
+state, and making it user-dismissible means deciding what happens when the user dismisses a
+condition that is still true. Deleting the identifier **breaks a contract** DS.3 pinned in the
+same increment (`StatusPlacementIdentifierTests`). The open question is a product one — should
+a preparation banner be dismissible? — and it belongs with DS.4's preparation-stage rebuild,
+which owns this screen.
+
+**Related:** DS.3 task 8; `StatusPlacementIdentifierTests.bannerDismiss_hasExpectedID`, which
+pins the identifier and carries a comment pointing here.
+
+---
+
+### DEAD-003 — `FullScreenErrorView` shipped for months with no consumer (2026-09-01, DS.3)
+
+**Status: recorded, and the code deleted.** Not open work — the file is gone. Kept as history
+because the census listed it as an active duplicate, and the correction is worth having on
+record. **P3.**
+
+**The claim, and the evidence.** `UzumeApp/Views/FullScreenErrorView.swift` declared
+`struct FullScreenErrorView: View` (line 18) with a documented construction example in its own
+header (line 7) — and nothing ever constructed it. At the DS.3 branch point,
+`grep -rn "FullScreenErrorView" UzumeApp UzumeAppTests` returned exactly five hits:
+
+| Hit | What it was |
+|---|---|
+| `UzumeApp/Views/FullScreenErrorView.swift:1, 7, 14, 18` | its own header comment, usage example, `MARK`, and declaration |
+| `UzumeAppTests/DynamicTypeRegressionTests.swift:35` | its **path**, as a string in the fixed-font ratchet list |
+
+No call site, in any view, view model, or test.
+
+**What it cost.** It duplicated `PreparationFailureView` almost verbatim: identical `body`,
+`icon`, `textBlock`, `actions` and `headline`, and byte-identical `severityIcon` and
+`severityColor` switches — including both copies of the `degradation → .yellow` mapping that
+was half of DS.3's conflict 1. Two copies of a blocking-failure layout, one of them shipped.
+Because the ratchet at line 35 named it, the file was also being *maintained* — kept free of
+fixed fonts — for a screen no user could reach.
+
+**Why it was safe to delete.** A view with no construction site has no behaviour to preserve.
+This is the reason DS.3's `RecoveryScreen` consolidation carried zero behavioural risk on that
+half: the surviving layout is `PreparationFailureView`'s, reached through the same
+`PreparationProgressView` `.fullScreen` branch, with the same three accessibility identifiers.
+
+**The census was wrong about this.** `PHOSPHENE-COMPONENT-CENSUS.md` lists both full-screen
+views as sources for `RecoveryScreen` without distinguishing the live one from the dead one,
+and `APP_VIEWS.md:440` marks `FullScreenErrorView.swift` **`production-active`**. Recorded in
+`docs/reviews/DS.3/UPSTREAM-FINDINGS.md`.
+
+**Related:** DS.3 task 4 and task 8; [D-234].
 
 ---
 

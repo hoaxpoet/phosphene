@@ -53,7 +53,7 @@ struct IdleView: View {
             // M3U parse, empty folder). Auto-clears after 6 s; tap to dismiss
             // earlier. Replaces NSAlert modals for these cases.
             if let error = errorStore.lastError {
-                LocalFileErrorBanner(message: error.localizedMessage) {
+                InlineNotice(message: error.localizedMessage) {
                     errorStore.clear()
                 }
                 .padding(.top, 4)
