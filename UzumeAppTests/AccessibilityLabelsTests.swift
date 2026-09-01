@@ -9,41 +9,45 @@ import Testing
 @MainActor
 struct AccessibilityLabelsTests {
 
-    // MARK: - connectorTileLabel
+    // MARK: - sourceChoiceLabel
 
-    @Test("Enabled tile label combines title and subtitle")
-    func connectorTileLabelEnabled() {
-        let label = AccessibilityLabels.connectorTileLabel(
-            type: .appleMusic,
-            isEnabled: true,
-            disabledCaption: nil
+    @Test("Available tile label combines title and subtitle")
+    func sourceChoiceLabelAvailable() {
+        let label = AccessibilityLabels.sourceChoiceLabel(
+            title: ConnectorType.appleMusic.title,
+            detail: ConnectorType.appleMusic.subtitle
         )
         #expect(label.contains("Apple Music"))
         #expect(label.contains(ConnectorType.appleMusic.subtitle))
     }
 
-    @Test("Disabled tile label with caption uses caption instead of subtitle")
-    func connectorTileLabelDisabledWithCaption() {
-        let caption = "Open Apple Music first"
-        let label = AccessibilityLabels.connectorTileLabel(
-            type: .appleMusic,
-            isEnabled: false,
-            disabledCaption: caption
+    @Test("Unavailable tile label carries the reason instead of the subtitle")
+    func sourceChoiceLabelUnavailable() {
+        let reason = "Open Apple Music first"
+        let label = AccessibilityLabels.sourceChoiceLabel(
+            title: ConnectorType.appleMusic.title,
+            detail: reason
         )
         #expect(label.contains("Apple Music"))
-        #expect(label.contains(caption))
+        #expect(label.contains(reason))
         #expect(!label.contains(ConnectorType.appleMusic.subtitle))
     }
 
-    @Test("Disabled tile label without caption falls back to localized hint string")
-    func connectorTileLabelDisabledNoCaption() {
-        let label = AccessibilityLabels.connectorTileLabel(
-            type: .localFolder,
-            isEnabled: false,
-            disabledCaption: nil
-        )
-        #expect(label.contains(ConnectorType.localFolder.title))
-        #expect(!label.isEmpty)
+    // MARK: - sourceChoiceHint
+
+    @Test("Each affordance announces a distinct, non-empty hint")
+    func sourceChoiceHintsDiffer() {
+        let navigation = AccessibilityLabels.sourceChoiceHint(.navigation)
+        let action = AccessibilityLabels.sourceChoiceHint(.action)
+        let unavailable = AccessibilityLabels.sourceChoiceHint(.unavailable)
+
+        #expect(!navigation.isEmpty)
+        #expect(!action.isEmpty)
+        #expect(!unavailable.isEmpty)
+        // DS.2 decision A: an action tile is audibly different from a tile that
+        // pushes a connector flow. If these collapse, that distinction is gone.
+        #expect(navigation != action)
+        #expect(action != unavailable)
     }
 
     // MARK: - trackInfoCardLabel

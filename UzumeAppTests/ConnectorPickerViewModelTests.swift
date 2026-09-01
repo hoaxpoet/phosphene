@@ -52,7 +52,7 @@ struct ConnectorPickerViewModelTests {
 
     @Test("appleMusicRunning accessibilityID constants are stable")
     func accessibilityIDPrefix() {
-        #expect(ConnectorTileView.accessibilityIDPrefix == "uzume.connector.tile")
+        #expect(ConnectorPickerView.tileIDPrefix == "uzume.connector.tile")
     }
 }
 
@@ -84,10 +84,10 @@ struct ConnectorPickerViewTests {
         #expect(ConnectorType.localFolder.rawValue == "local_folder")
     }
 
-    @Test("ConnectorTileView tile IDs match connector type rawValues")
+    @Test("SourceChoice tile IDs match connector type rawValues")
     func tileAccessibilityIDsMatchRawValues() {
         for type in ConnectorType.allCases {
-            let expected = "\(ConnectorTileView.accessibilityIDPrefix).\(type.rawValue)"
+            let expected = "\(ConnectorPickerView.tileIDPrefix).\(type.rawValue)"
             #expect(expected.hasPrefix("uzume.connector.tile."))
         }
     }

@@ -10,25 +10,35 @@ import Foundation
 
 enum AccessibilityLabels {
 
-    // MARK: - Connector tile
+    // MARK: - Source choice tile
 
-    /// Full label for a `ConnectorTileView`: "Title. Subtitle/caption."
-    static func connectorTileLabel(
-        type: ConnectorType,
-        isEnabled: Bool,
-        disabledCaption: String?
-    ) -> String {
-        if isEnabled {
-            return "\(type.title). \(type.subtitle)"
-        }
-        let caption = disabledCaption ?? String(localized: "a11y.connector.tile.hint.disabled")
-        return "\(type.title). \(caption)"
+    /// Which of `SourceChoice`'s affordances a hint is being asked for. Mirrors
+    /// `SourceChoice.Affordance` without its closures so this service stays free
+    /// of any dependency on the view layer.
+    enum SourceChoiceKind {
+        case navigation
+        case action
+        case unavailable
     }
 
-    static func connectorTileHint(isEnabled: Bool) -> String {
-        isEnabled
-            ? String(localized: "a11y.connector.tile.hint.enabled")
-            : String(localized: "a11y.connector.tile.hint.disabled")
+    /// Full label for a `SourceChoice`: "Title. Detail." — `detail` is the
+    /// subtitle when the source can be chosen and the reason when it cannot.
+    /// This is the shape both the connector tiles and the local action tiles
+    /// have announced since U.9; DS.2 consolidated them onto one component.
+    static func sourceChoiceLabel(title: String, detail: String) -> String {
+        "\(title). \(detail)"
+    }
+
+    /// Hint for a `SourceChoice`. DS.2 gave the local action tiles a hint they
+    /// did not have before (decision A): a tile that pushes a connector flow and
+    /// a tile that opens a macOS panel behave differently, and VoiceOver users
+    /// previously heard that difference only on the first of the two screens.
+    static func sourceChoiceHint(_ kind: SourceChoiceKind) -> String {
+        switch kind {
+        case .navigation:  return String(localized: "a11y.connector.tile.hint.enabled")
+        case .action:      return String(localized: "a11y.source.tile.hint.action")
+        case .unavailable: return String(localized: "a11y.connector.tile.hint.disabled")
+        }
     }
 
     // MARK: - Track info card

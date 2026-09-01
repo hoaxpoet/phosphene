@@ -360,6 +360,7 @@
 
 "a11y.connector.tile.hint.enabled"          = "Connect using this source";
 "a11y.connector.tile.hint.disabled"         = "Not available";
+"a11y.source.tile.hint.action"              = "Opens a file chooser";
 
 "a11y.trackInfoCard.unknownTrack"           = "Unknown track";
 "a11y.trackInfoCard.hint"                   = "Now playing";
