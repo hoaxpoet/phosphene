@@ -10,7 +10,8 @@
 //
 // Per the .impeccable.md design context:
 // - Tiles are deliberately understated (no chevron — these are actions, not
-//   navigation into a sub-flow).
+//   navigation into a sub-flow). DS.2 moved them onto the shared
+//   `SourceChoice` component; the `.action` affordance is what draws no chevron.
 // - Drop hint is typographic, not iconic (no dashed rectangle).
 // - Background stays dark; the visualizer is the product, this is supporting
 //   chrome that dissolves when the session starts.
@@ -65,10 +66,10 @@ struct LocalSourceConnectionView: View {
     private var heading: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(String(localized: "lf_source.headline"))
-                .font(.system(size: 28, weight: .medium))
+                .font(.title.weight(.medium))
                 .foregroundColor(UzumeAppColor.textPrimary)
             Text(String(localized: "lf_source.subhead"))
-                .font(.system(size: 13))
+                .font(.callout)
                 .foregroundColor(UzumeAppColor.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -77,33 +78,33 @@ struct LocalSourceConnectionView: View {
 
     private var actionTiles: some View {
         VStack(spacing: 10) {
-            LocalSourceActionTile(
+            SourceChoice(
                 systemImage: "folder.fill",
                 title: String(localized: "lf_source.tile.folder.title"),
                 subtitle: String(localized: "lf_source.tile.folder.subtitle"),
                 accessibilityID: Self.folderTileID,
-                action: openFolderPicker
+                affordance: .action(openFolderPicker)
             )
-            LocalSourceActionTile(
+            SourceChoice(
                 systemImage: "waveform",
                 title: String(localized: "lf_source.tile.file.title"),
                 subtitle: String(localized: "lf_source.tile.file.subtitle"),
                 accessibilityID: Self.fileTileID,
-                action: openFilePicker
+                affordance: .action(openFilePicker)
             )
-            LocalSourceActionTile(
+            SourceChoice(
                 systemImage: "music.note.list",
                 title: String(localized: "lf_source.tile.playlist.title"),
                 subtitle: String(localized: "lf_source.tile.playlist.subtitle"),
                 accessibilityID: Self.playlistTileID,
-                action: openPlaylistPicker
+                affordance: .action(openPlaylistPicker)
             )
         }
     }
 
     private var dropHint: some View {
         Text(String(localized: "lf_source.drop_hint"))
-            .font(.system(size: 12))
+            .font(.caption)
             .foregroundColor(UzumeAppColor.textDisabled)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
@@ -121,53 +122,5 @@ struct LocalSourceConnectionView: View {
 
     private func openPlaylistPicker() {
         LocalFileMenuCommands.openLocalM3UPanel(engine: engine, recentsStore: recentsStore)
-    }
-}
-
-// MARK: - LocalSourceActionTile
-
-/// Local action tile — visually consistent with `ConnectorTileView` but
-/// without a chevron (these tiles trigger actions, not navigation). Used
-/// only inside `LocalSourceConnectionView`; not promoted to a shared
-/// component until a second consumer appears.
-private struct LocalSourceActionTile: View {
-
-    let systemImage: String
-    let title: String
-    let subtitle: String
-    let accessibilityID: String
-    let action: () -> Void
-
-    @State private var isHovered: Bool = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                Image(systemName: systemImage)
-                    .font(.title2)
-                    .frame(width: 32)
-                    .foregroundColor(UzumeAppColor.textPrimary)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundColor(UzumeAppColor.textPrimary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(UzumeAppColor.textTertiary)
-                }
-                Spacer()
-            }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: UzumeAppRadius.md)
-                    .fill(isHovered ? UzumeAppColor.surfaceSelected : UzumeAppColor.surfaceRaised)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: UzumeAppRadius.md))
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .accessibilityIdentifier(accessibilityID)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("\(title). \(subtitle)"))
     }
 }
