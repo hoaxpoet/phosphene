@@ -65,7 +65,66 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 The product takes the name **Uzume** (oo-ZOO-meh) — Ame-no-Uzume, the kami whose planned, drummed performance lured the sun out of the cave. **RN.0** ✅ (2026-08-30) — preparation only: the naming sprint's evidence (`docs/planning/NAMING_REPORT.md`, `MYTH_RESEARCH.md`, `WEBSITE_PLAN.md`) and the two session prompts that commission the rename (`prompts/RN.1-prompt.md`, `prompts/BRAND.1-prompt.md`) move from an untracked working directory into the repo, so the decision's provenance survives independently of one machine's filesystem. No code, no identifiers, no user-visible strings touched. **RN.1** ✅ (2026-08-31, D-225) — external identity: bundle ID `io.uzume.mac`, product `Uzume.app` (module pinned to `UzumeApp` for RN.2), `uzume://`, Keychain `io.uzume.spotify`, loggers `io.uzume.*`, Application Support `Uzume/`, repo `hoaxpoet/uzume`, and the first app icon the project has ever shipped. `IdentityMigrator` carries settings + the stem cache; TCC grants and the Spotify token deliberately do not migrate (the Keychain attempt froze app launch on a modal SecurityAgent prompt — see D-225). **RN.2** ✅ (2026-08-31, D-227) — the internal tree: directories, `UzumeApp`/`UzumeAppTests` targets and scheme, `UzumeEngine`/`UzumeTools` packages and the `UzumeEngine` product, `UzumeEngineTests`, the `UzumeApp` Swift module (`PRODUCT_MODULE_NAME` repointed rather than unpinned, so `PRODUCT_NAME = Uzume` and the shipped bundle are untouched), `Uzume.xcconfig`, `UzumeToast`, `PHOSPHENE_*` → `UZUME_*`, accessibility identifiers, scripts, CI, hooks, skills and every living doc. **Four surfaces deliberately keep `phosphene`** — persisted `UserDefaults` keys, on-disk output paths (`~/Documents/uzume_sessions/` and friends), `IdentityMigrator`'s legacy constants, and shader/preset text excluded by RN.2's own constraint. **RN.3** ✅ (2026-08-31, D-228) — cross-repository reconciliation with `hoaxpoet/uzume-site`: the source-of-truth boundary is written down in both repos, the app's `docs/planning/` is frozen as RN.0 evidence, the shipped app icon is proven byte-identical to the approved First Opening master, and five false claims were corrected across the two trees. **RN.4** carries what RN.2 deferred (persisted `UserDefaults` keys, the on-disk `phosphene_*` output paths, the shader/sidecar comment batch) plus the public-copy wording decisions RN.3 surfaced.
 
+## Phase DS — Design system adoption (First Opening) 🔨 (2026-09-01)
+
+The app stops carrying Phosphene's presentation leftovers and consumes the design system
+`hoaxpoet/uzume-site` owns (D-228). Seven steps, in the order `PHOSPHENE-COMPONENT-CENSUS.md`
+§Migration order sets: **DS.1** tokens + `PerformanceBackdrop`, **DS.2** `SourceChoice`
+consolidation, **DS.3** shared status semantics across the banner/inline/toast/blocking
+placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `ReadyView` →
+`StreamingHandoff` (and the plan-preview removal the surprise model implies), **DS.6** the
+playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
+**DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
+behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
+
 ## Recently Completed
+
+### Increment DS.1 — the app adopts UzumeTokens; presentation only 🔨 M7 pending (2026-09-01, D-231)
+
+**Done-when (met, except the review):** the app has one source of visual truth; no hard-coded
+`Color.black` / `Color.white` / literal `cornerRadius:` survives outside the exempt diagnostic
+paths; `OverlayBackdropStyle` is `PerformanceBackdrop` with its measured numbers unchanged; no
+test file was modified (`git diff --stat main -- UzumeAppTests UzumeEngine/Tests` is empty).
+**Not met:** Matt's M7 visual review — see below.
+
+**The token source is vendored, not depended on** (D-231). `UzumeApp/DesignSystem/UzumeTokens.swift`
+is byte-identical to `uzume-site@03d5478` under a provenance header (repo, path, commit, SHA-256);
+`Scripts/check_design_token_drift.sh` verifies the vendored body against its recorded hash always
+and against upstream when a sibling checkout is present (`SKIP`/0 when absent, so a fresh clone and
+CI stay green). A package dependency was rejected: the app must build with one repo present.
+
+**App-only roles never enter the vendored file.** `UzumeTokens+App.swift` carries `UzumeAppColor`
+(the full `--color-*` set, each value commenting the token it came from), `UzumeAppColor.Performance`
+(translucency over the live visual — `tokens.css` has no vocabulary for it) and `UzumeAppRadius`.
+It transcribes the **dark** block: Uzume is always dark (Matt's choice A), and the vendored
+`UzumeColor`'s adaptive AppKit roles resolve to neither published palette.
+
+**31 files retokenized** — every file under `UzumeApp/Views` + `ContentView.swift` holding a
+`Color.black` / `Color.white` / `.white.opacity(…)` / literal `cornerRadius:`, minus the exempt
+diagnostic paths. The census's "twenty-six" counts a narrower criterion. Native controls are tinted
+(`uzumeTint()` at the app root) and otherwise untouched, per COMPONENTS.md §Native platform controls.
+`DashboardTokens` and its four consumers are unchanged; `LocalFileTransportBar`'s surface and coral
+glow still come from it, deliberately left to DS.6 rather than restyled inside a mechanical sweep.
+
+**M7 is pending and the evidence is partial.** `docs/reviews/DS.1/index.html` pairs before/after for
+four of twenty routed states (idle, preparation, playback chrome visible and hidden). The other
+sixteen need a click or a keystroke, and driving the app's UI needs Accessibility permission for the
+terminal, which is not granted — the page names the reason under each. The four captured cover the
+canvas, the text ramp, the appearance pin, the native-control tint and `PerformanceBackdrop`.
+
+**Findings went upstream as a report, not a commit.** `docs/reviews/DS.1/UPSTREAM-FINDINGS.md` — twelve
+items for a future `uzume-site` increment, the load-bearing two being that the Swift package's
+system-colour roles resolve to neither the light nor the dark `tokens.css` palette, and that the
+package publishes no typography at all.
+
+**Capability registry:** no rows changed. No renderer, harness, certification or shader capability
+was added, promoted, or blocked — DS.1 is app-layer presentation only.
+
+**Follow-ups:** the accent tint reaches secondary bordered buttons as well as primary ones (native
+behaviour; Matt's call whether to scope it); `PresetContrastCertificationTests`' comments still name
+`OverlayBackdropStyle`, left stale deliberately so the no-test-diff proof holds; the sixteen
+uncaptured states.
+
 
 ### Increment RN.5 — on-disk output paths become Uzume ✅ (2026-08-31, D-230)
 
