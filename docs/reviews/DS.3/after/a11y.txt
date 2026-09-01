@@ -1,0 +1,15 @@
+surface	declared VoiceOver label	accessibility identifier
+full-screen (container)	(no explicit label — children read in order: icon, headline, body, buttons)	uzume.view.preparationFailure
+full-screen primary CTA	Pick another playlist	uzume.preparationFailure.pickPlaylist
+full-screen secondary CTA	Start reactive mode	uzume.preparationFailure.startReactive
+banner — rate limited	Preparing more slowly than usual	uzume.preparation.topBanner
+banner — slow first track	Still working on the first tracks.	uzume.preparation.topBanner
+banner — total timeout	This is taking longer than expected.	uzume.preparation.topBanner
+banner dismiss button	Dismiss warning	uzume.preparation.topBanner.dismiss — NEVER RENDERED (no construction site passes onDismiss)
+inline notice — unsupportedFormat	Uzume supports .m4a, .mp3, and .flac files.	(none)
+inline notice — unreadable	Uzume couldn’t read that file. Try a different one.	(none)
+inline notice — m3uParseFailed	Uzume couldn’t read that playlist. Check the file and try again.	(none)
+inline notice — emptyFolder	That folder doesn’t have any playable audio files.	(none)
+toast — info	Info: Display connected.	(none — announced via AccessibilityNotification.Announcement on insert)
+toast — warning	Warning: Display disconnected mid-session.	(none — announced via AccessibilityNotification.Announcement on insert)
+toast — degradation	Alert: No audio detected.	(none — announced via AccessibilityNotification.Announcement on insert)
