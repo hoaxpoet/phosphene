@@ -217,7 +217,7 @@ kernel void ferrofluid_height_bake(
     //      very center to 0.96 instead of 1.0 — the apex is rounded down by
     //      a small amount with smooth C¹ continuity.
     //
-    // Phosphene's `spikeBaseRadius` is the inverse of Leitl's spikeFactor
+    // Uzume's `spikeBaseRadius` is the inverse of Leitl's spikeFactor
     // (`1/R = spikeFactor`). At our static `spikeBaseRadius = 0.17`,
     // effective spikeFactor = 5.88 — wider-than-Leitl's-silence-state
     // (1.0) but narrower than his peak (25.0). Audio-coupling of spike

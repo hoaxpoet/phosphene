@@ -1,6 +1,6 @@
 // Waveform.metal — First-light visualizer: frequency bar spectrum + oscilloscope waveform.
 // Reads FFT magnitude buffer (512 bins) and PCM waveform ring buffer directly on the GPU.
-// Colors follow Phosphene's philosophy: rich, saturated palettes emerging from darkness.
+// Colors follow Uzume's philosophy: rich, saturated palettes emerging from darkness.
 //
 // Shared definitions (FeatureVector, hsv2rgb, fullscreen_vertex) are in Common.metal.
 
@@ -135,7 +135,7 @@ fragment float4 waveform_fragment(VertexOut in [[stage_in]],
     float vignette = 1.0 - length(uv - center) * 0.4;
     color *= vignette;
 
-    // Prevent white clipping from feedback accumulation (Phosphene rule).
+    // Prevent white clipping from feedback accumulation (Uzume rule).
     color = min(color, float3(1.0));
 
     return float4(color, 1.0);

@@ -222,8 +222,8 @@ public final class PersistentStemCache: @unchecked Sendable {
 
     /// `UserDefaults` key holding the LRU eviction cap (Int64 byte count).
     /// Operators can override the default 500 MB cap without a recompile:
-    ///   defaults write io.uzume.mac phosphene.cache.localFile.maxBytes -int <bytes>
-    public static let maxBytesUserDefaultsKey: String = "phosphene.cache.localFile.maxBytes"
+    ///   defaults write io.uzume.mac uzume.cache.localFile.maxBytes -int <bytes>
+    public static let maxBytesUserDefaultsKey: String = "uzume.cache.localFile.maxBytes"
 
     /// LF.4 default cap. 500 MB ≈ 70 cached tracks at ~7 MB/track (LF.3
     /// per-track budget — `metadata.json` ~5 KB + four 1.76 MB `.f32` stems).

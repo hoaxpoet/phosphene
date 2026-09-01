@@ -148,7 +148,7 @@ constant float kStrandFov     = 0.5;     // source's `fov = .5`
 // per-point a (0.5+(oz+2)*0.25) is the literal alpha; no extra brightness scale.
 // Audio boost: butterchurn feeds its analyser 6×-boosted audio (the recorded tap is
 // ~−18 dB — reference README). bModWaveAlphaByVolume's 0.71/1.30 bounds assume that
-// boosted scale, so Phosphene's raw stem energies must be boosted the same 6× before
+// boosted scale, so Uzume's raw stem energies must be boosted the same 6× before
 // the volume ramp — otherwise quiet real stems gate the waves to ~0.
 constant float kAudioBoost    = 6.0;
 
@@ -169,7 +169,7 @@ struct DragonStrandVertexOut {
 };
 
 // Strand length `mod`, faithful to source: `mod = if(below(band_att,1.8), band_att+.2, 2)`
-// — grows with the instrument's energy, capped at 2. Phosphene drives it per-stem
+// — grows with the instrument's energy, capped at 2. Uzume drives it per-stem
 // (the D-137 uplift; each arm tracks its instrument). The stem energy (~0..0.7) is
 // scaled to a Milkdrop band_att-like range (~0..2) so the faithful formula applies;
 // deviation (D-026) adds transient liveliness.

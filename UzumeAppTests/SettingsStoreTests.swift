@@ -69,12 +69,12 @@ struct SettingsStoreTests {
         defer { teardown(defaults) }
         let store = SettingsStore(defaults: defaults)
 
-        defaults.set(true, forKey: "phosphene.onboarding.photosensitivityAcknowledged")
+        defaults.set(true, forKey: "uzume.onboarding.photosensitivityAcknowledged")
         store.sessionRecorderEnabled = false
 
         store.resetOnboarding()
 
-        #expect(defaults.object(forKey: "phosphene.onboarding.photosensitivityAcknowledged") == nil)
+        #expect(defaults.object(forKey: "uzume.onboarding.photosensitivityAcknowledged") == nil)
         let store2 = SettingsStore(defaults: defaults)
         #expect(store2.sessionRecorderEnabled == false)
     }

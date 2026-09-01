@@ -10,6 +10,51 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-09-01-150000] RN.6 — runtime string identity; Phase RN closes
+
+The last two surfaces RN.2 deliberately refused to touch.
+
+**Persisted `UserDefaults` keys — renamed *with* their migration, in one commit.** RN.2's
+stated reason for deferring was exact: renaming these silently resets every user's settings
+on the first post-rename launch. That reason is answered rather than ignored. Eleven keys
+move to `uzume.*` — the eight `phosphene.settings.*`, plus `lf.recents`,
+`onboarding.photosensitivityAcknowledged`, and `cache.localFile.maxBytes` (read by the
+engine, migrated by the app: same defaults domain, and the app is the only process that
+runs a migration) — each with a matching `SettingsMigrator` entry.
+
+The pre-scheme U.6 key now points **straight** at its `uzume.*` destination instead of
+chaining through the intermediate name, so an install that never launched between U.6 and
+RN.6 lands correctly in a single pass. No entry depends on another running first, and the
+comment says so rather than leaving a silent dependency on array order.
+
+**The migration test was proven able to fail before it was trusted.** Deleting one entry
+turns the suite red with `phosphene.lf.recents did not reach uzume.lf.recents — the setting
+would silently reset`. A migration test that cannot fail is worse than no test: it certifies
+nothing while looking like coverage. App suite 426 → 429.
+
+**Shader comments and preset sidecars — 22 `.metal` comment hits, 5 `.json` fields.** RN.2's
+"do not edit shaders or presets" constraint was scoped to that increment; this one opens
+under the `preset-session` skill, as CLAUDE.md requires.
+
+**Nothing visual moved, and that is demonstrated rather than claimed.** Two independent
+checks: every changed `.metal` line was matched against a comment-marker pattern (zero code
+lines changed), and the **preset golden-hash regression suite passes unchanged** — those are
+byte-level renders, so any shader behaviour change breaks them. The `PresetLoader` /
+`FidelityRubric` / `RouteCoverage` sidecar-schema gates cover the `.json` edits.
+
+Worth naming: the full `preset-session` protocol — contact sheets, per-trait verdict tables,
+M7 sign-off — exists for **tuning** increments, where the visual result is the deliverable.
+Running it against a comment sweep would have been ceremony. The golden hashes are the
+honest gate here and are strictly stronger than a human comparing stills.
+
+**Phase RN is complete.** Repository, tree, targets, packages, module, bundle, metadata,
+on-disk data, persisted state, and now shader prose all say Uzume. What remains carrying the
+old name is what should: frozen diagnostics and prompts, recorded fixture data, external
+artifacts this repo does not own, and the `IdentityMigrator` constants that *are* the
+migration.
+
+---
+
 ### [dev-2026-08-31-210000] RN.3 — the app repo and uzume-site stop contradicting each other
 
 Two repositories were both describing Uzume and neither said which one was

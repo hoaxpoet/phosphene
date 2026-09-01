@@ -53,12 +53,12 @@ struct SettingsViewTests {
         guard let suite = UserDefaults(suiteName: "io.uzume.test.sv.reset.\(UUID().uuidString)") else {
             fatalError("test suite init failed")
         }
-        suite.set(true, forKey: "phosphene.onboarding.photosensitivityAcknowledged")
+        suite.set(true, forKey: "uzume.onboarding.photosensitivityAcknowledged")
         let store = SettingsStore(defaults: suite)
         let vm = SettingsViewModel(store: store)
 
         vm.resetOnboarding()
 
-        #expect(suite.object(forKey: "phosphene.onboarding.photosensitivityAcknowledged") == nil)
+        #expect(suite.object(forKey: "uzume.onboarding.photosensitivityAcknowledged") == nil)
     }
 }

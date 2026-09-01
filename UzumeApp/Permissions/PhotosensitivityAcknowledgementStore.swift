@@ -15,7 +15,7 @@ final class PhotosensitivityAcknowledgementStore {
     // MARK: - Private
 
     private enum Keys {
-        static let acknowledged = "phosphene.onboarding.photosensitivityAcknowledged"
+        static let acknowledged = "uzume.onboarding.photosensitivityAcknowledged"
     }
 
     private let defaults: UserDefaults

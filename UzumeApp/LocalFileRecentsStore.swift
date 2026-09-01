@@ -100,7 +100,7 @@ public final class LocalFileRecentsStore: ObservableObject {
 
     // MARK: - Constants
 
-    public static let defaultUserDefaultsKey: String = "phosphene.lf.recents"
+    public static let defaultUserDefaultsKey: String = "uzume.lf.recents"
     public static let maxRecents: Int = 10
 
     // MARK: - State
