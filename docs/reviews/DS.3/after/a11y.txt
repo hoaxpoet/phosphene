@@ -12,4 +12,5 @@ inline notice — m3uParseFailed	Uzume couldn’t read that playlist. Check the 
 inline notice — emptyFolder	That folder doesn’t have any playable audio files.	(none)
 toast — info	Info: Display connected.	(none — announced via AccessibilityNotification.Announcement on insert)
 toast — warning	Warning: Display disconnected mid-session.	(none — announced via AccessibilityNotification.Announcement on insert)
-toast — degradation	Alert: No audio detected.	(none — announced via AccessibilityNotification.Announcement on insert)
+toast — degradation	Alert: Stem separation failed.	(none — announced via AccessibilityNotification.Announcement on insert)
+toast — fatal	Critical: No audio detected.	(none — announced via AccessibilityNotification.Announcement on insert)

@@ -484,7 +484,7 @@ Re-verifying each accessor (table corrected at DS.3, 2026-09-01):
 | Accessor | Prod consumers | Status |
 |---|---|---|
 | `.presentationMode` | App: `PlaybackErrorBridge.swift:195` gates the toast path on `== .bottomRightToast` | **production-active** — *corrected 2026-09-01 (DS.3)*; the earlier 0-consumer verdict below predates that gate. Still the only production branch on it. |
-| `.severity` | App: `StatusTone.from(_:)`, reached from `RecoveryScreen:124` and `NoticeBanner:79` | **production-active** — *re-attributed 2026-09-01 (DS.3)*. The old citation named `FullScreenErrorView`, which had no construction site (DEAD-003), so this row was right about the status and wrong about why. Note `UzumeToast.severity` is a different field. |
+| `.severity` | App: `StatusTone.from(_:)` (via `RecoveryScreen`, `NoticeBanner`) and `UzumeToast.Severity.init(_:)` (D-236) | **production-active** — *re-attributed 2026-09-01 (DS.3)*. The old citation named `FullScreenErrorView`, which had no construction site (DEAD-003), so this row was right about the status and wrong about why. Note `UzumeToast.severity` is a different field. |
 | `.retryStatus` | 0 | **production-orphan** (CA-Shared-FU-1). |
 | `.primaryCTAKey` | **0** | **production-orphan** — *corrected 2026-09-01 (DS.3)*. Its only reader was `FullScreenErrorView`, which never had a construction site (DEAD-003), so this was never production-active; DS.3 deleting that view only made it visible. `RecoveryScreen` takes explicit labels and is designed to accept CTA keys from a future caller, so this is a *pending* consumer, not a live one. |
 | `.secondaryCTAKey` | **0** | **production-orphan** — same correction, same reason. |

@@ -14,13 +14,23 @@ has two answers, at different widths:
 | Vocabulary | Where | Cases |
 |---|---|---|
 | `ErrorSeverity` | `UzumeEngine/Sources/Shared/UserFacingError+Presentation.swift:29` — engine-owned | `info`, `warning`, `degradation`, `fatal` |
-| `UzumeToast.Severity` | `UzumeApp/Models/UzumeToast.swift:18` — app-owned | `info`, `warning`, `degradation` |
+| `UzumeToast.Severity` | `UzumeApp/Models/UzumeToast.swift:23` — app-owned | `info`, `warning`, `degradation`, `fatal` |
 
-Neither matches the published role set (`info`, `success`, `warning`, `danger`), and
-they do not match each other. The toast enum has no `fatal`, so
-`UzumeApp/Services/PlaybackErrorBridge.swift:203` folds `fatal` into `degradation`
-before a toast is ever built — a real distinction lost upstream of presentation, which
-no amount of tone work in the view layer can recover.
+Neither matches the published role set (`info`, `success`, `warning`, `danger`).
+
+**They now match each other — DS.3a closed that half.** As originally written this
+section reported that the toast enum had no `fatal` and that
+`PlaybackErrorBridge` folded `fatal` into `degradation`, losing a real distinction
+upstream of presentation. That turned out to matter immediately: the *"No audio
+detected."* toast was red only because a call site hard-coded `.degradation`, while
+the engine rated `silenceExtended` a mere `warning`. Both were fixed under
+[D-236] — the toast enum mirrors `ErrorSeverity` case-for-case, and the single
+conversion lives on `UzumeToast.Severity.init(_:)`.
+
+**The finding that survives, for the design system:** a status vocabulary narrower
+than the one feeding it will silently discard the distinction, and no amount of tone
+mapping downstream can recover it. If `COMPONENTS.md` ever specifies what a tone is a
+function of, it is worth saying that the mapping must be total.
 
 **Two consequences the design system should know about.**
 

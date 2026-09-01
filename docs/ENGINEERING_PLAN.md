@@ -76,9 +76,38 @@ placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `Ready
 playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
-**DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** 🔨 2026-09-01 (D-234, D-235), M7 pending.
+**DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** 🔨 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, the silence reclassification Matt called at the hard stop), M7 pending.
 
 ## Recently Completed
+
+### Increment DS.3a — sustained silence is fatal 🔨 (2026-09-01, D-236)
+
+**Done-when:** the *"No audio detected."* toast is red because the taxonomy says so, not because a
+call site does; `UzumeToast.Severity` mirrors `ErrorSeverity` case-for-case; no call site chooses a
+toast severity by hand. **Status: code complete, green, folded into DS.3's M7.**
+
+**Matt's call at the DS.3 hard stop, and he was right.** D-235 turned the silence toast yellow by
+reading the model. Matt rejected it — *"Uzume ceases to function without audio"* — and checking the
+premise found the real defect: **the toast was red only because `PlaybackErrorBridge:287` hard-coded
+`severity: .degradation`**, while `UserFacingError.severity` rated `silenceExtended` a mere
+`warning` — *milder than a dropped stem*. The pixels and the taxonomy had disagreed about silence
+for months, in the opposite direction anyone would guess, and nothing caught it because no surface
+read the rating. DS.3 making surfaces read their model is what exposed it.
+
+**Why it needed its own increment.** `UzumeToast.Severity` had no `fatal`, and the bridge folded
+`.degradation, .fatal` into `.degradation` — fatal-ness died before any view saw it, so `StatusTone`
+could not recover it from the view layer. Fixing it meant changing `ErrorSeverity`,
+`UzumeToast.Severity`, and an error's assigned severity: three of DS.3's explicit do-NOTs, each with
+engine reach. Matt approved crossing that boundary on this branch rather than deferring.
+
+**The mapping moved onto the model.** `UzumeToast.Severity.init(_ severity: ErrorSeverity)` is now
+the only `ErrorSeverity → UzumeToast.Severity` conversion — the same discipline D-234 applied to
+colour, one layer up. It also took `PlaybackErrorBridge` from 400 lines (exactly at the `file_length`
+limit) to 395.
+
+**Accessibility improved.** The silence toast announces as *"Critical: No audio detected."* rather
+than *"Alert: …"* — a blind Curator now gets the distinction the accent bar gives a sighted one. This
+is the only change in the before/after accessibility diff; all five pinned identifiers are untouched.
 
 ### Increment DS.3 — one severity vocabulary, four interruption levels 🔨 (2026-09-01, D-234/D-235)
 
@@ -115,8 +144,9 @@ is now **info blue**: the three errors routed to `.topBanner` appear in no arm o
 this by ignoring severity. Correct under this increment's constraints — DS.3 may not change which
 severity an error has — and flagged to Matt as an engine-side question. See [D-235].
 
-**The degradation decision went to A, approved by Matt in session (2026-09-01).** Red → yellow on the *"No audio detected."* toast; nothing
-else moves, because the full-screen surfaces already read degradation as yellow.
+**The degradation decision went to A, approved by Matt in session (2026-09-01)** — then sharpened by
+DS.3a above. Under D-235 alone the *"No audio detected."* toast went red → yellow; DS.3a reclassified
+the error itself, so it ends red. The yellow degradation toast is now a genuine one — a dropped stem.
 
 **Accessibility is byte-identical.** `diff docs/reviews/DS.3/{before,after}/a11y.txt` is empty — not
 one label or identifier moved across four renames. Five identifiers pinned by
