@@ -130,7 +130,7 @@
 "connector.picker.apple_music_disabled"     = "Open Apple Music first";
 "connector.picker.open_apple_music_button"  = "Open Apple Music";
 "connector.picker.local_folder_disabled"    = "Coming later";
-"connector.picker.footer"                   = "Uzume reads what’s playing. It doesn’t control playback.";
+"connector.picker.footer"                   = "With Apple Music or Spotify, you press play and Uzume listens. Local files it plays for you.";
 "connector.picker.local_placeholder"        = "Local Folder connector coming later.";
 
 // MARK: - Apple Music connection

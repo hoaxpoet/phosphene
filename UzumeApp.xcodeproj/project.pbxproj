@@ -199,6 +199,7 @@
 		L10040 /* AccessibilityStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20040; };
 		L10041 /* DynamicTypeRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20041; };
 		E10025 /* SourceChoiceIdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20025; };
+		E10026 /* ConnectorPickerFooterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20026; };
 		L10042 /* AccessibilityLabelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20042; };
 		L10043 /* LocalFileRecentsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20043; };
 		M10001 /* DisplayChangeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20001; };
@@ -406,6 +407,7 @@
 		L20040 /* AccessibilityStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityStateTests.swift; sourceTree = "<group>"; };
 		L20041 /* DynamicTypeRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicTypeRegressionTests.swift; sourceTree = "<group>"; };
 		E20025 /* SourceChoiceIdentifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceChoiceIdentifierTests.swift; sourceTree = "<group>"; };
+		E20026 /* ConnectorPickerFooterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorPickerFooterTests.swift; sourceTree = "<group>"; };
 		L20042 /* AccessibilityLabelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabelsTests.swift; sourceTree = "<group>"; };
 		L20043 /* LocalFileRecentsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileRecentsStoreTests.swift; sourceTree = "<group>"; };
 		M20001 /* DisplayChangeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinator.swift; sourceTree = "<group>"; };
@@ -777,6 +779,7 @@
 				L20040 /* AccessibilityStateTests.swift */,
 				L20041 /* DynamicTypeRegressionTests.swift */,
 				E20025 /* SourceChoiceIdentifierTests.swift */,
+				E20026 /* ConnectorPickerFooterTests.swift */,
 				L20042 /* AccessibilityLabelsTests.swift */,
 				L20043 /* LocalFileRecentsStoreTests.swift */,
 				N20003 /* SpotifyKeychainStoreTests.swift */,
@@ -1081,6 +1084,7 @@
 				L10040 /* AccessibilityStateTests.swift in Sources */,
 				L10041 /* DynamicTypeRegressionTests.swift in Sources */,
 				E10025 /* SourceChoiceIdentifierTests.swift in Sources */,
+				E10026 /* ConnectorPickerFooterTests.swift in Sources */,
 				L10042 /* AccessibilityLabelsTests.swift in Sources */,
 				L10043 /* LocalFileRecentsStoreTests.swift in Sources */,
 				N10003 /* SpotifyKeychainStoreTests.swift in Sources */,
