@@ -76,9 +76,64 @@ placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `Ready
 playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
-**DS.2** ✅ 2026-09-01 (D-233), M7 approved.
+**DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** 🔨 2026-09-01 (D-234, D-235), M7 pending.
 
 ## Recently Completed
+
+### Increment DS.3 — one severity vocabulary, four interruption levels 🔨 (2026-09-01, D-234/D-235)
+
+**Done-when:** three severity-to-colour maps become one; the four status placements stay four
+components sharing only `StatusTone`; the five accessibility identifiers are unchanged and pinned;
+`LocalFileErrorStore.swift` contains no `View`; the two dead affordances are recorded, not fixed.
+**Status: code complete, all gates green, M7 pending Matt's review of
+`docs/reviews/DS.3/index.html`.**
+
+**Three maps became one.** `StatusTone` (`UzumeApp/Views/Components/StatusTone.swift`) maps both
+source vocabularies — `ErrorSeverity` (engine) and `UzumeToast.Severity` (app) — onto the four
+published `--color-status-*` roles plus one SF Symbol each. Neither source enum changed. No status
+surface switches on a severity any more.
+
+**Five files deleted, six components added.** `FullScreenErrorView` (129 lines) and
+`PreparationFailureView` (133) → `RecoveryScreen` (130). `TopBannerView` (66) → `NoticeBanner` (84).
+The banner inside `LocalFileErrorStore.swift` → `InlineNotice` (51), taking the store from 124 lines
+to 91. `ToastView` (77) → `PerformanceToast` (82). `ToastContainerView` (35) → `ToastRegion` (36).
+Plus `StatusTone` (108). **440 lines of view code replaced by 491**, the increase being the tone
+vocabulary that did not exist before and the header comments explaining each placement's contract.
+Tests added: `StatusToneTests` (57), `StatusPlacementIdentifierTests` (50),
+`DS3StatusCaptureHarness` (241, gated off by default).
+
+**The census's "active duplicate" was one live view and one dead one.** `FullScreenErrorView` had
+**zero construction sites** and had never appeared in a shipped build — its only non-doc reference
+outside itself was its path in the fixed-font ratchet list. Recorded as **DEAD-003**; the merge was
+a deletion plus a rename, not a merge of two live components. `APP_VIEWS.md:440` still marks it
+`production-active`, which is wrong in the app's own registry.
+
+**The prompt predicted the wrong headline change, and the M7 page leads with it.** DS.3 expected the
+banner to flip from amber-fill/black-text to token warning. Every banner a user can actually reach
+is now **info blue**: the three errors routed to `.topBanner` appear in no arm of
+`UserFacingError.severity` and fall through to its `default: return .info`. The old banner concealed
+this by ignoring severity. Correct under this increment's constraints — DS.3 may not change which
+severity an error has — and flagged to Matt as an engine-side question. See [D-235].
+
+**The degradation decision went to A.** Red → yellow on the *"No audio detected."* toast; nothing
+else moves, because the full-screen surfaces already read degradation as yellow.
+
+**Accessibility is byte-identical.** `diff docs/reviews/DS.3/{before,after}/a11y.txt` is empty — not
+one label or identifier moved across four renames. Five identifiers pinned by
+`StatusPlacementIdentifierTests`; `StatusToneTests` pins every mapping in both vocabularies.
+
+**The fixed-font ratchet stopped being silent.** `DynamicTypeRegressionTests` skipped paths that did
+not exist, so a deleted or moved file left it passing over nothing. It now fails on a missing path.
+`LocalFileErrorStore.swift` joined the list (its `.system(size: 13)` became `.footnote`).
+
+**Two prompt claims were stale and are recorded upstream.** The local-file banner's pip already read
+`UzumeAppColor.danger`, not `DashboardTokens.Color.coral` (DS.1 moved it); and the gate for raw
+colours does not return empty on `main` either — `TrackInfoCardView.swift:136` has a pre-existing
+`.green`/`.orange` orchestrator-state pill in `Views/Playback` that the gate's exclusion list misses.
+Not a status surface and not touched. See §Known risks.
+
+**M7 page:** `docs/reviews/DS.3/index.html` — self-contained (34 images inlined as data URIs),
+17 before/after pairs, the resolved colour-map table, and the accessibility rows.
 
 ### Increment DS.2 — `SourceChoice`: one tile component, four affordances ✅ (2026-09-01, D-233)
 
