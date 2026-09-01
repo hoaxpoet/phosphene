@@ -48,15 +48,15 @@ struct EndedView: View {
             Text(String(localized: "ended.headline"))
                 .font(.largeTitle)
                 .fontWeight(.thin)
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
 
             VStack(spacing: 6) {
                 Text(formattedTrackCount)
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.textSecondary)
                 Text(formattedDuration)
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(UzumeAppColor.textTertiary)
             }
 
             Spacer().frame(height: 8)
@@ -81,7 +81,7 @@ struct EndedView: View {
                         Text(verbatim: replayLabel)
                     }
                     .buttonStyle(.plain)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.textSecondary)
                     .font(.subheadline)
                     .accessibilityIdentifier(Self.replayLocalFileButtonID)
                 }
@@ -90,7 +90,7 @@ struct EndedView: View {
                     onOpenSessionsFolder()
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(UzumeAppColor.textTertiary)
                 .font(.subheadline)
                 .accessibilityIdentifier(Self.openFolderButtonID)
             }
@@ -98,7 +98,7 @@ struct EndedView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
+        .background(UzumeAppColor.canvas)
         .accessibilityIdentifier(Self.accessibilityID)
     }
 
