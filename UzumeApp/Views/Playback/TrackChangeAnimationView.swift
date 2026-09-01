@@ -56,16 +56,16 @@ struct TrackChangeAnimationView: View {
         VStack(spacing: 6) {
             Text(info.title)
                 .font(.title2.weight(.semibold))
-                .foregroundColor(.white)
+                .foregroundColor(UzumeAppColor.textPrimary)
                 .multilineTextAlignment(.center)
             if !info.artist.isEmpty {
                 Text(info.artist)
                     .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.textSecondary)
             }
         }
         .padding(28)
-        .overlayBackdrop()
+        .performanceBackdrop()
         .matchedGeometryEffect(id: "trackAnnouncement", in: namespace, isSource: phase == .center)
         .frame(maxWidth: 480)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)

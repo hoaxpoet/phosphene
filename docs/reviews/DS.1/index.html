@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>DS.1 — before / after</title>
+<style>
+:root { color-scheme: dark; --canvas:#0b0c10; --surface:#14151a; --raised:#1d1f25;
+  --line:#34363f; --text:#f4f6f1; --text2:#c5c9c3; --text3:#a4a8a2; --accent:#7f6aff; }
+* { box-sizing: border-box; }
+body { margin:0; padding:0 clamp(1rem,4vw,3rem) 6rem; background:var(--canvas); color:var(--text);
+  font:16px/1.55 system-ui, -apple-system, sans-serif; }
+header { padding:3rem 0 1.5rem; border-bottom:1px solid var(--line); margin-bottom:2rem; }
+h1 { font-size:2rem; margin:0 0 .5rem; font-weight:600; letter-spacing:-.02em; }
+header p { color:var(--text2); max-width:68ch; margin:.5rem 0; }
+nav { font-size:.8rem; color:var(--text3); line-height:2; margin-top:1rem; }
+nav a { color:var(--text3); text-decoration:none; border-bottom:1px solid transparent; }
+nav a:hover { color:var(--accent); border-bottom-color:var(--accent); }
+section { margin:0 0 3.5rem; scroll-margin-top:1rem; }
+h2 { font-size:1.05rem; font-weight:600; margin:0 0 .75rem; color:var(--text); }
+.pair { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; }
+@media (max-width:900px) { .pair { grid-template-columns:1fr; } }
+figure { margin:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+figcaption { font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; color:var(--text3);
+  padding:.6rem .9rem; background:var(--raised); border-bottom:1px solid var(--line); }
+img { display:block; width:100%; height:auto; }
+.missing { padding:3rem 1rem; text-align:center; color:var(--text3); font-size:.85rem; }
+.warn { color:var(--text2); background:#282400; border:1px solid #8c7600;
+  border-radius:12px; padding:.9rem 1.1rem; max-width:80ch; font-size:.9rem; }
+.warn strong { color:#ffd60a; }
+.note { color:var(--text2); font-size:.9rem; max-width:80ch; margin:.9rem 0 0; }
+</style></head><body>
+<header>
+<h1>DS.1 — the app adopts UzumeTokens</h1>
+<p>Presentation only. Nothing the user can do changed: no state machine, publisher, view model,
+accessibility identifier, copy string, keyboard shortcut or test expectation was touched. Every
+pair below is the same screen at the same window size, before and after the token swap.</p>
+<p><strong>before</strong> is <code>main</code> at <code>caa69638</code>. <strong>after</strong> is the DS.1 branch.
+Uzume is always dark (D-232 option A), so there is one appearance to review. This Mac is set to
+<em>Light</em> appearance, which is why the window chrome changes.</p>
+<p class="warn"><strong>Twelve of twenty states are captured.</strong> Eight are not: four need a
+live connector credential, a failing track or a revoked permission grant to reach at all, three are
+Settings sub-panes that hold no retokenized code, and one (Ready) is passed through faster than the
+local-file route can be sampled. Each says so under its own heading.</p>
+<nav><a href="#idle">idle</a> · <a href="#source_picker">source picker</a> · <a href="#connector_apple_music">connector apple music</a> · <a href="#connector_spotify">connector spotify</a> · <a href="#connector_local">connector local</a> · <a href="#preparation_active">preparation active</a> · <a href="#playback_chrome">playback chrome</a> · <a href="#playback_chrome_hidden">playback chrome hidden</a> · <a href="#shortcut_help">shortcut help</a> · <a href="#settings_local_files">settings local files</a> · <a href="#ended">ended</a> · <a href="#photosensitivity_notice">photosensitivity notice</a> · <a href="#connecting">connecting</a> · <a href="#ready">ready</a> · <a href="#preparation_failure">preparation failure</a> · <a href="#playback_toast">playback toast</a> · <a href="#permission_onboarding">permission onboarding</a> · <a href="#settings_visuals">settings visuals</a> · <a href="#settings_diagnostics">settings diagnostics</a> · <a href="#settings_about">settings about</a></nav>
+</header>
+<section id="idle">
+<h2>Idle</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/idle.png" alt="idle before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/idle.png" alt="idle after"></figure></div>
+<p class="note">Three changes. The canvas moves from pure black to <code>--color-canvas</code> #0b0c10 — a warmer near-black, clearest against the window chrome. The wordmark takes <code>--color-text-primary</code> (ivory #f4f6f1, not pure white) and the secondary action takes <code>--color-text-tertiary</code>. And the window is pinned dark: this Mac is set to Light appearance, so before, the title bar was light grey and the primary button was system blue. The primary is now Uzume violet and the secondary is still quiet grey — that is the scoped tint you asked for.</p></section><section id="source_picker">
+<h2>Source picker</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/source_picker.png" alt="source_picker before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/source_picker.png" alt="source_picker after"></figure></div>
+<p class="note">Connector tiles move from <code>Color.white.opacity(0.07)</code> / <code>0.03</code> to <code>--color-surface-raised</code> / <code>--color-surface</code>, which land within a level or two of what the translucent fills produced over black. Corner radius 12 is now <code>--radius-md</code>. Note the disabled-tile regression is not visible here because all three sources are enabled; where it does appear, <code>--color-text-disabled</code> and <code>--color-text-tertiary</code> are the same value, so disabled reads slightly brighter than it did (upstream finding 8).</p></section><section id="connector_apple_music">
+<h2>Apple Music connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/connector_apple_music.png" alt="connector_apple_music before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/connector_apple_music.png" alt="connector_apple_music after"></figure></div>
+<p class="note">Canvas and the text ramp. <strong>Unrelated bug spotted while capturing:</strong> the status line reads <em>“Checking every 2 secondsu2026”</em> — a literal <code>u2026</code> where an ellipsis should be, in both before and after. It is a copy string, so DS.1 left it alone; worth its own fix.</p></section><section id="connector_spotify">
+<h2>Spotify connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/connector_spotify.png" alt="connector_spotify before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/connector_spotify.png" alt="connector_spotify after"></figure></div>
+<p class="note">Canvas, the four <code>white@0.07</code> panels onto <code>--color-surface-raised</code>, and the inline status marks onto <code>--color-success</code> / <code>--color-warning</code>. The playlist TextField and its buttons stay native.</p></section><section id="connector_local">
+<h2>Local source connection</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/connector_local.png" alt="connector_local before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/connector_local.png" alt="connector_local after"></figure></div>
+<p class="note">Canvas plus the action tile's hover state, which is <code>--color-surface-selected</code> on hover and <code>--color-surface-raised</code> at rest.</p></section><section id="preparation_active">
+<h2>Preparation (in progress)</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/preparation_active.png" alt="preparation_active before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/preparation_active.png" alt="preparation_active after"></figure></div>
+<p class="note">Canvas; the aggregate progress track moves to <code>--color-surface-selected</code> and its fill to <code>--color-text-secondary</code>; the row divider to <code>--color-line-subtle</code>. Track status icons take the success / warning / danger roles — the danger role is a warm salmon #ff8a75, not systemRed.</p></section><section id="playback_chrome">
+<h2>Playback — chrome visible</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/playback_chrome.png" alt="playback_chrome before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/playback_chrome.png" alt="playback_chrome after"></figure></div>
+<p class="note"><code>PerformanceBackdrop</code>, renamed from <code>OverlayBackdropStyle</code>. The measured values do not move: <code>.ultraThinMaterial</code> + 45% black at radius 10. The transport bar's radius becomes <code>--radius-lg</code> and <strong>its play/pause button is now the Uzume accent</strong> instead of <code>DashboardTokens.Color.coral</code> — it is the primary control of that bar. The card's surface, border and purple glow still come from <code>DashboardTokens</code>; migrating the whole component is DS.6. <strong>The preset behind the chrome differs between the two shots</strong> — different file identities, so the planner picked differently. Compare the chrome, not the visual.</p></section><section id="playback_chrome_hidden">
+<h2>Playback — chrome hidden</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/playback_chrome_hidden.png" alt="playback_chrome_hidden before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/playback_chrome_hidden.png" alt="playback_chrome_hidden after"></figure></div>
+<p class="note">The preset frame with the chrome auto-hidden. No token touches the renderer; this pair is here to prove it.</p></section><section id="shortcut_help">
+<h2>Shortcut help</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/shortcut_help.png" alt="shortcut_help before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/shortcut_help.png" alt="shortcut_help after"></figure></div>
+<p class="note">Panel tint 0.40 kept and named; key caps move to the strong performance fill; the cap radius tightens from 5 to <code>--radius-sm</code> (6).</p></section><section id="settings_local_files">
+<h2>Settings — Local Files</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/settings_local_files.png" alt="settings_local_files before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/settings_local_files.png" alt="settings_local_files after"></figure></div>
+<p class="note">Nothing in Settings was retokenized — it held no hard-coded values. What this pair shows is the appearance pin. <strong>The sidebar selection is still system blue and I could not change it.</strong> macOS draws <code>List</code> sidebar selection from <code>NSColor.controlAccentColor</code> — the system-wide Accent colour in System Settings → Appearance — and SwiftUI's <code>.tint()</code> does not override it. Verified twice: blue with the tint on this List, and blue in the earlier build that tinted the entire app. The only way to make it violet is to draw the selection ourselves, which is exactly the 'do not redraw native macOS controls' rule COMPONENTS.md sets. Recorded as a finding rather than forced.</p></section><section id="ended">
+<h2>Ended</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/ended.png" alt="ended before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/ended.png" alt="ended after"></figure></div>
+<p class="note">The orange you spotted is the <strong>before</strong> column. <code>EndedView</code> carried its own <code>coralAccent</code> — a hard-coded <code>Color(red: 0.97, green: 0.45, blue: 0.36)</code> from the retired coral direction, with a <code>.tint()</code> on the primary CTA. The after column was already violet, but only because <code>.uzumeTint()</code> sits closer to the Button than the coral tint does — ordering luck, not a decision. The constant and its tint are now deleted.</p></section><section id="photosensitivity_notice">
+<h2>Photosensitivity notice (first run)</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><img src="before/photosensitivity_notice.png" alt="photosensitivity_notice before"></figure>
+<figure><figcaption>after — DS.1</figcaption><img src="after/photosensitivity_notice.png" alt="photosensitivity_notice after"></figure></div>
+<p class="note">Nothing here was retokenized. It appears because the appearance pin reaches it. The two shots are at different window sizes — the frame is persisted between launches and drifted between the runs.</p></section><section id="connecting">
+<h2>Connecting</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> No route reaches it without a live connector credential or a deliberately failing input.</p></section><section id="ready">
+<h2>Ready</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> The local-file path — the only session route reachable without a connector credential — plays its own audio, so it passes through Ready faster than a capture interval.</p></section><section id="preparation_failure">
+<h2>Preparation failure</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Needs a deliberately failing track.</p></section><section id="playback_toast">
+<h2>Playback — toast</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Toasts fire on signal-state, adaptation and display events; none occurred during the capture runs.</p></section><section id="permission_onboarding">
+<h2>Permission onboarding</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Reaching it means revoking the app's Screen Recording grant, which is a system security setting I will not change.</p></section><section id="settings_visuals">
+<h2>Settings — Visuals</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Driving the settings sidebar hung the automation repeatedly and the pane holds no retokenized code — it would show only the appearance pin that Settings — Local Files already shows. I stopped rather than keep grinding.</p></section><section id="settings_diagnostics">
+<h2>Settings — Diagnostics</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Same reason as Settings — Visuals.</p></section><section id="settings_about">
+<h2>Settings — About</h2>
+<div class="pair"><figure><figcaption>before — main</figcaption><div class="missing">not captured</div></figure>
+<figure><figcaption>after — DS.1</figcaption><div class="missing">not captured</div></figure></div>
+<p class="note"><strong>Not captured.</strong> Same reason as Settings — Visuals.</p></section>
+</body></html>

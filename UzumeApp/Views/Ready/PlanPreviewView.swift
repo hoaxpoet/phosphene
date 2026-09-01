@@ -85,7 +85,7 @@ struct PlanPreviewView: View {
                         onPreview: { viewModel.previewRow($0) }
                     )
                     Divider()
-                        .background(Color.white.opacity(0.06))
+                        .background(UzumeAppColor.surfaceRaised)
                 }
             }
         }
@@ -125,6 +125,7 @@ struct PlanPreviewView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .disabled(viewModel.isRegenerating || viewModel.rows.isEmpty)
             .accessibilityIdentifier(Self.regenerateButtonID)
 

@@ -23,12 +23,12 @@ struct TrackPreparationRow: View {
                 Text(row.title)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                     .lineLimit(1)
 
                 Text(row.artist)
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(UzumeAppColor.textTertiary)
                     .lineLimit(1)
 
                 Text(stageCaption)
@@ -37,7 +37,7 @@ struct TrackPreparationRow: View {
 
                 if case .downloading(let progress) = row.status, progress >= 0 {
                     ProgressView(value: progress)
-                        .progressViewStyle(LinearProgressViewStyle(tint: .white.opacity(0.6)))
+                        .progressViewStyle(LinearProgressViewStyle(tint: UzumeAppColor.textTertiary))
                         .frame(height: 2)
                         .padding(.top, 2)
                 }
@@ -48,7 +48,7 @@ struct TrackPreparationRow: View {
             if let eta = row.etaSeconds, row.status.isInFlight {
                 Text(etaText(eta))
                     .font(.caption2)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(UzumeAppColor.textDisabled)
             }
         }
         .padding(.vertical, 8)
@@ -91,7 +91,7 @@ struct TrackPreparationRow: View {
         case .ready:   return .green.opacity(0.8)
         case .partial: return .orange.opacity(0.8)
         case .failed:  return .red.opacity(0.7)
-        default:       return .white.opacity(0.35)
+        default:       return UzumeAppColor.textDisabled
         }
     }
 

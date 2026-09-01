@@ -202,7 +202,7 @@ The Apple Music side does not have an equivalent URL-callback foregrounding scen
 
 **Missing (27):**
 - Root-level (3): `FullScreenErrorView.swift`, `QualityGradeIndicator.swift`, `SettingsView.swift`, `TrackPreparationRow.swift`, `TrackPreparationStatusIcon.swift`.
-- `Playback/` (10 of 11 missing, only `PlaybackView` listed): `ListeningBadgeView`, `OverlayBackdropStyle`, `PlaybackChromeView`, `PlaybackControlsCluster`, `SessionProgressDotsView`, `ShortcutHelpOverlayView`, `ToastContainerView`, `ToastView`, `TrackChangeAnimationView`, `TrackInfoCardView`.
+- `Playback/` (10 of 11 missing, only `PlaybackView` listed): `ListeningBadgeView`, `PerformanceBackdrop`, `PlaybackChromeView`, `PlaybackControlsCluster`, `SessionProgressDotsView`, `ShortcutHelpOverlayView`, `ToastContainerView`, `ToastView`, `TrackChangeAnimationView`, `TrackInfoCardView`.
 - `Preparation/` (2 missing): `PreparationFailureView`, `TopBannerView`.
 - `Ready/` (4 missing): `PlanPreviewRowView`, `PlanPreviewTransitionView`, `PlanPreviewView`, `ReadyPulsingBorder`.
 - `Settings/` (6 missing): `AboutSettingsSection`, `AudioSettingsSection`, `DiagnosticsSettingsSection`, `PresetCategoryBlocklistPicker`, `SourceAppPicker`, `VisualsSettingsSection`.
@@ -541,9 +541,9 @@ Consolidation: 58 of 59 files concentrate on `production-active` (with one of th
 
 `struct ListeningBadgeView: View`. Top-center badge for sustained silence (≥ 3 s). **Replaces the legacy `NoAudioSignalBadge` per U.6** (file-header line 3 confirms). Respects `reduceMotion` (spinner skipped). Accessibility ID `uzume.playback.listeningBadge`.
 
-##### OverlayBackdropStyle.swift (39 lines) — `production-active`
+##### PerformanceBackdrop.swift (43 lines) — `production-active`
 
-`struct OverlayBackdropStyle: ViewModifier`. Shared ≥ 4.5:1 contrast backdrop for overlay text (UX_SPEC §7.2). 10 pt corner radius, 0.45 opacity black tint over `.ultraThinMaterial`. Exposed as `.overlayBackdrop()` View extension.
+`struct PerformanceBackdrop: ViewModifier`. Shared ≥ 4.5:1 contrast backdrop for overlay text (UX_SPEC §7.2). `UzumeRadius.standard` (10 pt) corner, `UzumeAppColor.Performance.backdropTint` (0.45 opacity black) over `.ultraThinMaterial`. Renamed from `OverlayBackdropStyle` at DS.1; the measured values are unchanged. Exposed as `.performanceBackdrop()` View extension.
 
 ##### PlaybackControlsCluster.swift (55 lines) — `production-active`
 

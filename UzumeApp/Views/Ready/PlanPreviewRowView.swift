@@ -24,14 +24,14 @@ struct PlanPreviewRowView: View {
             // Track number
             Text("\(row.trackIndex + 1)")
                 .font(.footnote.monospaced())
-                .foregroundColor(.white.opacity(0.3))
+                .foregroundColor(UzumeAppColor.textDisabled)
                 .frame(width: 28, alignment: .trailing)
 
             // Lock icon
             if row.isLocked {
                 Image(systemName: "lock.fill")
                     .font(.caption2)
-                    .foregroundColor(.yellow.opacity(0.7))
+                    .foregroundColor(UzumeAppColor.gold.opacity(0.7))
                     .frame(width: 14)
             } else {
                 Spacer().frame(width: 14)
@@ -41,12 +41,12 @@ struct PlanPreviewRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.trackTitle)
                     .font(.callout.weight(.medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                     .lineLimit(1)
                 if !row.trackArtist.isEmpty {
                     Text(row.trackArtist)
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.45))
+                        .foregroundColor(UzumeAppColor.textDisabled)
                         .lineLimit(1)
                 }
             }
@@ -57,27 +57,27 @@ struct PlanPreviewRowView: View {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(row.presetName)
                     .font(.footnote.weight(.medium))
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(UzumeAppColor.textSecondary)
                     .lineLimit(1)
 
                 Text(row.presetFamily)
                     .font(.caption2)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(UzumeAppColor.textTertiary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.08))
+                    .background(UzumeAppColor.surfaceRaised)
                     .clipShape(Capsule())
             }
 
             // Duration
             Text(formattedDuration)
                 .font(.caption.monospaced())
-                .foregroundColor(.white.opacity(0.35))
+                .foregroundColor(UzumeAppColor.textDisabled)
                 .frame(width: 48, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(row.isLocked ? Color.yellow.opacity(0.05) : Color.clear)
+        .background(row.isLocked ? UzumeAppColor.gold.opacity(0.05) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { onPreview(row) }
         .contextMenu {

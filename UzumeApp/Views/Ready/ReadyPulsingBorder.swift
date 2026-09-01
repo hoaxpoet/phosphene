@@ -18,7 +18,7 @@ struct ReadyPulsingBorder: View {
     @State private var phase: Bool = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: UzumeAppRadius.sm)
             .stroke(Color.accentColor, lineWidth: 2)
             .opacity(currentOpacity)
             .padding(24)
@@ -43,12 +43,12 @@ struct ReadyPulsingBorder: View {
 #Preview("Animating") {
     ReadyPulsingBorder(reduceMotion: false)
         .frame(width: 480, height: 320)
-        .background(Color.black)
+        .background(UzumeAppColor.canvas)
 }
 
 #Preview("Reduced motion") {
     ReadyPulsingBorder(reduceMotion: true)
         .frame(width: 480, height: 320)
-        .background(Color.black)
+        .background(UzumeAppColor.canvas)
 }
 #endif

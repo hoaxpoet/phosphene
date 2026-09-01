@@ -193,13 +193,13 @@ struct ContentView: View {
             VStack(spacing: 12) {
                 Text(String(localized: "content.preparing_fallback.title"))
                     .font(.largeTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(UzumeAppColor.textPrimary)
                 Text(String(localized: "content.preparing_fallback.subtitle"))
                     .font(.body)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(UzumeAppColor.textTertiary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
+            .background(UzumeAppColor.canvas)
             .accessibilityIdentifier(PreparationProgressView.accessibilityID)
         }
     }

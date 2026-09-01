@@ -62,7 +62,7 @@ struct LocalFileTransportBar: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 14)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: UzumeAppRadius.lg, style: .continuous)
                 .fill(Color(nsColor: DashboardTokens.Color.surfaceRaised))
                 .shadow(
                     color: Color(nsColor: DashboardTokens.Color.purpleGlow).opacity(0.55),
@@ -72,7 +72,7 @@ struct LocalFileTransportBar: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: UzumeAppRadius.lg, style: .continuous)
                 .stroke(Color(nsColor: DashboardTokens.Color.border).opacity(0.6), lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
@@ -95,16 +95,16 @@ private struct PlayPauseTransportButton: View {
         Button(action: action) {
             Group {
                 if isPaused {
-                    PlayGlyph().fill(Color.white)
+                    PlayGlyph().fill(UzumeAppColor.Performance.glyph)
                 } else {
-                    PauseGlyph().fill(Color.white)
+                    PauseGlyph().fill(UzumeAppColor.Performance.glyph)
                 }
             }
             .frame(width: 18, height: 18)
             .frame(width: 44, height: 44)
             .background(
                 Circle()
-                    .fill(Color(nsColor: DashboardTokens.Color.coral))
+                    .fill(UzumeAppColor.accent)
                     .brightness(isHovered ? 0.06 : 0)
             )
             .contentShape(Circle())
@@ -138,7 +138,7 @@ private struct MutedTransportButton: View {
                 .frame(width: 30, height: 30)
                 .background(
                     Circle()
-                        .fill(Color.white.opacity(isHovered ? 0.06 : 0))
+                        .fill(UzumeAppColor.Performance.fillHoverFaint.opacity(isHovered ? 1 : 0))
                 )
                 .contentShape(Circle())
         }
