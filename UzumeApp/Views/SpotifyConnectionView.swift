@@ -128,6 +128,7 @@ struct SpotifyConnectionView: View {
                 viewModel.connect(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
             .disabled(viewModel.isConnecting)
             .accessibilityIdentifier("uzume.spotify.continueButton")
@@ -190,6 +191,7 @@ struct SpotifyConnectionView: View {
                 viewModel.login(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("uzume.spotify.loginButton")
         }
@@ -233,6 +235,7 @@ struct SpotifyConnectionView: View {
                 viewModel.retry(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
         }
     }

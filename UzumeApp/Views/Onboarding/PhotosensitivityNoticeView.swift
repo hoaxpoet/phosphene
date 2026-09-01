@@ -43,6 +43,7 @@ struct PhotosensitivityNoticeView: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
+                .uzumeTint()
                 .accessibilityIdentifier("uzume.photosensitivity.acknowledge")
             }
         }

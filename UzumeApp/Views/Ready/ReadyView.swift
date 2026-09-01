@@ -175,6 +175,7 @@ struct ReadyView: View {
                         viewModel.retry()
                     }
                     .buttonStyle(.borderedProminent)
+                    .uzumeTint()
                     .accessibilityIdentifier(Self.retryButtonID)
 
                     Button(String(localized: "ready.end_session_button")) {

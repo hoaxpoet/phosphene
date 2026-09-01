@@ -303,6 +303,7 @@ struct PreparationProgressView: View {
                     viewModel.startNow()
                 }
                 .buttonStyle(.borderedProminent)
+                .uzumeTint()
                 .accessibilityIdentifier(Self.startNowButtonID)
             }
         }

@@ -88,6 +88,7 @@ struct FullScreenErrorView: View {
                     action()
                 }
                 .buttonStyle(.borderedProminent)
+                .uzumeTint()
                 .keyboardShortcut(.defaultAction)
             }
 

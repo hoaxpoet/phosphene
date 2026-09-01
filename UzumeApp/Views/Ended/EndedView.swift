@@ -66,6 +66,7 @@ struct EndedView: View {
                     onStartNewSession()
                 }
                 .buttonStyle(.borderedProminent)
+                .uzumeTint()
                 .keyboardShortcut(.defaultAction)
                 .tint(coralAccent)
                 .accessibilityIdentifier(Self.newSessionButtonID)

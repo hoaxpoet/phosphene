@@ -48,6 +48,7 @@ struct PermissionOnboardingView: View {
                 _ = CGRequestScreenCaptureAccess()
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("uzume.onboarding.grantAccess")
 

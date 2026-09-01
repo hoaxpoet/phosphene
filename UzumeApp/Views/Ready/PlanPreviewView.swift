@@ -125,6 +125,7 @@ struct PlanPreviewView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .disabled(viewModel.isRegenerating || viewModel.rows.isEmpty)
             .accessibilityIdentifier(Self.regenerateButtonID)
 

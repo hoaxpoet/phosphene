@@ -91,6 +91,7 @@ struct PreparationFailureView: View {
                 onPickAnotherPlaylist()
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier(Self.pickPlaylistButtonID)
 

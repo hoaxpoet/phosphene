@@ -126,6 +126,7 @@ struct AppleMusicConnectionView: View {
                 viewModel.openAppleMusic()
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
         }
     }
@@ -149,6 +150,7 @@ struct AppleMusicConnectionView: View {
                 viewModel.openAutomationSettings()
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("uzume.appleMusic.openSystemSettings")
         }
@@ -173,6 +175,7 @@ struct AppleMusicConnectionView: View {
                 viewModel.retry()
             }
             .buttonStyle(.borderedProminent)
+            .uzumeTint()
             .keyboardShortcut(.defaultAction)
         }
     }

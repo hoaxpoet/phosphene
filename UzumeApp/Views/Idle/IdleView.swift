@@ -36,6 +36,7 @@ struct IdleView: View {
                     showConnectorPicker = true
                 }
                 .buttonStyle(.borderedProminent)
+                .uzumeTint()
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier(Self.connectButtonID)
 
