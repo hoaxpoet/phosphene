@@ -104,6 +104,25 @@ contradicts it: *"Local playback owns transport; streaming handoff listens for e
 must not promise transport control."* `COMPONENTS.md` repeats it for `LocalPlaybackTransport`:
 *"available only when Uzume owns local playback."*
 
+**Failure class:** `documentation-drift` — shipped copy asserts a product behaviour the shipped
+code contradicts. No algorithm, no state machine; the string and the transport bar simply disagree.
+
+**Reproduction:** open Uzume → "Choose music" → read the footer under the three tiles. It is
+unconditional. Then pick Local files, choose any audio file, and watch `LocalFileTransportBar`
+appear during playback with working stop / previous / play-pause / next. Captured on the DS.2 M7
+page (`docs/reviews/DS.2/after/connector_local.png` shows the footer under the Local files tile).
+
+**Verification criteria (written before the fix, per the defect protocol):**
+
+1. **Automated** — a test asserting the picker footer does not contain the unqualified sentence
+   `"It doesn't control playback"`, and that it names the sources the listen-only behaviour
+   applies to. This is the regression guard: it fails if the blanket claim returns.
+2. **Automated** — `Scripts/check_user_strings.sh` stays green (the replacement is still
+   externalized, not inlined), and the app suite passes.
+3. **Manual** — re-capture the picker and read the footer against all three tiles: the sentence
+   must be true for each one. UX-flow validation per the protocol, since this is a
+   session-lifecycle surface.
+
 **Fix when picked up — a product call, not a mechanical one.** Options: scope the sentence to
 streaming ("For Apple Music and Spotify, Uzume reads what's playing — it doesn't control
 playback."); move it off the shared footer and onto the two streaming tiles; or drop it from this
