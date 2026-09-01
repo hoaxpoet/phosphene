@@ -12,6 +12,9 @@ import SwiftUI
 
 struct ConnectorPickerView: View {
     static let accessibilityID = "uzume.view.connectorPicker"
+    /// Carried over verbatim from the tile view DS.2 deleted (D-233). The three
+    /// identifiers built from it are pinned by `SourceChoiceIdentifierTests`.
+    static let tileIDPrefix = "uzume.connector.tile"
 
     /// Called when a connector successfully identifies a playlist.
     /// `tracks` contains pre-fetched tracks when available (Spotify OAuth path);
@@ -64,16 +67,19 @@ struct ConnectorPickerView: View {
     private var appleMusicTile: some View {
         if viewModel.appleMusicRunning {
             NavigationLink(value: ConnectorType.appleMusic) {
-                ConnectorTileView(type: .appleMusic, isEnabled: true)
+                tile(for: .appleMusic, affordance: .navigation)
             }
             .buttonStyle(.plain)
         } else {
-            ConnectorTileView(
-                type: .appleMusic,
-                isEnabled: false,
-                disabledCaption: String(localized: "connector.picker.apple_music_disabled"),
-                secondaryActionLabel: String(localized: "connector.picker.open_apple_music_button"),
-                onSecondaryAction: { viewModel.openAppleMusic() }
+            tile(
+                for: .appleMusic,
+                affordance: .unavailable(
+                    reason: String(localized: "connector.picker.apple_music_disabled"),
+                    recovery: .init(
+                        label: String(localized: "connector.picker.open_apple_music_button"),
+                        action: { viewModel.openAppleMusic() }
+                    )
+                )
             )
         }
     }
@@ -81,7 +87,7 @@ struct ConnectorPickerView: View {
     @ViewBuilder
     private var spotifyTile: some View {
         NavigationLink(value: ConnectorType.spotify) {
-            ConnectorTileView(type: .spotify, isEnabled: true)
+            tile(for: .spotify, affordance: .navigation)
         }
         .buttonStyle(.plain)
     }
@@ -92,9 +98,25 @@ struct ConnectorPickerView: View {
         // Pushes LocalSourceConnectionView (file / folder / playlist picker)
         // onto the parent NavigationStack, matching the AM / Spotify shape.
         NavigationLink(value: ConnectorType.localFolder) {
-            ConnectorTileView(type: .localFolder, isEnabled: true)
+            tile(for: .localFolder, affordance: .navigation)
         }
         .buttonStyle(.plain)
+    }
+
+    /// `ConnectorType` keeps title, subtitle and symbol — that is product
+    /// content, not presentation, so it is read here and handed to the
+    /// component rather than moved into it (DS.2).
+    private func tile(
+        for type: ConnectorType,
+        affordance: SourceChoice.Affordance
+    ) -> SourceChoice {
+        SourceChoice(
+            systemImage: type.systemImage,
+            title: type.title,
+            subtitle: type.subtitle,
+            accessibilityID: "\(Self.tileIDPrefix).\(type.rawValue)",
+            affordance: affordance
+        )
     }
 
     @ViewBuilder

@@ -87,7 +87,7 @@
 		E10002 /* SpotifyURLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20002; };
 		E10003 /* DelayProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20003; };
 		E10004 /* ConnectorType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20004; };
-		E10005 /* ConnectorTileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20005; };
+		E10024 /* SourceChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20024; };
 		E10006 /* ConnectorPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20006; };
 		E10007 /* AppleMusicConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20007; };
 		E10008 /* SpotifyConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20008; };
@@ -198,6 +198,8 @@
 		L10010 /* QualityGradeIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20010; };
 		L10040 /* AccessibilityStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20040; };
 		L10041 /* DynamicTypeRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20041; };
+		E10025 /* SourceChoiceIdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20025; };
+		E10026 /* ConnectorPickerFooterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20026; };
 		L10042 /* AccessibilityLabelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20042; };
 		L10043 /* LocalFileRecentsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20043; };
 		M10001 /* DisplayChangeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20001; };
@@ -293,7 +295,7 @@
 		E20002 /* SpotifyURLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyURLParser.swift; sourceTree = "<group>"; };
 		E20003 /* DelayProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayProviding.swift; sourceTree = "<group>"; };
 		E20004 /* ConnectorType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorType.swift; sourceTree = "<group>"; };
-		E20005 /* ConnectorTileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorTileView.swift; sourceTree = "<group>"; };
+		E20024 /* SourceChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceChoice.swift; sourceTree = "<group>"; };
 		E20006 /* ConnectorPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorPickerView.swift; sourceTree = "<group>"; };
 		E20007 /* AppleMusicConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicConnectionView.swift; sourceTree = "<group>"; };
 		E20008 /* SpotifyConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConnectionView.swift; sourceTree = "<group>"; };
@@ -404,6 +406,8 @@
 		L20010 /* QualityGradeIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QualityGradeIndicator.swift; sourceTree = "<group>"; };
 		L20040 /* AccessibilityStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityStateTests.swift; sourceTree = "<group>"; };
 		L20041 /* DynamicTypeRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicTypeRegressionTests.swift; sourceTree = "<group>"; };
+		E20025 /* SourceChoiceIdentifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceChoiceIdentifierTests.swift; sourceTree = "<group>"; };
+		E20026 /* ConnectorPickerFooterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorPickerFooterTests.swift; sourceTree = "<group>"; };
 		L20042 /* AccessibilityLabelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabelsTests.swift; sourceTree = "<group>"; };
 		L20043 /* LocalFileRecentsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileRecentsStoreTests.swift; sourceTree = "<group>"; };
 		M20001 /* DisplayChangeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinator.swift; sourceTree = "<group>"; };
@@ -554,9 +558,18 @@
 			path = Onboarding;
 			sourceTree = "<group>";
 		};
+		E40024 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				E20024 /* SourceChoice.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
 		A40005 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				E40024 /* Components */,
 				A20020 /* MetalView.swift */,
 				A20021 /* DebugOverlayView.swift */,
 				I20004 /* FullScreenErrorView.swift */,
@@ -569,7 +582,6 @@
 				C40007 /* Ended */,
 				O40001 /* Dashboard */,
 				E20004 /* ConnectorType.swift */,
-				E20005 /* ConnectorTileView.swift */,
 				E20006 /* ConnectorPickerView.swift */,
 				E20007 /* AppleMusicConnectionView.swift */,
 				E20008 /* SpotifyConnectionView.swift */,
@@ -766,6 +778,8 @@
 				M20006 /* NetworkRecoveryCoordinatorTests.swift */,
 				L20040 /* AccessibilityStateTests.swift */,
 				L20041 /* DynamicTypeRegressionTests.swift */,
+				E20025 /* SourceChoiceIdentifierTests.swift */,
+				E20026 /* ConnectorPickerFooterTests.swift */,
 				L20042 /* AccessibilityLabelsTests.swift */,
 				L20043 /* LocalFileRecentsStoreTests.swift */,
 				N20003 /* SpotifyKeychainStoreTests.swift */,
@@ -940,7 +954,7 @@
 				E10002 /* SpotifyURLParser.swift in Sources */,
 				E10003 /* DelayProviding.swift in Sources */,
 				E10004 /* ConnectorType.swift in Sources */,
-				E10005 /* ConnectorTileView.swift in Sources */,
+				E10024 /* SourceChoice.swift in Sources */,
 				E10006 /* ConnectorPickerView.swift in Sources */,
 				E10007 /* AppleMusicConnectionView.swift in Sources */,
 				E10008 /* SpotifyConnectionView.swift in Sources */,
@@ -1069,6 +1083,8 @@
 				M10006 /* NetworkRecoveryCoordinatorTests.swift in Sources */,
 				L10040 /* AccessibilityStateTests.swift in Sources */,
 				L10041 /* DynamicTypeRegressionTests.swift in Sources */,
+				E10025 /* SourceChoiceIdentifierTests.swift in Sources */,
+				E10026 /* ConnectorPickerFooterTests.swift in Sources */,
 				L10042 /* AccessibilityLabelsTests.swift in Sources */,
 				L10043 /* LocalFileRecentsStoreTests.swift in Sources */,
 				N10003 /* SpotifyKeychainStoreTests.swift in Sources */,

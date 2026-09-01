@@ -10,6 +10,54 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-09-01-195141] DS.2 + COPY-001 — one source tile, and a footer that stopped over-claiming
+
+**DS.2 — `SourceChoice`.** `ConnectorTileView` and the private `LocalSourceActionTile` were two
+copies of one tile: same layout, same "Title. Subtitle." accessible label, differing only in hover
+behaviour and trailing content. They are now one component carrying four affordances — navigation,
+immediate action, unavailable with a reason, unavailable with a recovery action. 118 lines out,
+207 in.
+
+**The component owns no state and never constructs a `NavigationLink`.** The `.navigation`
+affordance draws the chevron; the consumer wraps it. That is what keeps `connectorPath` on
+`ConnectorPickerViewModel` and leaves `AppleMusicConnectionWrapper` /
+`OAuthSpotifyConnectionWrapper` holding their view models for their full lifetimes — CA.6-FU-3
+exists because rebuilding those orphans in-flight OAuth and auto-retry Tasks. Proven by
+`git diff` on the view model returning empty.
+
+**Two behaviour changes, both approved by Matt at the M7.** The connector tiles gained the hover
+treatment only the local tiles had; the local tiles gained the VoiceOver hint only the connector
+tiles had ("Opens a file chooser"). A Curator using VoiceOver previously got guidance on the first
+source screen and silence on the second.
+
+**The M7 measured rather than asserted.** Thirteen matched before/after pairs. Default states are
+pixel-identical inside the tile bands; hover changes only the hovered tile's band at maxΔ 14/255 —
+exactly `--color-surface-selected` minus `--color-surface-raised`. On `main` the connector tiles
+are byte-identical hovered and unhovered. The VoiceOver table was read from the live accessibility
+tree of both builds, not derived.
+
+**A prompt gate was wrong and `main` proved it.** Greping `UzumeApp` for the six tile identifier
+literals reports three MISSING — identically on unmodified `main`, because the connector three are
+interpolated from a prefix and `ConnectorType.rawValue` and have never existed as literals.
+
+**COPY-001 — the picker footer.** Matt caught it on the review page: the footer read *"Uzume reads
+what's playing. It doesn't control playback."* directly above a **Local files** tile where Uzume
+decodes the audio itself and ships a full transport (stop / previous / play-pause / next). True for
+two of three sources, false for the third. Now:
+
+> With Apple Music or Spotify, you press play and Uzume listens. Local files it plays for you.
+
+**The regression test was proven able to fail** before being trusted — restoring the old string
+turns all three of `ConnectorPickerFooterTests` red with the actual sentence quoted in the failure.
+It guards the unqualified claim returning, not the exact wording.
+
+**Also recorded, not fixed:** **DEAD-001** (`localFolderEnabled` is dead and its comment claims a
+v1 gate the shipped build does not have) and **A11Y-001** (the three local tiles announce the
+parent view's accessibility identifier rather than their own — pre-existing, identical before and
+after).
+
+---
+
 ### [dev-2026-09-01-150000] RN.6 — runtime string identity; Phase RN closes
 
 The last two surfaces RN.2 deliberately refused to touch.
