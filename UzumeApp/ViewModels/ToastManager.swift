@@ -36,7 +36,7 @@ final class ToastManager: ObservableObject {
     ///
     /// If the queue is already at `maxVisible`:
     /// - Drops the oldest non-degradation toast to make room.
-    /// - If all visible toasts are `.degradation`, drops the oldest regardless.
+    /// - If all visible toasts are `.degradation` or `.fatal`, drops the oldest regardless.
     func enqueue(_ toast: UzumeToast) {
         if visibleToasts.count >= Self.maxVisible {
             dropOldest()
@@ -92,8 +92,10 @@ final class ToastManager: ObservableObject {
     // MARK: - Private
 
     private func dropOldest() {
-        // Prefer dropping info/warning before degradation.
-        if let idx = visibleToasts.firstIndex(where: { $0.severity != .degradation }) {
+        // Prefer dropping info/warning before degradation or fatal (D-236 added fatal;
+        // dropping the "no audio" toast to make room for a display-connect notice would
+        // be exactly backwards).
+        if let idx = visibleToasts.firstIndex(where: { $0.severity != .degradation && $0.severity != .fatal }) {
             let dropped = visibleToasts[idx]
             dismissTasks[dropped.id]?.cancel()
             dismissTasks[dropped.id] = nil

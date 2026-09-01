@@ -93,16 +93,14 @@ enum StatusTone: Equatable, CaseIterable {
         }
     }
 
-    /// The app's narrower three-value toast vocabulary.
-    ///
-    /// `UzumeToast.Severity` has no `fatal`; `PlaybackErrorBridge` folds `.fatal` into
-    /// `.degradation` before a toast is built, so a toast's `degradation` covers both
-    /// engine severities. It follows the same reading as `ErrorSeverity.degradation`.
+    /// The app's toast vocabulary, which mirrors `ErrorSeverity` one-for-one as of
+    /// DS.3a (D-236). Both mappings must agree case-for-case — `StatusToneTests` pins that.
     static func from(_ severity: UzumeToast.Severity) -> StatusTone {
         switch severity {
         case .info:        return .info
         case .warning:     return .warning
         case .degradation: return .warning
+        case .fatal:       return .danger
         }
     }
 }
