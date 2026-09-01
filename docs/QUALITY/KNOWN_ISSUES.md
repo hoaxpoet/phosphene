@@ -76,6 +76,63 @@ reads" are not reads — see the entry.)*
 
 ---
 
+### DEAD-001 — `ConnectorPickerViewModel.localFolderEnabled` is dead, and its comment claims a gate the shipped build does not have (2026-09-01, DS.2)
+
+**Status: open, recorded not fixed.** Found during DS.2's tile consolidation. Deliberately
+left in place — deleting a property whose `false` a test asserts is a behaviour change wearing
+a cleanup costume, and it belongs with the connector-capability work, not a presentation
+increment. **P3.**
+
+**The property.** `UzumeApp/ViewModels/ConnectorPickerViewModel.swift:29`
+
+```swift
+/// Whether the Local Folder connector tile is enabled.
+let localFolderEnabled: Bool = false
+```
+
+**The comment**, same file, line 8:
+
+```
+// - localFolderEnabled is false in v1; ENABLE_LOCAL_FOLDER_CONNECTOR compile flag gates it.
+```
+
+**Why both are wrong.**
+
+1. **The property has no consumer.** `grep -rn "localFolderEnabled" UzumeApp UzumeAppTests`
+   returns three hits and no reader: the declaration, the comment above it, and the test that
+   asserts its value. No view branches on it.
+2. **The view has enabled the tile unconditionally since GAP A (2026-05-28).**
+   `ConnectorPickerView.localFolderTile` builds a plain `NavigationLink` to
+   `LocalSourceConnectionView` with no reference to the flag. The comment above it says so:
+   *"tile is now enabled — LF.5 shipped 24h prior."* So the comment's claim that the Local
+   Folder tile is gated in v1 is false about the build that ships.
+3. **The compile flag gates something else entirely.** `ENABLE_LOCAL_FOLDER_CONNECTOR` wraps
+   the body of `UzumeEngine/Sources/Session/LocalFolderConnector.swift` — the v2 *playlist
+   connector* scaffold, never the tile — and is set in no xcconfig or `Package.swift`
+   (CA.3 already recorded this: `docs/CAPABILITY_REGISTRY/SESSION.md` §stub). The local-source
+   path that actually ships does not go through that class at all; it goes through
+   `LocalFileMenuCommands` and `NSOpenPanel`.
+
+**What pins it in place.** `UzumeAppTests/ConnectorPickerViewModelTests.swift:16-20`
+
+```swift
+@Test("localFolderEnabled is false by default (v1)")
+func localFolderEnabledIsFalse() {
+    let vm = ConnectorPickerViewModel()
+    #expect(vm.localFolderEnabled == false)
+}
+```
+
+The test passes and will keep passing; it asserts a constant no product code reads. Removing
+the property means removing this test in the same commit.
+
+**Fix when picked up.** Delete the property, the test, and the line-8 comment together, and
+decide `LocalFolderConnector.swift`'s fate at the same time — that is the still-open
+**CA.3-FU-2**, blocked on Matt's delete-vs-keep call. The two are the same question asked at
+two layers, and answering one without the other leaves the other still claiming a gate.
+
+---
+
 ### BUG-106 — FIXED (BUG106.1): the ML dispatch gate compared against a hardcoded 14/16 ms, so at 4K it could never open (2026-08-26)
 
 **Status: fixed 2026-08-26, pending one live 4K confirmation.** Matt chose **(a) stems on time**
