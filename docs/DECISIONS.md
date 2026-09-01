@@ -123,6 +123,8 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-213 | Accepted — executed (RECON.14, 2026-08-25) | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
 | D-232 | Accepted | **The design system reaches the app as a VENDORED copy, and Uzume is always dark (DS.1, 2026-09-01, Matt chose A).** [D-228] makes `uzume-site` the design-system source of truth, but the app may not take a package dependency on it: a fresh clone and CI would then need a second repo present, and the app is the thing that has to build. So `UzumeApp/DesignSystem/UzumeTokens.swift` is a byte-identical copy of `uzume-site@03d5478`'s token file under a provenance header (repo, path, commit, SHA-256), and `Scripts/check_design_token_drift.sh` is the cost made visible: it verifies the vendored body against its recorded hash always, and against the upstream file when a sibling checkout is present — `SKIP`/0 when it is not. **The price is a manual re-sync**, accepted because tokens change on the order of once per design increment and a silent divergence now fails a script instead of being discovered in a screenshot. **App-only roles never go in the vendored file** — they live in `UzumeTokens+App.swift`, each commenting the `--color-*` name it was transcribed from, so any app colour greps back to a line of `tokens.css`. **Uzume is always dark:** every screen keeps the near-black canvas whatever macOS is set to, so the engine's output is the only bright thing in the frame and the ≥4.5:1 overlay measurement stays valid against one appearance. That diverges from upstream — the Swift package builds on adaptive AppKit system colours and `tokens.css` publishes a full light palette — so the app pins its roles to the DARK block and the app root sets `.preferredColorScheme(.dark)`; light-appearance support is a real increment with its own review, not a side effect of a token swap. Two upstream disagreements found and recorded rather than papered over: the package's system-colour mapping resolves to **neither** palette (`.windowBackgroundColor` in dark appearance is far lighter than `--color-canvas` #0b0c10), and `UzumeRadius` (6/10/14) agrees with `--radius-*` (6/12/16) only on the smallest rung. §Rationale below. |
+| D-234 | Accepted | **One severity vocabulary: `StatusTone` maps both source enums onto the published status roles (DS.3, 2026-09-01).** Three surfaces each mapped severity to colour inline and disagreed. `StatusTone` (`info`/`success`/`warning`/`danger`) is the single answer, resolving each tone to a `--color-status-*` triple from the vendored source ([D-232]) plus one SF Symbol, dark block only. It maps *from* `ErrorSeverity` (engine-owned) and `UzumeToast.Severity` (app-owned); **neither source enum changes** — unifying them has engine reach and is not this increment. **The four placements stay four components** — `NoticeBanner`, `InlineNotice`, `PerformanceToast`, `RecoveryScreen` — because interruption, lifetime and dismissal differ; sharing the tone vocabulary is the whole of the sharing (`COMPONENTS.md` § Status placements). `RecoveryScreen` absorbed two predecessors, one of which (`FullScreenErrorView`) **had no construction site and had never shipped** (DEAD-003), so that half of the merge carried zero behavioural risk. All five accessibility identifiers keep their `preparation.*` spelling despite the renames — an identifier is a contract, not a description — and are pinned by `StatusPlacementIdentifierTests`. §Rationale below. |
+| D-235 | Accepted | **Degraded operation reads as caution, not alarm (DS.3, 2026-09-01, Matt's option A default).** `degradation` rendered yellow on the full-screen surfaces and red in toasts — one severity, two opposite readings, because two authors wrote two maps. It now maps to `warning` everywhere. The reasoning is the severity's own definition: *"Uzume is operating in degraded mode"*, explicitly not *"the session cannot continue"*. Reserving `danger` for `fatal` keeps red meaningful — a red toast raised while the visuals are still playing teaches people to ignore red. **The one visible consequence** is that the *"No audio detected."* toast goes red → yellow. If silence should shout, the fix is to reclassify `silenceExtended` as fatal, not to make all degradation red. A fifth tone between warning and danger was rejected: the design system does not publish one, and inventing palette is what [D-232]'s vendored-token discipline exists to prevent. **Discovered while implementing, and NOT settled here:** the three errors routed to the banner all carry `info`, not `warning`, so every reachable banner is now blue — correct per the severity map, larger than the increment predicted, and a question for the engine's severity assignments rather than for presentation. §Rationale below. |
 | D-233 | Accepted | **One tile component carries four source affordances (DS.2, 2026-09-01).** `ConnectorTileView` and the private `LocalSourceActionTile` encoded the same family twice — same layout, same `"Title. Subtitle."` accessible label — and differed only in hover behaviour and trailing content. They are replaced by `SourceChoice`, carrying navigation, immediate action, unavailable-with-a-reason, and unavailable-with-a-recovery-action. **The component owns no state and never constructs a `NavigationLink`**: the `.navigation` affordance draws the chevron and the consumer wraps it, so `ConnectorPickerViewModel` keeps sole ownership of `connectorPath` and the two connection wrappers keep their `@StateObject` lifetimes (CA.6-FU-3). `ConnectorType` keeps title, subtitle and symbol — product content, passed in, not absorbed. **Two deliberate behaviour changes**, both consequences of having one component instead of two: the connector tiles gain the hover treatment only the local tiles had, and the local tiles gain a VoiceOver hint only the connector tiles had (`"Opens a file chooser"`) — a blind Curator previously got guidance on the first source screen and silence on the second. The component lives in `UzumeApp/Views/Components/`, not `DesignSystem/`: that directory holds the vendored token source, and a component authored here is app-owned until `uzume-site` adopts it ([D-228]). §Rationale below. |
 | D-231 | Accepted | **Runtime string identity completes the rename: persisted keys migrate, shader/preset prose sweeps (RN.6, 2026-09-01).** Closes the last two of [D-227]'s four deferred surfaces. **(1) Persisted `UserDefaults` keys** — all 11 (`phosphene.settings.*` ×8, `phosphene.lf.recents`, `phosphene.onboarding.photosensitivityAcknowledged`, `phosphene.cache.localFile.maxBytes`) become `uzume.*`, each paired with a `SettingsMigrator` entry **in the same commit**, because a rename without a migration silently resets every setting on the first post-rename launch — the exact failure RN.2 refused to ship. The pre-scheme U.6 key is retargeted straight at its `uzume.*` destination so no entry depends on another running first. **(2) Shader comments + preset sidecars** — 22 `.metal` comment hits and 5 `.json` descriptions, all prose, zero code: verified by grepping every changed `.metal` line for a comment marker and by the preset **golden-hash regression suite passing unchanged**, which is the real proof that rendering did not move. RN.2's "do not edit shaders or presets" constraint was scoped to that increment; this one opens under the `preset-session` skill. §Rationale below. |
 | D-230 | Accepted | **On-disk output paths renamed to `uzume_*`; code and data moved together (RN.5, 2026-08-31, Matt's go).** RN.2 deferred these as user-visible. Renamed: `~/Documents/phosphene_sessions/` → `uzume_sessions/` (5.7 GB, 16 captures), `~/phosphene_beatbench_fixtures/` → `uzume_beatbench_fixtures/` (946 MB, 21 fixtures), `phosphene_soak`, `phosphene_features.csv`, `phosphene_diag.log`, `/tmp/phosphene_visual`, and the ephemeral test-temp prefixes. **The code sweep and the `mv` are one operation** — doing either alone orphans 6.7 GB of captures from the tools that read them. **Not renamed:** `phosphene_grid_bpm` (a key *inside recorded BeatBench ground-truth fixtures* — renaming edits recorded evidence), `~/phosphene-ml-env` (Matt's venv), the Extreme-SSD corpus manifest, and `phosphene_section_lab`/`phosphene_session_mining` (external workspaces cited only in historical rationale) — all external artifacts this repo does not own. ~250 references in `docs/diagnostics/` and `docs/prompts/` keep the old paths: they are frozen records of past runs, the same trade [D-227] made. §Rationale below. |
@@ -4701,6 +4703,160 @@ the vendored token source and its app extension ([D-232]); a component authored
 in the app is app-owned until `uzume-site` adopts it ([D-228]). What the app
 learned building it goes upstream as a report, in
 `docs/reviews/DS.2/UPSTREAM-FINDINGS.md`.
+
+## D-234: One severity vocabulary — `StatusTone` (DS.3)
+
+**Date:** 2026-09-01 · **Increment:** DS.3 · **Status:** Accepted
+
+### The problem
+
+The app had four status placements, two severity enums, and **three independent
+severity-to-colour maps** that disagreed with each other. Read from source at the DS.3
+branch point:
+
+| Severity | Full-screen | Toast | Banner | Inline |
+|---|---|---|---|---|
+| `info` | `textPrimary` | `#64D2FF` | *severity ignored* | *severity not modelled* |
+| `warning` | system `.orange` | `#FFD60A` | *severity ignored* | *severity not modelled* |
+| `degradation` | system `.yellow` | `#FF8A75` | *severity ignored* | *severity not modelled* |
+| `fatal` | system `.red` | *no such case* | *severity ignored* | *severity not modelled* |
+
+Two conflicts. **`degradation` was yellow on the full-screen surfaces and red in
+toasts** — settled by [D-235]. **The banner ignored severity entirely**: it took an
+`error: UserFacingError` and never read `.severity`, rendering a hard-coded amber fill
+with near-black text whatever went wrong.
+
+### The decision
+
+`UzumeApp/Views/Components/StatusTone.swift` is the single place a severity becomes a
+presentation. Four tones matching the roles `tokens.css` publishes — `info`, `success`,
+`warning`, `danger` — each resolving to a `--color-status-*` foreground/background/border
+triple plus one SF Symbol. Dark block only, no appearance branch ([D-232]).
+
+Exactly two mapping functions, one per source vocabulary. No view switches on a severity
+again.
+
+**Neither source enum changes.** `ErrorSeverity` is engine-owned in `Shared`;
+`UzumeToast.Severity` is app-owned and narrower (no `fatal`). `StatusTone` maps *from*
+both rather than replacing either — unifying them reaches into the engine and belongs to
+its own increment. The consequence is recorded rather than papered over: `PlaybackErrorBridge`
+folds `fatal` into `degradation` before a toast is built, so that distinction is lost
+upstream of presentation and no amount of tone work recovers it.
+
+**Every tone carries a symbol**, because `COMPONENTS.md` § Trust explanation requires that
+status colour may support but never replace text or icon.
+
+`success` has no producer — both source vocabularies describe things going wrong. It is
+carried because the published role set is four, so the first non-error status surface finds
+it existing rather than inventing it.
+
+### Four placements, not one
+
+`COMPONENTS.md` § Status placements is explicit, and DS.3 followed it: a banner that
+persists, an inline notice that clears itself after six seconds, a toast that queues three
+deep and announces itself, and a screen that blocks are four different products. They share
+tone and icon rules and nothing else.
+
+| Component | Interruption | Lifetime | Triple used |
+|---|---|---|---|
+| `RecoveryScreen` | blocks the view behind it | until an action is taken | foreground (icon) |
+| `NoticeBanner` | strip above the list | until the view model changes state | all three |
+| `InlineNotice` | inside an existing pane | 6 s auto-clear, or tap | foreground (pip) |
+| `PerformanceToast` | during a performance | queued, auto-dismiss | foreground (accent bar) |
+
+The two quiet placements take only the foreground and set it against the app canvas rather
+than the tone's own background — a pairing the published triple does not describe. Measured
+at 8.51:1 (`danger`) and 13.85:1 (`warning`); reported upstream, since it holds by luck of a
+dark canvas rather than by anything the tokens guarantee.
+
+### `RecoveryScreen` absorbed a view that had never shipped
+
+`FullScreenErrorView` and `PreparationFailureView` were near-verbatim duplicates — same
+`body`, `icon`, `textBlock`, `actions`, `headline`, and byte-identical severity switches.
+**`FullScreenErrorView` had zero construction sites** and had never appeared in a shipped
+build; its only non-doc reference outside itself was its *path*, as a string in the
+fixed-font ratchet, which meant it was being maintained for a screen no user could reach.
+Recorded as **DEAD-003**. So the merge was in truth a deletion plus a rename, and the
+surviving layout is `PreparationFailureView`'s, reached through the same
+`PreparationProgressView` `.fullScreen` branch.
+
+The census (`PHOSPHENE-COMPONENT-CENSUS.md` § Migration order step 3) and the app's own
+`APP_VIEWS.md:440` both describe it as active. Both are wrong; reported upstream.
+
+### Identifiers are contracts
+
+All five keep their `preparation.*` spelling even though neither carrying component is named
+for preparation any more:
+
+```
+uzume.preparation.topBanner            uzume.view.preparationFailure
+uzume.preparation.topBanner.dismiss    uzume.preparationFailure.pickPlaylist
+                                       uzume.preparationFailure.startReactive
+```
+
+An identifier is a contract with whatever drives the UI, not a description of the type that
+carries it. Pinned by `StatusPlacementIdentifierTests`; the captured accessibility rows are
+byte-identical before and after (`diff docs/reviews/DS.3/{before,after}/a11y.txt` empty).
+
+**References.** [D-232] (vendored tokens, always dark); [D-233] (DS.2, the same
+consolidate-don't-parallel discipline); [D-235] (the degradation reading); DEAD-002 and
+DEAD-003 in `docs/QUALITY/KNOWN_ISSUES.md`.
+
+---
+
+## D-235: Degraded operation reads as caution, not alarm (DS.3)
+
+**Date:** 2026-09-01 · **Increment:** DS.3 · **Status:** Accepted (Matt's option A default)
+
+### The question
+
+Uzume has one severity called `degradation` — it still works, but something is compromised:
+stem separation failed, a preview is missing, audio has gone undetected. It rendered two
+ways. Full-screen it was yellow, the middle step between amber warning and red fatal. In a
+toast during a performance it was red, the loudest thing on screen. Same word, opposite
+readings. `StatusTone` forces one answer.
+
+### The decision
+
+`degradation` → `warning`. Amber-family everywhere; `danger` is reserved for `fatal`.
+
+The reasoning is the severity's own definition in `UserFacingError+Presentation.swift`:
+*"Uzume is operating in degraded mode"* — which is explicitly not *"the session cannot
+continue without user action"*, the definition of `fatal` sitting three lines below it. A
+dropped stem or a missing preview is Uzume saying it is coping, and the performance is still
+running.
+
+**Keeping red meaningful is the real argument.** A red toast that appears while the visuals
+are still playing teaches people that red does not mean stop. Spending `danger` on states
+that do not require action devalues it for the two that do — network gone, every track failed.
+
+**The cost, stated honestly:** the *"No audio detected."* toast becomes less alarming. If
+silence should shout, that argues for reclassifying `silenceExtended` as `fatal` — a change
+to which severity an error *has* — not for making every degradation red.
+
+### Rejected: a fifth tone
+
+Honest to the distinction, but the design system publishes four status roles and the app
+would be inventing palette — exactly what [D-232]'s vendored-token discipline exists to
+prevent. A fifth colour is a design-system change that starts in `uzume-site`, not a colour
+the app mixes for itself.
+
+### Found while implementing, and deliberately not settled here
+
+Giving the banner a real tone exposed something the increment did not predict. The three
+errors routed to the banner — `previewRateLimited`, `preparationSlowOnFirstTrack`,
+`preparationTotalTimeout` — are named in `presentationMode` but in **no arm of `severity`**,
+so all three fall through to its `default: return .info`. **Every banner a user can reach is
+now info blue, not warning yellow.** The old banner concealed this by being hard-coded amber.
+
+This is correct behaviour under this increment's constraints: DS.3 was barred from changing
+which severity an error has. Whether "preparing more slowly than usual" should read as
+caution rather than information is a change to `ErrorSeverity` in the engine, with its own
+increment and Matt's call. Shown at the DS.3 M7 hard stop rather than absorbed silently.
+
+**References.** [D-234] (the vocabulary this decides one value of); [D-232].
+
+---
 
 ## D-230: On-disk output paths renamed; code and data moved together (RN.5)
 
