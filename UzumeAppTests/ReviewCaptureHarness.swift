@@ -1,43 +1,72 @@
-// DS3StatusCaptureHarness — renders every status surface in every tone to PNG
-// for the DS.3 M7 review page. (DS.3 task 2 / task 9)
+// ReviewCaptureHarness — renders review surfaces to PNG for the M7 before/after pages.
 //
-// Gated on UZUME_DS3_CAPTURE=1 so a normal `xcodebuild test` never writes files.
-// Follows the HARNESS_TEMPLATES=1 pattern already used by the engine suite.
+// DS.3 built this for the status placements (every surface in every tone); DS.4
+// generalised it rather than writing a second harness, adding the preparation screen
+// in every reachable state. Gated on UZUME_CAPTURE=1 so a normal `xcodebuild test`
+// never writes files. Follows the HARNESS_TEMPLATES=1 pattern of the engine suite.
 //
-//   UZUME_DS3_CAPTURE=1 UZUME_DS3_DIR=docs/reviews/DS.3/before \
+//   TEST_RUNNER_UZUME_CAPTURE=1 TEST_RUNNER_UZUME_CAPTURE_DIR=docs/reviews/DS.4/before \
 //     xcodebuild -scheme UzumeApp -destination 'platform=macOS' test \
-//     -only-testing:UzumeAppTests/DS3StatusCaptureHarness
+//     -only-testing:UzumeAppTests/ReviewCaptureHarness
 //
-// Why rendered rather than driven through a live session: several tones are not
-// reachable from any real failure — `UzumeToast.Severity` has no `fatal`, and the
-// banner's `info`/`fatal` arms exist only after DS.3 gives it a severity at all.
-// Rendering covers the whole map; the reachability of each state is recorded in
-// CAPTURES.md next to the image.
+//   TEST_RUNNER_UZUME_CAPTURE_SET=status | preparation   (default: both)
+//   (xcodebuild forwards only TEST_RUNNER_-prefixed variables to the test host.)
+//
+// Why rendered rather than driven through a live session: several states are not
+// reachable from any real failure, and rendering covers the whole map; the
+// reachability of each state is recorded in CAPTURES.md next to the image. The
+// preparation captures drive the real `PreparationProgressView` through the same
+// publisher protocol `SessionPreparer` implements, so what is rendered is the shipped
+// view with scripted statuses — not a mock-up of it.
 
+import Combine
+import Session
+import Shared
 import SwiftUI
 import Testing
 @testable import UzumeApp
-@testable import Shared
 
-// MARK: - DS3StatusCaptureHarness
+// MARK: - ReviewCaptureHarness
 
-@Suite("DS.3 status capture harness", .enabled(if: ProcessInfo.processInfo.environment["UZUME_DS3_CAPTURE"] == "1"))
+@Suite("Review capture harness", .enabled(if: ProcessInfo.processInfo.environment["UZUME_CAPTURE"] == "1"))
 @MainActor
-struct DS3StatusCaptureHarness {
+struct ReviewCaptureHarness {
 
-    @Test("render every status surface in every tone")
-    func captureAll() throws {
+    private static var captureSet: String {
+        ProcessInfo.processInfo.environment["UZUME_CAPTURE_SET"] ?? "status,preparation"
+    }
+
+    @Test("render every status surface in every tone (DS.3)")
+    func captureStatusSurfaces() async throws {
+        guard Self.captureSet.contains("status") else { return }
         let dir = try outputDirectory()
-
         for (name, view) in Self.surfaces() {
-            try render(view, to: dir.appendingPathComponent("\(name).png"))
+            try await render(view, to: dir.appendingPathComponent("\(name).png"))
         }
-
         try Self.accessibilityRows()
             .joined(separator: "\n")
             .appending("\n")
             .write(to: dir.appendingPathComponent("a11y.txt"), atomically: true, encoding: .utf8)
     }
+
+    @Test("render the preparation screen in every reachable state (DS.4)")
+    func capturePreparationStates() async throws {
+        guard Self.captureSet.contains("preparation") else { return }
+        let dir = try outputDirectory()
+        for scenario in PreparationScenario.all {
+            for variant in PreparationCaptureVariant.all {
+                let view = variant.wrap(scenario.makeView())
+                let name = variant.filename(for: scenario.name)
+                try await render(view, to: dir.appendingPathComponent("\(name).png"))
+            }
+        }
+        try PreparationScenario.accessibilityRows()
+            .joined(separator: "\n")
+            .appending("\n")
+            .write(to: dir.appendingPathComponent("a11y-preparation.txt"), atomically: true, encoding: .utf8)
+    }
+
+    // MARK: - Status surfaces (DS.3)
 
     /// The accessibility label / identifier each status surface DECLARES, one row
     /// per surface. This is the declared contract, not literal VoiceOver speech —
@@ -55,9 +84,7 @@ struct DS3StatusCaptureHarness {
                                ("total timeout", .preparationTotalTimeout)] {
             rows.append("banner — \(label)\t\(LocalizedCopy.string(for: error))\t\(bannerIdentifier)")
         }
-        let dismissLabel = String(localized: "a11y.preparation.topBanner.dismiss.label")
-        let dismissNote = "\(bannerDismissIdentifier) — NEVER RENDERED (no construction site passes onDismiss)"
-        rows.append("banner dismiss button\t\(dismissLabel)\t\(dismissNote)")
+        rows.append(contentsOf: bannerDismissRows())
 
         for error in [UserFacingLocalFileError.unsupportedFormat, .unreadable, .m3uParseFailed, .emptyFolder] {
             rows.append("inline notice — \(error)\t\(error.localizedMessage)\t(none)")
@@ -86,7 +113,6 @@ struct DS3StatusCaptureHarness {
     static let primaryButtonIdentifier   = RecoveryScreen.pickPlaylistButtonID
     static let secondaryButtonIdentifier = RecoveryScreen.reactiveButtonID
     static let bannerIdentifier          = NoticeBanner.bannerID
-    static let bannerDismissIdentifier   = NoticeBanner.dismissID
 
     // MARK: - Surfaces
 
@@ -201,20 +227,45 @@ struct DS3StatusCaptureHarness {
 
     // MARK: - Rendering
 
-    private func render(_ view: AnyView, to url: URL) throws {
-        let renderer = ImageRenderer(content: view.preferredColorScheme(.dark))
-        renderer.scale = 2
-        guard let image = renderer.nsImage,
-              let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else {
+    /// Renders through an offscreen AppKit window rather than `ImageRenderer`: the
+    /// preparation list is a `LazyVStack` inside a `ScrollView`, and lazy containers
+    /// only lay out inside a real hosting view. The run-loop hop lets the view's
+    /// `@StateObject` view models receive their main-queue Combine deliveries.
+    private func render(_ view: AnyView, to url: URL) async throws {
+        let hosting = NSHostingView(rootView: view.preferredColorScheme(.dark))
+        let size = hosting.fittingSize
+        let bounds = CGRect(origin: .zero, size: size)
+        hosting.frame = bounds
+        let window = NSWindow(contentRect: bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(250))
+        hosting.layoutSubtreeIfNeeded()
+
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(size.width) * 2,
+            pixelsHigh: Int(size.height) * 2,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { throw CaptureError.renderFailed(url.lastPathComponent) }
+        rep.size = size
+        hosting.cacheDisplay(in: bounds, to: rep)
+        guard let png = rep.representation(using: .png, properties: [:]) else {
             throw CaptureError.renderFailed(url.lastPathComponent)
         }
         try png.write(to: url)
+        window.contentView = nil
     }
 
     private func outputDirectory() throws -> URL {
-        guard let raw = ProcessInfo.processInfo.environment["UZUME_DS3_DIR"] else {
+        guard let raw = ProcessInfo.processInfo.environment["UZUME_CAPTURE_DIR"] else {
             throw CaptureError.missingOutputDirectory
         }
         let url = raw.hasPrefix("/")

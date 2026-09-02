@@ -95,11 +95,11 @@ struct TrackPreparationRow: View {
         }
     }
 
-    private var accessibilityLabel: String {
+    var accessibilityLabel: String {
         "\(row.title) by \(row.artist). \(stageCaption)"
     }
 
-    private var accessibilityValue: String {
+    var accessibilityValue: String {
         if case .downloading(let pct) = row.status, pct >= 0 {
             return "\(Int(pct * 100)) percent"
         }

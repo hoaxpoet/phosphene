@@ -1,0 +1,16 @@
+element	declared VoiceOver label	declared value	accessibility identifier
+preparing view (container)	(no explicit label)		uzume.view.preparing
+cancel button	Cancel		uzume.preparing.cancel
+start now button	Start now with 3 tracks ready — we'll keep preparing as you listen.		uzume.preparing.startNow
+track row — queued	Hum Of Maybe by Apparat. Waiting		(none)
+track row — resolving	Hum Of Maybe by Apparat. Finding preview		(none)
+track row — downloading (indeterminate)	Hum Of Maybe by Apparat. Downloading		(none)
+track row — downloading 40%	Hum Of Maybe by Apparat. Downloading — 40%	40 percent	(none)
+track row — analyzing	Hum Of Maybe by Apparat. Separating stems		(none)
+track row — caching	Hum Of Maybe by Apparat. Caching		(none)
+track row — ready	Hum Of Maybe by Apparat. Ready		(none)
+track row — partial — stems	Hum Of Maybe by Apparat. Skipped — Stems unavailable		(none)
+track row — failed — preview	Hum Of Maybe by Apparat. Skipped — Preview not available		(none)
+header title	Preparing your session		(none)
+header subtitle	8 tracks		(none)
+progress bar	(no label — a bare Capsule, invisible to VoiceOver)		(none)
