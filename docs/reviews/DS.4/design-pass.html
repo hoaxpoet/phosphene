@@ -102,16 +102,22 @@ happening at the moment the product actually does it.</p>
 <p class="lede">The opening moves through the engine's four readiness stops, so it is properly open the
 moment you can start, whatever the playlist length. A track landing surges the light; it does not
 leave a mark.</p>
-<p class="lede"><strong>And the cave looks different for different playlists.</strong> The first attempt
-at this averaged every track's mood into one hue — which converges every playlist on the same muddy
-middle, the exact opposite of the intent. So the <em>spread</em> is the signal, not the mean, and five
-properties of the playlist drive five different things. Switch playlists below and watch the same
-mechanism produce three unmistakably different caves.</p>
+<p class="lede"><strong>The spill is always the identity's prism.</strong> The logo puts prismatic
+light through the opening, and <code>BRAND.md</code> is explicit about the two rules that follow:
+<em>“keep the ivory opening brighter than the surrounding spectrum”</em>, and <em>“do not… flatten the
+spectrum into bands.”</em> So the mouth is ivory, and what spills is a continuous kaleidoscope of the
+full published spectrum — violet, cyan, gold, ember — never a mood-coloured wash. An earlier attempt
+tinted the whole cave by average mood; besides converging every playlist on the same muddy amber, it
+was simply the wrong identity.</p>
+<p class="lede"><strong>The playlist changes how the light behaves, not what colour it is.</strong>
+Five properties of what has been heard drive five different things. Switch playlists below: the
+spectrum is constant, the character is not.</p>
 <table>
   <tr><th style="width:26%">What Uzume hears</th><th style="width:32%">What it changes</th><th>So a playlist that is…</th></tr>
-  <tr><td>Mood <em>spread</em> (circular variance)</td><td>How prismatic the fan is</td><td>…all one mood spills a single coherent colour; a mixed one spills a true spectrum</td></tr>
+  <tr><td>Mood <em>spread</em> (circular variance)</td><td>How much of the prism one fan sweeps</td><td>…varied sweeps the whole spectrum at once; uniform sweeps a narrower slice that drifts, so the full prism still passes through</td></tr>
   <tr><td>Average tempo</td><td>The rate everything moves at</td><td>…fast shimmers and flickers; slow breathes</td></tr>
   <tr><td>Spectral centroid</td><td>Edge and contrast of the shafts</td><td>…bright throws hard-edged beams; dark glows soft and diffuse</td></tr>
+  <tr><td>—</td><td><strong>Hue</strong></td><td>…never playlist-dependent. The prism is the identity and stays constant.</td></tr>
   <tr><td>Drums vs. vocals in the stem balance</td><td>Ray definition vs. smooth wash</td><td>…drum-forward is defined and ribbed; vocal-forward is a continuous wash</td></tr>
   <tr><td>Beat irregularity</td><td>How much the mouth wavers</td><td>…metronomic sits still; loose and human breathes irregularly</td></tr>
 </table>
@@ -251,6 +257,20 @@ let openNow=0.06;
 const MOTES=Array.from({length:110},()=>({a:Math.random(),r:Math.random(),
   s:.1+Math.random()*.5,w:.4+Math.random()*1.6,p:Math.random()*6.283}));
 
+// The identity's prism, continuous — never flattened into bands (BRAND.md).
+// violet → cyan → gold → ember, the four published spectrum tokens.
+const SPEC=[[127,106,255],[55,214,192],[245,200,76],[255,107,74]];
+function prism(t){
+  t=((t%1)+1)%1;
+  const f=t*(SPEC.length-1), i=Math.min(SPEC.length-2,Math.floor(f)), k=f-i;
+  const a=SPEC[i], b=SPEC[i+1];
+  return [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k];
+}
+function rgba(c,alpha,lift){
+  const L=lift||0;
+  return `rgba(${Math.round(Math.min(255,c[0]+L))},${Math.round(Math.min(255,c[1]+L))},${Math.round(Math.min(255,c[2]+L))},${alpha})`;
+}
+
 function drawA(now){
   const r=cv.getBoundingClientRect(),W=r.width,H=r.height;
   const el=(now-t0)/1000*speed, per=TOTAL_SECONDS/N;
@@ -258,28 +278,32 @@ function drawA(now){
   openNow+=(OPEN[lvl]-openNow)*0.012;
 
   // ---- the playlist's character, derived only from what has been heard ----
-  // Deliberately NOT a single averaged hue: averaging four mood quadrants
-  // converges every playlist on the same muddy middle. The SPREAD is the signal.
+  // The colour is ALWAYS the identity's full prism (BRAND.md: the complete
+  // performed-light spectrum). The playlist changes how the light BEHAVES —
+  // its rate, edge, definition, width and waver — never its hue family.
   const p=PLAYLISTS[PL];
-  let hueMean=42, hueSpread=10, cent=.4, bpm=100, energy=.5, dep=0;
+  let cent=.4, bpm=100, energy=.5, dep=0, spread01=0;
   if(heard>0){
-    let sx=0,sy=0,sc=0,sb=0,se=0; const hs=[];
+    let sx=0,sy=0,sc=0,sb=0,se=0;
     for(let i=0;i<heard;i++){const t=TR[i],a=MOOD_HUE[t.mood]*Math.PI/180;
-      sx+=Math.cos(a);sy+=Math.sin(a);sc+=t.cent;sb+=t.bpm;se+=t.energy;hs.push(MOOD_HUE[t.mood]);}
-    hueMean=(Math.atan2(sy/heard,sx/heard)*180/Math.PI+360)%360;
-    const R=Math.hypot(sx/heard,sy/heard);          // circular concentration, 0..1
-    hueSpread=8+(1-R)*120;                          // mixed moods → genuinely prismatic
+      sx+=Math.cos(a);sy+=Math.sin(a);sc+=t.cent;sb+=t.bpm;se+=t.energy;}
+    const R=Math.hypot(sx/heard,sy/heard);
+    spread01=1-R;                                   // mood variety → how much prism is swept
     cent=sc/heard; bpm=sb/heard; energy=se/heard;
     dep=1-Math.exp(-heard/7);
   }
-  const rate   = bpm/110;                           // tempo drives how fast the light moves
-  const crisp  = 0.30+cent*0.70;                    // bright playlists throw hard-edged shafts
-  const beat   = p.stems.drums;                     // drum-forward → defined rays
-  const wash   = p.stems.vocals;                    // vocal-forward → smooth continuous wash
-  const heavy  = p.stems.bass;                      // bass-heavy → broad low bloom
+  const rate   = bpm/110;
+  const crisp  = 0.30+cent*0.70;
+  const beat   = p.stems.drums;
+  const wash   = p.stems.vocals;
+  const heavy  = p.stems.bass;
   const jitter = p.irregular;
-  const L=38+cent*30, warm=0.32+dep*0.54;
-  const T=el*rate;
+  const warm   = 0.32+dep*0.54;
+  const T      = el*rate;
+  // Every playlist gets the WHOLE prism across the fan — a kaleidoscope, not a
+  // tinted wash. Variety changes how fast it churns, never how much colour there is.
+  const sweep  = 1.15+spread01*0.55;
+  const drift  = T*(0.012+spread01*0.055);
 
   const cxp=W/2, cyp=H*0.56;
   const oW=(14+openNow*W*0.20)*(1+heavy*0.16), oH=(9+openNow*H*0.15);
@@ -296,14 +320,14 @@ function drawA(now){
   for(let i=0;i<rays;i++){
     const f=i/rays;
     const wob=Math.sin(T*0.9+i*2.1)*jitter + Math.sin(T*0.21+i*1.7)*0.05;
-    const ang=-Math.PI/2+(f-0.5)*(1.5+wash*0.9)+wob*0.10;
+    const ang=-Math.PI/2+(f-0.5)*(1.9+wash*0.8)+wob*0.10;
     const len=(H*0.85+Math.sin(T*0.6+i)*H*0.16*beat)*(0.60+openNow*0.85)*(0.75+energy*0.5);
     const a=(0.085+0.150*crisp*Math.abs(Math.sin(T*0.8+i*2.4)))*warm*(0.50+openNow*0.70);
-    const hh=hueMean+(f-0.5)*hueSpread;
+    const c=prism(drift + (f-0.5)*sweep);
     const g=cx.createLinearGradient(cxp,cyp,cxp+Math.cos(ang)*len,cyp+Math.sin(ang)*len);
-    g.addColorStop(0,`hsla(${hh},${72+crisp*24}%,${L+16}%,${a})`);
-    g.addColorStop(0.42,`hsla(${hh},${68+crisp*22}%,${L}%,${a*(0.50-crisp*0.20)})`);
-    g.addColorStop(1,`hsla(${hh},70%,${L}%,0)`);
+    g.addColorStop(0,rgba(c,a*1.35,18*crisp));
+    g.addColorStop(0.38,rgba(c,a*(0.62-crisp*0.18),0));
+    g.addColorStop(1,rgba(c,0,0));
     const spread=(0.020+openNow*0.05)*(1+wash*1.1)/(0.6+beat*0.9);
     cx.fillStyle=g;cx.beginPath();cx.moveTo(cxp,cyp);
     cx.arc(cxp,cyp,len,ang-spread,ang+spread);cx.closePath();cx.fill();
@@ -313,7 +337,7 @@ function drawA(now){
     const ang=-Math.PI/2+(m.a*2.1-1.05);
     const d=((m.r+T*m.s*0.045)%1), dist=d*H*.62*(.5+openNow*.7);
     const x=cxp+Math.cos(ang)*dist+Math.sin(T*.3+m.p)*12, y=cyp+Math.sin(ang)*dist;
-    cx.fillStyle=`hsla(${hueMean+(m.p-3)*hueSpread*0.18},80%,86%,${(1-d)*0.28*warm})`;
+    cx.fillStyle=rgba(prism(drift+(m.a-0.5)*sweep),(1-d)*0.30*warm,90);
     cx.fillRect(x,y,m.w,m.w);
   });
 
@@ -327,24 +351,30 @@ function drawA(now){
     i?cx.lineTo(x,y):cx.moveTo(x,y);
   }
   cx.closePath();
+  // "Keep the ivory opening brighter than the surrounding spectrum." (BRAND.md)
   const mg=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(oW,oH)*1.05);
-  mg.addColorStop(0,`hsla(${hueMean},92%,${Math.min(96,L+50)}%,${0.80+warm*0.20})`);
-  mg.addColorStop(0.42,`hsla(${hueMean},94%,${Math.min(88,L+34)}%,${0.62*warm+0.22})`);
-  mg.addColorStop(1,`hsla(${hueMean},88%,${L+8}%,0)`);
+  mg.addColorStop(0,   `rgba(255,253,246,${0.86+warm*0.14})`);
+  mg.addColorStop(0.34,`rgba(250,246,235,${0.70*warm+0.24})`);
+  mg.addColorStop(0.72,`rgba(244,240,228,${0.26*warm})`);
+  mg.addColorStop(1,   'rgba(244,240,228,0)');
   cx.fillStyle=mg;cx.fill();
 
-  // a tight bloom hugging the opening, so the rock edge reads as lit
-  const bl=cx.createRadialGradient(cxp,cyp,Math.max(oW,oH)*0.8,cxp,cyp,Math.max(oW,oH)*2.3);
-  bl.addColorStop(0,`hsla(${hueMean},90%,${L+22}%,${0.20*warm})`);
-  bl.addColorStop(1,`hsla(${hueMean},88%,${L}%,0)`);
-  cx.fillStyle=bl;cx.fillRect(0,0,W,H);
+  // prismatic bloom hugging the opening, so the rock edge reads as lit by the spectrum
+  for(let b=0;b<3;b++){
+    const c=prism(drift+ (b/3-0.5)*sweep*0.8);
+    const bl=cx.createRadialGradient(cxp,cyp,Math.max(oW,oH)*0.85,cxp,cyp,Math.max(oW,oH)*(1.9+b*0.5));
+    bl.addColorStop(0,rgba(c,0.13*warm,20));
+    bl.addColorStop(1,rgba(c,0,0));
+    cx.fillStyle=bl;cx.fillRect(0,0,W,H);
+  }
 
   const since=heardF-heard;
   if(heard>0&&heard<N&&since<0.16){
     const q=1-since/0.16;
+    const c=prism(drift+((heard*0.37)%1-0.5)*sweep);
     const bg=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(oW,oH)*2.6);
-    bg.addColorStop(0,`hsla(${MOOD_HUE[TR[heard].mood]},96%,80%,${0.26*q})`);
-    bg.addColorStop(1,`hsla(${hueMean},90%,60%,0)`);
+    bg.addColorStop(0,rgba(c,0.26*q,110));
+    bg.addColorStop(1,rgba(c,0,0));
     cx.fillStyle=bg;cx.fillRect(0,0,W,H);
   }
 
@@ -360,7 +390,7 @@ function drawA(now){
   const rem=Math.max(0,Math.round((N-heardF)*per));
   cx.fillText(`${heard} of ${N} heard`+(rem?`  ·  about ${rem>=60?Math.round(rem/60)+' min':rem+'s'} left`:''),W-18,26);
   cx.textAlign='left';cx.fillStyle='#6f747e';cx.font='12px ui-monospace,Menlo,monospace';
-  cx.fillText(`${p.name}  ·  ${Math.round(bpm)} BPM avg  ·  spread ${Math.round(hueSpread)}°`,18,H-14);
+  cx.fillText(`${p.name}  ·  ${Math.round(bpm)} BPM avg  ·  prism sweep ${(sweep*100|0)}%`,18,H-14);
   requestAnimationFrame(drawA);
 }
 fit();requestAnimationFrame(drawA);

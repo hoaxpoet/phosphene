@@ -16,6 +16,9 @@ contract; the HTML is the look.
 
 > "It would be lovely if the preparation looked different based on the playlist content."
 
+> "Consider the logo, which has a prism of color. I think we want a kaleidoscope of color
+> spilling out of the opening, not different moods of color."
+
 > "Consider that it could take 3-5 minutes to prepare a playlist from end to end. This is a
 > substantial wait, so the solution needs to be suitably appropriate."
 
@@ -35,6 +38,9 @@ Recorded because each failed for a reason worth not repeating.
 3. **A single averaged hue for the spill.** Averaging mood quadrants in circular space
    converges *every* playlist on the same muddy amber — the exact opposite of "looks
    different based on the playlist content".
+4. **Colouring the cave by mood at all.** Even fixed, a mood-tinted wash is the wrong
+   identity. The logo puts a *prism* through the opening; the spill is a kaleidoscope of the
+   full published spectrum, always.
 
 The surviving design is Matt's: **one opening, and the light spilling out of it carries the
 playlist's character.**
@@ -92,21 +98,34 @@ makes it scale-free. A track landing *surges* the light; it does not leave a mar
 (`preparing → readyForFirstTracks → partiallyPlanned → fullyPrepared`). Three ready tracks
 opens it properly at any playlist length, because that is when the user really can start.
 
-## The cave looks different for different playlists
+## The colour is the identity's prism, and it never varies
 
-The spread is the signal, never the mean. Five properties of what has been heard drive five
-different things, so the same mechanism produces unmistakably different images:
+`BRAND.md` gives two rules that settle this completely:
+
+> "Keep the ivory opening brighter than the surrounding spectrum."
+
+> "Do not recolor, sharpen, add type or glow, **flatten the spectrum into bands**, or place the
+> icon over photography."
+
+So: **the mouth is ivory**, brighter than everything around it, and what spills is a
+**continuous kaleidoscope of the full published spectrum** — violet, cyan, gold, ember — never
+banded and never tinted by content. Hue is identity, not data.
+
+## The playlist changes how the light behaves, not what colour it is
+
+Five properties of what has been heard drive five different things, so the same mechanism and
+the same spectrum produce unmistakably different images:
 
 | What Uzume hears | What it changes | So a playlist that is… |
 |---|---|---|
-| Mood **spread** (circular variance, not average) | How prismatic the fan is | …all one mood spills a single coherent colour; a mixed one spills a true spectrum |
+| Mood **spread** (circular variance, not average) | How fast the prism churns through the fan | …varied churns quickly; uniform drifts slowly. **Both sweep the whole spectrum** — variety never buys more colour |
 | Average tempo | The rate everything moves at | …fast shimmers; slow breathes |
 | `spectralCentroidAvg` | Edge and contrast of the shafts | …bright throws hard-edged beams; dark glows soft and diffuse |
 | Drums vs. vocals in `stemEnergyBalance` | Ray definition vs. smooth wash | …drum-forward is ribbed and defined; vocal-forward is a continuous wash |
 | `beatIrregular` | How much the mouth wavers | …metronomic sits still; loose and human breathes |
 
-Verified in the mock: late-night jazz renders a soft cyan diffuse wash; peak-time techno a hot
-amber with hard-edged shafts. These are starting mappings, not a specification to defend —
+Verified in the mock: late-night jazz renders a slow, soft, diffuse spill; peak-time techno a
+fast, hard-edged, ribbed one — both in the same full prism. These are starting mappings, not a specification to defend —
 what matters is that **every visual property derives from what Uzume heard**, and that the
 image becomes *more specific* as more is heard, not merely brighter.
 
