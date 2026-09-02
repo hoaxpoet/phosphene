@@ -139,6 +139,7 @@ spectrum is constant, the character is not.</p>
   <tr><td>Average tempo</td><td>The rate everything moves at</td><td>…fast shimmers and flickers; slow breathes</td></tr>
   <tr><td>Spectral centroid</td><td>Edge and contrast of the shafts</td><td>…bright throws hard-edged beams; dark glows soft and diffuse</td></tr>
   <tr><td>—</td><td><strong>Hue</strong></td><td>…never playlist-dependent. The prism is the identity and stays constant.</td></tr>
+  <tr><td>How far the aperture has opened</td><td>Vibrancy of the whole spill</td><td>…barely cracked glimmers pale and ivory-ish; wide open saturates past full chroma. The colour arrives <em>with</em> the light.</td></tr>
   <tr><td>Drums vs. vocals in the stem balance</td><td>Ray definition vs. smooth wash</td><td>…drum-forward is defined and ribbed; vocal-forward is a continuous wash</td></tr>
   <tr><td>Beat irregularity</td><td>How much the mouth wavers</td><td>…metronomic sits still; loose and human breathes irregularly</td></tr>
 </table>
@@ -291,11 +292,16 @@ const MOTES=Array.from({length:110},()=>({a:Math.random(),r:Math.random(),
 // The identity's prism, continuous — never flattened into bands (BRAND.md).
 // violet → cyan → gold → ember, the four published spectrum tokens.
 const SPEC=[[127,106,255],[55,214,192],[245,200,76],[255,107,74]];
-function prism(t){
+function prism(t,vib){
   t=((t%1)+1)%1;
   const f=t*(SPEC.length-1), i=Math.min(SPEC.length-2,Math.floor(f)), k=f-i;
   const a=SPEC[i], b=SPEC[i+1];
-  return [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k];
+  const c=[a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k];
+  if(vib===undefined) return c;
+  // A sliver of light is barely coloured; a wide opening is saturated past full.
+  // Rotate each channel around the colour's own luminance.
+  const L=0.2126*c[0]+0.7152*c[1]+0.0722*c[2];
+  return [L+(c[0]-L)*vib, L+(c[1]-L)*vib, L+(c[2]-L)*vib];
 }
 function rgba(c,alpha,lift){
   const L=lift||0;
@@ -339,6 +345,9 @@ function drawFrame(now){
   const T      = el*rate;
   // Every playlist gets the WHOLE prism across the fan — a kaleidoscope, not a
   // tinted wash. Variety changes how fast it churns, never how much colour there is.
+  // Matt: the colours get more vibrant as the aperture expands. Nearly shut, the
+  // spill is a pale ivory-ish glimmer; wide open it is fully saturated prism.
+  const vib    = 0.26+Math.min(1,openNow)*1.02;
   const sweep  = 1.15+spread01*0.55;
   const drift  = T*(0.012+spread01*0.055);
 
@@ -364,8 +373,8 @@ function drawFrame(now){
     const lenVar=0.62+0.38*(0.5+0.5*Math.sin(f*TAU*3+T*0.5))*(0.5+beat*0.9);
     const len=(Math.max(W,H)*0.72*lenVar+Math.sin(T*0.6+i)*H*0.10*beat)
               *(0.55+openNow*0.80)*(0.75+energy*0.5);
-    const a=(0.085+0.150*crisp*Math.abs(Math.sin(T*0.8+i*2.4)))*warm*(0.50+openNow*0.70)*Math.min(1,openNow*14);
-    const c=prism(drift + f*sweep);
+    const a=(0.085+0.150*crisp*Math.abs(Math.sin(T*0.8+i*2.4)))*warm*(0.38+openNow*1.05)*Math.min(1,openNow*14);
+    const c=prism(drift + f*sweep, vib);
     const g=cx.createLinearGradient(cxp,cyp,cxp+Math.cos(ang)*len,cyp+Math.sin(ang)*len);
     g.addColorStop(0,rgba(c,a*1.35,18*crisp));
     g.addColorStop(0.38,rgba(c,a*(0.62-crisp*0.18),0));
@@ -379,7 +388,7 @@ function drawFrame(now){
     const ang=m.a*Math.PI*2 + T*0.02;
     const d=((m.r+T*m.s*0.045)%1), dist=d*H*.62*(.5+openNow*.7);
     const x=cxp+Math.cos(ang)*dist+Math.sin(T*.3+m.p)*12, y=cyp+Math.sin(ang)*dist;
-    cx.fillStyle=rgba(prism(drift+(m.a-0.5)*sweep),(1-d)*0.30*warm*Math.min(1,openNow*14),90);
+    cx.fillStyle=rgba(prism(drift+(m.a-0.5)*sweep, vib),(1-d)*0.30*warm*Math.min(1,openNow*14),90);
     cx.fillRect(x,y,m.w,m.w);
   });
 
@@ -403,7 +412,7 @@ function drawFrame(now){
 
   // prismatic bloom hugging the opening, so the rock edge reads as lit by the spectrum
   for(let b=0;b<3;b++){
-    const c=prism(drift+ (b/3-0.5)*sweep*0.8);
+    const c=prism(drift+ (b/3-0.5)*sweep*0.8, vib);
     const bl=cx.createRadialGradient(cxp,cyp,Math.max(oW,oH)*0.85,cxp,cyp,Math.max(oW,oH)*(1.9+b*0.5));
     bl.addColorStop(0,rgba(c,0.13*warm,20));
     bl.addColorStop(1,rgba(c,0,0));
@@ -413,7 +422,7 @@ function drawFrame(now){
   const since=heardF-heard;
   if(heard>0&&heard<N&&since<0.16){
     const q=1-since/0.16;
-    const c=prism(drift+((heard*0.37)%1-0.5)*sweep);
+    const c=prism(drift+((heard*0.37)%1-0.5)*sweep, vib);
     const bg=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(oW,oH)*2.6);
     bg.addColorStop(0,rgba(c,0.26*q,110));
     bg.addColorStop(1,rgba(c,0,0));

@@ -101,6 +101,10 @@ from a pinwheel size to a larger opening."*
 - **The light spills in every direction.** An opening radiates; it is not a spotlight. An
   earlier build fanned the shafts upward only, which read as a lamp rather than a cave mouth.
   The prism sweeps the full circle, so the burst is a kaleidoscope on every side.
+- **The colour arrives with the light.** Vibrancy ramps with the aperture: barely cracked, the
+  spill is a pale ivory-ish glimmer with almost no chroma; wide open it saturates past full.
+  Each channel rotates around its own luminance, so the prism's hues never shift — only their
+  intensity. This is what makes the end of a four-minute wait feel like an arrival.
 - **From there it grows** through the engine's four readiness stops
   (`preparing → readyForFirstTracks → partiallyPlanned → fullyPrepared`), so it is properly
   open the moment the listener can start, at any playlist length.
