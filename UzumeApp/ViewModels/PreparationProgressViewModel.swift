@@ -62,6 +62,17 @@ final class PreparationProgressViewModel: ObservableObject {
     /// Whether to show the cancel-confirmation dialog (≥ 1 track is .ready).
     @Published var showCancelConfirmation = false
 
+    /// What Uzume heard, per track that has reached `.ready` (DS.4).
+    @Published private(set) var profiles: [TrackIdentity: TrackProfile] = [:]
+
+    /// The engine's readiness stop — the aperture's four sizes (DS.4).
+    @Published private(set) var readinessLevel: ProgressiveReadinessLevel = .preparing
+
+    /// Profiles of heard tracks in playlist order — the material the cave is made of.
+    var heardProfiles: [TrackProfile] {
+        trackList.compactMap { profiles[$0] }
+    }
+
     // MARK: - Private State
 
     private let publisher: any PreparationProgressPublishing
@@ -100,9 +111,17 @@ final class PreparationProgressViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        publisher.trackProfilesPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] profiles in
+                self?.profiles = profiles
+            }
+            .store(in: &cancellables)
+
         progressiveReadinessPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] level in
+                self?.readinessLevel = level
                 self?.canStartNow = level >= .readyForFirstTracks
             }
             .store(in: &cancellables)

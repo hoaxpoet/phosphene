@@ -35,6 +35,11 @@ struct DynamicTypeRegressionTests {
         "UzumeApp/Views/Components/NoticeBanner.swift",
         "UzumeApp/Views/Components/RecoveryScreen.swift",
         "UzumeApp/Views/Components/StatusTone.swift",
+        "UzumeApp/Views/Components/PreparationAperture.swift",
+        "UzumeApp/Views/Components/ApertureScene.swift",
+        "UzumeApp/Views/Components/PreparationTrackRow.swift",
+        "UzumeApp/Views/Components/PreparationStatusIndicator.swift",
+        "UzumeApp/Views/Preparation/PreparationProgressView.swift",
     ]
 
     private func projectRoot(file: StaticString = #filePath) throws -> URL {

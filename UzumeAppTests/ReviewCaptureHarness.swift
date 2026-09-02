@@ -261,7 +261,10 @@ struct ReviewCaptureHarness {
             throw CaptureError.renderFailed(url.lastPathComponent)
         }
         try png.write(to: url)
+        // Tear the window down: a captured view that keeps animating (the cave's
+        // TimelineView) would otherwise starve every later test in this process.
         window.contentView = nil
+        window.close()
     }
 
     private func outputDirectory() throws -> URL {
