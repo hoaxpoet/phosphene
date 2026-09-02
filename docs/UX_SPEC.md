@@ -218,8 +218,18 @@ Uzume's design bet: Curators will wait up to 2 minutes for large playlists if Uz
 
 **The wait is the overture, not a progress bar.** Matt's bar for this screen: *"i want people to
 feel entertained and excited during preparation."* There is no header and no progress bar. The
-listener chooses one of two views (Settings → Visuals → "While a session prepares",
-`uzume.settings.visuals.preparationView`; changeable at any time, including mid-preparation):
+listener chooses one of two views (`uzume.settings.visuals.preparationView`, default mysterious),
+changeable at any time including mid-preparation, two ways: Settings → Visuals → "While a session
+prepares" when Settings is reachable, and — DS.4a, Matt's live-feedback correction after M7 — a
+**"Show track info" / "Hide track info"** button in the bottom bar, because Settings itself is
+*not* reachable while `.preparing`: the gear that opens it lives in the playback chrome, which
+does not exist yet at this state. The button is named for the destination, not the current mode
+(`preparation.toggle_track_info.show` / `.hide`) — deliberately, after three rounds of mode-name
+labels (`Mysterious`/`Detailed`, `Simple`/`Detailed`, `Ambient`/`Tracks`) all failed the same way:
+a segmented control has to name both states at once, and these two views aren't opposite settings
+of one axis, they're different experiences, so no word-pair for both sides at once read as clear.
+A single button only ever has to name the one thing tapping it does; which view you're already in
+is visible on screen either way.
 
 **Mysterious (default) — the cave.** `PreparationAperture` fills the frame: a dark cave whose
 opening is shut until the first track is heard, cracks to a pinprick, and widens through the
@@ -238,9 +248,9 @@ A minor · calm"* — with a four-bar stem balance mark. Per-row failures render
 (*"Skipped — preview unavailable"*, *"Skipped — couldn't analyze"*; §9.3).
 
 **Both views:** `NoticeBanner` above (§9.3 top-banner errors, non-blocking); `RecoveryScreen`
-replaces the whole body for the catastrophic cases; **"Start now with N tracks ready"** and
-**Cancel** are buttons below (Increment 6.1) — the cave may signal readiness, it never becomes
-the control.
+replaces the whole body for the catastrophic cases; **Cancel**, the view-toggle button, and
+(when unlocked) **"Start now with N tracks ready"** sit left to right in the bottom bar
+(Increment 6.1 for Start now) — the cave may signal readiness, it never becomes the control.
 
 **Neither view exposes upcoming content** (`COMPONENTS.md`). The line is *heard vs. will-do*:
 both may show what Uzume heard in music the listener chose; neither shows which preset a track
