@@ -29,42 +29,45 @@ struct ApertureScene {
 
     /// A token colour resolved to RGB, so it can be mixed and made more or less vibrant.
     struct RGB {
-        var red: Double, green: Double, blue: Double
+        /// sRGB channels, 0…1.
+        var red01: Double, green01: Double, blue01: Double
 
         init(_ color: Color, _ env: EnvironmentValues) {
-            let resolved = color.resolve(in: env)
-            red = Double(resolved.red); green = Double(resolved.green); blue = Double(resolved.blue)
+            let parts = color.resolve(in: env).cgColor.components ?? [0, 0, 0]
+            red01 = Double(parts.isEmpty ? 0 : parts[0])
+            green01 = Double(parts.count > 1 ? parts[1] : 0)
+            blue01 = Double(parts.count > 2 ? parts[2] : 0)
         }
 
-        init(red: Double, green: Double, blue: Double) {
-            self.red = red; self.green = green; self.blue = blue
+        init(red01: Double, green01: Double, blue01: Double) {
+            self.red01 = red01; self.green01 = green01; self.blue01 = blue01
         }
 
         func mixed(with other: RGB, _ amount: Double) -> RGB {
             RGB(
-                red: red + (other.red - red) * amount,
-                green: green + (other.green - green) * amount,
-                blue: blue + (other.blue - blue) * amount
+                red01: red01 + (other.red01 - red01) * amount,
+                green01: green01 + (other.green01 - green01) * amount,
+                blue01: blue01 + (other.blue01 - blue01) * amount
             )
         }
 
         /// Rotate each channel around the colour's own luminance: a sliver of light is
         /// barely coloured, a wide opening is saturated past full. The hue never moves.
         func vibrant(_ vibrancy: Double) -> RGB {
-            let luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+            let luma = 0.2126 * red01 + 0.7152 * green01 + 0.0722 * blue01
             return RGB(
-                red: luma + (red - luma) * vibrancy,
-                green: luma + (green - luma) * vibrancy,
-                blue: luma + (blue - luma) * vibrancy
+                red01: luma + (red01 - luma) * vibrancy,
+                green01: luma + (green01 - luma) * vibrancy,
+                blue01: luma + (blue01 - luma) * vibrancy
             )
         }
 
         func color(alpha: Double, lift: Double = 0) -> Color {
             Color(
                 .sRGB,
-                red: min(1, red + lift),
-                green: min(1, green + lift),
-                blue: min(1, blue + lift),
+                red: min(1, red01 + lift),
+                green: min(1, green01 + lift),
+                blue: min(1, blue01 + lift),
                 opacity: alpha
             )
         }

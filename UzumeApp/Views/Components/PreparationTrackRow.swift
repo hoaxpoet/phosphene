@@ -194,7 +194,7 @@ private struct StemBalanceMark: View {
         let colours = [UzumeAppColor.violet, UzumeAppColor.ember, UzumeAppColor.gold, UzumeAppColor.cyan]
         HStack(alignment: .bottom, spacing: 2) {
             ForEach(0..<4, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 1)
+                Rectangle()
                     .fill(colours[index])
                     .frame(width: 4, height: 3 + 11 * CGFloat(energies[index] / peak))
             }
