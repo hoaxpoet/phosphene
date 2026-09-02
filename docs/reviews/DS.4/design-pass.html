@@ -67,9 +67,9 @@
 
 <p class="eyebrow">DS.4 · design pass</p>
 <h1>The wait is the overture,<br>not a progress bar.</h1>
-<p class="sub">Two directions for the preparation screen, built from what the code already computes
-and what the brand already sanctions. Watch both, then pick a lane — this is the decision that
-unblocks the DS.4 prompt.</p>
+<p class="sub">Two views of the same wait, both shipping behind a listener preference: a mysterious one
+that never names a track, and a detailed one that reports what Uzume is hearing. Built from what the
+code already computes and what the brand already sanctions.</p>
 
 <h2>What preparation is today</h2>
 <p class="lede">A file-transfer dialog. Header <em>“Preparing your session”</em>, a progress bar, and a
@@ -83,7 +83,27 @@ from each 30-second preview. All of it is computed, cached, handed to the Orches
 
 <hr class="rule">
 
-<h2>Direction A — Light spills from the cave</h2>
+<h2>The two views</h2>
+<p class="lede">Both ship. A preference — <code>uzume.settings.visuals.preparationView</code> — lets the
+listener choose between them, and the choice is theirs to change at any time. They are not
+alternatives to pick between here; they are two legitimate ways to spend the same wait.</p>
+<div class="controls" style="margin:0 0 16px">
+  <button id="vMys" onclick="setView('mysterious')">Mysterious</button>
+  <button id="vDet" class="ghost" onclick="setView('detailed')">Detailed</button>
+  <span class="note">The same preparation, two postures.</span>
+</div>
+<script>
+function setView(v){
+  const mys = v==='mysterious';
+  document.getElementById('secA').hidden = !mys;
+  document.getElementById('secB').hidden = mys;
+  document.getElementById('vMys').className = mys ? '' : 'ghost';
+  document.getElementById('vDet').className = mys ? 'ghost' : '';
+}
+</script>
+
+<div id="secA">
+<h3 style="font-size:22px;margin:0 0 6px">Mysterious — light spills from the cave</h3>
 <p class="lede">The brand identity, made literal and made functional. <em>“Two shadows nearly meet,
 leaving a tiny irregular opening through which prismatic light enters the dark. Darkness is the
 condition, the opening is the event, and colour is the consequence.”</em></p>
@@ -99,9 +119,10 @@ darkens when Amaterasu withdraws into the heavenly rock-cave. Omoikane <strong>p
 Ame-no-Uzume performs… Amaterasu looks out, and light returns.”</em> <strong>“A plan is prepared” is
 this screen.</strong> The cave widening while the plan comes together is the myth's decisive change,
 happening at the moment the product actually does it.</p>
-<p class="lede">The opening moves through the engine's four readiness stops, so it is properly open the
-moment you can start, whatever the playlist length. A track landing surges the light; it does not
-leave a mark.</p>
+<p class="lede"><strong>It starts closed.</strong> At rest the cave is shut and nothing spills — the
+frame is genuinely dark. The first track heard cracks it to a pinprick, and from there it grows
+through the engine's four readiness stops, so it is properly open the moment you can start, whatever
+the playlist length. A track landing surges the light; it does not leave a mark.</p>
 <p class="lede"><strong>The spill is always the identity's prism.</strong> The logo puts prismatic
 light through the opening, and <code>BRAND.md</code> is explicit about the two rules that follow:
 <em>“keep the ivory opening brighter than the surrounding spectrum”</em>, and <em>“do not… flatten the
@@ -132,9 +153,10 @@ spectrum is constant, the character is not.</p>
   <span class="note">Paced at the real duration — four minutes for forty tracks. Use 8× / 24× to skim; watch at 1× to judge whether it holds.</span>
 </div>
 
-<hr class="rule">
+</div>
 
-<h2>Direction B — Uzume is listening</h2>
+<div id="secB" hidden>
+<h3 style="font-size:22px;margin:0 0 6px">Detailed — Uzume is listening</h3>
 <p class="lede">Same information, opposite posture. The list stays, but stops reporting machinery and
 starts reporting <em>discoveries</em>. As the analysis cursor reaches each track it says what it just
 heard — 174 BPM, D♭ major, brushed drums leading. The wait becomes a readout of your own playlist
@@ -148,6 +170,8 @@ that you did not know you wanted.</p>
 <div class="controls">
   <button onclick="restartB()">Replay</button>
   <span class="note">Metadata appears in the order the pipeline actually derives it: stems → MIR → beat grid.</span>
+</div>
+
 </div>
 
 <hr class="rule">
@@ -171,21 +195,22 @@ off the table.</p>
       <td><span class="pill yes">allowed</span> Session state, not content. Already shipped.</td></tr>
 </table>
 
-<h2>What each direction costs</h2>
+<h2>What each view offers</h2>
 <div class="grid2">
   <div>
-    <h3 style="font-size:15px;margin:0 0 6px">A — the opening</h3>
+    <h3 style="font-size:15px;margin:0 0 6px">Mysterious</h3>
     <p class="note"><strong>Shows off your music.</strong> Your playlist becomes light. Anticipation
     builds structurally: the aperture is visibly approaching a threshold.<br><br>
-    <strong>Risk:</strong> abstract. If someone wants to know what is happening, it does not say. It
-    could read as a fancy spinner.</p>
+    <strong>The trade:</strong> it never tells you what is in the playlist. That is the point of it,
+    and it is why the other view exists.</p>
   </div>
   <div>
-    <h3 style="font-size:15px;margin:0 0 6px">B — the listening</h3>
+    <h3 style="font-size:15px;margin:0 0 6px">Detailed</h3>
     <p class="note"><strong>Shows off Uzume’s ear.</strong> This is the moment that proves Uzume is not
     a visualiser — it demonstrably understands the music.<br><br>
-    <strong>Risk:</strong> reads as a dashboard. Uzume already has a debug-overlay aesthetic to stay
-    clear of, and this is a lot of monospace during what should be a held breath.</p>
+    <strong>The trade:</strong> it spends the surprise. Someone who wants the wait to stay a held
+    breath should be on the mysterious view — which is exactly why this is a preference and not a
+    default.</p>
   </div>
 </div>
 
@@ -252,8 +277,14 @@ function setPL(k){PL=k;rebuild();restart();
 const TOTAL_SECONDS=240;
 function readiness(h,n){if(h>=n)return 3;if(h>=n*0.5)return 2;if(h>=3)return 1;return 0;}
 const LABEL=['Listening','Ready when you are','Ready when you are','Ready'];
-const OPEN=[0.06,0.30,0.52,1.0];
-let openNow=0.06;
+// Fully CLOSED at rest. The first track heard cracks it to a pinprick; from there
+// it grows through the engine's readiness stops. Nothing spills while it is shut.
+const OPEN=[0,0.30,0.52,1.0];
+let openNow=0;
+function apertureTarget(heard,lvl){
+  if(lvl>0) return OPEN[lvl];
+  return heard===0 ? 0 : Math.min(0.085, 0.014+heard*0.030);   // pinprick, then wider
+}
 const MOTES=Array.from({length:110},()=>({a:Math.random(),r:Math.random(),
   s:.1+Math.random()*.5,w:.4+Math.random()*1.6,p:Math.random()*6.283}));
 
@@ -275,7 +306,7 @@ function drawA(now){
   const r=cv.getBoundingClientRect(),W=r.width,H=r.height;
   const el=(now-t0)/1000*speed, per=TOTAL_SECONDS/N;
   const heardF=Math.min(N,el/per), heard=Math.floor(heardF), lvl=readiness(heard,N);
-  openNow+=(OPEN[lvl]-openNow)*0.012;
+  openNow+=(apertureTarget(heard,lvl)-openNow)*0.014;
 
   // ---- the playlist's character, derived only from what has been heard ----
   // The colour is ALWAYS the identity's full prism (BRAND.md: the complete
@@ -306,7 +337,7 @@ function drawA(now){
   const drift  = T*(0.012+spread01*0.055);
 
   const cxp=W/2, cyp=H*0.56;
-  const oW=(14+openNow*W*0.20)*(1+heavy*0.16), oH=(9+openNow*H*0.15);
+  const oW=(openNow*W*0.21)*(1+heavy*0.16), oH=(openNow*H*0.155);
 
   cx.globalCompositeOperation='source-over';
   cx.fillStyle='#050609';cx.fillRect(0,0,W,H);
@@ -322,7 +353,7 @@ function drawA(now){
     const wob=Math.sin(T*0.9+i*2.1)*jitter + Math.sin(T*0.21+i*1.7)*0.05;
     const ang=-Math.PI/2+(f-0.5)*(1.9+wash*0.8)+wob*0.10;
     const len=(H*0.85+Math.sin(T*0.6+i)*H*0.16*beat)*(0.60+openNow*0.85)*(0.75+energy*0.5);
-    const a=(0.085+0.150*crisp*Math.abs(Math.sin(T*0.8+i*2.4)))*warm*(0.50+openNow*0.70);
+    const a=(0.085+0.150*crisp*Math.abs(Math.sin(T*0.8+i*2.4)))*warm*(0.50+openNow*0.70)*Math.min(1,openNow*14);
     const c=prism(drift + (f-0.5)*sweep);
     const g=cx.createLinearGradient(cxp,cyp,cxp+Math.cos(ang)*len,cyp+Math.sin(ang)*len);
     g.addColorStop(0,rgba(c,a*1.35,18*crisp));
@@ -337,7 +368,7 @@ function drawA(now){
     const ang=-Math.PI/2+(m.a*2.1-1.05);
     const d=((m.r+T*m.s*0.045)%1), dist=d*H*.62*(.5+openNow*.7);
     const x=cxp+Math.cos(ang)*dist+Math.sin(T*.3+m.p)*12, y=cyp+Math.sin(ang)*dist;
-    cx.fillStyle=rgba(prism(drift+(m.a-0.5)*sweep),(1-d)*0.30*warm,90);
+    cx.fillStyle=rgba(prism(drift+(m.a-0.5)*sweep),(1-d)*0.30*warm*Math.min(1,openNow*14),90);
     cx.fillRect(x,y,m.w,m.w);
   });
 
@@ -357,7 +388,7 @@ function drawA(now){
   mg.addColorStop(0.34,`rgba(250,246,235,${0.70*warm+0.24})`);
   mg.addColorStop(0.72,`rgba(244,240,228,${0.26*warm})`);
   mg.addColorStop(1,   'rgba(244,240,228,0)');
-  cx.fillStyle=mg;cx.fill();
+  if(openNow>0.0015){cx.fillStyle=mg;cx.fill();}
 
   // prismatic bloom hugging the opening, so the rock edge reads as lit by the spectrum
   for(let b=0;b<3;b++){

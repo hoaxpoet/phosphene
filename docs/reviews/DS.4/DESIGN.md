@@ -19,6 +19,14 @@ contract; the HTML is the look.
 > "Consider the logo, which has a prism of color. I think we want a kaleidoscope of color
 > spilling out of the opening, not different moods of color."
 
+> "I think we will also want to provide users with the option to toggle between the mysterious
+> view, where the contents of the playlist are never revealed to the listener/viewer, and a
+> detailed view, like direction B, where there is detail about the individual tracks in the
+> playlist."
+
+> "For the mysterious view, this is an aperture, so the opening should start closed, and
+> increase from a pinwheel size to a larger opening."
+
 > "Consider that it could take 3-5 minutes to prepare a playlist from end to end. This is a
 > substantial wait, so the solution needs to be suitably appropriate."
 
@@ -56,6 +64,40 @@ Meanwhile `TrackProfile` is being filled in for every track — `bpm`, `key`, `m
 `estimatedSectionCount`. All of it computed from the 30-second preview, cached, handed to
 the Orchestrator, and **never shown to the user**. The material for an interesting wait is
 already being generated and thrown away.
+
+## Two views ship, and the listener chooses
+
+DS.4 delivers **both** postures behind a preference, not one with the other rejected:
+
+| View | What it does | Who it is for |
+|---|---|---|
+| **Mysterious** (default) | The cave. Never names a track, never shows a number about the music. | Someone who wants the wait to stay a held breath. |
+| **Detailed** | The list, reporting what Uzume just heard — tempo, key, mood, stem balance, per track. | Someone who wants to know what is happening, and enjoys the readout. |
+
+**The setting.** `uzume.settings.visuals.preparationView`, following the established
+`SettingsStore` pattern (`@Published` + `didSet` encode, key scheme
+`uzume.settings.<group>.<key>`). Changeable at any time, including mid-preparation. It is a new
+key, so no `SettingsMigrator` entry is required — but a **default must be chosen and stated**,
+and mysterious is it.
+
+**Why this is a preference and not a default with a debug escape.** The detailed view spends
+the surprise deliberately; the mysterious view protects it. Neither is the "advanced" one. The
+surprise-model rules below bind **both** views identically — even Detailed may only show what
+Uzume *heard*, never what it will *do*.
+
+## The aperture starts closed
+
+Matt's instruction: *"this is an aperture, so the opening should start closed, and increase
+from a pinwheel size to a larger opening."*
+
+- **At rest the cave is shut.** Nothing spills. The frame is genuinely dark, not dimly lit.
+- **The first track heard cracks it to a pinprick** — a bright point with the faintest prism
+  just escaping.
+- **From there it grows** through the engine's four readiness stops
+  (`preparing → readyForFirstTracks → partiallyPlanned → fullyPrepared`), so it is properly
+  open the moment the listener can start, at any playlist length.
+
+**One open question, recorded not decided** — see §Open questions.
 
 ## The duration is the design constraint
 
@@ -195,3 +237,16 @@ exactly what this design is not.
 - Whether a track's detail (its tempo, key, mood as text) is reachable on hover or focus.
   Worth trying, but it is direction B's idea and it is not what Matt picked.
 - Whether the opening survives into `.ready`. That is DS.5's screen.
+
+## Open questions
+
+**Is the aperture mechanical or organic?** Matt described it as "an aperture" opening "from a
+pinwheel size", which reads as a camera iris — blades, a pinwheel figure, a mechanical open.
+That is a striking image and it is his call, but it collides with `BRAND.md`, which is explicit
+that the identity is *"a play of shadow and light rather than **a pictured aperture**"*.
+
+The mock currently builds the organic reading: an irregular opening growing from a pinprick,
+with no blades. **If Matt wants the mechanical iris, `BRAND.md`'s "rather than a pictured
+aperture" line needs updating in `uzume-site` in the same breath** — otherwise the app and the
+brand source of truth disagree, which is exactly the divergence [D-228] exists to prevent.
+Resolve before the DS.4 prompt is finalised.
