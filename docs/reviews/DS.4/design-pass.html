@@ -1,0 +1,294 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DS.4 design pass — preparation</title>
+<style>
+  :root{
+    --canvas:#0b0c10; --surface:#14161c; --line:#24272f;
+    --text:#f4f6f1; --text2:#c5c9c3; --text3:#a4a8a2;
+    --violet:#7f6aff; --violet-400:#a99bff;
+    --cyan:#37d6c0; --gold:#f5c84c; --gold-400:#ffe173; --ember:#ff6b4a;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px clamp(14px,3vw,44px) 60px;background:var(--canvas);color:var(--text);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--text3);margin:0 0 24px;max-width:70ch}
+  h2{font-size:18px;margin:38px 0 6px}
+  .lede{color:var(--text3);margin:0 0 14px;max-width:74ch}
+  .stage{position:relative;background:#07080b;border:1px solid var(--line);border-radius:12px;
+         overflow:hidden;height:340px}
+  .controls{display:flex;gap:8px;align-items:center;margin:12px 0 0;flex-wrap:wrap}
+  button{font:inherit;font-size:13px;padding:6px 13px;border-radius:7px;cursor:pointer;
+         background:var(--violet);color:#0b0c10;border:0;font-weight:600}
+  button.ghost{background:transparent;color:var(--text3);border:1px solid var(--line)}
+  .note{font-size:13px;color:var(--text3);max-width:74ch}
+  .rule{border:0;border-top:1px solid var(--line);margin:34px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:var(--surface)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  .pill{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+        padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--text3)}
+  .yes{color:var(--cyan);border-color:#1f6f63}
+  .no{color:var(--ember);border-color:#7a3325}
+
+  /* ---------- A: the opening ---------- */
+  #openingCanvas{width:100%;height:100%;display:block}
+
+  /* ---------- B: the listening list ---------- */
+  .listWrap{padding:16px 18px;height:100%;overflow:hidden;display:flex;flex-direction:column}
+  .lHead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+  .lTitle{font-size:15px;font-weight:600}
+  .lCount{font-size:12px;color:var(--text3)}
+  .row{display:flex;align-items:center;gap:11px;padding:7px 0;border-bottom:1px solid #1a1d24;
+       opacity:.35;transition:opacity .5s}
+  .row.seen{opacity:1}
+  .dot{width:7px;height:7px;border-radius:50%;background:#2b2f38;flex:none;transition:background .4s}
+  .rName{font-size:13.5px;min-width:150px;color:var(--text2)}
+  .row.seen .rName{color:var(--text)}
+  .meta{display:flex;gap:9px;align-items:center;font-size:12px;color:var(--text3);
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace;opacity:0;transition:opacity .6s}
+  .meta.on{opacity:1}
+  .stems{display:flex;gap:2px;align-items:flex-end;height:13px;margin-left:auto}
+  .stems i{width:4px;border-radius:1px;display:block}
+  .stage-label{font-size:12px;color:var(--gold-400);font-family:ui-monospace,Menlo,monospace}
+</style>
+
+<h1>DS.4 design pass — what the wait should feel like</h1>
+<p class="sub">Two directions for the preparation screen, built from what the code already computes
+and what the brand already sanctions. Watch both, then pick a lane — this is the decision that
+unblocks the DS.4 prompt.</p>
+
+<h2>What preparation is today</h2>
+<p class="lede">A file-transfer dialog. Header <em>“Preparing your session”</em>, a progress bar, and a
+list of rows reading <code>Waiting</code> → <code>Finding preview</code> → <code>Downloading</code> →
+<code>Separating stems</code> → <code>Caching</code> → <code>Ready</code>. It reports on machinery.
+Nothing on screen suggests a performance is about to begin.</p>
+<p class="lede"><strong>Meanwhile, out of sight, Uzume is listening to every track</strong> — deriving
+tempo, musical key, emotional mood, brightness, section count, and a full four-stem energy balance
+from each 30-second preview. All of it is computed, cached, handed to the Orchestrator, and
+<strong>never shown to you</strong>.</p>
+
+<hr class="rule">
+
+<h2>Direction A — The opening widens</h2>
+<p class="lede">The brand identity, made literal and made functional. <em>“Two shadows nearly meet,
+leaving a tiny irregular opening through which prismatic light enters the dark. Darkness is the
+condition, the opening is the event, and colour is the consequence.”</em> Every track Uzume finishes
+hearing sends one shaft of light through the seam, coloured by what it heard. <strong>Progress is the
+aperture</strong> — there is no progress bar, because the widening opening is the progress bar.</p>
+<div class="stage"><canvas id="openingCanvas"></canvas></div>
+<div class="controls">
+  <button onclick="restart()">Replay</button>
+  <button class="ghost" onclick="toggleSpeed()" id="spd">Speed: 1×</button>
+  <span class="note">Hue = mood quadrant · height = energy · brightness = spectral centroid.</span>
+</div>
+
+<hr class="rule">
+
+<h2>Direction B — Uzume is listening</h2>
+<p class="lede">Same information, opposite posture. The list stays, but stops reporting machinery and
+starts reporting <em>discoveries</em>. As the analysis cursor reaches each track it says what it just
+heard — 174 BPM, D♭ major, brushed drums leading. The wait becomes a readout of your own playlist
+that you did not know you wanted.</p>
+<div class="stage"><div class="listWrap">
+  <div class="lHead"><span class="lTitle">Listening to your playlist</span>
+    <span class="lCount" id="lCount">0 of 8 heard</span></div>
+  <div id="rows"></div>
+  <div style="margin-top:auto;padding-top:10px" class="stage-label" id="lStage">&nbsp;</div>
+</div></div>
+<div class="controls">
+  <button onclick="restartB()">Replay</button>
+  <span class="note">Metadata appears in the order the pipeline actually derives it: stems → MIR → beat grid.</span>
+</div>
+
+<hr class="rule">
+
+<h2>The constraint that shapes both</h2>
+<p class="lede">The surprise model is absolute, and it is a design-system rule, not a preference:
+<em>“Never exposes upcoming content.”</em> The plan-preview views are already marked for removal for
+violating it. So the obvious entertainment — <em>“here’s the amazing session we planned!”</em> — is
+off the table.</p>
+<p class="lede"><strong>The line that makes both directions legal:</strong> they reveal what Uzume
+<em>heard</em> in music you already chose, never what Uzume will <em>do</em> with it.</p>
+<table>
+  <tr><th style="width:34%">Showing this</th><th>Verdict</th></tr>
+  <tr><td>Tempo, key, mood, stem balance of a track you picked</td>
+      <td><span class="pill yes">allowed</span> Analysis of known input. The brand explicitly grants the full spectrum to “meaningful metadata”.</td></tr>
+  <tr><td>Which preset each track will get</td>
+      <td><span class="pill no">forbidden</span> Upcoming choreography — the exact thing the surprise model protects.</td></tr>
+  <tr><td>The emotional arc across the session</td>
+      <td><span class="pill no">forbidden</span> Same reason; this is what `PlanPreviewView` did and why it is being removed.</td></tr>
+  <tr><td>How many tracks are ready, and that you can start</td>
+      <td><span class="pill yes">allowed</span> Session state, not content. Already shipped.</td></tr>
+</table>
+
+<h2>What each direction costs</h2>
+<div class="grid2">
+  <div>
+    <h3 style="font-size:15px;margin:0 0 6px">A — the opening</h3>
+    <p class="note"><strong>Shows off your music.</strong> Your playlist becomes light. Anticipation
+    builds structurally: the aperture is visibly approaching a threshold.<br><br>
+    <strong>Risk:</strong> abstract. If someone wants to know what is happening, it does not say. It
+    could read as a fancy spinner.</p>
+  </div>
+  <div>
+    <h3 style="font-size:15px;margin:0 0 6px">B — the listening</h3>
+    <p class="note"><strong>Shows off Uzume’s ear.</strong> This is the moment that proves Uzume is not
+    a visualiser — it demonstrably understands the music.<br><br>
+    <strong>Risk:</strong> reads as a dashboard. Uzume already has a debug-overlay aesthetic to stay
+    clear of, and this is a lot of monospace during what should be a held breath.</p>
+  </div>
+</div>
+
+<h2>The one thing both need that does not exist yet</h2>
+<p class="lede"><code>TrackPreparationStatus</code> carries <strong>only the stage</strong> —
+<code>.analyzing(stage:)</code>, <code>.ready</code>. The BPM, key, mood and stem balance are computed
+and cached but <strong>never published to the UI</strong>. Either direction needs the profile surfaced
+alongside the status. That is a small, contained engine change, and it is the real prerequisite the
+DS.4 prompt has to name.</p>
+
+<script>
+// ---------- shared fake playlist, plausible values ----------
+const TRACKS = [
+  {n:"Take Five",            bpm:174, key:"D♭ major", mood:"calm",  cent:.42, stems:[.55,.25,.05,.35]},
+  {n:"Teardrop",             bpm:78,  key:"A minor",  mood:"sad",   cent:.31, stems:[.45,.50,.60,.30]},
+  {n:"Idioteque",            bpm:141, key:"C minor",  mood:"tense", cent:.68, stems:[.70,.40,.45,.55]},
+  {n:"Nightcall",            bpm:86,  key:"E♭ minor", mood:"sad",   cent:.37, stems:[.40,.65,.50,.45]},
+  {n:"Midnight City",        bpm:105, key:"F major",  mood:"happy", cent:.72, stems:[.60,.45,.40,.70]},
+  {n:"Windowlicker",         bpm:120, key:"G minor",  mood:"tense", cent:.61, stems:[.65,.55,.30,.60]},
+  {n:"Svefn-g-englar",       bpm:72,  key:"B♭ major", mood:"calm",  cent:.28, stems:[.25,.30,.35,.65]},
+  {n:"Since I Left You",     bpm:96,  key:"A major",  mood:"happy", cent:.58, stems:[.55,.45,.50,.50]},
+];
+const MOOD_HUE = {happy:48, calm:170, tense:12, sad:258};   // gold / cyan / ember / violet
+const STEM_C   = ["#f5c84c","#7f6aff","#37d6c0","#ff6b4a"]; // drums bass vocals other
+
+// ---------- A ----------
+const cv = document.getElementById('openingCanvas');
+const cx = cv.getContext('2d');
+let t0 = performance.now(), speed = 1, shafts = [];
+function fit(){ const r = cv.getBoundingClientRect(), d = devicePixelRatio||1;
+  cv.width = r.width*d; cv.height = r.height*d; cx.setTransform(d,0,0,d,0,0); }
+addEventListener('resize', fit);
+function restart(){ t0 = performance.now(); shafts = []; }
+function toggleSpeed(){ speed = speed===1?3:1; document.getElementById('spd').textContent = 'Speed: '+speed+'×'; }
+
+function drawA(now){
+  const r = cv.getBoundingClientRect(), W = r.width, H = r.height;
+  const el = (now - t0)/1000*speed;
+  const per = 1.5, done = Math.min(TRACKS.length, Math.floor(el/per));
+  while(shafts.length < done){ const tk = TRACKS[shafts.length]; shafts.push({tk, born: el}); }
+
+  const cyY = H/2;
+  const frac = Math.min(1, done/TRACKS.length);
+  const gap  = 2 + frac*30;               // the opening widens with progress
+
+  // 1. darkness is the condition
+  cx.globalCompositeOperation = 'source-over';
+  cx.fillStyle = '#07080b'; cx.fillRect(0,0,W,H);
+
+  // 2. the two shadow masses that nearly meet — drawn as the field, faintly lit near the seam
+  const sg = cx.createLinearGradient(0, cyY-H*0.5, 0, cyY);
+  sg.addColorStop(0,'#07080b'); sg.addColorStop(1,'#0e1016');
+  cx.fillStyle = sg; cx.fillRect(0,0,W,cyY-gap/2);
+  const sg2 = cx.createLinearGradient(0, cyY, 0, cyY+H*0.5);
+  sg2.addColorStop(0,'#0e1016'); sg2.addColorStop(1,'#07080b');
+  cx.fillStyle = sg2; cx.fillRect(0,cyY+gap/2,W,H-cyY-gap/2);
+
+  // 3. colour is the consequence — light escapes the seam and fans into the dark
+  cx.globalCompositeOperation = 'lighter';
+  shafts.forEach((s,i)=>{
+    const age = Math.min(1,(el - s.born)/1.3);
+    const ease = 1-Math.pow(1-age,3);
+    const hue = MOOD_HUE[s.tk.mood];
+    const energy = s.tk.stems.reduce((a,b)=>a+b,0)/4;
+    const spread = (i - (TRACKS.length-1)/2) / Math.max(1,TRACKS.length-1);
+    const x  = W/2 + spread*W*0.62;
+    const reach = (H*0.40 + energy*H*0.30) * ease;   // how far the light throws
+    const wTop = 5 + energy*10;                       // width at the slit
+    const wEnd = 46 + energy*95;                      // width where it dies
+    const li = 44 + s.tk.cent*30;
+    const a  = 0.30*ease;
+
+    [-1,1].forEach(dir=>{
+      const g = cx.createLinearGradient(0, cyY, 0, cyY + dir*reach);
+      g.addColorStop(0,    `hsla(${hue},95%,${li}%,${a})`);
+      g.addColorStop(0.30, `hsla(${hue},92%,${li}%,${a*0.52})`);
+      g.addColorStop(1,    `hsla(${hue},85%,${li}%,0)`);
+      cx.fillStyle = g;
+      cx.beginPath();
+      cx.moveTo(x - wTop/2, cyY);
+      cx.lineTo(x + wTop/2, cyY);
+      cx.lineTo(x + wEnd/2, cyY + dir*reach);
+      cx.lineTo(x - wEnd/2, cyY + dir*reach);
+      cx.closePath(); cx.fill();
+    });
+
+    // the bright bead sitting in the opening itself
+    const bg = cx.createRadialGradient(x, cyY, 0, x, cyY, 26+energy*22);
+    bg.addColorStop(0, `hsla(${hue},98%,${Math.min(88,li+30)}%,${0.95*ease})`);
+    bg.addColorStop(0.35,`hsla(${hue},95%,${li+10}%,${0.42*ease})`);
+    bg.addColorStop(1, `hsla(${hue},90%,${li}%,0)`);
+    cx.fillStyle = bg;
+    cx.fillRect(x-52, cyY-40, 104, 80);
+  });
+
+  // 4. the seam itself — a hairline of light along the whole opening
+  const seamA = 0.10 + frac*0.22;
+  const lg = cx.createLinearGradient(0, cyY-gap/2, 0, cyY+gap/2);
+  lg.addColorStop(0,   `rgba(255,225,115,0)`);
+  lg.addColorStop(0.5, `rgba(255,225,115,${seamA})`);
+  lg.addColorStop(1,   `rgba(255,225,115,0)`);
+  cx.fillStyle = lg; cx.fillRect(0, cyY-gap/2, W, gap);
+
+  // 5. chrome: session state only, never upcoming content
+  cx.globalCompositeOperation = 'source-over';
+  cx.font = '500 13px -apple-system,system-ui,sans-serif';
+  cx.textAlign = 'left'; cx.fillStyle = '#a4a8a2';
+  cx.fillText(done >= TRACKS.length ? 'Ready' : 'Listening to your playlist', 18, 26);
+  cx.textAlign = 'right';
+  cx.fillStyle = done >= 3 ? '#37d6c0' : '#a4a8a2';
+  cx.fillText(done >= 3 ? `${done} heard · you can start whenever you like`
+                        : `${done} of ${TRACKS.length} heard`, W-18, 26);
+  requestAnimationFrame(drawA);
+}
+fit(); requestAnimationFrame(drawA);
+
+// ---------- B ----------
+const rowsEl = document.getElementById('rows');
+let bTimer = null;
+function buildB(){
+  rowsEl.innerHTML = '';
+  TRACKS.forEach(t=>{
+    const d = document.createElement('div'); d.className = 'row';
+    d.innerHTML = `<span class="dot"></span><span class="rName">${t.n}</span>
+      <span class="meta"><span>${t.bpm} BPM</span><span>·</span><span>${t.key}</span><span>·</span><span>${t.mood}</span></span>
+      <span class="stems"></span>`;
+    rowsEl.appendChild(d);
+  });
+}
+function restartB(){
+  clearInterval(bTimer); buildB();
+  const rows = [...rowsEl.children]; let i = 0;
+  const stages = ['separating stems','deriving tempo and key','finding the beat grid','caching'];
+  document.getElementById('lCount').textContent = `0 of ${TRACKS.length} heard`;
+  bTimer = setInterval(()=>{
+    if(i >= rows.length){ document.getElementById('lStage').textContent = 'Ready.'; clearInterval(bTimer); return; }
+    const r = rows[i], t = TRACKS[i];
+    r.classList.add('seen');
+    r.querySelector('.dot').style.background = `hsl(${MOOD_HUE[t.mood]},85%,60%)`;
+    document.getElementById('lStage').textContent = '▍ ' + stages[i % stages.length] + ' — ' + t.n;
+    setTimeout(()=>{
+      r.querySelector('.meta').classList.add('on');
+      const s = r.querySelector('.stems');
+      s.innerHTML = t.stems.map((v,k)=>`<i style="height:${3+v*10}px;background:${STEM_C[k]}"></i>`).join('');
+    }, 420);
+    i++;
+    document.getElementById('lCount').textContent = `${i} of ${TRACKS.length} heard`;
+  }, 900);
+}
+restartB();
+</script>
