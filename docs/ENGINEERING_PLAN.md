@@ -76,14 +76,15 @@ placements, **DS.4** `PreparationProgressView` rebuilt in place, **DS.5** `Ready
 playback chrome retokenized in place — never a parallel `CuratorControlSurface` tree,
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
-**DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** 🔨 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop.
+**DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** ✅ 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop; merged as [#188](https://github.com/hoaxpoet/uzume/pull/188) (`45b002ab`).
+**DS.4 is not prompt-ready:** it is the first DS step with a new visual idea rather than a consolidation, and needs a design pass before a prompt is written.
 
 ## Recently Completed
 
-### Increment DS.3b — the banner's three errors do not share a severity 🔨 (2026-09-01, D-237)
+### Increment DS.3b — the banner's three errors do not share a severity ✅ (2026-09-01, D-237)
 
 **Done-when:** the banner's tone reflects what the user can actually do about each error, and the
-deliberate `info` is pinned so it is not "corrected" later. **Status: code complete, green.**
+deliberate `info` is pinned so it is not "corrected" later. **Status: ✅ merged (#188).**
 
 **Matt's second call at the M7.** DS.3 gave the banner a tone for the first time and every reachable
 banner came out **info blue** — faithful to the model, wrong about the product. The mapping was not
@@ -104,11 +105,11 @@ it a tone for.
 its own taxonomy — once because a call site overrode it, once because the taxonomy had no opinion and
 a hard-coded colour filled the gap. Both were invisible until the surface was made to read the model.
 
-### Increment DS.3a — sustained silence is fatal 🔨 (2026-09-01, D-236)
+### Increment DS.3a — sustained silence is fatal ✅ (2026-09-01, D-236)
 
 **Done-when:** the *"No audio detected."* toast is red because the taxonomy says so, not because a
 call site does; `UzumeToast.Severity` mirrors `ErrorSeverity` case-for-case; no call site chooses a
-toast severity by hand. **Status: code complete, green, folded into DS.3's M7.**
+toast severity by hand. **Status: ✅ merged (#188).**
 
 **Matt's call at the DS.3 hard stop, and he was right.** D-235 turned the silence toast yellow by
 reading the model. Matt rejected it — *"Uzume ceases to function without audio"* — and checking the
@@ -133,13 +134,12 @@ limit) to 395.
 than *"Alert: …"* — a blind Curator now gets the distinction the accent bar gives a sighted one. This
 is the only change in the before/after accessibility diff; all five pinned identifiers are untouched.
 
-### Increment DS.3 — one severity vocabulary, four interruption levels 🔨 (2026-09-01, D-234/D-235)
+### Increment DS.3 — one severity vocabulary, four interruption levels ✅ (2026-09-01, D-234/D-235)
 
 **Done-when:** three severity-to-colour maps become one; the four status placements stay four
 components sharing only `StatusTone`; the five accessibility identifiers are unchanged and pinned;
 `LocalFileErrorStore.swift` contains no `View`; the two dead affordances are recorded, not fixed.
-**Status: code complete, all gates green, M7 pending Matt's review of
-`docs/reviews/DS.3/index.html`.**
+**Status: ✅ merged (#188). Matt reviewed the M7 page and called two follow-ups from it — DS.3a and DS.3b, both landed in the same PR.**
 
 **Three maps became one.** `StatusTone` (`UzumeApp/Views/Components/StatusTone.swift`) maps both
 source vocabularies — `ErrorSeverity` (engine) and `UzumeToast.Severity` (app) — onto the four
