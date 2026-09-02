@@ -77,11 +77,19 @@ enum PreparationScreenAccessibility {
         let apertureID = PreparationAperture.accessibilityID
         let one = PreparationAperture.accessibilityLabel(heard: 1, total: 8)
         let three = PreparationAperture.accessibilityLabel(heard: 3, total: 8)
+        let showInfo = String(localized: "preparation.toggle_track_info.show")
+        let hideInfo = String(localized: "preparation.toggle_track_info.hide")
+        let toggleID = PreparationProgressView.toggleTrackInfoButtonID
         return [
             "aperture (mysterious) — before start\t\(one)\t\t\(apertureID)",
             "aperture (mysterious) — can start\t\(three)\t\(canStart)\t\(apertureID)",
             "heard line (mysterious)\t\(heard)\t\t(none)",
             "failed count line (mysterious)\t\(failed) — hint: \(hint)\t\t\(PreparationProgressView.failedCountID)",
+            // DS.4a: the always-reachable way to switch views. Settings itself is
+            // not reachable while .preparing, so this button is the only path in
+            // when nothing has failed.
+            "toggle track info button (mysterious)\t\(showInfo)\t\t\(toggleID)",
+            "toggle track info button (detailed)\t\(hideInfo)\t\t\(toggleID)",
             "header title\t(removed — DS.4)\t\t(none)",
             "header subtitle\t(removed — DS.4)\t\t(none)",
             "progress bar\t(removed — DS.4)\t\t(none)",
