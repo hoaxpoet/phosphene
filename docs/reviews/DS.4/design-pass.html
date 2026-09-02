@@ -303,7 +303,13 @@ function rgba(c,alpha,lift){
 }
 
 function drawA(now){
+  try{ drawFrame(now); }catch(e){ /* one bad frame must not kill the loop */ }
+  requestAnimationFrame(drawA);
+}
+
+function drawFrame(now){
   const r=cv.getBoundingClientRect(),W=r.width,H=r.height;
+  if(W<2||H<2) return;
   const el=(now-t0)/1000*speed, per=TOTAL_SECONDS/N;
   const heardF=Math.min(N,el/per), heard=Math.floor(heardF), lvl=readiness(heard,N);
   openNow+=(apertureTarget(heard,lvl)-openNow)*0.014;
@@ -337,7 +343,8 @@ function drawA(now){
   const drift  = T*(0.012+spread01*0.055);
 
   const cxp=W/2, cyp=H*0.56;
-  const oW=(openNow*W*0.21)*(1+heavy*0.16), oH=(openNow*H*0.155);
+  const R0=Math.max(0.01, openNow*Math.min(W,H)*0.30);
+  const oW=R0*(1+heavy*0.20), oH=R0*0.82;
 
   cx.globalCompositeOperation='source-over';
   cx.fillStyle='#050609';cx.fillRect(0,0,W,H);
@@ -347,25 +354,29 @@ function drawA(now){
   cx.globalCompositeOperation='lighter';
 
   // the spill: a fan whose hue spread, rate, edge and reach are the playlist's
-  const rays=Math.round(30+beat*40);
+  const rays=Math.round(46+beat*54);
+  const TAU=Math.PI*2;
   for(let i=0;i<rays;i++){
     const f=i/rays;
     const wob=Math.sin(T*0.9+i*2.1)*jitter + Math.sin(T*0.21+i*1.7)*0.05;
-    const ang=-Math.PI/2+(f-0.5)*(1.9+wash*0.8)+wob*0.10;
-    const len=(H*0.85+Math.sin(T*0.6+i)*H*0.16*beat)*(0.60+openNow*0.85)*(0.75+energy*0.5);
+    // light spills in EVERY direction — it is an opening, not a spotlight
+    const ang=f*TAU + T*0.020 + wob*0.06;
+    const lenVar=0.62+0.38*(0.5+0.5*Math.sin(f*TAU*3+T*0.5))*(0.5+beat*0.9);
+    const len=(Math.max(W,H)*0.72*lenVar+Math.sin(T*0.6+i)*H*0.10*beat)
+              *(0.55+openNow*0.80)*(0.75+energy*0.5);
     const a=(0.085+0.150*crisp*Math.abs(Math.sin(T*0.8+i*2.4)))*warm*(0.50+openNow*0.70)*Math.min(1,openNow*14);
-    const c=prism(drift + (f-0.5)*sweep);
+    const c=prism(drift + f*sweep);
     const g=cx.createLinearGradient(cxp,cyp,cxp+Math.cos(ang)*len,cyp+Math.sin(ang)*len);
     g.addColorStop(0,rgba(c,a*1.35,18*crisp));
     g.addColorStop(0.38,rgba(c,a*(0.62-crisp*0.18),0));
     g.addColorStop(1,rgba(c,0,0));
-    const spread=(0.020+openNow*0.05)*(1+wash*1.1)/(0.6+beat*0.9);
+    const spread=(TAU/rays)*(0.85+wash*1.5)/(0.55+beat*0.85);
     cx.fillStyle=g;cx.beginPath();cx.moveTo(cxp,cyp);
     cx.arc(cxp,cyp,len,ang-spread,ang+spread);cx.closePath();cx.fill();
   }
 
   MOTES.forEach(m=>{
-    const ang=-Math.PI/2+(m.a*2.1-1.05);
+    const ang=m.a*Math.PI*2 + T*0.02;
     const d=((m.r+T*m.s*0.045)%1), dist=d*H*.62*(.5+openNow*.7);
     const x=cxp+Math.cos(ang)*dist+Math.sin(T*.3+m.p)*12, y=cyp+Math.sin(ang)*dist;
     cx.fillStyle=rgba(prism(drift+(m.a-0.5)*sweep),(1-d)*0.30*warm*Math.min(1,openNow*14),90);
@@ -422,7 +433,6 @@ function drawA(now){
   cx.fillText(`${heard} of ${N} heard`+(rem?`  ·  about ${rem>=60?Math.round(rem/60)+' min':rem+'s'} left`:''),W-18,26);
   cx.textAlign='left';cx.fillStyle='#6f747e';cx.font='12px ui-monospace,Menlo,monospace';
   cx.fillText(`${p.name}  ·  ${Math.round(bpm)} BPM avg  ·  prism sweep ${(sweep*100|0)}%`,18,H-14);
-  requestAnimationFrame(drawA);
 }
 fit();requestAnimationFrame(drawA);
 

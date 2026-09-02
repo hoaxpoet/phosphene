@@ -67,6 +67,11 @@ already being generated and thrown away.
 
 ## Two views ship, and the listener chooses
 
+**Grounded in beta feedback, not a hunch.** Matt, relaying a beta tester: *"some people are
+going to want to know details about the playlist and some are going to prefer mystery. We need
+to be able to address the desires of both."* That is the whole justification, and it is a
+stronger one than any argument from taste.
+
 DS.4 delivers **both** postures behind a preference, not one with the other rejected:
 
 | View | What it does | Who it is for |
@@ -93,11 +98,19 @@ from a pinwheel size to a larger opening."*
 - **At rest the cave is shut.** Nothing spills. The frame is genuinely dark, not dimly lit.
 - **The first track heard cracks it to a pinprick** — a bright point with the faintest prism
   just escaping.
+- **The light spills in every direction.** An opening radiates; it is not a spotlight. An
+  earlier build fanned the shafts upward only, which read as a lamp rather than a cave mouth.
+  The prism sweeps the full circle, so the burst is a kaleidoscope on every side.
 - **From there it grows** through the engine's four readiness stops
   (`preparing → readyForFirstTracks → partiallyPlanned → fullyPrepared`), so it is properly
   open the moment the listener can start, at any playlist length.
 
-**One open question, recorded not decided** — see §Open questions.
+**The opening is organic, not mechanical** (Matt, 2026-09-02). An irregular rock opening
+growing from a pinprick — no blades, no visible mechanism. This keeps `BRAND.md` intact:
+*"a play of shadow and light rather than a pictured aperture."* The edge wobble is driven by
+the playlist's beat irregularity, so the opening still has character without becoming a
+machine. A mechanical iris was considered and declined; it would have required editing the
+brand source of truth in the same breath ([D-228]).
 
 ## The duration is the design constraint
 
@@ -238,15 +251,3 @@ exactly what this design is not.
   Worth trying, but it is direction B's idea and it is not what Matt picked.
 - Whether the opening survives into `.ready`. That is DS.5's screen.
 
-## Open questions
-
-**Is the aperture mechanical or organic?** Matt described it as "an aperture" opening "from a
-pinwheel size", which reads as a camera iris — blades, a pinwheel figure, a mechanical open.
-That is a striking image and it is his call, but it collides with `BRAND.md`, which is explicit
-that the identity is *"a play of shadow and light rather than **a pictured aperture**"*.
-
-The mock currently builds the organic reading: an irregular opening growing from a pinprick,
-with no blades. **If Matt wants the mechanical iris, `BRAND.md`'s "rather than a pictured
-aperture" line needs updating in `uzume-site` in the same breath** — otherwise the app and the
-brand source of truth disagree, which is exactly the divergence [D-228] exists to prevent.
-Resolve before the DS.4 prompt is finalised.
