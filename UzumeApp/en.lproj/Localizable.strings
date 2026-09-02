@@ -315,6 +315,12 @@
 "settings.visuals.reduced_motion.always_off"  = "Always off";
 
 // Visuals — blocklist
+"settings.visuals.preparation.title"      = "While a session prepares";
+"settings.visuals.preparation.label"      = "Show";
+"settings.visuals.preparation.mysterious" = "A cave, opening as Uzume listens";
+"settings.visuals.preparation.detailed"   = "Each track, and what Uzume heard in it";
+"settings.visuals.preparation.hint"       = "Mysterious keeps the playlist unseen until the music starts. Detailed shows each track's tempo, key and mood as it is heard. You can change this while a session is preparing.";
+
 "settings.visuals.blocklist.title" = "Hidden preset families";
 
 // Visuals — toasts

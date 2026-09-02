@@ -6,6 +6,7 @@
 //   - sessionRecorderEnabled:   next session start
 //   - reducedMotion:            next frame / render tick (read by SessionStateViewModel)
 //   - showLiveAdaptationToasts: immediate (LiveAdaptationToastBridge reads on each event)
+//   - preparationView:          immediate, including mid-preparation (PreparationProgressView observes)
 //   - resetOnboarding:          next app launch
 
 import Combine
@@ -32,6 +33,7 @@ final class SettingsStore: ObservableObject {
         static let excludedPresetCategories = "uzume.settings.visuals.excludedPresetCategories"
         static let showLiveAdaptationToasts = "uzume.settings.visuals.showLiveAdaptationToasts"
         static let showUncertifiedPresets   = "uzume.settings.visuals.showUncertifiedPresets"
+        static let preparationView          = "uzume.settings.visuals.preparationView"
         // Diagnostics
         static let sessionRecorderEnabled  = "uzume.settings.diagnostics.sessionRecorderEnabled"
         static let sessionRetention        = "uzume.settings.diagnostics.sessionRetention"
@@ -65,6 +67,11 @@ final class SettingsStore: ObservableObject {
     /// Default: false — the Orchestrator only schedules certified presets.
     @Published var showUncertifiedPresets: Bool = false {
         didSet { defaults.set(showUncertifiedPresets, forKey: Keys.showUncertifiedPresets) }
+    }
+
+    /// How the preparation wait is shown: the cave (default) or the track list. DS.4.
+    @Published var preparationView: PreparationViewPreference = .mysterious {
+        didSet { encode(preparationView, forKey: Keys.preparationView) }
     }
 
     // MARK: - Diagnostics
@@ -108,6 +115,7 @@ final class SettingsStore: ObservableObject {
         excludedPresetCategories = decodeSet(PresetCategory.self, forKey: Keys.excludedPresetCategories)
         showLiveAdaptationToasts = defaults.bool(forKey: Keys.showLiveAdaptationToasts)
         showUncertifiedPresets   = defaults.bool(forKey: Keys.showUncertifiedPresets)
+        preparationView = decodeOrDefault(.mysterious, forKey: Keys.preparationView)
         sessionRecorderEnabled = defaults.object(forKey: Keys.sessionRecorderEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.sessionRecorderEnabled)

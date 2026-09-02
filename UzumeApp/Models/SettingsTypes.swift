@@ -29,6 +29,16 @@ enum ReducedMotionPreference: String, Codable, CaseIterable, Sendable {
     case alwaysOff
 }
 
+// MARK: - PreparationViewPreference
+
+/// How the wait for a session to prepare is shown (DS.4 / D-238).
+enum PreparationViewPreference: String, Codable, CaseIterable, Sendable {
+    /// The cave: never names a track, never shows a number about the music. Default.
+    case mysterious
+    /// The list: what Uzume heard in each track — tempo, key, mood, stem balance.
+    case detailed
+}
+
 // MARK: - SessionRetentionPolicy
 
 /// How many session recording folders to keep in ~/Documents/uzume_sessions/.
