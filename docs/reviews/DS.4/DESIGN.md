@@ -11,9 +11,33 @@ contract; the HTML is the look.
 
 > "let's go with A, and keep Start now as a button"
 
-Direction A of the design pass. Nothing below may drift from those two sentences: if an
-implementation choice does not make the wait more entertaining or more exciting, it is not
-DS.4's business.
+> "What about a single opening in the cave where light spills out. The opening widens as the
+> preparation proceeds."
+
+> "It would be lovely if the preparation looked different based on the playlist content."
+
+> "Consider that it could take 3-5 minutes to prepare a playlist from end to end. This is a
+> substantial wait, so the solution needs to be suitably appropriate."
+
+Nothing below may drift from those. If an implementation choice does not make the wait more
+entertaining or more exciting, it is not DS.4's business.
+
+## Three executions were falsified before this one
+
+Recorded because each failed for a reason worth not repeating.
+
+1. **One permanent shaft per track, aperture = fraction complete.** Breaks at Tunes Club
+   scale. Forty shafts is a picket fence, and — worse — at forty tracks the opening would be
+   **7.5 % open at the exact moment "Start now" unlocks**. The aperture was measuring the
+   wrong quantity.
+2. **A left-to-right landscape of the playlist.** Scaled, but still enumerated, and still
+   made the per-track mark the unit.
+3. **A single averaged hue for the spill.** Averaging mood quadrants in circular space
+   converges *every* playlist on the same muddy amber — the exact opposite of "looks
+   different based on the playlist content".
+
+The surviving design is Matt's: **one opening, and the light spilling out of it carries the
+playlist's character.**
 
 ## The problem, stated from the code
 
@@ -27,6 +51,21 @@ Meanwhile `TrackProfile` is being filled in for every track — `bpm`, `key`, `m
 the Orchestrator, and **never shown to the user**. The material for an interesting wait is
 already being generated and thrown away.
 
+## The duration is the design constraint
+
+**Three to five minutes**, end to end, for a real playlist. That is the length of a song, and
+it rules out a great deal:
+
+- **No single gesture holds it.** An aperture that widens and pulses is lovely for twenty
+  seconds and wallpaper by minute two. The image must keep developing.
+- **It must be glanceable.** People will alt-tab. Coming back, the state must be readable at
+  once — how far along, and whether you can start.
+- **The real job is making the wait worth it.** Three ready tracks unlock "Start now" well
+  inside the first minute, so **the overwhelming majority of preparation happens after the
+  user could already have left**. The screen's argument is: stay, and it gets better. That
+  argument has to be *visible* — the light must demonstrably deepen and become more specific
+  as more of the playlist is heard, not merely brighter.
+
 ## The concept, anchored on the brand's own words
 
 `uzume-site/BRAND.md`, describing the **First Opening** identity:
@@ -35,22 +74,41 @@ already being generated and thrown away.
 > enters the dark. It is a play of shadow and light rather than a pictured aperture:
 > **darkness is the condition, the opening is the event, and color is the consequence.**"
 
-The preparation screen becomes that sentence, running. Darkness is the waiting state. Each
-track Uzume finishes hearing is an opening event. The colour is what it heard.
+And the myth the product is named for, from the same file:
 
-**Progress is the aperture.** The opening widens as tracks complete, so there is no separate
-progress bar — the widening *is* the progress readout.
+> "In the **Ama-no-Iwato** myth, the world darkens when Amaterasu withdraws into the heavenly
+> **rock-cave**. Omoikane **prepares a plan**; Ame-no-Uzume performs… Amaterasu looks out, and
+> **light returns**. The product mapping is direct: **a session is planned**, a visual
+> performance unfolds, and music is answered in light."
 
-Per-track light is derived from that track's profile:
+**"A plan is prepared" is this screen.** The cave opening widening while the plan comes
+together is the myth's own decisive change, rendered at the moment the product actually does
+it. This is not a metaphor imported from outside the brand; it is the brand's own map.
 
-| Property | Source | Why |
+**One opening. No per-track marks.** Eight tracks and forty are the same object, which is what
+makes it scale-free. A track landing *surges* the light; it does not leave a mark.
+
+**The aperture tracks readiness, not completion** — the engine's own four stops
+(`preparing → readyForFirstTracks → partiallyPlanned → fullyPrepared`). Three ready tracks
+opens it properly at any playlist length, because that is when the user really can start.
+
+## The cave looks different for different playlists
+
+The spread is the signal, never the mean. Five properties of what has been heard drive five
+different things, so the same mechanism produces unmistakably different images:
+
+| What Uzume hears | What it changes | So a playlist that is… |
 |---|---|---|
-| Hue | `mood.quadrant` (happy / calm / tense / sad) | The most human-legible thing Uzume derives |
-| Reach / height | `stemEnergyBalance` aggregate | Loud, dense tracks throw further |
-| Brightness | `spectralCentroidAvg` | Bright tracks read bright — the one literal mapping |
+| Mood **spread** (circular variance, not average) | How prismatic the fan is | …all one mood spills a single coherent colour; a mixed one spills a true spectrum |
+| Average tempo | The rate everything moves at | …fast shimmers; slow breathes |
+| `spectralCentroidAvg` | Edge and contrast of the shafts | …bright throws hard-edged beams; dark glows soft and diffuse |
+| Drums vs. vocals in `stemEnergyBalance` | Ray definition vs. smooth wash | …drum-forward is ribbed and defined; vocal-forward is a continuous wash |
+| `beatIrregular` | How much the mouth wavers | …metronomic sits still; loose and human breathes |
 
-These are starting mappings, not a specification to defend. What matters is that every
-visual property is *derived from what Uzume heard*, never decorative or random.
+Verified in the mock: late-night jazz renders a soft cyan diffuse wash; peak-time techno a hot
+amber with hard-edged shafts. These are starting mappings, not a specification to defend —
+what matters is that **every visual property derives from what Uzume heard**, and that the
+image becomes *more specific* as more is heard, not merely brighter.
 
 ## The surprise model — the constraint that shapes everything
 

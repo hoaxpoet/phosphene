@@ -83,17 +83,47 @@ from each 30-second preview. All of it is computed, cached, handed to the Orches
 
 <hr class="rule">
 
-<h2>Direction A — The opening widens</h2>
+<h2>Direction A — Light spills from the cave</h2>
 <p class="lede">The brand identity, made literal and made functional. <em>“Two shadows nearly meet,
 leaving a tiny irregular opening through which prismatic light enters the dark. Darkness is the
-condition, the opening is the event, and colour is the consequence.”</em> Every track Uzume finishes
-hearing sends one shaft of light through the seam, coloured by what it heard. <strong>Progress is the
-aperture</strong> — there is no progress bar, because the widening opening is the progress bar.</p>
+condition, the opening is the event, and colour is the consequence.”</em></p>
+<p class="lede"><strong>Revised twice (2026-09-02), and the second revision is Matt's.</strong>
+The first execution gave every track its own permanent shaft and set the aperture to <em>fraction
+complete</em>. Both break at Tunes Club scale: forty shafts is a picket fence, and at forty tracks the
+opening would have been <strong>7.5&nbsp;% open at the exact moment you can start</strong>. The second
+attempt — a landscape of the playlist painted left to right — scaled, but still enumerated.</p>
+<p class="lede"><strong>One opening in the cave, and the light spills out of it.</strong> No per-track
+marks at all, so eight tracks and forty are the same object. And it is not a metaphor borrowed from
+outside: <code>BRAND.md</code> tells the Ama-no-Iwato myth as the product's own map — <em>“the world
+darkens when Amaterasu withdraws into the heavenly rock-cave. Omoikane <strong>prepares a plan</strong>;
+Ame-no-Uzume performs… Amaterasu looks out, and light returns.”</em> <strong>“A plan is prepared” is
+this screen.</strong> The cave widening while the plan comes together is the myth's decisive change,
+happening at the moment the product actually does it.</p>
+<p class="lede">The opening moves through the engine's four readiness stops, so it is properly open the
+moment you can start, whatever the playlist length. A track landing surges the light; it does not
+leave a mark.</p>
+<p class="lede"><strong>And the cave looks different for different playlists.</strong> The first attempt
+at this averaged every track's mood into one hue — which converges every playlist on the same muddy
+middle, the exact opposite of the intent. So the <em>spread</em> is the signal, not the mean, and five
+properties of the playlist drive five different things. Switch playlists below and watch the same
+mechanism produce three unmistakably different caves.</p>
+<table>
+  <tr><th style="width:26%">What Uzume hears</th><th style="width:32%">What it changes</th><th>So a playlist that is…</th></tr>
+  <tr><td>Mood <em>spread</em> (circular variance)</td><td>How prismatic the fan is</td><td>…all one mood spills a single coherent colour; a mixed one spills a true spectrum</td></tr>
+  <tr><td>Average tempo</td><td>The rate everything moves at</td><td>…fast shimmers and flickers; slow breathes</td></tr>
+  <tr><td>Spectral centroid</td><td>Edge and contrast of the shafts</td><td>…bright throws hard-edged beams; dark glows soft and diffuse</td></tr>
+  <tr><td>Drums vs. vocals in the stem balance</td><td>Ray definition vs. smooth wash</td><td>…drum-forward is defined and ribbed; vocal-forward is a continuous wash</td></tr>
+  <tr><td>Beat irregularity</td><td>How much the mouth wavers</td><td>…metronomic sits still; loose and human breathes irregularly</td></tr>
+</table>
 <div class="stage"><canvas id="openingCanvas"></canvas></div>
 <div class="controls">
   <button onclick="restart()">Replay</button>
+  <button data-pl="jazz" onclick="setPL('jazz')">Late-night jazz</button>
+  <button data-pl="techno" class="ghost" onclick="setPL('techno')">Peak-time techno</button>
+  <button data-pl="indie" class="ghost" onclick="setPL('indie')">Sunlit indie pop</button>
+  <button class="ghost" id="nBtn" onclick="toggleN()">Playlist: 40 tracks</button>
   <button class="ghost" onclick="toggleSpeed()" id="spd">Speed: 1×</button>
-  <span class="note">Hue = mood quadrant · height = energy · brightness = spectral centroid.</span>
+  <span class="note">Paced at the real duration — four minutes for forty tracks. Use 8× / 24× to skim; watch at 1× to judge whether it holds.</span>
 </div>
 
 <hr class="rule">
@@ -176,95 +206,164 @@ const MOOD_HUE = {happy:48, calm:170, tense:12, sad:258};   // gold / cyan / emb
 const STEM_C   = ["#f5c84c","#7f6aff","#37d6c0","#ff6b4a"]; // drums bass vocals other
 
 // ---------- A ----------
-const cv = document.getElementById('openingCanvas');
-const cx = cv.getContext('2d');
-let t0 = performance.now(), speed = 1, shafts = [];
-function fit(){ const r = cv.getBoundingClientRect(), d = devicePixelRatio||1;
-  cv.width = r.width*d; cv.height = r.height*d; cx.setTransform(d,0,0,d,0,0); }
-addEventListener('resize', fit);
-function restart(){ t0 = performance.now(); shafts = []; }
-function toggleSpeed(){ speed = speed===1?3:1; document.getElementById('spd').textContent = 'Speed: '+speed+'×'; }
+// Three playlists with genuinely different character, so the cave can be compared.
+// Fields mirror TrackProfile: bpm, mood quadrant, spectralCentroidAvg, stemEnergyBalance.
+const PLAYLISTS = {
+  jazz: { name:"Late-night jazz", bpmRange:[68,112], moods:["calm","calm","sad","calm","sad"],
+          cent:[0.18,0.42], stems:{drums:.42,bass:.55,vocals:.30,other:.62}, irregular:0.55 },
+  techno:{ name:"Peak-time techno", bpmRange:[126,142], moods:["tense","tense","happy","tense"],
+          cent:[0.55,0.92], stems:{drums:.92,bass:.80,vocals:.16,other:.48}, irregular:0.05 },
+  indie: { name:"Sunlit indie pop", bpmRange:[98,128], moods:["happy","happy","calm","happy"],
+          cent:[0.46,0.78], stems:{drums:.55,bass:.48,vecals:0,vocals:.78,other:.60}, irregular:0.22 },
+};
+let PL = 'jazz';
+const cv=document.getElementById('openingCanvas'), cx=cv.getContext('2d');
+let t0=performance.now(), speed=1, N=40, TR=[];
+
+function rebuild(){
+  const p=PLAYLISTS[PL];
+  TR=Array.from({length:N},(_,i)=>{
+    const j=((i*2654435761)%1000)/1000, k=((i*40503)%1000)/1000;
+    return { mood: p.moods[i%p.moods.length],
+             bpm: p.bpmRange[0]+j*(p.bpmRange[1]-p.bpmRange[0]),
+             cent: p.cent[0]+k*(p.cent[1]-p.cent[0]),
+             energy: Math.max(.15,Math.min(1,(p.stems.drums+p.stems.bass+p.stems.vocals+p.stems.other)/4+(j-.5)*.28)) };
+  });
+}
+rebuild();
+function fit(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;
+  cv.width=r.width*d;cv.height=r.height*d;cx.setTransform(d,0,0,d,0,0);}
+addEventListener('resize',fit);
+function restart(){t0=performance.now();}
+function toggleSpeed(){speed=speed===1?8:(speed===8?24:1);
+  document.getElementById('spd').textContent='Speed: '+speed+'×';}
+function toggleN(){N=N===40?8:40;rebuild();
+  document.getElementById('nBtn').textContent='Playlist: '+N+' tracks';restart();}
+function setPL(k){PL=k;rebuild();restart();
+  [...document.querySelectorAll('[data-pl]')].forEach(b=>
+    b.className = b.dataset.pl===k ? '' : 'ghost');}
+
+const TOTAL_SECONDS=240;
+function readiness(h,n){if(h>=n)return 3;if(h>=n*0.5)return 2;if(h>=3)return 1;return 0;}
+const LABEL=['Listening','Ready when you are','Ready when you are','Ready'];
+const OPEN=[0.06,0.30,0.52,1.0];
+let openNow=0.06;
+const MOTES=Array.from({length:110},()=>({a:Math.random(),r:Math.random(),
+  s:.1+Math.random()*.5,w:.4+Math.random()*1.6,p:Math.random()*6.283}));
 
 function drawA(now){
-  const r = cv.getBoundingClientRect(), W = r.width, H = r.height;
-  const el = (now - t0)/1000*speed;
-  const per = 1.5, done = Math.min(TRACKS.length, Math.floor(el/per));
-  while(shafts.length < done){ const tk = TRACKS[shafts.length]; shafts.push({tk, born: el}); }
+  const r=cv.getBoundingClientRect(),W=r.width,H=r.height;
+  const el=(now-t0)/1000*speed, per=TOTAL_SECONDS/N;
+  const heardF=Math.min(N,el/per), heard=Math.floor(heardF), lvl=readiness(heard,N);
+  openNow+=(OPEN[lvl]-openNow)*0.012;
 
-  const cyY = H/2;
-  const frac = Math.min(1, done/TRACKS.length);
-  const gap  = 2 + frac*30;               // the opening widens with progress
+  // ---- the playlist's character, derived only from what has been heard ----
+  // Deliberately NOT a single averaged hue: averaging four mood quadrants
+  // converges every playlist on the same muddy middle. The SPREAD is the signal.
+  const p=PLAYLISTS[PL];
+  let hueMean=42, hueSpread=10, cent=.4, bpm=100, energy=.5, dep=0;
+  if(heard>0){
+    let sx=0,sy=0,sc=0,sb=0,se=0; const hs=[];
+    for(let i=0;i<heard;i++){const t=TR[i],a=MOOD_HUE[t.mood]*Math.PI/180;
+      sx+=Math.cos(a);sy+=Math.sin(a);sc+=t.cent;sb+=t.bpm;se+=t.energy;hs.push(MOOD_HUE[t.mood]);}
+    hueMean=(Math.atan2(sy/heard,sx/heard)*180/Math.PI+360)%360;
+    const R=Math.hypot(sx/heard,sy/heard);          // circular concentration, 0..1
+    hueSpread=8+(1-R)*120;                          // mixed moods → genuinely prismatic
+    cent=sc/heard; bpm=sb/heard; energy=se/heard;
+    dep=1-Math.exp(-heard/7);
+  }
+  const rate   = bpm/110;                           // tempo drives how fast the light moves
+  const crisp  = 0.30+cent*0.70;                    // bright playlists throw hard-edged shafts
+  const beat   = p.stems.drums;                     // drum-forward → defined rays
+  const wash   = p.stems.vocals;                    // vocal-forward → smooth continuous wash
+  const heavy  = p.stems.bass;                      // bass-heavy → broad low bloom
+  const jitter = p.irregular;
+  const L=38+cent*30, warm=0.32+dep*0.54;
+  const T=el*rate;
 
-  // 1. darkness is the condition
-  cx.globalCompositeOperation = 'source-over';
-  cx.fillStyle = '#07080b'; cx.fillRect(0,0,W,H);
+  const cxp=W/2, cyp=H*0.56;
+  const oW=(14+openNow*W*0.20)*(1+heavy*0.16), oH=(9+openNow*H*0.15);
 
-  // 2. the two shadow masses that nearly meet — drawn as the field, faintly lit near the seam
-  const sg = cx.createLinearGradient(0, cyY-H*0.5, 0, cyY);
-  sg.addColorStop(0,'#07080b'); sg.addColorStop(1,'#0e1016');
-  cx.fillStyle = sg; cx.fillRect(0,0,W,cyY-gap/2);
-  const sg2 = cx.createLinearGradient(0, cyY, 0, cyY+H*0.5);
-  sg2.addColorStop(0,'#0e1016'); sg2.addColorStop(1,'#07080b');
-  cx.fillStyle = sg2; cx.fillRect(0,cyY+gap/2,W,H-cyY-gap/2);
+  cx.globalCompositeOperation='source-over';
+  cx.fillStyle='#050609';cx.fillRect(0,0,W,H);
+  const rock=cx.createRadialGradient(cxp,cyp,oW*.6,cxp,cyp,Math.max(W,H)*.8);
+  rock.addColorStop(0,'#12141b');rock.addColorStop(1,'#050609');
+  cx.fillStyle=rock;cx.fillRect(0,0,W,H);
+  cx.globalCompositeOperation='lighter';
 
-  // 3. colour is the consequence — light escapes the seam and fans into the dark
-  cx.globalCompositeOperation = 'lighter';
-  shafts.forEach((s,i)=>{
-    const age = Math.min(1,(el - s.born)/1.3);
-    const ease = 1-Math.pow(1-age,3);
-    const hue = MOOD_HUE[s.tk.mood];
-    const energy = s.tk.stems.reduce((a,b)=>a+b,0)/4;
-    const spread = (i - (TRACKS.length-1)/2) / Math.max(1,TRACKS.length-1);
-    const x  = W/2 + spread*W*0.62;
-    const reach = (H*0.40 + energy*H*0.30) * ease;   // how far the light throws
-    const wTop = 5 + energy*10;                       // width at the slit
-    const wEnd = 46 + energy*95;                      // width where it dies
-    const li = 44 + s.tk.cent*30;
-    const a  = 0.30*ease;
+  // the spill: a fan whose hue spread, rate, edge and reach are the playlist's
+  const rays=Math.round(30+beat*40);
+  for(let i=0;i<rays;i++){
+    const f=i/rays;
+    const wob=Math.sin(T*0.9+i*2.1)*jitter + Math.sin(T*0.21+i*1.7)*0.05;
+    const ang=-Math.PI/2+(f-0.5)*(1.5+wash*0.9)+wob*0.10;
+    const len=(H*0.85+Math.sin(T*0.6+i)*H*0.16*beat)*(0.60+openNow*0.85)*(0.75+energy*0.5);
+    const a=(0.085+0.150*crisp*Math.abs(Math.sin(T*0.8+i*2.4)))*warm*(0.50+openNow*0.70);
+    const hh=hueMean+(f-0.5)*hueSpread;
+    const g=cx.createLinearGradient(cxp,cyp,cxp+Math.cos(ang)*len,cyp+Math.sin(ang)*len);
+    g.addColorStop(0,`hsla(${hh},${72+crisp*24}%,${L+16}%,${a})`);
+    g.addColorStop(0.42,`hsla(${hh},${68+crisp*22}%,${L}%,${a*(0.50-crisp*0.20)})`);
+    g.addColorStop(1,`hsla(${hh},70%,${L}%,0)`);
+    const spread=(0.020+openNow*0.05)*(1+wash*1.1)/(0.6+beat*0.9);
+    cx.fillStyle=g;cx.beginPath();cx.moveTo(cxp,cyp);
+    cx.arc(cxp,cyp,len,ang-spread,ang+spread);cx.closePath();cx.fill();
+  }
 
-    [-1,1].forEach(dir=>{
-      const g = cx.createLinearGradient(0, cyY, 0, cyY + dir*reach);
-      g.addColorStop(0,    `hsla(${hue},95%,${li}%,${a})`);
-      g.addColorStop(0.30, `hsla(${hue},92%,${li}%,${a*0.52})`);
-      g.addColorStop(1,    `hsla(${hue},85%,${li}%,0)`);
-      cx.fillStyle = g;
-      cx.beginPath();
-      cx.moveTo(x - wTop/2, cyY);
-      cx.lineTo(x + wTop/2, cyY);
-      cx.lineTo(x + wEnd/2, cyY + dir*reach);
-      cx.lineTo(x - wEnd/2, cyY + dir*reach);
-      cx.closePath(); cx.fill();
-    });
-
-    // the bright bead sitting in the opening itself
-    const bg = cx.createRadialGradient(x, cyY, 0, x, cyY, 26+energy*22);
-    bg.addColorStop(0, `hsla(${hue},98%,${Math.min(88,li+30)}%,${0.95*ease})`);
-    bg.addColorStop(0.35,`hsla(${hue},95%,${li+10}%,${0.42*ease})`);
-    bg.addColorStop(1, `hsla(${hue},90%,${li}%,0)`);
-    cx.fillStyle = bg;
-    cx.fillRect(x-52, cyY-40, 104, 80);
+  MOTES.forEach(m=>{
+    const ang=-Math.PI/2+(m.a*2.1-1.05);
+    const d=((m.r+T*m.s*0.045)%1), dist=d*H*.62*(.5+openNow*.7);
+    const x=cxp+Math.cos(ang)*dist+Math.sin(T*.3+m.p)*12, y=cyp+Math.sin(ang)*dist;
+    cx.fillStyle=`hsla(${hueMean+(m.p-3)*hueSpread*0.18},80%,86%,${(1-d)*0.28*warm})`;
+    cx.fillRect(x,y,m.w,m.w);
   });
 
-  // 4. the seam itself — a hairline of light along the whole opening
-  const seamA = 0.10 + frac*0.22;
-  const lg = cx.createLinearGradient(0, cyY-gap/2, 0, cyY+gap/2);
-  lg.addColorStop(0,   `rgba(255,225,115,0)`);
-  lg.addColorStop(0.5, `rgba(255,225,115,${seamA})`);
-  lg.addColorStop(1,   `rgba(255,225,115,0)`);
-  cx.fillStyle = lg; cx.fillRect(0, cyY-gap/2, W, gap);
+  // the mouth — irregular; its wobble follows the playlist's beat regularity
+  cx.beginPath();
+  for(let i=0;i<=72;i++){
+    const th=i/72*Math.PI*2;
+    const n=1+ (0.10+jitter*0.16)*Math.sin(th*3+1.2) + 0.08*Math.sin(th*5-0.6)
+            + 0.05*Math.sin(th*8+2.2+T*0.15);
+    const x=cxp+Math.cos(th)*oW*n, y=cyp+Math.sin(th)*oH*n;
+    i?cx.lineTo(x,y):cx.moveTo(x,y);
+  }
+  cx.closePath();
+  const mg=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(oW,oH)*1.05);
+  mg.addColorStop(0,`hsla(${hueMean},92%,${Math.min(96,L+50)}%,${0.80+warm*0.20})`);
+  mg.addColorStop(0.42,`hsla(${hueMean},94%,${Math.min(88,L+34)}%,${0.62*warm+0.22})`);
+  mg.addColorStop(1,`hsla(${hueMean},88%,${L+8}%,0)`);
+  cx.fillStyle=mg;cx.fill();
 
-  // 5. chrome: session state only, never upcoming content
-  cx.globalCompositeOperation = 'source-over';
-  cx.font = '13px "PT Sans",system-ui,sans-serif';
-  cx.textAlign = 'left'; cx.fillStyle = '#a4a8a2';
-  cx.fillText(done >= TRACKS.length ? 'Ready' : 'Listening to your playlist', 18, 26);
-  cx.textAlign = 'right';
-  cx.fillStyle = done >= 3 ? '#37d6c0' : '#a4a8a2';
-  cx.fillText(done >= 3 ? `${done} heard · you can start whenever you like`
-                        : `${done} of ${TRACKS.length} heard`, W-18, 26);
+  // a tight bloom hugging the opening, so the rock edge reads as lit
+  const bl=cx.createRadialGradient(cxp,cyp,Math.max(oW,oH)*0.8,cxp,cyp,Math.max(oW,oH)*2.3);
+  bl.addColorStop(0,`hsla(${hueMean},90%,${L+22}%,${0.20*warm})`);
+  bl.addColorStop(1,`hsla(${hueMean},88%,${L}%,0)`);
+  cx.fillStyle=bl;cx.fillRect(0,0,W,H);
+
+  const since=heardF-heard;
+  if(heard>0&&heard<N&&since<0.16){
+    const q=1-since/0.16;
+    const bg=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(oW,oH)*2.6);
+    bg.addColorStop(0,`hsla(${MOOD_HUE[TR[heard].mood]},96%,80%,${0.26*q})`);
+    bg.addColorStop(1,`hsla(${hueMean},90%,60%,0)`);
+    cx.fillStyle=bg;cx.fillRect(0,0,W,H);
+  }
+
+  cx.globalCompositeOperation='source-over';
+  const vg=cx.createRadialGradient(cxp,cyp,Math.min(W,H)*0.28,cxp,cyp,Math.max(W,H)*0.78);
+  vg.addColorStop(0,'rgba(5,6,9,0)'); vg.addColorStop(1,'rgba(5,6,9,0.82)');
+  cx.fillStyle=vg;cx.fillRect(0,0,W,H);
+
+  cx.font='13px "PT Sans",system-ui,sans-serif';
+  cx.textAlign='left';cx.fillStyle=lvl>=1?'#37d6c0':'#a4a8a2';
+  cx.fillText(LABEL[lvl],18,26);
+  cx.textAlign='right';cx.fillStyle='#a4a8a2';
+  const rem=Math.max(0,Math.round((N-heardF)*per));
+  cx.fillText(`${heard} of ${N} heard`+(rem?`  ·  about ${rem>=60?Math.round(rem/60)+' min':rem+'s'} left`:''),W-18,26);
+  cx.textAlign='left';cx.fillStyle='#6f747e';cx.font='12px ui-monospace,Menlo,monospace';
+  cx.fillText(`${p.name}  ·  ${Math.round(bpm)} BPM avg  ·  spread ${Math.round(hueSpread)}°`,18,H-14);
   requestAnimationFrame(drawA);
 }
-fit(); requestAnimationFrame(drawA);
+fit();requestAnimationFrame(drawA);
 
 // ---------- B ----------
 const rowsEl = document.getElementById('rows');
