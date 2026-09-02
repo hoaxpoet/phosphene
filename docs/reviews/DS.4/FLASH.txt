@@ -1,0 +1,6 @@
+Test Suite 'UzumeAppTests.xctest' passed at 2026-09-02 10:06:02.102.
+Test Suite 'Selected tests' passed at 2026-09-02 10:06:02.102.
+✔ Suite "Review capture harness" passed after 6.279 seconds.
+[APERTURE] flash: maxΔ/frame 0.0100 (at 18.0 s)  luma range 0.066–0.511  frames 2400 @ 20 fps
+✔ Suite "PreparationAperture" passed after 21.144 seconds.
+✔ Test run with 7 tests in 2 suites passed after 21.144 seconds.
