@@ -1,6 +1,9 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>DS.4 design pass — preparation</title>
+<title>The Widening Opening</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;500;600&family=PT+Sans:wght@400;700&display=swap">
 <style>
   :root{
     --canvas:#0b0c10; --surface:#14161c; --line:#24272f;
@@ -10,25 +13,30 @@
     color-scheme:dark;
   }
   *{box-sizing:border-box}
-  body{margin:0;padding:28px clamp(14px,3vw,44px) 60px;background:var(--canvas);color:var(--text);
-       font:15px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
-  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
-  .sub{color:var(--text3);margin:0 0 24px;max-width:70ch}
-  h2{font-size:18px;margin:38px 0 6px}
-  .lede{color:var(--text3);margin:0 0 14px;max-width:74ch}
+  body{margin:0;padding:34px clamp(14px,3vw,52px) 72px;background:var(--canvas);color:var(--text);
+       font:16px/1.62 "PT Sans",system-ui,sans-serif;max-width:1140px;margin-inline:auto}
+  h1{font-family:"Alumni Sans","Arial Narrow",sans-serif;font-size:clamp(46px,7vw,78px);
+     font-weight:500;line-height:.92;margin:0 0 10px;letter-spacing:.005em;text-wrap:balance}
+  .eyebrow{font-family:"Alumni Sans","Arial Narrow",sans-serif;font-size:19px;font-weight:600;
+     letter-spacing:.20em;text-transform:uppercase;color:var(--gold);margin:0 0 2px}
+  .sub{color:var(--text3);margin:0 0 30px;max-width:66ch;font-size:17px}
+  h2{font-family:"Alumni Sans","Arial Narrow",sans-serif;font-size:34px;font-weight:500;
+     letter-spacing:.01em;margin:44px 0 8px;line-height:1.05}
+  h3{font-family:"Alumni Sans","Arial Narrow",sans-serif;letter-spacing:.02em}
+  .lede{color:var(--text2);margin:0 0 15px;max-width:68ch}
   .stage{position:relative;background:#07080b;border:1px solid var(--line);border-radius:12px;
-         overflow:hidden;height:340px}
+         overflow:hidden;height:360px}
   .controls{display:flex;gap:8px;align-items:center;margin:12px 0 0;flex-wrap:wrap}
-  button{font:inherit;font-size:13px;padding:6px 13px;border-radius:7px;cursor:pointer;
+  button{font-family:"PT Sans",system-ui,sans-serif;font-size:13px;padding:6px 13px;border-radius:7px;cursor:pointer;
          background:var(--violet);color:#0b0c10;border:0;font-weight:600}
   button.ghost{background:transparent;color:var(--text3);border:1px solid var(--line)}
-  .note{font-size:13px;color:var(--text3);max-width:74ch}
+  .note{font-size:14px;color:var(--text3);max-width:68ch}
   .rule{border:0;border-top:1px solid var(--line);margin:34px 0}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   @media(max-width:900px){.grid2{grid-template-columns:1fr}}
   table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
   th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
-  th{background:var(--surface)}
+  th{background:var(--surface);font-family:"PT Sans",system-ui,sans-serif}
   code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
   .pill{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
         padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--text3)}
@@ -47,7 +55,7 @@
        opacity:.35;transition:opacity .5s}
   .row.seen{opacity:1}
   .dot{width:7px;height:7px;border-radius:50%;background:#2b2f38;flex:none;transition:background .4s}
-  .rName{font-size:13.5px;min-width:150px;color:var(--text2)}
+  .rName{font-size:14.5px;min-width:158px;color:var(--text2)}
   .row.seen .rName{color:var(--text)}
   .meta{display:flex;gap:9px;align-items:center;font-size:12px;color:var(--text3);
         font-family:ui-monospace,SFMono-Regular,Menlo,monospace;opacity:0;transition:opacity .6s}
@@ -57,7 +65,8 @@
   .stage-label{font-size:12px;color:var(--gold-400);font-family:ui-monospace,Menlo,monospace}
 </style>
 
-<h1>DS.4 design pass — what the wait should feel like</h1>
+<p class="eyebrow">DS.4 · design pass</p>
+<h1>The wait is the overture,<br>not a progress bar.</h1>
 <p class="sub">Two directions for the preparation screen, built from what the code already computes
 and what the brand already sanctions. Watch both, then pick a lane — this is the decision that
 unblocks the DS.4 prompt.</p>
@@ -246,7 +255,7 @@ function drawA(now){
 
   // 5. chrome: session state only, never upcoming content
   cx.globalCompositeOperation = 'source-over';
-  cx.font = '500 13px -apple-system,system-ui,sans-serif';
+  cx.font = '13px "PT Sans",system-ui,sans-serif';
   cx.textAlign = 'left'; cx.fillStyle = '#a4a8a2';
   cx.fillText(done >= TRACKS.length ? 'Ready' : 'Listening to your playlist', 18, 26);
   cx.textAlign = 'right';
