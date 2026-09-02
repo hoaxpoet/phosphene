@@ -34,6 +34,7 @@ struct SettingsStoreTests {
         #expect(store.showLiveAdaptationToasts == false)
         #expect(store.sessionRecorderEnabled == true)
         #expect(store.sessionRetention == .lastN10)
+        #expect(store.preparationView == .mysterious, "DS.4: mysterious is the stated default")
     }
 
     @Test func setAndReload_roundTripsAllEnumSettings() {
@@ -45,12 +46,14 @@ struct SettingsStoreTests {
         store.qualityCeiling = .ultra
         store.reducedMotion = .alwaysOn
         store.sessionRetention = .oneWeek
+        store.preparationView = .detailed
 
         let store2 = SettingsStore(defaults: defaults)
         #expect(store2.deviceTierOverride == .forceTier2)
         #expect(store2.qualityCeiling == .ultra)
         #expect(store2.reducedMotion == .alwaysOn)
         #expect(store2.sessionRetention == .oneWeek)
+        #expect(store2.preparationView == .detailed)
     }
 
     @Test func setAndReload_roundTripsExcludedPresetCategories() {

@@ -174,7 +174,10 @@
 
 // MARK: - Preparation
 
-"preparation.header.title"              = "Preparing your session";
+"preparation.heard_count_one"           = "%d of %d track heard";
+"preparation.heard_count_other"         = "%d of %d tracks heard";
+"preparation.failed_count_one"          = "1 track couldn’t be prepared";
+"preparation.failed_count_other"        = "%d tracks couldn’t be prepared";
 "preparation.cancel.confirm_title"      = "Cancel preparation?";
 "preparation.cancel.confirm_button"     = "Cancel preparation";
 "preparation.cancel.keep_button"        = "Keep preparing";
@@ -190,6 +193,16 @@
 "preparation.track.analyzing"   = "Separating stems";
 "preparation.track.caching"     = "Caching";
 "preparation.track.ready"       = "Ready";
+"preparation.track.bpm"         = "%d BPM";
+"preparation.track.mood.bright"   = "bright";
+"preparation.track.mood.calm"     = "calm";
+"preparation.track.mood.restless" = "restless";
+"preparation.track.mood.wistful"  = "wistful";
+"preparation.track.stem.vocals" = "vocals";
+"preparation.track.stem.drums"  = "drums";
+"preparation.track.stem.bass"   = "bass";
+"preparation.track.stem.other"  = "other instruments";
+"preparation.track.stems_led_by" = "led by %@";
 
 // MARK: - Ready
 
@@ -315,6 +328,12 @@
 "settings.visuals.reduced_motion.always_off"  = "Always off";
 
 // Visuals — blocklist
+"settings.visuals.preparation.title"      = "While a session prepares";
+"settings.visuals.preparation.label"      = "Show";
+"settings.visuals.preparation.mysterious" = "A cave, opening as Uzume listens";
+"settings.visuals.preparation.detailed"   = "Each track, and what Uzume heard in it";
+"settings.visuals.preparation.hint"       = "Mysterious keeps the playlist unseen until the music starts. Detailed shows each track's tempo, key and mood as it is heard. You can change this while a session is preparing.";
+
 "settings.visuals.blocklist.title" = "Hidden preset families";
 
 // Visuals — toasts
@@ -375,7 +394,9 @@
 "a11y.toast.severity.fatal"                 = "Critical";
 "a11y.toast.dismiss.label"                  = "Dismiss notification";
 
-"a11y.preparation.topBanner.dismiss.label"  = "Dismiss warning";
+"a11y.preparing.aperture.label"      = "Preparing. %d of %d tracks heard.";
+"a11y.preparing.aperture.can_start"  = "You can start now";
+"a11y.preparing.failed_count.hint"   = "Shows which tracks";
 
 // MARK: - LF.4 Local-file playback
 
@@ -452,17 +473,8 @@
 
 "lf.open.m3u.panel.title"                   = "Choose a .m3u or .m3u8 playlist";
 
-// MARK: - GAP D (2026-05-28) — Preparation header for LF sessions
-// Switches the generic "Preparing your session" headline for LF origins
-// to a contextual line that names what's being read. The streaming-path
-// header strings above (preparation.header.title etc.) are unchanged.
-
-/* %@ = filename of the single LF file being prepared */
-"preparation.header.lf_file"                = "Reading %@";
-/* %d = total track count for a multi-file LF queue */
-"preparation.header.lf_tracks"              = "Reading %d tracks";
-/* %@ = folder name OR playlist filename — subtitle for folder / playlist origins */
-"preparation.header.lf_from"                = "from %@";
+// GAP D (2026-05-28) preparation-header strings for LF origins were removed at DS.4:
+// the preparation screen no longer has a header in either view.
 
 // MARK: - GAP G (2026-05-28) — Local Files settings section
 // New sidebar entry between Audio and Visuals. Surfaces the persistent
@@ -512,9 +524,6 @@
 "content.preparing_fallback.subtitle"       = "Analyzing tracks…";
 
 // Preparation streaming subtitle — track count (PreparationProgressView)
-"preparation.subtitle.track_one"            = "%d track";
-"preparation.subtitle.track_other"          = "%d tracks";
-"preparation.subtitle.from"                 = "%@ from %@";
 
 // Plan-preview transition labels (PlanPreviewTransitionView)
 "plan_preview.transition.cut"               = "cut";

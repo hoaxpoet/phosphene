@@ -1,16 +1,15 @@
-// TrackPreparationStatusIcon — Small icon component for TrackPreparationRow.
-// Spinner for in-flight statuses; SF Symbol for terminal states.
+// PreparationStatusIndicator — the 28 × 28 pt mark beside a preparation row. (DS.4)
+//
+// Extracted from TrackPreparationStatusIcon. A spinner for in-flight statuses; an SF
+// Symbol in the matching status token for the terminal ones. Tokens only (D-232).
 
 import Session
 import SwiftUI
 
-// MARK: - TrackPreparationStatusIcon
+// MARK: - PreparationStatusIndicator
 
-/// 28 × 28 pt icon representing a single track's preparation status.
-///
-/// In-flight statuses (`.resolving`, `.downloading`, `.analyzing`) render a
-/// theme-coloured spinner. Terminal statuses render an SF Symbol.
-struct TrackPreparationStatusIcon: View {
+/// Single-glyph status for one track in the preparation list.
+struct PreparationStatusIndicator: View {
     static let size: CGFloat = 28
 
     let status: TrackPreparationStatus

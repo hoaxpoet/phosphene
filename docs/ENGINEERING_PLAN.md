@@ -77,9 +77,47 @@ playback chrome retokenized in place — never a parallel `CuratorControlSurface
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
 **DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** ✅ 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop; merged as [#188](https://github.com/hoaxpoet/uzume/pull/188) (`45b002ab`).
-**DS.4 is not prompt-ready:** it is the first DS step with a new visual idea rather than a consolidation, and needs a design pass before a prompt is written.
+**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); **built 2026-09-02 (D-238), M7 pending** on branch `claude/ds4-prompt-execution-220901` — see the entry below.
 
 ## Recently Completed
+
+### Increment DS.4 — the preparation screen becomes the overture 🔨 M7 pending (2026-09-02, D-238)
+
+**Done-when:** waiting for a session to prepare is something you watch rather than endure, and the
+listener chooses how; both views ship behind a preference; the header and progress bar are gone;
+per-row failures stay reachable; the aperture is flash-safe by measurement; preparation is not
+slower; Matt's M7 against his own words — *"i want people to feel entertained and excited during
+preparation"*. **Status: code-complete on the branch, every gate green, M7 outstanding.**
+
+**What shipped.** `SessionPreparer` publishes `trackProfiles` beside `trackStatuses` (the
+prerequisite — the App layer could not know what Uzume heard). `uzume.settings.visuals.preparationView`,
+default mysterious. `PreparationAperture` + `ApertureScene` in `Views/Components/`: the cave, shut until
+the first track is heard, opening through the engine's four readiness stops, the full prism spilling in
+every direction as two conic-gradient fans (seamless, a handful of fills per frame), the playlist changing
+how the light behaves and never its hue. `PreparationTrackRow` + `PreparationStatusIndicator` (from
+`TrackPreparationRow` / `TrackPreparationStatusIcon`): the detailed row reports discoveries once a track is
+heard. `PreparationProgressView` rebuilt in place around the preference; banner slot, buttons, recovery
+wiring and cancel dialog untouched. DEAD-002 decided: the banner's dismiss affordance deleted.
+
+**Measured.** Flash (D-157, Mitosis idiom): maxΔ/frame **0.0100**, luma 0.066–0.511, gate < 0.05.
+Preparation wall time on a real 40-track Spotify playlist, cold cache, baseline vs each view:
+`docs/reviews/DS.4/TIMING.md`. Reduced motion renders and widens without animating (tested). VoiceOver:
+the cave is one element carrying every fact the light conveys; no identifier changed.
+
+**Evidence.** `docs/reviews/DS.4/index.html` (before / mysterious / detailed per state, the timing
+table, the flash numbers, the VoiceOver rows, and the recording of a full mysterious preparation);
+`CAPTURES.md` (reachability per state); `TIMING.md`.
+
+**Learned.** (1) `ImageRenderer` does not lay out a `LazyVStack` inside a `ScrollView`; the capture
+harness renders through an offscreen `NSHostingView`. (2) Sixty-odd overlapping additive wedges leave
+antialiasing seams that read as spokes; one conic gradient under a radial mask is seamless and cheaper.
+(3) A prism swept 1.15 loops around a circle has a visible seam at 0°; exactly one loop meets itself.
+(4) A test that renders on the main actor for 35 s starves parallel main-actor suites — yield between
+frames. (5) `log` is a zsh builtin; the unified-log CLI is `/usr/bin/log`, and `xcodebuild` forwards only
+`TEST_RUNNER_`-prefixed environment variables to the test host.
+
+**Open for DS.5.** Whether the opening persists into `.ready` as a held image or reaching ready is the
+moment it finally opens all the way — Matt's call before DS.5 is written.
 
 ### Increment DS.3b — the banner's three errors do not share a severity ✅ (2026-09-01, D-237)
 

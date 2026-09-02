@@ -65,6 +65,24 @@ struct VisualsSettingsSection: View {
                 }
             }
 
+            Section(NSLocalizedString("settings.visuals.preparation.title", comment: "")) {
+                Picker(
+                    NSLocalizedString("settings.visuals.preparation.label", comment: ""),
+                    selection: Binding(
+                        get: { viewModel.preparationView },
+                        set: { viewModel.preparationView = $0 }
+                    )
+                ) {
+                    Text(NSLocalizedString("settings.visuals.preparation.mysterious", comment: ""))
+                        .tag(PreparationViewPreference.mysterious)
+                    Text(NSLocalizedString("settings.visuals.preparation.detailed", comment: ""))
+                        .tag(PreparationViewPreference.detailed)
+                }
+                Text(NSLocalizedString("settings.visuals.preparation.hint", comment: ""))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section(NSLocalizedString("settings.visuals.blocklist.title", comment: "")) {
                 PresetCategoryBlocklistPicker(
                     selection: Binding(

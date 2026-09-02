@@ -97,6 +97,11 @@ final class SettingsViewModel: ObservableObject {
         set { store.showUncertifiedPresets = newValue }
     }
 
+    var preparationView: PreparationViewPreference {
+        get { store.preparationView }
+        set { store.preparationView = newValue }
+    }
+
     var sessionRecorderEnabled: Bool {
         get { store.sessionRecorderEnabled }
         set { store.sessionRecorderEnabled = newValue }

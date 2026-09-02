@@ -123,6 +123,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-213 | Accepted — executed (RECON.14, 2026-08-25) | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
 | D-232 | Accepted | **The design system reaches the app as a VENDORED copy, and Uzume is always dark (DS.1, 2026-09-01, Matt chose A).** [D-228] makes `uzume-site` the design-system source of truth, but the app may not take a package dependency on it: a fresh clone and CI would then need a second repo present, and the app is the thing that has to build. So `UzumeApp/DesignSystem/UzumeTokens.swift` is a byte-identical copy of `uzume-site@03d5478`'s token file under a provenance header (repo, path, commit, SHA-256), and `Scripts/check_design_token_drift.sh` is the cost made visible: it verifies the vendored body against its recorded hash always, and against the upstream file when a sibling checkout is present — `SKIP`/0 when it is not. **The price is a manual re-sync**, accepted because tokens change on the order of once per design increment and a silent divergence now fails a script instead of being discovered in a screenshot. **App-only roles never go in the vendored file** — they live in `UzumeTokens+App.swift`, each commenting the `--color-*` name it was transcribed from, so any app colour greps back to a line of `tokens.css`. **Uzume is always dark:** every screen keeps the near-black canvas whatever macOS is set to, so the engine's output is the only bright thing in the frame and the ≥4.5:1 overlay measurement stays valid against one appearance. That diverges from upstream — the Swift package builds on adaptive AppKit system colours and `tokens.css` publishes a full light palette — so the app pins its roles to the DARK block and the app root sets `.preferredColorScheme(.dark)`; light-appearance support is a real increment with its own review, not a side effect of a token swap. Two upstream disagreements found and recorded rather than papered over: the package's system-colour mapping resolves to **neither** palette (`.windowBackgroundColor` in dark appearance is far lighter than `--color-canvas` #0b0c10), and `UzumeRadius` (6/10/14) agrees with `--radius-*` (6/12/16) only on the smallest rung. §Rationale below. |
+| D-238 | Accepted (M7 pending) | **The preparation screen is the overture — one opening, two views, the listener chooses (DS.4, 2026-09-02, Matt's design pass).** Matt's bar: *"i want people to feel entertained and excited during preparation."* `PreparationProgressView` is rebuilt in place around two views behind `uzume.settings.visuals.preparationView` (default **mysterious**): the cave (`PreparationAperture`) — shut until the first track is heard, a pinprick then, widening through the engine's **four readiness stops** (not the fraction complete, which is 7.5 % when "Start now" unlocks at forty tracks), the identity's **full prism** spilling in every direction and more vibrant as it opens, never naming a track, the list hidden and failures surfaced as a count line that opens the other view; and the list (`PreparationTrackRow` + `PreparationStatusIndicator` in `Views/Components/`) reporting what Uzume **heard** — tempo, key, mood, stem balance — with per-row failures still inline. Hue is identity, not data: exactly one loop of violet → cyan → gold → ember; the playlist changes how the light *behaves* (`PreparationCharacter`: churn, rate, edge, ribbing vs wash, waver — from heard profiles only). Prerequisite: `SessionPreparer` publishes `trackProfiles` beside `trackStatuses`. Both views bound by heard-vs-will-do. Flash-safe by measurement (maxΔ/frame 0.0100 vs the 0.05 gate, D-157); reduced motion snaps to the stop and still widens; the cave is one VoiceOver element carrying every fact the light conveys; preparation wall time measured against `main` in `docs/reviews/DS.4/TIMING.md`. DEAD-002 decided: the banner's dismiss affordance is **deleted**. DS.5 inherits whether the opening persists into `.ready`. §Rationale below. |
 | D-237 | Accepted | **The banner's three errors do not share a severity, and the split follows the CTA (DS.3b, 2026-09-01, Matt's call).** DS.3 gave the banner a tone for the first time and every reachable banner came out **info blue** — faithful to the model and wrong about the product. The cause was not the mapping: **all three errors routed to `.topBanner` sat on the `default: return .info` arm** of `UserFacingError.severity`, named nowhere in that switch, and the hard-coded amber banner had concealed it for as long as it existed. The split now follows a distinction the code already made — **does the user have anything to do?** `previewRateLimited` **stays `info`**: it auto-retries (`retryStatus == .autoRetrying()`) and has **no `primaryCTAKey`**, so blue is the honest colour and this one was never mis-rated. `preparationSlowOnFirstTrack` and `preparationTotalTimeout` become **`warning`**: both carry `primaryCTAKey == "cta.start_reactive_mode"`, and `ErrorSeverity.warning`'s own definition is *"User may want to act, but the session can continue"* — literally these two. The banner consequently reaches the token warning treatment DS.3 originally predicted, but by correcting a classification rather than by painting over it, and it now carries **two** tones — which is what [D-234] gave it a tone for. Pinned by `test_bannerErrors_severitySplit`, which also pins the deliberate `info` so a later reader does not "fix" it. §Rationale below. |
 | D-236 | Accepted | **Sustained silence is fatal, and the toast vocabulary gains the `fatal` case it was missing (DS.3a, 2026-09-01, Matt's call).** DS.3 made the *"No audio detected."* toast yellow by reading the model — and that exposed the real defect: the toast had been red only because `PlaybackErrorBridge:287` **hard-coded `severity: .degradation` at the call site**, while `UserFacingError.severity` rated `silenceExtended` a mere `warning`, *milder than a dropped stem*. The pixels and the taxonomy had disagreed about silence for months, in the opposite direction anyone would guess. Matt's judgement — *"Uzume ceases to function without audio"* — is the correct reading: the visuals are audio-driven, so sustained silence means the product has stopped delivering even though the render loop still runs. **Three changes.** (1) `silenceExtended` → `.fatal`. It stays condition-bound and still clears itself when audio returns — `fatal` here describes what the user is (not) getting, not whether the process can proceed. (2) `UzumeToast.Severity` gains `fatal`, mirroring `ErrorSeverity` one-for-one, because the bridge was **folding `.degradation, .fatal` into `.degradation`** — the distinction died in the narrower enum before any view could see it, which is precisely why [D-234] could not fix this from the view layer. (3) The `ErrorSeverity → UzumeToast.Severity` mapping moves onto `UzumeToast.Severity.init(_:)`, so no call site chooses a toast severity by hand again. `ToastManager`'s never-drop rule covers `fatal`; VoiceOver gains *"Critical"* alongside *"Alert"*. **This crossed DS.3's stated boundaries deliberately and with approval** — DS.3 was barred from changing `ErrorSeverity`, `UzumeToast.Severity`, or any error's severity, and this changes all three. §Rationale below. |
 | D-234 | Accepted | **One severity vocabulary: `StatusTone` maps both source enums onto the published status roles (DS.3, 2026-09-01).** Three surfaces each mapped severity to colour inline and disagreed. `StatusTone` (`info`/`success`/`warning`/`danger`) is the single answer, resolving each tone to a `--color-status-*` triple from the vendored source ([D-232]) plus one SF Symbol, dark block only. It maps *from* `ErrorSeverity` (engine-owned) and `UzumeToast.Severity` (app-owned); **neither source enum changes** — unifying them has engine reach and is not this increment. **The four placements stay four components** — `NoticeBanner`, `InlineNotice`, `PerformanceToast`, `RecoveryScreen` — because interruption, lifetime and dismissal differ; sharing the tone vocabulary is the whole of the sharing (`COMPONENTS.md` § Status placements). `RecoveryScreen` absorbed two predecessors, one of which (`FullScreenErrorView`) **had no construction site and had never shipped** (DEAD-003), so that half of the merge carried zero behavioural risk. All five accessibility identifiers keep their `preparation.*` spelling despite the renames — an identifier is a contract, not a description — and are pinned by `StatusPlacementIdentifierTests`. §Rationale below. |
@@ -4705,6 +4706,103 @@ the vendored token source and its app extension ([D-232]); a component authored
 in the app is app-owned until `uzume-site` adopts it ([D-228]). What the app
 learned building it goes upstream as a report, in
 `docs/reviews/DS.2/UPSTREAM-FINDINGS.md`.
+
+## D-238: The preparation screen is the overture — one opening, two views, the listener chooses (DS.4)
+
+**Date:** 2026-09-02 · **Increment:** DS.4 · **Status:** Accepted (Matt's design pass, 2026-09-02; M7 pending)
+
+### Matt's brief, and the bar
+
+> "i want people to feel entertained and excited during preparation"
+
+That sentence is the whole acceptance bar. The design pass (`docs/reviews/DS.4/DESIGN.md`) records
+his choices in his own words: a single opening in the cave whose light spills out and widens as
+preparation proceeds; the prism of the logo, not moods of colour; an aperture that starts closed
+and grows from a pinprick; "Start now" kept as a button; and **both** a mysterious view and a
+detailed one, because beta listeners split on wanting mystery versus wanting to know.
+
+### The decision
+
+**The preparation screen is rebuilt in place around two views behind a preference**
+(`uzume.settings.visuals.preparationView`, default **mysterious**):
+
+- **Mysterious** — `PreparationAperture`: a dark cave whose opening is shut until the first
+  track is heard, cracks to a pinprick, and widens through the engine's four readiness stops
+  (`preparing → readyForFirstTracks → partiallyPlanned → fullyPrepared`). The identity's full
+  prism spills out in every direction, more vibrant as the opening grows. It never names a
+  track. The list is hidden; failures surface as a count line that opens the detailed view.
+- **Detailed** — the list, rebuilt as `PreparationTrackRow` + `PreparationStatusIndicator` in
+  `Views/Components/`, reporting what Uzume *heard* in each track once it is heard: tempo, key,
+  mood, and a four-stem balance. Per-row `previewNotFound` / `stemSeparationFailed` stay inline.
+
+The header and the progress bar are gone from both. `NoticeBanner` keeps its slot; "Start now"
+and "Cancel" stay buttons; the network-recovery wiring and the cancel dialog are untouched.
+
+### Why the opening tracks readiness, not completion
+
+The design pass falsified three executions before this one (one shaft per track; a landscape of
+the playlist; an averaged hue), and the common failure was **measuring the wrong quantity**: at
+forty tracks, "fraction complete" is 7.5 % at the moment "Start now" unlocks. The engine already
+publishes the right quantity — its readiness level — and `ApertureStop` is a pure function of
+that level plus the fraction heard within it. Eight tracks and forty are the same object.
+
+### Why the colour never varies
+
+`BRAND.md`: *"Keep the ivory opening brighter than the surrounding spectrum"* and *"do not …
+flatten the spectrum into bands"*. So the mouth is ivory, and what spills is a **continuous loop
+of violet → cyan → gold → ember**, always the whole prism — exactly one loop around the circle,
+so the conic gradient meets itself. Hue is identity, not data. What the playlist changes is how
+the light *behaves* — `PreparationCharacter` derives churn (mood spread as circular variance),
+rate (tempo), edge (spectral centroid), ribbing versus wash (drums versus vocals), mouth width
+(bass) and waver (beat irregularity) from the profiles of tracks already heard, so the image
+becomes more specific as more is heard. A mood-tinted cave was tried in the pass and rejected.
+
+### The prerequisite: the profile reaches the App layer
+
+`TrackPreparationStatus` carried only the stage. `SessionPreparer` now publishes
+`trackProfiles` beside `trackStatuses` — written the moment a track becomes `.ready` on every
+path (fresh analysis, cache hit, local file), cleared at the start of each pass, never set for a
+failed or partial track. Publishing only: analysis order and `prefetchWindow` are untouched.
+Both views are made of this.
+
+### The surprise model still binds both views
+
+`COMPONENTS.md`: *"Never exposes upcoming content."* The line is **heard versus will-do**: both
+views may show what Uzume heard in music the listener already chose; neither shows which preset
+a track gets, the emotional arc, or what is next. The detailed view is not an exemption.
+
+### Hard constraints, and how each was met
+
+1. **Flash safety** ([D-157]). The opening eases exponentially (τ = 2.8 s) and a landing is a
+   2.4 s swell, never a flash. Measured in the `MitosisSketchRenderTests` §Criterion 4 idiom
+   across a scripted 40-track preparation with a four-track burst: **maxΔ/frame 0.0100, mean
+   luma 0.066–0.511**, against the 0.05 gate (`PreparationApertureTests`).
+2. **Reduced motion** is first-class: the timeline pauses and the opening snaps to its stop —
+   it still renders and still widens. Tested.
+3. **VoiceOver**: the cave is one accessibility element carrying every fact the light conveys
+   ("Preparing. 4 of 40 tracks heard." / "You can start now"); the heard count and the failure
+   count are also on screen as text. No identifier changed.
+4. **Preparation must not slow down.** Measured against the unmodified build on the same
+   40-track playlist — `docs/reviews/DS.4/TIMING.md`.
+
+### DEAD-002, decided
+
+The banner's dismiss button had never rendered. It is **deleted**, not wired: every banner
+error either resolves itself (rate-limited auto-retries) or is the only place a still-true
+condition is stated (slow first track, total timeout), so dismissing one would hide the truth
+without changing it. The identifier and its string go with it; `StatusPlacementIdentifierTests`
+now pins the retirement.
+
+### What this does not decide
+
+Whether the opening persists into `.ready` as a held image or reaching ready is the moment it
+finally opens all the way. That is DS.5's screen and needs Matt before DS.5 is written.
+
+**References.** `docs/reviews/DS.4/DESIGN.md` (the contract); [D-232] (tokens, always dark);
+[D-234]/[D-235]/[D-237] (the status placements consumed unchanged); [D-157] (the flash gate);
+[D-228] (`uzume-site` owns the brand; nothing there was edited).
+
+---
 
 ## D-237: The banner's three errors do not share a severity (DS.3b)
 

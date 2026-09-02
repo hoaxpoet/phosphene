@@ -13,9 +13,17 @@
 		E10032 /* PerformanceToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20032; };
 		E10031 /* InlineNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20031; };
 		E10030 /* NoticeBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20030; };
+		DA41008 /* ApertureScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42008; };
+		DA41006 /* PreparationAperture.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42006; };
+		DA41005 /* PreparationStatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42005; };
+		DA41004 /* PreparationTrackRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42004; };
 		E10029 /* RecoveryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20029; };
 		E10028 /* StatusTone.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20028; };
-		E10027 /* DS3StatusCaptureHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20027; };
+		E10027 /* ReviewCaptureHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20027; };
+		DA41007 /* PreparationApertureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42007; };
+		DA41003 /* ReviewCaptureScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42003; };
+		DA41002 /* ReviewCaptureHarness+Preparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42002; };
+		DA41001 /* PreparationProfilePublishingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42001; };
 		A10001 /* UzumeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20001; };
 		A10002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20002; };
 		B10001 /* SessionStateViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001; };
@@ -107,8 +115,6 @@
 		E10021 /* AppleMusicConnectionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20021; };
 		E10022 /* SpotifyURLParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20022; };
 		E10023 /* SpotifyConnectionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20023; };
-		F10001 /* TrackPreparationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20001; };
-		F10002 /* TrackPreparationStatusIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20002; };
 		F10003 /* PreparationProgressViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20003; };
 		F10004 /* PreparationETAEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20004; };
 		F10005 /* PreparationProgressViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20005; };
@@ -222,9 +228,17 @@
 		E20032 /* PerformanceToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceToast.swift; sourceTree = "<group>"; };
 		E20031 /* InlineNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineNotice.swift; sourceTree = "<group>"; };
 		E20030 /* NoticeBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoticeBanner.swift; sourceTree = "<group>"; };
+		DA42008 /* ApertureScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ApertureScene.swift"; sourceTree = "<group>"; };
+		DA42006 /* PreparationAperture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreparationAperture.swift"; sourceTree = "<group>"; };
+		DA42005 /* PreparationStatusIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreparationStatusIndicator.swift"; sourceTree = "<group>"; };
+		DA42004 /* PreparationTrackRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreparationTrackRow.swift"; sourceTree = "<group>"; };
 		E20029 /* RecoveryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryScreen.swift; sourceTree = "<group>"; };
 		E20028 /* StatusTone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusTone.swift; sourceTree = "<group>"; };
-		E20027 /* DS3StatusCaptureHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DS3StatusCaptureHarness.swift; sourceTree = "<group>"; };
+		E20027 /* ReviewCaptureHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewCaptureHarness.swift; sourceTree = "<group>"; };
+		DA42007 /* PreparationApertureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreparationApertureTests.swift"; sourceTree = "<group>"; };
+		DA42003 /* ReviewCaptureScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureScenarios.swift"; sourceTree = "<group>"; };
+		DA42002 /* ReviewCaptureHarness+Preparation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureHarness+Preparation.swift"; sourceTree = "<group>"; };
+		DA42001 /* PreparationProfilePublishingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProfilePublishingTests.swift; sourceTree = "<group>"; };
 		A20001 /* UzumeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UzumeApp.swift; sourceTree = "<group>"; };
 		A20002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B20001 /* SessionStateViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateViewTests.swift; sourceTree = "<group>"; };
@@ -319,8 +333,6 @@
 		E20021 /* AppleMusicConnectionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicConnectionViewModelTests.swift; sourceTree = "<group>"; };
 		E20022 /* SpotifyURLParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyURLParserTests.swift; sourceTree = "<group>"; };
 		E20023 /* SpotifyConnectionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConnectionViewModelTests.swift; sourceTree = "<group>"; };
-		F20001 /* TrackPreparationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackPreparationRow.swift; sourceTree = "<group>"; };
-		F20002 /* TrackPreparationStatusIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackPreparationStatusIcon.swift; sourceTree = "<group>"; };
 		F20003 /* PreparationProgressViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProgressViewModel.swift; sourceTree = "<group>"; };
 		F20004 /* PreparationETAEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationETAEstimator.swift; sourceTree = "<group>"; };
 		F20005 /* PreparationProgressViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProgressViewModelTests.swift; sourceTree = "<group>"; };
@@ -569,6 +581,10 @@
 		E40024 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				DA42008 /* ApertureScene.swift */,
+				DA42006 /* PreparationAperture.swift */,
+				DA42005 /* PreparationStatusIndicator.swift */,
+				DA42004 /* PreparationTrackRow.swift */,
 				E20031 /* InlineNotice.swift */,
 				E20030 /* NoticeBanner.swift */,
 				E20029 /* RecoveryScreen.swift */,
@@ -597,8 +613,6 @@
 				E20007 /* AppleMusicConnectionView.swift */,
 				E20008 /* SpotifyConnectionView.swift */,
 				Q20006 /* LocalSourceConnectionView.swift */,
-				F20001 /* TrackPreparationRow.swift */,
-				F20002 /* TrackPreparationStatusIcon.swift */,
 				K20010 /* SettingsView.swift */,
 				K40001 /* Settings */,
 				L20010 /* QualityGradeIndicator.swift */,
@@ -737,9 +751,13 @@
 		B40001 /* UzumeAppTests */ = {
 			isa = PBXGroup;
 			children = (
+				DA42007 /* PreparationApertureTests.swift */,
+				DA42003 /* ReviewCaptureScenarios.swift */,
+				DA42002 /* ReviewCaptureHarness+Preparation.swift */,
+				DA42001 /* PreparationProfilePublishingTests.swift */,
 				E20035 /* StatusToneTests.swift */,
 				E20034 /* StatusPlacementIdentifierTests.swift */,
-				E20027 /* DS3StatusCaptureHarness.swift */,
+				E20027 /* ReviewCaptureHarness.swift */,
 				B20001 /* SessionStateViewTests.swift */,
 				D20008 /* PermissionMonitorTests.swift */,
 				D20009 /* PhotosensitivityAcknowledgementStoreTests.swift */,
@@ -921,6 +939,10 @@
 				E10032 /* PerformanceToast.swift in Sources */,
 				E10031 /* InlineNotice.swift in Sources */,
 				E10030 /* NoticeBanner.swift in Sources */,
+				DA41008 /* ApertureScene.swift in Sources */,
+				DA41006 /* PreparationAperture.swift in Sources */,
+				DA41005 /* PreparationStatusIndicator.swift in Sources */,
+				DA41004 /* PreparationTrackRow.swift in Sources */,
 				E10029 /* RecoveryScreen.swift in Sources */,
 				E10028 /* StatusTone.swift in Sources */,
 				A10001 /* UzumeApp.swift in Sources */,
@@ -980,8 +1002,6 @@
 				E10011 /* ConnectorPickerViewModel.swift in Sources */,
 				E10012 /* AppleMusicConnectionViewModel.swift in Sources */,
 				E10013 /* SpotifyConnectionViewModel.swift in Sources */,
-				F10001 /* TrackPreparationRow.swift in Sources */,
-				F10002 /* TrackPreparationStatusIcon.swift in Sources */,
 				F10003 /* PreparationProgressViewModel.swift in Sources */,
 				F10004 /* PreparationETAEstimator.swift in Sources */,
 				G10001 /* ReadyViewModel.swift in Sources */,
@@ -1048,7 +1068,11 @@
 			files = (
 				E10035 /* StatusToneTests.swift in Sources */,
 				E10034 /* StatusPlacementIdentifierTests.swift in Sources */,
-				E10027 /* DS3StatusCaptureHarness.swift in Sources */,
+				E10027 /* ReviewCaptureHarness.swift in Sources */,
+				DA41007 /* PreparationApertureTests.swift in Sources */,
+				DA41003 /* ReviewCaptureScenarios.swift in Sources */,
+				DA41002 /* ReviewCaptureHarness+Preparation.swift in Sources */,
+				DA41001 /* PreparationProfilePublishingTests.swift in Sources */,
 				B10001 /* SessionStateViewTests.swift in Sources */,
 				D10008 /* PermissionMonitorTests.swift in Sources */,
 				D10009 /* PhotosensitivityAcknowledgementStoreTests.swift in Sources */,

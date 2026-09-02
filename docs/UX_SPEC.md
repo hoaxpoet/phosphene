@@ -214,22 +214,37 @@ A preparation phase with no feedback feels broken regardless of how long it take
 
 Uzume's design bet: Curators will wait up to 2 minutes for large playlists if Uzume earns that time. The UI's job is to make the wait feel purposeful, not stalled.
 
-### 5.2 `PreparationProgressView` layout
+### 5.2 `PreparationProgressView` layout (DS.4 / D-238)
 
-Three regions stacked vertically:
+**The wait is the overture, not a progress bar.** Matt's bar for this screen: *"i want people to
+feel entertained and excited during preparation."* There is no header and no progress bar. The
+listener chooses one of two views (Settings → Visuals → "While a session prepares",
+`uzume.settings.visuals.preparationView`; changeable at any time, including mid-preparation):
 
-**Top — playlist header (120 pt):** playlist name, total track count, source icon, estimated time remaining, cancel button. Estimated time is honest — 20–120 seconds typical, rounded to 15 s increments.
+**Mysterious (default) — the cave.** `PreparationAperture` fills the frame: a dark cave whose
+opening is shut until the first track is heard, cracks to a pinprick, and widens through the
+engine's four readiness stops (`preparing → readyForFirstTracks → partiallyPlanned →
+fullyPrepared`). The identity's full prism spills out of it in every direction, more vibrant as it
+opens; the playlist changes how the light *behaves* (churn, rate, edge, definition, waver), never
+its colour. It never names a track. Under it, one quiet caption — *"7 of 40 tracks heard"* — and,
+only when tracks have failed, a count line — *"2 tracks couldn't be prepared"* — whose tap opens
+the detailed view. Under reduced motion the cave still renders and still widens; it stops
+animating between states. To VoiceOver it is one element: *"Preparing. 7 of 40 tracks heard."*,
+value *"You can start now"* once the first tracks are ready.
 
-**Middle — track list (fills):** scrollable list, one row per track. Row shows:
+**Detailed — the list.** One `PreparationTrackRow` per track in playlist order. Until a track is
+heard the row reports its stage (§5.3); once heard it reports what Uzume heard — *"118 BPM ·
+A minor · calm"* — with a four-bar stem balance mark. Per-row failures render inline
+(*"Skipped — preview unavailable"*, *"Skipped — couldn't analyze"*; §9.3).
 
-- Track number
-- Title + artist (two lines, truncated with tooltip)
-- Status indicator (see status vocabulary below)
-- Duration
+**Both views:** `NoticeBanner` above (§9.3 top-banner errors, non-blocking); `RecoveryScreen`
+replaces the whole body for the catastrophic cases; **"Start now with N tracks ready"** and
+**Cancel** are buttons below (Increment 6.1) — the cave may signal readiness, it never becomes
+the control.
 
-The first track in `.ready` state is highlighted — it's what will play first.
-
-**Bottom — action bar (80 pt):** aggregate progress bar + `Start now` CTA (appears at progressive-readiness threshold, Increment 6.1) + `Cancel` secondary.
+**Neither view exposes upcoming content** (`COMPONENTS.md`). The line is *heard vs. will-do*:
+both may show what Uzume heard in music the listener chose; neither shows which preset a track
+gets, the emotional arc, or what is next.
 
 ### 5.3 Track status vocabulary
 

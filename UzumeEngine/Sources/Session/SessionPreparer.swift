@@ -126,6 +126,12 @@ public final class SessionPreparer: ObservableObject {
     /// Per-track preparation status. All tracks present from start of `prepare(tracks:)`.
     @Published public private(set) var trackStatuses: [TrackIdentity: TrackPreparationStatus] = [:]
 
+    /// DS.4 — what Uzume heard, per track, populated at the moment a track becomes
+    /// `.ready` (written before the status flips so an observer of `.ready` always finds
+    /// it). Cleared at the start of every pass. Publishing only: the analysis that
+    /// produces the profile is unchanged.
+    @Published public private(set) var trackProfiles: [TrackIdentity: TrackProfile] = [:]
+
     // MARK: - Dependencies
 
     private let resolver: any PreviewResolving
@@ -260,6 +266,7 @@ public final class SessionPreparer: ObservableObject {
         // visits both occurrences (the second is a cheap cache hit), so a
         // twice-listed track yields two cachedTracks entries — two plan slots.
         trackStatuses = Dictionary(tracks.map { ($0, .queued) }, uniquingKeysWith: { first, _ in first })
+        trackProfiles = [:]
         progress = (0, tracks.count)
         networkFailedTracks = []
 
@@ -340,6 +347,7 @@ public final class SessionPreparer: ObservableObject {
         // tolerates the duplicate key instead of trapping; both occurrences are
         // still walked by `_runLocalFilePreparation` below.
         trackStatuses = Dictionary(placeholders.map { ($0, .queued) }, uniquingKeysWith: { first, _ in first })
+        trackProfiles = [:]
         progress = (0, urls.count)
         networkFailedTracks = []
 
@@ -387,6 +395,7 @@ public final class SessionPreparer: ObservableObject {
             if let result {
                 trackStatuses[placeholder] = .analyzing(stage: .caching)
                 cache.store(result.cached, for: result.identity)
+                trackProfiles[placeholder] = result.cached.trackProfile
                 trackStatuses[placeholder] = .ready
                 outcomes.success(result.identity)
                 sourceLabel = result.source.label
@@ -415,6 +424,11 @@ public final class SessionPreparer: ObservableObject {
     /// Publisher emitting the full `trackStatuses` dictionary on every change.
     public var trackStatusesPublisher: AnyPublisher<[TrackIdentity: TrackPreparationStatus], Never> {
         $trackStatuses.eraseToAnyPublisher()
+    }
+
+    /// Publisher emitting the full `trackProfiles` dictionary on every change (DS.4).
+    public var trackProfilesPublisher: AnyPublisher<[TrackIdentity: TrackProfile], Never> {
+        $trackProfiles.eraseToAnyPublisher()
     }
 
     /// Cancel the in-flight preparation pass.
@@ -469,9 +483,10 @@ public final class SessionPreparer: ObservableObject {
             let track = tracks[index]
 
             // Cache-hit short-circuit — idempotent prepare, duplicates (BUG-030), resume.
-            if cache.loadForPlayback(track: track) != nil {
+            if let hit = cache.loadForPlayback(track: track) {
                 fetchTasks[index]?.cancel()
                 fetchTasks[index] = nil
+                trackProfiles[track] = hit.trackProfile
                 trackStatuses[track] = .ready
                 outcomes.success(track)
                 progress = (outcomes.walkedCount, tracks.count)
@@ -502,6 +517,7 @@ public final class SessionPreparer: ObservableObject {
                 let data = try await analyzeFetched(preview, profile: profile, track: track)
                 trackStatuses[track] = .analyzing(stage: .caching)
                 cache.store(data, for: track)
+                trackProfiles[track] = data.trackProfile
                 trackStatuses[track] = .ready
                 outcomes.success(track)
                 logger.info("Cached: \(track.title) by \(track.artist)")

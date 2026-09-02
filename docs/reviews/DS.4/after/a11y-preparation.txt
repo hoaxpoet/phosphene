@@ -1,0 +1,21 @@
+element	declared VoiceOver label	declared value	accessibility identifier
+preparing view (container)	(no explicit label)		uzume.view.preparing
+cancel button	Cancel		uzume.preparing.cancel
+start now button	Start now with 3 tracks ready — we'll keep preparing as you listen.		uzume.preparing.startNow
+track row — queued	Hum Of Maybe by Apparat. Waiting		(none)
+track row — resolving	Hum Of Maybe by Apparat. Finding preview		(none)
+track row — downloading (indeterminate)	Hum Of Maybe by Apparat. Downloading		(none)
+track row — downloading 40%	Hum Of Maybe by Apparat. Downloading — 40%	40 percent	(none)
+track row — analyzing	Hum Of Maybe by Apparat. Separating stems		(none)
+track row — caching	Hum Of Maybe by Apparat. Caching		(none)
+track row — ready (profile not yet published)	Hum Of Maybe by Apparat. Ready		(none)
+track row — ready — heard	Hum Of Maybe by Apparat. 118 BPM · A minor · calm, led by vocals		(none)
+track row — partial — stems	Hum Of Maybe by Apparat. Skipped — Stems unavailable		(none)
+track row — failed — preview	Hum Of Maybe by Apparat. Skipped — Preview not available		(none)
+aperture (mysterious) — before start	Preparing. 1 of 8 tracks heard.		uzume.preparing.aperture
+aperture (mysterious) — can start	Preparing. 3 of 8 tracks heard.	You can start now	uzume.preparing.aperture
+heard line (mysterious)	3 of 8 tracks heard		(none)
+failed count line (mysterious)	2 tracks couldn’t be prepared — hint: Shows which tracks		uzume.preparing.failedCount
+header title	(removed — DS.4)		(none)
+header subtitle	(removed — DS.4)		(none)
+progress bar	(removed — DS.4)		(none)

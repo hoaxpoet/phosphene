@@ -1,10 +1,18 @@
 // PreparationProgressView — Shown when SessionManager.state == .preparing.
-// Per-track status list, aggregate progress bar, cancel affordance, and
-// "Start now" CTA (active once SessionManager.progressiveReadinessLevel >= .readyForFirstTracks).
+//
+// DS.4 (D-238): the wait is the overture. Two views behind a preference —
+//   mysterious (default)  the cave (`PreparationAperture`), opening as Uzume hears the
+//                         playlist; never names a track. Failures surface as a count
+//                         line that opens the detailed view.
+//   detailed              the track list (`PreparationTrackRow`), reporting what Uzume
+//                         heard in each track once it is heard.
+// The header and the progress bar are gone from both. `NoticeBanner` keeps its slot
+// above; "Start now" and "Cancel" stay buttons below — the aperture may signal
+// readiness, it never becomes the control.
 //
 // U.7: Owns a PreparationErrorViewModel that watches network reachability and track
-// statuses to decide whether to show a NoticeBanner above the list (non-blocking
-// warning) or replace the entire list with RecoveryScreen (catastrophic failure).
+// statuses to decide whether to show a NoticeBanner above (non-blocking warning) or
+// replace the entire body with RecoveryScreen (catastrophic failure).
 
 import Combine
 import Session
@@ -24,18 +32,17 @@ struct PreparationProgressView: View {
     static let accessibilityID  = "uzume.view.preparing"
     static let cancelButtonID   = "uzume.preparing.cancel"
     static let startNowButtonID = "uzume.preparing.startNow"
+    static let failedCountID    = "uzume.preparing.failedCount"
 
     @StateObject private var viewModel: PreparationProgressViewModel
     @StateObject private var errorViewModel: PreparationErrorViewModel
 
-    private let playlistName: String
-    /// GAP D (2026-05-28). The active session origin, used to render a
-    /// contextual header for local-file sessions ("Reading mix.m3u" /
-    /// "Reading 8 tracks from Tempo" etc.) instead of the generic
-    /// streaming-path "Preparing your session" + "N tracks" header.
-    /// `nil` keeps the streaming behaviour; non-LF origins also fall
-    /// through to the streaming header.
-    private let headerContext: SessionOrigin?
+    /// The one app-wide store (D-091): the preparation-view preference is read live,
+    /// so switching it mid-preparation swaps views without disturbing preparation.
+    @EnvironmentObject private var settingsStore: SettingsStore
+    /// Effective reduce-motion (system flag combined with the in-app preference).
+    @EnvironmentObject private var accessibilityState: AccessibilityState
+
     private let onCancel: () -> Void
     private let onStartNow: () -> Void
     private let onPickAnotherPlaylist: (() -> Void)?
@@ -53,9 +60,8 @@ struct PreparationProgressView: View {
     /// - Parameters:
     ///   - publisher: The `SessionPreparer`-backed publisher to observe.
     ///   - tracks: Ordered playlist — rows appear in this order.
-    ///   - playlistName: Display name shown in the subtitle (may be empty).
     ///   - progressiveReadinessPublisher: Emits `ProgressiveReadinessLevel` from `SessionManager`;
-    ///     drives the "Start now" CTA. Defaults to `.preparing` (CTA disabled) for previews.
+    ///     drives the "Start now" CTA and the aperture. Defaults to `.preparing` for previews.
     ///   - reachability: Injectable reachability monitor (defaults to `ReachabilityMonitor`).
     ///   - onCancel: Called when cancel is confirmed; caller transitions state.
     ///   - onStartNow: Called when "Start now" is tapped; typically forwards to `SessionManager.startNow()`.
@@ -64,8 +70,6 @@ struct PreparationProgressView: View {
     init(
         publisher: any PreparationProgressPublishing,
         tracks: [TrackIdentity],
-        playlistName: String = "",
-        headerContext: SessionOrigin? = nil,
         progressiveReadinessPublisher: AnyPublisher<ProgressiveReadinessLevel, Never> =
             Just(.preparing).eraseToAnyPublisher(),
         reachability: any ReachabilityPublishing = ReachabilityMonitor(),
@@ -90,8 +94,6 @@ struct PreparationProgressView: View {
                 totalTrackCount: tracks.count
             )
         )
-        self.playlistName = playlistName
-        self.headerContext = headerContext
         self.onCancel = onCancel
         self.onStartNow = onStartNow
         self.onPickAnotherPlaylist = onPickAnotherPlaylist
@@ -126,9 +128,10 @@ struct PreparationProgressView: View {
 
             VStack(spacing: 0) {
                 bannerSlot
-                header
-                progressBar
-                trackList
+                switch settingsStore.preparationView {
+                case .mysterious: mysteriousBody
+                case .detailed:   trackList
+                }
                 bottomBar
             }
         }
@@ -174,90 +177,56 @@ struct PreparationProgressView: View {
         }
     }
 
-    private var header: some View {
-        VStack(spacing: 4) {
-            Text(verbatim: resolvedHeaderTitle)
-                .font(.title2)
-                .fontWeight(.semibold)
-                .foregroundColor(UzumeAppColor.textPrimary)
+    /// The cave, and beneath it the two facts the light conveys, as text: how many
+    /// heard, and — when tracks fail — how many, with the detailed view one tap away.
+    private var mysteriousBody: some View {
+        VStack(spacing: 0) {
+            PreparationAperture(
+                openness: ApertureStop.openness(
+                    level: viewModel.readinessLevel,
+                    heard: viewModel.counts.ready,
+                    total: viewModel.counts.total
+                ),
+                character: PreparationCharacter(profiles: viewModel.heardProfiles),
+                heard: viewModel.counts.ready,
+                total: viewModel.counts.total,
+                canStart: viewModel.canStartNow,
+                reduceMotion: accessibilityState.reduceMotion
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if let subtitle = resolvedHeaderSubtitle {
-                Text(verbatim: subtitle)
-                    .font(.subheadline)
+            HStack {
+                Text(verbatim: heardLine)
+                    .font(.caption)
                     .foregroundColor(UzumeAppColor.textTertiary)
+                Spacer()
+                if viewModel.counts.failed > 0 {
+                    Button(failedLine) {
+                        settingsStore.preparationView = .detailed
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundColor(UzumeAppColor.textTertiary)
+                    .accessibilityHint(String(localized: "a11y.preparing.failed_count.hint"))
+                    .accessibilityIdentifier(Self.failedCountID)
+                }
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 8)
         }
-        .padding(.top, 32)
-        .padding(.bottom, 16)
-        .padding(.horizontal, 24)
     }
 
-    /// GAP D: the title line. Defaults to the streaming-path
-    /// "Preparing your session" headline; for LF origins, replaces with
-    /// a contextual line that names what's being read.
-    private var resolvedHeaderTitle: String {
+    private var heardLine: String {
         let total = viewModel.counts.total
-        switch headerContext {
-        case .localFile(let url):
-            return String(format: String(localized: "preparation.header.lf_file"),
-                          url.lastPathComponent)
-        case .localFiles, .localFolder, .localPlaylist:
-            // Multi-file LF origins all read as "Reading N tracks" — the
-            // source (folder name, playlist filename, drop) lives in the
-            // subtitle below.
-            return String(format: String(localized: "preparation.header.lf_tracks"),
-                          total)
-        case .playlist, nil:
-            return String(localized: "preparation.header.title")
-        }
+        let key = total == 1 ? "preparation.heard_count_one" : "preparation.heard_count_other"
+        return String(format: String(localized: String.LocalizationValue(key)), viewModel.counts.ready, total)
     }
 
-    /// GAP D: the subtitle line. Streaming-path callers see the
-    /// pre-existing "N tracks [from <playlistName>]"; LF callers see
-    /// a from-clause that names the folder / playlist (or nothing for
-    /// single-file and flat-drop origins).
-    private var resolvedHeaderSubtitle: String? {
-        let total = viewModel.counts.total
-        switch headerContext {
-        case .localFile:
-            // Single file — title already says the filename. No subtitle.
-            return nil
-        case .localFiles:
-            // Flat drop / multi-file with no provenance. Title carries the
-            // count; no provenance to surface.
-            return nil
-        case .localFolder(let folder, _):
-            return String(format: String(localized: "preparation.header.lf_from"),
-                          folder.lastPathComponent)
-        case .localPlaylist(let playlist, _):
-            return String(format: String(localized: "preparation.header.lf_from"),
-                          playlist.lastPathComponent)
-        case .playlist, nil:
-            let base = total == 1
-                ? String(format: String(localized: "preparation.subtitle.track_one"), total)
-                : String(format: String(localized: "preparation.subtitle.track_other"), total)
-            return playlistName.isEmpty
-                ? base
-                : String(format: String(localized: "preparation.subtitle.from"), base, playlistName)
-        }
-    }
-
-    private var progressBar: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(UzumeAppColor.surfaceSelected)
-                    .frame(height: 4)
-
-                Capsule()
-                    .fill(UzumeAppColor.textSecondary)
-                    .frame(width: geo.size.width * viewModel.aggregateProgress, height: 4)
-                    .animation(.easeInOut(duration: 0.3), value: viewModel.aggregateProgress)
-            }
-        }
-        .frame(height: 4)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 16)
+    private var failedLine: String {
+        let failed = viewModel.counts.failed
+        return failed == 1
+            ? String(localized: "preparation.failed_count_one")
+            : String(format: String(localized: "preparation.failed_count_other"), failed)
     }
 
     private var trackList: some View {
@@ -273,7 +242,7 @@ struct PreparationProgressView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(viewModel.rows) { row in
-                            TrackPreparationRow(row: row)
+                            PreparationTrackRow(row: row, profile: viewModel.profiles[row.id])
                                 .padding(.horizontal, 24)
 
                             if row.id != viewModel.rows.last?.id {
@@ -283,6 +252,7 @@ struct PreparationProgressView: View {
                             }
                         }
                     }
+                    .padding(.top, 16)
                     .padding(.bottom, 16)
                 }
             }

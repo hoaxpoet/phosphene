@@ -10,6 +10,43 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-09-02-160000] DS.4 — the preparation screen becomes the overture (M7 pending)
+
+**The wait is something you watch, and the listener chooses how.** `PreparationProgressView` is
+rebuilt in place around two views behind a new preference (`uzume.settings.visuals.preparationView`,
+default **mysterious**). The header and the progress bar are gone from both.
+
+**Mysterious — the cave.** A dark frame whose opening is shut until the first track is heard, cracks
+to a pinprick, and widens through the engine's four readiness stops. The identity's full prism spills
+out of it in every direction, more vibrant as it opens; the playlist changes how the light *behaves*
+(churn, rate, edge, ribbing versus wash, waver — from the profiles of tracks already heard), never
+its colour. It never names a track. Failures surface as a count line that opens the detailed view.
+
+**Detailed — the list.** Each row reports its stage until the track is heard, then what Uzume
+heard — tempo, key, mood, and a four-stem balance mark. Per-row failures stay inline.
+
+**The prerequisite.** `SessionPreparer` now publishes `trackProfiles` beside `trackStatuses`,
+written the moment a track becomes `.ready` on every path. Publishing only; analysis order and the
+prefetch window are untouched.
+
+**Measured, not asserted.** Flash safety (D-157) in the Mitosis idiom across a scripted 40-track
+preparation with a four-track burst: maxΔ/frame **0.0100**, mean luma 0.066–0.511, gate < 0.05.
+Preparation wall time on a real 40-track Spotify playlist, cold cache, unmodified build versus each
+view: `docs/reviews/DS.4/TIMING.md` — baseline 207.1 s end to end, mysterious 205.7 s, detailed 206.2 s; per-track landing median 3.06 / 3.09 / 3.11 s; every delta inside the noise of the no-preview stalls — no measurable regression in either view.
+
+**DEAD-002 decided.** The banner's never-rendered dismiss button is deleted, not wired: every banner
+error either resolves itself or is the only place a still-true condition and its escape are stated.
+
+**Accessibility.** Under reduced motion the cave renders and still widens; it stops animating between
+states. To VoiceOver the cave is one element — *"Preparing. N of M tracks heard."* / *"You can start
+now"*. No existing identifier changed.
+
+**Evidence for the M7:** `docs/reviews/DS.4/index.html` — before / mysterious / detailed per
+reachable state, the live captures, the timing table, the flash numbers, the VoiceOver rows, and a
+recording of a full preparation in the mysterious view. Decision: D-238.
+
+---
+
 ### [dev-2026-09-01-195141] DS.2 + COPY-001 — one source tile, and a footer that stopped over-claiming
 
 **DS.2 — `SourceChoice`.** `ConnectorTileView` and the private `LocalSourceActionTile` were two

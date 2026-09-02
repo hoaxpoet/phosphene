@@ -109,3 +109,9 @@ docs/diagnostics/**/*.jpg
 docs/diagnostics/**/*.jpeg
 docs/diagnostics/**/*.png
 docs/diagnostics/**/*.gif
+
+# DS.4 (2026-09-02): review-page screen recordings stay out of git — the review page
+# inlines the encoded mp4 as a data URI, so index.html is the tracked, self-contained artifact.
+docs/reviews/**/*.mov
+docs/reviews/**/*.mp4
+docs/reviews/**/_web/
