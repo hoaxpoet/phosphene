@@ -1,0 +1,482 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The Widening Opening</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;500;600&family=PT+Sans:wght@400;700&display=swap">
+<style>
+  :root{
+    --canvas:#0b0c10; --surface:#14161c; --line:#24272f;
+    --text:#f4f6f1; --text2:#c5c9c3; --text3:#a4a8a2;
+    --violet:#7f6aff; --violet-400:#a99bff;
+    --cyan:#37d6c0; --gold:#f5c84c; --gold-400:#ffe173; --ember:#ff6b4a;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px clamp(14px,3vw,52px) 72px;background:var(--canvas);color:var(--text);
+       font:16px/1.62 "PT Sans",system-ui,sans-serif;max-width:1140px;margin-inline:auto}
+  h1{font-family:"Alumni Sans","Arial Narrow",sans-serif;font-size:clamp(46px,7vw,78px);
+     font-weight:500;line-height:.92;margin:0 0 10px;letter-spacing:.005em;text-wrap:balance}
+  .eyebrow{font-family:"Alumni Sans","Arial Narrow",sans-serif;font-size:19px;font-weight:600;
+     letter-spacing:.20em;text-transform:uppercase;color:var(--gold);margin:0 0 2px}
+  .sub{color:var(--text3);margin:0 0 30px;max-width:66ch;font-size:17px}
+  h2{font-family:"Alumni Sans","Arial Narrow",sans-serif;font-size:34px;font-weight:500;
+     letter-spacing:.01em;margin:44px 0 8px;line-height:1.05}
+  h3{font-family:"Alumni Sans","Arial Narrow",sans-serif;letter-spacing:.02em}
+  .lede{color:var(--text2);margin:0 0 15px;max-width:68ch}
+  .stage{position:relative;background:#07080b;border:1px solid var(--line);border-radius:12px;
+         overflow:hidden;height:360px}
+  .controls{display:flex;gap:8px;align-items:center;margin:12px 0 0;flex-wrap:wrap}
+  button{font-family:"PT Sans",system-ui,sans-serif;font-size:13px;padding:6px 13px;border-radius:7px;cursor:pointer;
+         background:var(--violet);color:#0b0c10;border:0;font-weight:600}
+  button.ghost{background:transparent;color:var(--text3);border:1px solid var(--line)}
+  .note{font-size:14px;color:var(--text3);max-width:68ch}
+  .rule{border:0;border-top:1px solid var(--line);margin:34px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-family:"PT Sans",system-ui,sans-serif}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  .pill{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+        padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--text3)}
+  .yes{color:var(--cyan);border-color:#1f6f63}
+  .no{color:var(--ember);border-color:#7a3325}
+
+  /* ---------- A: the opening ---------- */
+  #openingCanvas{width:100%;height:100%;display:block}
+
+  /* ---------- B: the listening list ---------- */
+  .listWrap{padding:16px 18px;height:100%;overflow:hidden;display:flex;flex-direction:column}
+  .lHead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+  .lTitle{font-size:15px;font-weight:600}
+  .lCount{font-size:12px;color:var(--text3)}
+  .row{display:flex;align-items:center;gap:11px;padding:7px 0;border-bottom:1px solid #1a1d24;
+       opacity:.35;transition:opacity .5s}
+  .row.seen{opacity:1}
+  .dot{width:7px;height:7px;border-radius:50%;background:#2b2f38;flex:none;transition:background .4s}
+  .rName{font-size:14.5px;min-width:158px;color:var(--text2)}
+  .row.seen .rName{color:var(--text)}
+  .meta{display:flex;gap:9px;align-items:center;font-size:12px;color:var(--text3);
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace;opacity:0;transition:opacity .6s}
+  .meta.on{opacity:1}
+  .stems{display:flex;gap:2px;align-items:flex-end;height:13px;margin-left:auto}
+  .stems i{width:4px;border-radius:1px;display:block}
+  .stage-label{font-size:12px;color:var(--gold-400);font-family:ui-monospace,Menlo,monospace}
+</style>
+
+<p class="eyebrow">DS.4 · design pass</p>
+<h1>The wait is the overture,<br>not a progress bar.</h1>
+<p class="sub">Two views of the same wait, both shipping behind a listener preference: a mysterious one
+that never names a track, and a detailed one that reports what Uzume is hearing. Built from what the
+code already computes and what the brand already sanctions.</p>
+
+<h2>What preparation is today</h2>
+<p class="lede">A file-transfer dialog. Header <em>“Preparing your session”</em>, a progress bar, and a
+list of rows reading <code>Waiting</code> → <code>Finding preview</code> → <code>Downloading</code> →
+<code>Separating stems</code> → <code>Caching</code> → <code>Ready</code>. It reports on machinery.
+Nothing on screen suggests a performance is about to begin.</p>
+<p class="lede"><strong>Meanwhile, out of sight, Uzume is listening to every track</strong> — deriving
+tempo, musical key, emotional mood, brightness, section count, and a full four-stem energy balance
+from each 30-second preview. All of it is computed, cached, handed to the Orchestrator, and
+<strong>never shown to you</strong>.</p>
+
+<hr class="rule">
+
+<h2>The two views</h2>
+<p class="lede">Both ship. A preference — <code>uzume.settings.visuals.preparationView</code> — lets the
+listener choose between them, and the choice is theirs to change at any time. They are not
+alternatives to pick between here; they are two legitimate ways to spend the same wait.</p>
+<div class="controls" style="margin:0 0 16px">
+  <button id="vMys" onclick="setView('mysterious')">Mysterious</button>
+  <button id="vDet" class="ghost" onclick="setView('detailed')">Detailed</button>
+  <span class="note">The same preparation, two postures.</span>
+</div>
+<script>
+function setView(v){
+  const mys = v==='mysterious';
+  document.getElementById('secA').hidden = !mys;
+  document.getElementById('secB').hidden = mys;
+  document.getElementById('vMys').className = mys ? '' : 'ghost';
+  document.getElementById('vDet').className = mys ? 'ghost' : '';
+}
+</script>
+
+<div id="secA">
+<h3 style="font-size:22px;margin:0 0 6px">Mysterious — light spills from the cave</h3>
+<p class="lede">The brand identity, made literal and made functional. <em>“Two shadows nearly meet,
+leaving a tiny irregular opening through which prismatic light enters the dark. Darkness is the
+condition, the opening is the event, and colour is the consequence.”</em></p>
+<p class="lede"><strong>Revised twice (2026-09-02), and the second revision is Matt's.</strong>
+The first execution gave every track its own permanent shaft and set the aperture to <em>fraction
+complete</em>. Both break at Tunes Club scale: forty shafts is a picket fence, and at forty tracks the
+opening would have been <strong>7.5&nbsp;% open at the exact moment you can start</strong>. The second
+attempt — a landscape of the playlist painted left to right — scaled, but still enumerated.</p>
+<p class="lede"><strong>One opening in the cave, and the light spills out of it.</strong> No per-track
+marks at all, so eight tracks and forty are the same object. And it is not a metaphor borrowed from
+outside: <code>BRAND.md</code> tells the Ama-no-Iwato myth as the product's own map — <em>“the world
+darkens when Amaterasu withdraws into the heavenly rock-cave. Omoikane <strong>prepares a plan</strong>;
+Ame-no-Uzume performs… Amaterasu looks out, and light returns.”</em> <strong>“A plan is prepared” is
+this screen.</strong> The cave widening while the plan comes together is the myth's decisive change,
+happening at the moment the product actually does it.</p>
+<p class="lede"><strong>It starts closed.</strong> At rest the cave is shut and nothing spills — the
+frame is genuinely dark. The first track heard cracks it to a pinprick, and from there it grows
+through the engine's four readiness stops, so it is properly open the moment you can start, whatever
+the playlist length. A track landing surges the light; it does not leave a mark.</p>
+<p class="lede"><strong>The spill is always the identity's prism.</strong> The logo puts prismatic
+light through the opening, and <code>BRAND.md</code> is explicit about the two rules that follow:
+<em>“keep the ivory opening brighter than the surrounding spectrum”</em>, and <em>“do not… flatten the
+spectrum into bands.”</em> So the mouth is ivory, and what spills is a continuous kaleidoscope of the
+full published spectrum — violet, cyan, gold, ember — never a mood-coloured wash. An earlier attempt
+tinted the whole cave by average mood; besides converging every playlist on the same muddy amber, it
+was simply the wrong identity.</p>
+<p class="lede"><strong>The playlist changes how the light behaves, not what colour it is.</strong>
+Five properties of what has been heard drive five different things. Switch playlists below: the
+spectrum is constant, the character is not.</p>
+<table>
+  <tr><th style="width:26%">What Uzume hears</th><th style="width:32%">What it changes</th><th>So a playlist that is…</th></tr>
+  <tr><td>Mood <em>spread</em> (circular variance)</td><td>How much of the prism one fan sweeps</td><td>…varied sweeps the whole spectrum at once; uniform sweeps a narrower slice that drifts, so the full prism still passes through</td></tr>
+  <tr><td>Average tempo</td><td>The rate everything moves at</td><td>…fast shimmers and flickers; slow breathes</td></tr>
+  <tr><td>Spectral centroid</td><td>Edge and contrast of the shafts</td><td>…bright throws hard-edged beams; dark glows soft and diffuse</td></tr>
+  <tr><td>—</td><td><strong>Hue</strong></td><td>…never playlist-dependent. The prism is the identity and stays constant.</td></tr>
+  <tr><td>How far the aperture has opened</td><td>Vibrancy of the whole spill</td><td>…barely cracked glimmers pale and ivory-ish; wide open saturates past full chroma. The colour arrives <em>with</em> the light.</td></tr>
+  <tr><td>Drums vs. vocals in the stem balance</td><td>Ray definition vs. smooth wash</td><td>…drum-forward is defined and ribbed; vocal-forward is a continuous wash</td></tr>
+  <tr><td>Beat irregularity</td><td>How much the mouth wavers</td><td>…metronomic sits still; loose and human breathes irregularly</td></tr>
+</table>
+<div class="stage"><canvas id="openingCanvas"></canvas></div>
+<div class="controls">
+  <button onclick="restart()">Replay</button>
+  <button data-pl="jazz" onclick="setPL('jazz')">Late-night jazz</button>
+  <button data-pl="techno" class="ghost" onclick="setPL('techno')">Peak-time techno</button>
+  <button data-pl="indie" class="ghost" onclick="setPL('indie')">Sunlit indie pop</button>
+  <button class="ghost" id="nBtn" onclick="toggleN()">Playlist: 40 tracks</button>
+  <button class="ghost" onclick="toggleSpeed()" id="spd">Speed: 1×</button>
+  <span class="note">Paced at the real duration — four minutes for forty tracks. Use 8× / 24× to skim; watch at 1× to judge whether it holds.</span>
+</div>
+
+</div>
+
+<div id="secB" hidden>
+<h3 style="font-size:22px;margin:0 0 6px">Detailed — Uzume is listening</h3>
+<p class="lede">Same information, opposite posture. The list stays, but stops reporting machinery and
+starts reporting <em>discoveries</em>. As the analysis cursor reaches each track it says what it just
+heard — 174 BPM, D♭ major, brushed drums leading. The wait becomes a readout of your own playlist
+that you did not know you wanted.</p>
+<div class="stage"><div class="listWrap">
+  <div class="lHead"><span class="lTitle">Listening to your playlist</span>
+    <span class="lCount" id="lCount">0 of 8 heard</span></div>
+  <div id="rows"></div>
+  <div style="margin-top:auto;padding-top:10px" class="stage-label" id="lStage">&nbsp;</div>
+</div></div>
+<div class="controls">
+  <button onclick="restartB()">Replay</button>
+  <span class="note">Metadata appears in the order the pipeline actually derives it: stems → MIR → beat grid.</span>
+</div>
+
+</div>
+
+<hr class="rule">
+
+<h2>The constraint that shapes both</h2>
+<p class="lede">The surprise model is absolute, and it is a design-system rule, not a preference:
+<em>“Never exposes upcoming content.”</em> The plan-preview views are already marked for removal for
+violating it. So the obvious entertainment — <em>“here’s the amazing session we planned!”</em> — is
+off the table.</p>
+<p class="lede"><strong>The line that makes both directions legal:</strong> they reveal what Uzume
+<em>heard</em> in music you already chose, never what Uzume will <em>do</em> with it.</p>
+<table>
+  <tr><th style="width:34%">Showing this</th><th>Verdict</th></tr>
+  <tr><td>Tempo, key, mood, stem balance of a track you picked</td>
+      <td><span class="pill yes">allowed</span> Analysis of known input. The brand explicitly grants the full spectrum to “meaningful metadata”.</td></tr>
+  <tr><td>Which preset each track will get</td>
+      <td><span class="pill no">forbidden</span> Upcoming choreography — the exact thing the surprise model protects.</td></tr>
+  <tr><td>The emotional arc across the session</td>
+      <td><span class="pill no">forbidden</span> Same reason; this is what `PlanPreviewView` did and why it is being removed.</td></tr>
+  <tr><td>How many tracks are ready, and that you can start</td>
+      <td><span class="pill yes">allowed</span> Session state, not content. Already shipped.</td></tr>
+</table>
+
+<h2>What each view offers</h2>
+<div class="grid2">
+  <div>
+    <h3 style="font-size:15px;margin:0 0 6px">Mysterious</h3>
+    <p class="note"><strong>Shows off your music.</strong> Your playlist becomes light. Anticipation
+    builds structurally: the aperture is visibly approaching a threshold.<br><br>
+    <strong>The trade:</strong> it never tells you what is in the playlist. That is the point of it,
+    and it is why the other view exists.</p>
+  </div>
+  <div>
+    <h3 style="font-size:15px;margin:0 0 6px">Detailed</h3>
+    <p class="note"><strong>Shows off Uzume’s ear.</strong> This is the moment that proves Uzume is not
+    a visualiser — it demonstrably understands the music.<br><br>
+    <strong>The trade:</strong> it spends the surprise. Someone who wants the wait to stay a held
+    breath should be on the mysterious view — which is exactly why this is a preference and not a
+    default.</p>
+  </div>
+</div>
+
+<h2>The one thing both need that does not exist yet</h2>
+<p class="lede"><code>TrackPreparationStatus</code> carries <strong>only the stage</strong> —
+<code>.analyzing(stage:)</code>, <code>.ready</code>. The BPM, key, mood and stem balance are computed
+and cached but <strong>never published to the UI</strong>. Either direction needs the profile surfaced
+alongside the status. That is a small, contained engine change, and it is the real prerequisite the
+DS.4 prompt has to name.</p>
+
+<script>
+// ---------- shared fake playlist, plausible values ----------
+const TRACKS = [
+  {n:"Take Five",            bpm:174, key:"D♭ major", mood:"calm",  cent:.42, stems:[.55,.25,.05,.35]},
+  {n:"Teardrop",             bpm:78,  key:"A minor",  mood:"sad",   cent:.31, stems:[.45,.50,.60,.30]},
+  {n:"Idioteque",            bpm:141, key:"C minor",  mood:"tense", cent:.68, stems:[.70,.40,.45,.55]},
+  {n:"Nightcall",            bpm:86,  key:"E♭ minor", mood:"sad",   cent:.37, stems:[.40,.65,.50,.45]},
+  {n:"Midnight City",        bpm:105, key:"F major",  mood:"happy", cent:.72, stems:[.60,.45,.40,.70]},
+  {n:"Windowlicker",         bpm:120, key:"G minor",  mood:"tense", cent:.61, stems:[.65,.55,.30,.60]},
+  {n:"Svefn-g-englar",       bpm:72,  key:"B♭ major", mood:"calm",  cent:.28, stems:[.25,.30,.35,.65]},
+  {n:"Since I Left You",     bpm:96,  key:"A major",  mood:"happy", cent:.58, stems:[.55,.45,.50,.50]},
+];
+const MOOD_HUE = {happy:48, calm:170, tense:12, sad:258};   // gold / cyan / ember / violet
+const STEM_C   = ["#f5c84c","#7f6aff","#37d6c0","#ff6b4a"]; // drums bass vocals other
+
+// ---------- A ----------
+// Three playlists with genuinely different character, so the cave can be compared.
+// Fields mirror TrackProfile: bpm, mood quadrant, spectralCentroidAvg, stemEnergyBalance.
+const PLAYLISTS = {
+  jazz: { name:"Late-night jazz", bpmRange:[68,112], moods:["calm","calm","sad","calm","sad"],
+          cent:[0.18,0.42], stems:{drums:.42,bass:.55,vocals:.30,other:.62}, irregular:0.55 },
+  techno:{ name:"Peak-time techno", bpmRange:[126,142], moods:["tense","tense","happy","tense"],
+          cent:[0.55,0.92], stems:{drums:.92,bass:.80,vocals:.16,other:.48}, irregular:0.05 },
+  indie: { name:"Sunlit indie pop", bpmRange:[98,128], moods:["happy","happy","calm","happy"],
+          cent:[0.46,0.78], stems:{drums:.55,bass:.48,vecals:0,vocals:.78,other:.60}, irregular:0.22 },
+};
+let PL = 'jazz';
+const cv=document.getElementById('openingCanvas'), cx=cv.getContext('2d');
+let t0=performance.now(), speed=1, N=40, TR=[];
+
+function rebuild(){
+  const p=PLAYLISTS[PL];
+  TR=Array.from({length:N},(_,i)=>{
+    const j=((i*2654435761)%1000)/1000, k=((i*40503)%1000)/1000;
+    return { mood: p.moods[i%p.moods.length],
+             bpm: p.bpmRange[0]+j*(p.bpmRange[1]-p.bpmRange[0]),
+             cent: p.cent[0]+k*(p.cent[1]-p.cent[0]),
+             energy: Math.max(.15,Math.min(1,(p.stems.drums+p.stems.bass+p.stems.vocals+p.stems.other)/4+(j-.5)*.28)) };
+  });
+}
+rebuild();
+function fit(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;
+  cv.width=r.width*d;cv.height=r.height*d;cx.setTransform(d,0,0,d,0,0);}
+addEventListener('resize',fit);
+function restart(){t0=performance.now();}
+function toggleSpeed(){speed=speed===1?8:(speed===8?24:1);
+  document.getElementById('spd').textContent='Speed: '+speed+'×';}
+function toggleN(){N=N===40?8:40;rebuild();
+  document.getElementById('nBtn').textContent='Playlist: '+N+' tracks';restart();}
+function setPL(k){PL=k;rebuild();restart();
+  [...document.querySelectorAll('[data-pl]')].forEach(b=>
+    b.className = b.dataset.pl===k ? '' : 'ghost');}
+
+const TOTAL_SECONDS=240;
+function readiness(h,n){if(h>=n)return 3;if(h>=n*0.5)return 2;if(h>=3)return 1;return 0;}
+const LABEL=['Listening','Ready when you are','Ready when you are','Ready'];
+// Fully CLOSED at rest. The first track heard cracks it to a pinprick; from there
+// it grows through the engine's readiness stops. Nothing spills while it is shut.
+const OPEN=[0,0.30,0.52,1.0];
+let openNow=0;
+function apertureTarget(heard,lvl){
+  if(lvl>0) return OPEN[lvl];
+  return heard===0 ? 0 : Math.min(0.085, 0.014+heard*0.030);   // pinprick, then wider
+}
+const MOTES=Array.from({length:110},()=>({a:Math.random(),r:Math.random(),
+  s:.1+Math.random()*.5,w:.4+Math.random()*1.6,p:Math.random()*6.283}));
+
+// The identity's prism, continuous — never flattened into bands (BRAND.md).
+// violet → cyan → gold → ember, the four published spectrum tokens.
+const SPEC=[[127,106,255],[55,214,192],[245,200,76],[255,107,74]];
+function prism(t,vib){
+  t=((t%1)+1)%1;
+  const f=t*(SPEC.length-1), i=Math.min(SPEC.length-2,Math.floor(f)), k=f-i;
+  const a=SPEC[i], b=SPEC[i+1];
+  const c=[a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k];
+  if(vib===undefined) return c;
+  // A sliver of light is barely coloured; a wide opening is saturated past full.
+  // Rotate each channel around the colour's own luminance.
+  const L=0.2126*c[0]+0.7152*c[1]+0.0722*c[2];
+  return [L+(c[0]-L)*vib, L+(c[1]-L)*vib, L+(c[2]-L)*vib];
+}
+function rgba(c,alpha,lift){
+  const L=lift||0;
+  return `rgba(${Math.round(Math.min(255,c[0]+L))},${Math.round(Math.min(255,c[1]+L))},${Math.round(Math.min(255,c[2]+L))},${alpha})`;
+}
+
+function drawA(now){
+  try{ drawFrame(now); }catch(e){ /* one bad frame must not kill the loop */ }
+  requestAnimationFrame(drawA);
+}
+
+function drawFrame(now){
+  const r=cv.getBoundingClientRect(),W=r.width,H=r.height;
+  if(W<2||H<2) return;
+  const el=(now-t0)/1000*speed, per=TOTAL_SECONDS/N;
+  const heardF=Math.min(N,el/per), heard=Math.floor(heardF), lvl=readiness(heard,N);
+  openNow+=(apertureTarget(heard,lvl)-openNow)*0.014;
+
+  // ---- the playlist's character, derived only from what has been heard ----
+  // The colour is ALWAYS the identity's full prism (BRAND.md: the complete
+  // performed-light spectrum). The playlist changes how the light BEHAVES —
+  // its rate, edge, definition, width and waver — never its hue family.
+  const p=PLAYLISTS[PL];
+  let cent=.4, bpm=100, energy=.5, dep=0, spread01=0;
+  if(heard>0){
+    let sx=0,sy=0,sc=0,sb=0,se=0;
+    for(let i=0;i<heard;i++){const t=TR[i],a=MOOD_HUE[t.mood]*Math.PI/180;
+      sx+=Math.cos(a);sy+=Math.sin(a);sc+=t.cent;sb+=t.bpm;se+=t.energy;}
+    const R=Math.hypot(sx/heard,sy/heard);
+    spread01=1-R;                                   // mood variety → how much prism is swept
+    cent=sc/heard; bpm=sb/heard; energy=se/heard;
+    dep=1-Math.exp(-heard/7);
+  }
+  const rate   = bpm/110;
+  const crisp  = 0.30+cent*0.70;
+  const beat   = p.stems.drums;
+  const wash   = p.stems.vocals;
+  const heavy  = p.stems.bass;
+  const jitter = p.irregular;
+  const warm   = 0.32+dep*0.54;
+  const T      = el*rate;
+  // Every playlist gets the WHOLE prism across the fan — a kaleidoscope, not a
+  // tinted wash. Variety changes how fast it churns, never how much colour there is.
+  // Matt: the colours get more vibrant as the aperture expands. Nearly shut, the
+  // spill is a pale ivory-ish glimmer; wide open it is fully saturated prism.
+  const vib    = 0.26+Math.min(1,openNow)*1.02;
+  const sweep  = 1.15+spread01*0.55;
+  const drift  = T*(0.012+spread01*0.055);
+
+  const cxp=W/2, cyp=H*0.56;
+  const R0=Math.max(0.01, openNow*Math.min(W,H)*0.30);
+  const oW=R0*(1+heavy*0.20), oH=R0*0.82;
+
+  cx.globalCompositeOperation='source-over';
+  cx.fillStyle='#050609';cx.fillRect(0,0,W,H);
+  const rock=cx.createRadialGradient(cxp,cyp,oW*.6,cxp,cyp,Math.max(W,H)*.8);
+  rock.addColorStop(0,'#12141b');rock.addColorStop(1,'#050609');
+  cx.fillStyle=rock;cx.fillRect(0,0,W,H);
+  cx.globalCompositeOperation='lighter';
+
+  // the spill: a fan whose hue spread, rate, edge and reach are the playlist's
+  const rays=Math.round(46+beat*54);
+  const TAU=Math.PI*2;
+  for(let i=0;i<rays;i++){
+    const f=i/rays;
+    const wob=Math.sin(T*0.9+i*2.1)*jitter + Math.sin(T*0.21+i*1.7)*0.05;
+    // light spills in EVERY direction — it is an opening, not a spotlight
+    const ang=f*TAU + T*0.020 + wob*0.06;
+    const lenVar=0.62+0.38*(0.5+0.5*Math.sin(f*TAU*3+T*0.5))*(0.5+beat*0.9);
+    const len=(Math.max(W,H)*0.72*lenVar+Math.sin(T*0.6+i)*H*0.10*beat)
+              *(0.55+openNow*0.80)*(0.75+energy*0.5);
+    const a=(0.085+0.150*crisp*Math.abs(Math.sin(T*0.8+i*2.4)))*warm*(0.38+openNow*1.05)*Math.min(1,openNow*14);
+    const c=prism(drift + f*sweep, vib);
+    const g=cx.createLinearGradient(cxp,cyp,cxp+Math.cos(ang)*len,cyp+Math.sin(ang)*len);
+    g.addColorStop(0,rgba(c,a*1.35,18*crisp));
+    g.addColorStop(0.38,rgba(c,a*(0.62-crisp*0.18),0));
+    g.addColorStop(1,rgba(c,0,0));
+    const spread=(TAU/rays)*(0.85+wash*1.5)/(0.55+beat*0.85);
+    cx.fillStyle=g;cx.beginPath();cx.moveTo(cxp,cyp);
+    cx.arc(cxp,cyp,len,ang-spread,ang+spread);cx.closePath();cx.fill();
+  }
+
+  MOTES.forEach(m=>{
+    const ang=m.a*Math.PI*2 + T*0.02;
+    const d=((m.r+T*m.s*0.045)%1), dist=d*H*.62*(.5+openNow*.7);
+    const x=cxp+Math.cos(ang)*dist+Math.sin(T*.3+m.p)*12, y=cyp+Math.sin(ang)*dist;
+    cx.fillStyle=rgba(prism(drift+(m.a-0.5)*sweep, vib),(1-d)*0.30*warm*Math.min(1,openNow*14),90);
+    cx.fillRect(x,y,m.w,m.w);
+  });
+
+  // the mouth — irregular; its wobble follows the playlist's beat regularity
+  cx.beginPath();
+  for(let i=0;i<=72;i++){
+    const th=i/72*Math.PI*2;
+    const n=1+ (0.10+jitter*0.16)*Math.sin(th*3+1.2) + 0.08*Math.sin(th*5-0.6)
+            + 0.05*Math.sin(th*8+2.2+T*0.15);
+    const x=cxp+Math.cos(th)*oW*n, y=cyp+Math.sin(th)*oH*n;
+    i?cx.lineTo(x,y):cx.moveTo(x,y);
+  }
+  cx.closePath();
+  // "Keep the ivory opening brighter than the surrounding spectrum." (BRAND.md)
+  const mg=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(oW,oH)*1.05);
+  mg.addColorStop(0,   `rgba(255,253,246,${0.86+warm*0.14})`);
+  mg.addColorStop(0.34,`rgba(250,246,235,${0.70*warm+0.24})`);
+  mg.addColorStop(0.72,`rgba(244,240,228,${0.26*warm})`);
+  mg.addColorStop(1,   'rgba(244,240,228,0)');
+  if(openNow>0.0015){cx.fillStyle=mg;cx.fill();}
+
+  // prismatic bloom hugging the opening, so the rock edge reads as lit by the spectrum
+  for(let b=0;b<3;b++){
+    const c=prism(drift+ (b/3-0.5)*sweep*0.8, vib);
+    const bl=cx.createRadialGradient(cxp,cyp,Math.max(oW,oH)*0.85,cxp,cyp,Math.max(oW,oH)*(1.9+b*0.5));
+    bl.addColorStop(0,rgba(c,0.13*warm,20));
+    bl.addColorStop(1,rgba(c,0,0));
+    cx.fillStyle=bl;cx.fillRect(0,0,W,H);
+  }
+
+  const since=heardF-heard;
+  if(heard>0&&heard<N&&since<0.16){
+    const q=1-since/0.16;
+    const c=prism(drift+((heard*0.37)%1-0.5)*sweep, vib);
+    const bg=cx.createRadialGradient(cxp,cyp,0,cxp,cyp,Math.max(oW,oH)*2.6);
+    bg.addColorStop(0,rgba(c,0.26*q,110));
+    bg.addColorStop(1,rgba(c,0,0));
+    cx.fillStyle=bg;cx.fillRect(0,0,W,H);
+  }
+
+  cx.globalCompositeOperation='source-over';
+  const vg=cx.createRadialGradient(cxp,cyp,Math.min(W,H)*0.28,cxp,cyp,Math.max(W,H)*0.78);
+  vg.addColorStop(0,'rgba(5,6,9,0)'); vg.addColorStop(1,'rgba(5,6,9,0.82)');
+  cx.fillStyle=vg;cx.fillRect(0,0,W,H);
+
+  cx.font='13px "PT Sans",system-ui,sans-serif';
+  cx.textAlign='left';cx.fillStyle=lvl>=1?'#37d6c0':'#a4a8a2';
+  cx.fillText(LABEL[lvl],18,26);
+  cx.textAlign='right';cx.fillStyle='#a4a8a2';
+  const rem=Math.max(0,Math.round((N-heardF)*per));
+  cx.fillText(`${heard} of ${N} heard`+(rem?`  ·  about ${rem>=60?Math.round(rem/60)+' min':rem+'s'} left`:''),W-18,26);
+  cx.textAlign='left';cx.fillStyle='#6f747e';cx.font='12px ui-monospace,Menlo,monospace';
+  cx.fillText(`${p.name}  ·  ${Math.round(bpm)} BPM avg  ·  prism sweep ${(sweep*100|0)}%`,18,H-14);
+}
+fit();requestAnimationFrame(drawA);
+
+// ---------- B ----------
+const rowsEl = document.getElementById('rows');
+let bTimer = null;
+function buildB(){
+  rowsEl.innerHTML = '';
+  TRACKS.forEach(t=>{
+    const d = document.createElement('div'); d.className = 'row';
+    d.innerHTML = `<span class="dot"></span><span class="rName">${t.n}</span>
+      <span class="meta"><span>${t.bpm} BPM</span><span>·</span><span>${t.key}</span><span>·</span><span>${t.mood}</span></span>
+      <span class="stems"></span>`;
+    rowsEl.appendChild(d);
+  });
+}
+function restartB(){
+  clearInterval(bTimer); buildB();
+  const rows = [...rowsEl.children]; let i = 0;
+  const stages = ['separating stems','deriving tempo and key','finding the beat grid','caching'];
+  document.getElementById('lCount').textContent = `0 of ${TRACKS.length} heard`;
+  bTimer = setInterval(()=>{
+    if(i >= rows.length){ document.getElementById('lStage').textContent = 'Ready.'; clearInterval(bTimer); return; }
+    const r = rows[i], t = TRACKS[i];
+    r.classList.add('seen');
+    r.querySelector('.dot').style.background = `hsl(${MOOD_HUE[t.mood]},85%,60%)`;
+    document.getElementById('lStage').textContent = '▍ ' + stages[i % stages.length] + ' — ' + t.n;
+    setTimeout(()=>{
+      r.querySelector('.meta').classList.add('on');
+      const s = r.querySelector('.stems');
+      s.innerHTML = t.stems.map((v,k)=>`<i style="height:${3+v*10}px;background:${STEM_C[k]}"></i>`).join('');
+    }, 420);
+    i++;
+    document.getElementById('lCount').textContent = `${i} of ${TRACKS.length} heard`;
+  }, 900);
+}
+restartB();
+</script>
