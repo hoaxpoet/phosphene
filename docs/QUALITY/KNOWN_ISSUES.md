@@ -82,6 +82,33 @@ reads" are not reads — see the entry.)*
 
 ---
 
+### OBS-DS4-1 — The detailed preparation view shows a suspiciously uniform readout on a real playlist (2026-09-02, DS.4 live run)
+
+**Status: observed, recorded not fixed.** Found during DS.4's task 10 timing runs. **P3.**
+
+**What was seen.** On Tunes Club TC 29 (40 tracks — ambient, techno, downtempo), the detailed
+view's first ten heard tracks read **132–138 BPM** and **nine of ten read "bright"** (the happy
+quadrant). A genuine spread across that playlist would show it. Evidence:
+`docs/reviews/DS.4/after/live-mid-detailed.png`, `live-early-detailed.png`.
+
+**What it is not.** Not a DS.4 rendering defect: `PreparationTrackRow` prints `TrackProfile.bpm`
+and `TrackProfile.mood.quadrant` verbatim, and those come from `SessionPreparer+Analysis` — the
+same 30 s-preview MIR the Orchestrator has always planned from. DS.4 made it legible for the first
+time; that is the whole finding.
+
+**No root cause asserted** (BUG-061 rule). Two candidates worth *measuring*, not assuming: the mood
+scaler's valence behaviour after DYN.6.2 (BUG-066 records the flux residual; DYN.6.2 narrowed
+valence spread), and the preview-window tempo instability BUG-076 documents. A third possibility is
+that the playlist really is this uniform at the preview excerpt — which is why this is an
+observation, not a bug.
+
+**Why it matters for DS.4.** The detailed view's proposition is *"what Uzume heard."* If what it
+heard is mostly one word and one tempo, the readout stops being interesting, and the mysterious
+view's `PreparationCharacter` (mood spread, rate) has less to work with than the design assumed.
+Worth its own increment before the detailed view reaches beta listeners.
+
+---
+
 ### COPY-001 — The source picker promises Uzume never controls playback, above a tile where it does (2026-09-01, DS.2 M7)
 
 **Status: RESOLVED 2026-09-01, on Matt's explicit go.** Footer rescoped to
