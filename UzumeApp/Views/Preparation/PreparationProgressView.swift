@@ -33,6 +33,7 @@ struct PreparationProgressView: View {
     static let cancelButtonID   = "uzume.preparing.cancel"
     static let startNowButtonID = "uzume.preparing.startNow"
     static let failedCountID    = "uzume.preparing.failedCount"
+    static let toggleTrackInfoButtonID = "uzume.preparing.toggleTrackInfo"
 
     @StateObject private var viewModel: PreparationProgressViewModel
     @StateObject private var errorViewModel: PreparationErrorViewModel
@@ -270,6 +271,13 @@ struct PreparationProgressView: View {
             .foregroundColor(UzumeAppColor.textSecondary)
             .accessibilityIdentifier(Self.cancelButtonID)
 
+            Button(toggleTrackInfoLabel) {
+                settingsStore.preparationView = settingsStore.preparationView == .mysterious ? .detailed : .mysterious
+            }
+            .buttonStyle(.bordered)
+            .foregroundColor(UzumeAppColor.textSecondary)
+            .accessibilityIdentifier(Self.toggleTrackInfoButtonID)
+
             if viewModel.canStartNow {
                 Button(startNowLabel) {
                     viewModel.startNow()
@@ -281,6 +289,18 @@ struct PreparationProgressView: View {
         }
         .padding(.vertical, 20)
         .padding(.horizontal, 24)
+    }
+
+    /// The always-reachable way to switch views (DS.4a). Settings carries the same
+    /// preference, but Settings itself is not reachable while `.preparing` — the
+    /// gear that opens it lives in the playback chrome, which does not exist yet.
+    /// Named for the destination, not the mode: it only ever has to describe the
+    /// one thing tapping it does, and which view you are already in is visible on
+    /// screen either way.
+    private var toggleTrackInfoLabel: String {
+        settingsStore.preparationView == .mysterious
+            ? String(localized: "preparation.toggle_track_info.show")
+            : String(localized: "preparation.toggle_track_info.hide")
     }
 
     private var startNowLabel: String {

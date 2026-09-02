@@ -186,6 +186,8 @@
 "preparation.cancel_button"             = "Cancel";
 "preparation.start_now_button"          = "Start now";
 "preparation.start_now_button_with_count" = "Start now with %d tracks ready — we'll keep preparing as you listen.";
+"preparation.toggle_track_info.show"    = "Show track info";
+"preparation.toggle_track_info.hide"    = "Hide track info";
 
 "preparation.track.queued"      = "Waiting";
 "preparation.track.resolving"   = "Finding preview";

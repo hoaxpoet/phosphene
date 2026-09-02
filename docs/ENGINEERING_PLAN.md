@@ -77,17 +77,44 @@ playback chrome retokenized in place — never a parallel `CuratorControlSurface
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
 **DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** ✅ 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop; merged as [#188](https://github.com/hoaxpoet/uzume/pull/188) (`45b002ab`).
-**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); **built 2026-09-02 (D-238), M7 pending** on branch `claude/ds4-prompt-execution-220901` — see the entry below.
+**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all; see the entries below.
 
 ## Recently Completed
 
-### Increment DS.4 — the preparation screen becomes the overture 🔨 M7 pending (2026-09-02, D-238)
+### Increment DS.4a — the preparation-view toggle gets a reachable, symmetric control ✅ (2026-09-02, D-239)
+
+**Done-when:** the listener can switch between mysterious and detailed at any point during
+`.preparing`, in both directions, without needing Settings. **Status: ✅ merged.**
+
+**The gap.** DS.4's M7 review surfaced, in conversation, that Settings is not reachable while
+`.preparing` — its gear lives in the playback chrome, which doesn't exist until a session is
+playing — so the only way to change the preference in that state was the failure-count line's
+one-way, failure-gated tap into the detailed view. Nothing to switch back, and nothing at all when
+no track had failed.
+
+**Three label shapes tried and rejected for a segmented control**, in the same conversation:
+`Mysterious`/`Detailed` (undecodable without the Settings hint sentence that normally explains
+them), `Simple`/`Detailed` (still one bare word carrying a whole mode), `Ambient`/`Tracks` (still
+metaphor-adjacent — most listeners don't know the Ama-no-Iwato brand story, so `Cave` fails the
+same way `Mysterious` did). The shared cause: a segmented control has to name both states at once,
+and these two views aren't opposite settings of one axis.
+
+**The fix.** A single bottom-bar button between Cancel and Start now, labeled for the
+*destination* rather than the current mode — "Show track info" while the cave is showing, "Hide
+track info" while the list is showing (`preparation.toggle_track_info.show`/`.hide`,
+`uzume.preparing.toggleTrackInfo`). It only ever has to describe the one thing tapping it does.
+
+**References.** [D-239]; `docs/UX_SPEC.md` §5.2 (corrected and extended in the same commit — it
+had claimed Settings was reachable "at any time, including mid-preparation," which was untrue).
+
+### Increment DS.4 — the preparation screen becomes the overture ✅ (2026-09-02, D-238)
 
 **Done-when:** waiting for a session to prepare is something you watch rather than endure, and the
 listener chooses how; both views ship behind a preference; the header and progress bar are gone;
 per-row failures stay reachable; the aperture is flash-safe by measurement; preparation is not
 slower; Matt's M7 against his own words — *"i want people to feel entertained and excited during
-preparation"*. **Status: code-complete on the branch, every gate green, M7 outstanding.**
+preparation"*. **Status: ✅ merged as [#190](https://github.com/hoaxpoet/uzume/pull/190)
+(`6de5b58e`), M7 approved.**
 
 **What shipped.** `SessionPreparer` publishes `trackProfiles` beside `trackStatuses` (the
 prerequisite — the App layer could not know what Uzume heard). `uzume.settings.visuals.preparationView`,
