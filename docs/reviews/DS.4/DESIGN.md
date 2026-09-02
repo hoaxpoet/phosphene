@@ -247,6 +247,17 @@ This is an **engine-side change in `UzumeEngine/Sources/Session/`**, and it is a
 prerequisite: without it the opening has nothing to be coloured by, and would be decorative —
 exactly what this design is not.
 
+## In the mysterious view, the track list is hidden
+
+Matt's call, 2026-09-02. The cave fills the screen and no track names appear. When tracks fail,
+a quiet line surfaces the **count** — *"2 tracks couldn't be prepared"* — and opening the
+detailed view is how the listener sees which ones.
+
+Per-row failures stay *reachable*; they are simply not shown in place in a view whose entire
+proposition is that it does not show you the playlist. The alternative considered and rejected
+was a nameless per-track strip under the cave: it is honest about state, but it re-enumerates
+tracks, which is precisely what the falsified executions above were trying to escape.
+
 ## Deliberately not decided here
 
 - The exact geometry of the seam and the shafts. `design-pass.html` is a look reference, not
