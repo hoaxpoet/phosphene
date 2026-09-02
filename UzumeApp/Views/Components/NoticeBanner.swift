@@ -9,10 +9,10 @@
 // surface does, which is also what flips it from an amber fill with black text to
 // the token warning treatment: bright yellow on a deep field with a border.
 //
-// The `onDismiss` closure and its identifier are kept exactly as they were. No
-// construction site passes one, so the button has never rendered in a shipped build;
-// that is recorded in KNOWN_ISSUES.md rather than fixed here, because wiring it is a
-// behaviour change and deleting it breaks a pinned identifier.
+// It has no dismiss control (DEAD-002, decided at DS.4): every banner error either
+// resolves itself or is the only place a still-true condition is stated, so
+// dismissing one would hide the truth without changing it. The banner leaves when
+// PreparationErrorViewModel says the condition has.
 
 import Shared
 import SwiftUI
@@ -22,16 +22,9 @@ import SwiftUI
 /// Non-blocking strip above the track list for preparation errors that do not stop
 /// the session. Persists until the view model's presentation state changes.
 struct NoticeBanner: View {
-    static let bannerID  = "uzume.preparation.topBanner"
-    static let dismissID = "uzume.preparation.topBanner.dismiss"
+    static let bannerID = "uzume.preparation.topBanner"
 
     let error: UserFacingError
-    let onDismiss: (() -> Void)?
-
-    init(error: UserFacingError, onDismiss: (() -> Void)? = nil) {
-        self.error = error
-        self.onDismiss = onDismiss
-    }
 
     // MARK: - Body
 
@@ -48,19 +41,6 @@ struct NoticeBanner: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
-
-            if onDismiss != nil {
-                Button {
-                    onDismiss?()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundColor(tone.foreground.opacity(0.7))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier(Self.dismissID)
-                .accessibilityLabel(Text(String(localized: "a11y.preparation.topBanner.dismiss.label")))
-            }
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 44)

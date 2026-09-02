@@ -26,12 +26,12 @@ struct StatusPlacementIdentifierTests {
         #expect(NoticeBanner.bannerID == "uzume.preparation.topBanner")
     }
 
-    /// Pinned even though no construction site passes `onDismiss`, so this button has
-    /// never rendered in a shipped build (KNOWN_ISSUES, DS.3 task 8). Deleting the
-    /// identifier would break the contract; wiring the button is a behaviour change.
-    /// It stays exactly as it is until someone decides whether the banner is dismissible.
-    @Test func bannerDismiss_hasExpectedID() {
-        #expect(NoticeBanner.dismissID == "uzume.preparation.topBanner.dismiss")
+    /// DEAD-002, decided at DS.4: the banner has no dismiss control. The identifier
+    /// `uzume.preparation.topBanner.dismiss` was pinned at DS.3 for a button that had
+    /// never rendered; the affordance is deleted, so the identifier is retired with it
+    /// rather than left as a contract with nothing behind it.
+    @Test func bannerDismiss_isRetired() {
+        #expect(!NoticeBanner.bannerID.hasSuffix(".dismiss"))
     }
 
     // MARK: - RecoveryScreen

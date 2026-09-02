@@ -394,7 +394,6 @@
 "a11y.toast.severity.fatal"                 = "Critical";
 "a11y.toast.dismiss.label"                  = "Dismiss notification";
 
-"a11y.preparation.topBanner.dismiss.label"  = "Dismiss warning";
 "a11y.preparing.aperture.label"      = "Preparing. %d of %d tracks heard.";
 "a11y.preparing.aperture.can_start"  = "You can start now";
 "a11y.preparing.failed_count.hint"   = "Shows which tracks";

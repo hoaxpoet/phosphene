@@ -90,10 +90,8 @@ enum PreparationScreenAccessibility {
 }
 
 extension ReviewCaptureHarness {
-    /// The banner's dismiss button: wired but never rendered (DEAD-002).
+    /// The banner's dismiss button was deleted at DS.4 (DEAD-002): nothing to declare.
     static func bannerDismissRows() -> [String] {
-        let dismissLabel = String(localized: "a11y.preparation.topBanner.dismiss.label")
-        let note = "\(NoticeBanner.dismissID) — NEVER RENDERED (no construction site passes onDismiss)"
-        return ["banner dismiss button\t\(dismissLabel)\t\(note)"]
+        ["banner dismiss button\t(removed — DEAD-002 decided at DS.4)\t(none)"]
     }
 }
