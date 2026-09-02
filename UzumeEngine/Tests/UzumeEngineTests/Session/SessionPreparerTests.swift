@@ -192,6 +192,51 @@ struct SessionPreparerTests {
         }
     }
 
+    // MARK: - Profile publishing (DS.4)
+
+    /// The profile arrives with `.ready`, from the analysis path and from a cache hit,
+    /// and is absent for a track that never became ready.
+    @Test func prepare_publishesProfile_whenTrackBecomesReady() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice(), "Metal device required")
+        let separator = try StubStemSeparator(device: device)
+        let analyzer = StubStemAnalyzer()
+        let preparer = makePreparer(separator: separator, analyzer: analyzer)
+        let heard = makeTrack("Heard")
+        let missing = makeTrack("Missing")
+
+        // Every emission that shows a track .ready must already carry its profile.
+        var readyWithoutProfile = 0
+        let watch = preparer.$trackStatuses.sink { statuses in
+            for (track, status) in statuses where status == .ready && preparer.trackProfiles[track] == nil {
+                readyWithoutProfile += 1
+            }
+        }
+        defer { watch.cancel() }
+
+        #expect(preparer.trackProfiles.isEmpty)
+
+        _ = await preparer.prepare(tracks: [heard])
+        let profile = try #require(preparer.trackProfiles[heard])
+        #expect(profile.stemEnergyBalance == analyzer.fixedFeatures)
+        #expect(readyWithoutProfile == 0, "a .ready status was published before its profile")
+
+        // Second pass: `heard` is a cache hit, `missing` has no preview.
+        let resolver = StubPreviewResolver()
+        resolver.urlToReturn = nil
+        let second = SessionPreparer(
+            resolver: resolver, downloader: StubPreviewDownloader(), stemSeparator: separator,
+            stemAnalyzer: analyzer, moodClassifier: MockMoodClassifier(), cache: preparer.cache
+        )
+        _ = await second.prepare(tracks: [heard, missing])
+        #expect(second.trackProfiles[heard]?.stemEnergyBalance == analyzer.fixedFeatures)
+        #expect(second.trackProfiles[missing] == nil)
+        #expect(second.trackStatuses[missing] == .failed(reason: "Preview not available"))
+
+        // A new pass starts from nothing — no profile leaks across sessions.
+        _ = await second.prepare(tracks: [missing])
+        #expect(second.trackProfiles.isEmpty)
+    }
+
     // MARK: - Failure Handling
 
     @Test func prepare_missingPreview_skipsThatTrack() async throws {

@@ -16,6 +16,7 @@
 		E10029 /* RecoveryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20029; };
 		E10028 /* StatusTone.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20028; };
 		E10027 /* DS3StatusCaptureHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20027; };
+		DA41001 /* PreparationProfilePublishingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42001; };
 		A10001 /* UzumeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20001; };
 		A10002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20002; };
 		B10001 /* SessionStateViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001; };
@@ -225,6 +226,7 @@
 		E20029 /* RecoveryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryScreen.swift; sourceTree = "<group>"; };
 		E20028 /* StatusTone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusTone.swift; sourceTree = "<group>"; };
 		E20027 /* DS3StatusCaptureHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DS3StatusCaptureHarness.swift; sourceTree = "<group>"; };
+		DA42001 /* PreparationProfilePublishingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProfilePublishingTests.swift; sourceTree = "<group>"; };
 		A20001 /* UzumeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UzumeApp.swift; sourceTree = "<group>"; };
 		A20002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B20001 /* SessionStateViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateViewTests.swift; sourceTree = "<group>"; };
@@ -737,6 +739,7 @@
 		B40001 /* UzumeAppTests */ = {
 			isa = PBXGroup;
 			children = (
+				DA42001 /* PreparationProfilePublishingTests.swift */,
 				E20035 /* StatusToneTests.swift */,
 				E20034 /* StatusPlacementIdentifierTests.swift */,
 				E20027 /* DS3StatusCaptureHarness.swift */,
@@ -1049,6 +1052,7 @@
 				E10035 /* StatusToneTests.swift in Sources */,
 				E10034 /* StatusPlacementIdentifierTests.swift in Sources */,
 				E10027 /* DS3StatusCaptureHarness.swift in Sources */,
+				DA41001 /* PreparationProfilePublishingTests.swift in Sources */,
 				B10001 /* SessionStateViewTests.swift in Sources */,
 				D10008 /* PermissionMonitorTests.swift in Sources */,
 				D10009 /* PhotosensitivityAcknowledgementStoreTests.swift in Sources */,
