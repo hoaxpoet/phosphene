@@ -5,9 +5,11 @@ live back-and-forth in chat, not against a rendered reference from the start —
 `design-pass.html`, which mocked the whole preparation screen, this one grew a single-purpose
 prototype partway through: **[The Camera Push](https://claude.ai/code/artifact/b3b137db-4fb5-4a83-9059-7450b03cf1d4)**,
 testing pacing and dimensionality for the one piece with no built precedent — the literal camera
-move through the aperture. It is a browser stand-in built in CSS 3D and canvas, not the real
-renderer; the built version runs through Uzume's own GPU pipeline and is real new rendering
-capability, not an extension of the existing 2D `Canvas` aperture.
+move through the aperture. Its final form ports `ApertureScene.draw()`'s math to JS verbatim and
+drives a radial streak burst over it; the built version (`ArrivalPushScene`) is the same
+construction in SwiftUI `Canvas` over the real `ApertureScene`. *Correction, 2026-09-03:* an
+earlier draft of this paragraph, and §The camera push below, forecast that the built version would
+need Uzume's GPU pipeline. It did not — see §Built.
 
 ## Matt's brief, verbatim
 
@@ -45,6 +47,13 @@ elsewhere in the app already contradicts (Uzume owns local transport — stop / 
 play-pause / next). This is not a hypothetical the design pass invented; it is a live
 inaccuracy, found the same way COPY-001 was (Matt noticing streaming-only assumptions bleeding
 onto the local-file path).
+
+*Correction at the build (2026-09-03):* the paragraph above reads the view, not the router. A
+local-file session never reached `ReadyView` at all — `ContentView` carried an LF.4-era shortcut
+sending local `.ready` straight to `PlaybackView`, while the engine's `.ready` observer started
+the audio in the same tick. The wrong copy was latent, not shown. The shortcut surfaced only in a
+live run of the built countdown: the count never appeared, the camera push fired at `.ready`, and
+no audio ever started because nothing called `handleLocalFileReady()`. Removed at D-240.
 
 `uzume-site/docs/design/EXPERIENCE_MODEL.md` already states the rule this design follows:
 *"Local playback owns transport; streaming handoff listens for external audio and must not
@@ -195,3 +204,28 @@ a DS.4 decision, not making a new one.
   local-file view has no name yet.
 - **Whether `uzume-site`'s branch gets pushed and merged.** Committed locally; pushing either
   repo is a separate decision from writing the doc.
+
+## Built (2026-09-03, D-240) — what the three open items became
+
+- **The mechanism is a `Canvas` construction, not a render pass.** The prototype answered the
+  question this doc left open, and it answered it the cheap way: `ArrivalPushScene` composites the
+  real, unmodified `ApertureScene` (scaled modestly toward its own centre — a supporting cue) under
+  a 100-streak radial burst racing outward from the opening's centre, then a late whiteout. The
+  burst's near/far parallax is what reads as the viewer moving in; two prototypes were rejected
+  live before that was understood — a redrawn approximation of the aperture, then a uniform zoom on
+  the real frame ("it looks like the aperture is coming out, not the camera moving into it").
+  §The camera push above forecast "geometry the camera can travel through … closer to how the
+  real preset renderer works"; that forecast was wrong, and the paragraph stands as written so the
+  correction is visible. Cost to the preset pipeline: none — `MetalView` is live underneath from
+  the first frame and the overlay simply fades to reveal it. Flash-gated (maxΔ/frame 0.0174 < 0.05).
+- **The local-file view is `LocalFileCountdownView`.** Plain, destination-named, no lore — the
+  same reasoning D-239 applied to the toggle. `ReadyView` keeps its name for streaming; it was not
+  renamed to `StreamingHandoff` because the identifier `uzume.view.ready` and its tests are pinned
+  and the rename would be churn without a consumer.
+- **`uzume-site`'s branch is still local.** Unchanged: `claude/ds5-streaming-handoff-camera-push`,
+  committed, not pushed. Pushing is Matt's call, separately from the app PR.
+
+Also built, as decided above: `OpenAperture` behind both ready screens; `ReadyViewModel` takes
+`SessionOrigin?`; "Begin now" as a bordered button of the same weight as End session; the count
+runs over silence because `handleLocalFileReady()` now fires from the countdown's end rather than
+the engine's `.ready` observer; the plan preview deleted outright, and `ReadyPulsingBorder` with it.
