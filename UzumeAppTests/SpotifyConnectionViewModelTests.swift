@@ -62,7 +62,7 @@ struct SpotifyConnectionViewModelTests {
         }
 
         vm.connect(startSession: { _, _ in })
-        try await Task.sleep(for: .milliseconds(500))
+        await vm.connectTask?.value
 
         if case .error = vm.state { } else {
             Issue.record("Expected .error after exhausting retries, got \(vm.state)")
@@ -154,7 +154,7 @@ struct SpotifyConnectionViewModelTests {
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(1500))
         vm.connect(startSession: { _, _ in })
-        try await Task.sleep(for: .milliseconds(500))
+        await vm.connectTask?.value
         guard case .error = vm.state else {
             Issue.record("Setup failed: expected .error, got \(vm.state)")
             return
@@ -163,7 +163,7 @@ struct SpotifyConnectionViewModelTests {
         #expect(callsAfterConnect == 4)   // initial + 3 backoff retries
 
         vm.retry(startSession: { _, _ in })
-        try await Task.sleep(for: .milliseconds(500))
+        await vm.connectTask?.value
 
         // The old code path made ZERO further calls (dead button). retry()
         // runs a full fresh attempt (another initial + 3 backoff retries).

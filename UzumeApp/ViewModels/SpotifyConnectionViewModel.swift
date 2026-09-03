@@ -77,7 +77,9 @@ final class SpotifyConnectionViewModel: ObservableObject {
     private var parsedPlaylistID: String = ""
     private var parsedURL: String = ""
     private var debounceTask: Task<Void, Never>?
-    private var connectTask: Task<Void, Never>?
+    /// Internal (not private) so tests can `await connectTask?.value` instead of
+    /// guessing a wall-clock sleep duration for the retry-backoff loop to finish.
+    var connectTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Init
