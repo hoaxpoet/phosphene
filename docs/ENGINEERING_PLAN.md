@@ -78,19 +78,21 @@ playback chrome retokenized in place — never a parallel `CuratorControlSurface
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
 **DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** ✅ 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop; merged as [#188](https://github.com/hoaxpoet/uzume/pull/188) (`45b002ab`).
 **DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all. **DS.5** design pass 2026-09-02 (`docs/reviews/DS.5/DESIGN.md`) + camera-push prototype; ✅ **2026-09-03 (D-240), M7 passed** — two ready experiences over the open cave, one camera push into it, plan preview deleted; the M7 found that Ready's first-audio autodetect had never listened (BUG-112, fixed same day); see the entries below.
-**DS.6** code-complete 2026-09-03 (D-241) on `claude/ds6-prompt-execution-bbd3e4`, **M7 pending** — the chrome retokenized in place, gone completely after inactivity and back on mouse / tap / key / track change (Matt's call), Show/Hide track info, the orchestrator pill removed; found and fixed BUG-113 (toasts stretched to the window height). **DS.7** waits on a design pass with Matt: `PerformancePreflight` comes only after its integration point and settings summary model are defined in the app (census §Migration order, step 7).
+**DS.6** ✅ 2026-09-03 (D-241), **M7 passed** (*"Looks good."*) on `claude/ds6-prompt-execution-bbd3e4`, unpushed — the chrome retokenized in place, gone completely after inactivity and back on mouse / tap / key / track change (Matt's call), Show/Hide track info, the orchestrator pill removed; found and fixed BUG-113 (toasts stretched to the window height). **DS.7** waits on a design pass with Matt: `PerformancePreflight` comes only after its integration point and settings summary model are defined in the app (census §Migration order, step 7).
 
 ## Recently Completed
 
-### Increment DS.6 — the playback chrome, retokenized in place 🔨 (2026-09-03, D-241, M7 pending)
+### Increment DS.6 — the playback chrome, retokenized in place ✅ (2026-09-03, D-241, M7 passed)
 
 **Done-when:** the chrome the Curator sees over a running show is drawn entirely from the design
 system and reorganized as the `PerformanceChrome` component — same composition, same files; no
 colour outside the tokens, no `DashboardTokens` outside `Views/Dashboard/`, nothing on screen
 that tells the listener what comes next; after a brief inactivity the chrome is gone completely
 and comes back on mouse, tap, key or track change (Matt's call, overriding the design system's
-"cannot become undiscoverable"). **Status: code-complete, every automated gate green; Matt's M7
-pending** (the verdict goes here in his words).
+"cannot become undiscoverable"). **Status: ✅ M7 passed live 2026-09-03** — Matt, on a
+Spotify session (`~/Documents/uzume_sessions/2026-09-03T20-04-45Z`, 12 tracks prepared): *"Looks
+good."* He also noted *"the Ferrofluid Ocean preset blacked out at one point, unrelated to this
+work"* — filed as OBS-DS6-1 in KNOWN_ISSUES, not chased here.
 
 **Before anything changed:** `ReviewCaptureHarness+Chrome.swift` — the shipped
 `PlaybackChromeView` driven through the real view model by scripted publishers, twelve settled

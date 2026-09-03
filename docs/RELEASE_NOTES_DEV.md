@@ -10,7 +10,7 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
-### [dev-2026-09-03-184358] DS.6 — the playback chrome, retokenized in place (M7 pending)
+### [dev-2026-09-03-184358] DS.6 — the playback chrome, retokenized in place (M7 passed)
 
 **Same chrome, made right.** The track card, controls cluster, listening badge, progress dots,
 local transport and toasts are the composition they were, drawn from the design system only:

@@ -105,8 +105,8 @@ session (`UZUME_LOCAL_FILE_PLAYBACK=…/so_what.m4a`, 900 × 632 window, 2×), d
 | `live-trackInfoShown.png` / `live-trackInfoHidden.png` | the cluster's Show/Hide track info control, clicked; the card and its artwork leave the tree |
 | `live-toast-BUG113-before-fix.png` | `l` (diagnostic hold) raises a toast — and the build before the fix drew it floor to ceiling over the cluster. The evidence for BUG-113; the `after/chrome-toast-*.png` renders are from the fixed build |
 
-**Not captured live: a real streaming session.** It needs Spotify playing; Matt runs that as the
-M7, as at DS.5. The streaming states (card without artwork, planned dots, reactive dot) are
+**Not captured live by the session: a real streaming session.** Matt ran it as the M7
+(`~/Documents/uzume_sessions/2026-09-03T20-04-45Z`, Spotify, 12 tracks): *"Looks good."* The streaming states (card without artwork, planned dots, reactive dot) are
 evidenced by the harness renders above.
 
 Pairs for review, by filename: every `before/chrome-*.png` has an `after/chrome-*.png`;
