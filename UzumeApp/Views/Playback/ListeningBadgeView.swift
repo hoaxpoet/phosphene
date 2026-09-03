@@ -10,8 +10,8 @@ import SwiftUI
 
 /// Non-intrusive badge visible during sustained audio silence.
 ///
-/// Fades in over 400 ms when `isVisible` flips true; fades out on false.
-/// In reduce-motion mode: abrupt show/hide, no spinner.
+/// Fades in over the standard 240 ms state change when `isVisible` flips true; fades out
+/// on false. Reduced motion: a plain crossfade, and no spinner (DS.6).
 struct ListeningBadgeView: View {
 
     static let accessibilityID = "uzume.playback.listeningBadge"
@@ -41,10 +41,7 @@ struct ListeningBadgeView: View {
         .padding(.vertical, 6)
         .performanceBackdrop()
         .opacity(isVisible ? 1 : 0)
-        .animation(
-            reduceMotion ? .none : .easeInOut(duration: 0.4),
-            value: isVisible
-        )
+        .animation(UzumeAppMotion.stateChange(reduceMotion: reduceMotion), value: isVisible)
         .allowsHitTesting(false)
         .accessibilityIdentifier(Self.accessibilityID)
         .accessibilityLabel(String(localized: "a11y.listeningBadge.label"))
