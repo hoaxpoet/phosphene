@@ -29,6 +29,7 @@
 		DA41017 /* ReviewCaptureHarness+Ready.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42017; };
 		DA41018 /* ReviewCaptureHarness+Chrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42018; };
 		DA41019 /* PlaybackChromeReducedMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42019; };
+		DA41020 /* PerformanceToastLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42020; };
 		DA41007 /* PreparationApertureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42007; };
 		DA41003 /* ReviewCaptureScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42003; };
 		DA41002 /* ReviewCaptureHarness+Preparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42002; };
@@ -247,6 +248,7 @@
 		DA42017 /* ReviewCaptureHarness+Ready.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureHarness+Ready.swift"; sourceTree = "<group>"; };
 		DA42018 /* ReviewCaptureHarness+Chrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureHarness+Chrome.swift"; sourceTree = "<group>"; };
 		DA42019 /* PlaybackChromeReducedMotionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeReducedMotionTests.swift; sourceTree = "<group>"; };
+		DA42020 /* PerformanceToastLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceToastLayoutTests.swift; sourceTree = "<group>"; };
 		DA42007 /* PreparationApertureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreparationApertureTests.swift"; sourceTree = "<group>"; };
 		DA42003 /* ReviewCaptureScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureScenarios.swift"; sourceTree = "<group>"; };
 		DA42002 /* ReviewCaptureHarness+Preparation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureHarness+Preparation.swift"; sourceTree = "<group>"; };
@@ -761,6 +763,7 @@
 				DA42017 /* ReviewCaptureHarness+Ready.swift */,
 				DA42018 /* ReviewCaptureHarness+Chrome.swift */,
 				DA42019 /* PlaybackChromeReducedMotionTests.swift */,
+				DA42020 /* PerformanceToastLayoutTests.swift */,
 				DA42014 /* ArrivalPushSceneTests.swift */,
 				DA42007 /* PreparationApertureTests.swift */,
 				DA42003 /* ReviewCaptureScenarios.swift */,
@@ -1083,6 +1086,7 @@
 				DA41017 /* ReviewCaptureHarness+Ready.swift in Sources */,
 				DA41018 /* ReviewCaptureHarness+Chrome.swift in Sources */,
 				DA41019 /* PlaybackChromeReducedMotionTests.swift in Sources */,
+				DA41020 /* PerformanceToastLayoutTests.swift in Sources */,
 				DA41007 /* PreparationApertureTests.swift in Sources */,
 				DA41003 /* ReviewCaptureScenarios.swift in Sources */,
 				DA41002 /* ReviewCaptureHarness+Preparation.swift in Sources */,

@@ -13,6 +13,11 @@
 //
 // This is the only placement that appears during a performance, so it stays the
 // quietest thing that can still be noticed: a 4pt accent bar, no icon, no fill.
+//
+// BUG-113 (DS.6): the accent bar is a `Color`, which takes whatever height it is
+// offered — and inside the chrome's full-height ZStack that offer is the whole
+// window, so every toast rendered as a floor-to-ceiling panel over the cluster.
+// `.fixedSize(vertical:)` makes the toast its copy's height wherever it is placed.
 
 import SwiftUI
 
@@ -63,6 +68,7 @@ struct PerformanceToast: View {
         .overlay { UzumeAppColor.Performance.toastTint }
         .clipShape(RoundedRectangle(cornerRadius: UzumeAppRadius.sm))
         .frame(maxWidth: 320)
+        .fixedSize(horizontal: false, vertical: true)   // BUG-113
         .accessibilityElement(children: .combine)
         .accessibilityLabel(AccessibilityLabels.toastLabel(copy: toast.copy, severity: toast.severity))
     }
