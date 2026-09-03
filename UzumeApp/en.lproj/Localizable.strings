@@ -27,7 +27,7 @@
 "error.permission.screen_capture.why_body"  = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Uzume uses only the audio portion.";
 
 "error.permission.applescript.headline" = "Uzume needs permission to talk to Apple Music.";
-"error.permission.applescript.body"     = "You can grant this in System Settings \u2192 Privacy & Security \u2192 Automation.";
+"error.permission.applescript.body"     = "You can grant this in System Settings → Privacy & Security → Automation.";
 
 // MARK: - §9.2 Connection errors
 
@@ -35,7 +35,7 @@
 "error.connection.apple_music_not_running.body"     = "Open it, start a playlist, then come back.";
 
 "error.connection.no_playlist"          = "Start playing a playlist in Apple Music, then come back.";
-"error.connection.no_playlist.status"   = "Checking every 2 seconds\u2026";
+"error.connection.no_playlist.status"   = "Checking every 2 seconds…";
 
 "error.connection.spotify_url_malformed"    = "That doesn’t look like a Spotify playlist link.";
 "error.connection.spotify_url_is_track"     = "That’s a track, not a playlist. Uzume needs a playlist URL.";
@@ -73,18 +73,18 @@
 
 // MARK: - §9.4 Playback errors
 
-"error.playback.silence_brief"          = "Listening\u2026";
+"error.playback.silence_brief"          = "Listening…";
 "error.playback.silence_extended"       = "Haven’t heard anything for a while. Is the music playing?";
 "error.playback.tap_reinstall_failed"   = "Couldn’t re-hear the audio. Try quitting and re-opening Uzume.";
 "error.playback.mpsgraph_failure"       = "Analyzer hiccup — using backup mode.";
 /* %d = sample rate in Hz, e.g. 96000 */
 "error.playback.sample_rate_mismatch"   = "Audio is at %d Hz. For best results set Audio MIDI Setup to 48 kHz.";
-"error.playback.audio_levels_low_spotify"   = "Audio levels are low. Check Spotify’s \u2018Normalize Volume’ setting — it should be off.";
+"error.playback.audio_levels_low_spotify"   = "Audio levels are low. Check Spotify’s ‘Normalize Volume’ setting — it should be off.";
 "error.playback.preset_compile_failed"      = "%@ didn't compile — the previous version is still running. Details are in the log.";
 "error.playback.local_file_failed"          = "Couldn't play \"%@\". The file may have moved or be unreadable. Skipping to the next track.";
 "error.playback.audio_levels_low_generic"   = "Audio levels are low. Check your music app’s volume normalization settings.";
 "error.playback.display_disconnected"   = "Output display disconnected. Moved to main display.";
-"error.playback.negative_nudge_twice"   = "Not quite hitting the mark? Try \u2318R to re-plan.";
+"error.playback.negative_nudge_twice"   = "Not quite hitting the mark? Try ⌘R to re-plan.";
 "error.playback.replan_succeeded"       = "Re-planned. Next transition will use the new plan.";
 
 // MARK: - Audio-stall overlay (silent-tap family — BUG-057/055/058)
@@ -136,14 +136,14 @@
 // MARK: - Apple Music connection
 
 "connector.apple_music.title"               = "Apple Music";
-"connector.apple_music.connecting"          = "Talking to Apple Music\u2026";
+"connector.apple_music.connecting"          = "Talking to Apple Music…";
 "connector.apple_music.no_playlist.headline" = "Start a playlist in Apple Music, then come back.";
-"connector.apple_music.no_playlist.status"  = "Checking every 2 seconds\u2026";
+"connector.apple_music.no_playlist.status"  = "Checking every 2 seconds…";
 "connector.apple_music.not_running.headline" = "Apple Music isn’t running.";
 "connector.apple_music.not_running.body"    = "Open it, start a playlist, then come back.";
 "connector.apple_music.open_button"         = "Open Apple Music";
 "connector.apple_music.permission.headline" = "Uzume needs permission to read Apple Music.";
-"connector.apple_music.permission.body"     = "Open System Settings \u2192 Privacy \u2192 Automation and enable Uzume.";
+"connector.apple_music.permission.body"     = "Open System Settings → Privacy → Automation and enable Uzume.";
 "connector.apple_music.permission.button"   = "Open System Settings";
 "connector.apple_music.error.headline"      = "Something went wrong talking to Apple Music.";
 "connector.apple_music.try_again_button"    = "Try again";
@@ -153,10 +153,10 @@
 
 "connector.spotify.title"               = "Spotify";
 "connector.spotify.paste_label"         = "Paste a Spotify playlist link.";
-"connector.spotify.checking"            = "Checking\u2026";
+"connector.spotify.checking"            = "Checking…";
 "connector.spotify.recognized_headline" = "Spotify playlist recognized";
 "connector.spotify.continue_button"     = "Continue";
-"connector.spotify.connecting_button"   = "Connecting\u2026";
+"connector.spotify.connecting_button"   = "Connecting…";
 "connector.spotify.not_found"           = "Uzume couldn’t find that playlist. It may be private or deleted.";
 "connector.spotify.private_playlist"    = "That playlist is private. Paste a link to a public playlist.";
 "connector.spotify.auth_failure"        = "Couldn’t connect to Spotify. Check your configuration and try again.";
@@ -182,7 +182,7 @@
 "preparation.cancel.confirm_button"     = "Cancel preparation";
 "preparation.cancel.keep_button"        = "Keep preparing";
 "preparation.cancel.confirm_message"    = "Some tracks are already prepared. Cancel anyway?";
-"preparation.empty_state"               = "Preparing\u2026";
+"preparation.empty_state"               = "Preparing…";
 "preparation.cancel_button"             = "Cancel";
 "preparation.start_now_button"          = "Start now";
 "preparation.start_now_button_with_count" = "Start now with %d tracks ready — we'll keep preparing as you listen.";
@@ -228,7 +228,7 @@
 // MARK: - Playback
 
 "playback.still_preparing"              = "Still preparing";
-"playback.still_preparing.tooltip"      = "Still preparing tracks — we\u2019ll keep going as you listen.";
+"playback.still_preparing.tooltip"      = "Still preparing tracks — we’ll keep going as you listen.";
 "playback.shortcut_help.title"          = "Keyboard Shortcuts";
 "playback.shortcut_help.dismiss_hint"   = "Press any key to dismiss";
 
@@ -320,6 +320,9 @@
 "settings.visuals.preparation.mysterious" = "A cave, opening as Uzume listens";
 "settings.visuals.preparation.detailed"   = "Each track, and what Uzume heard in it";
 "settings.visuals.preparation.hint"       = "Mysterious keeps the playlist unseen until the music starts. Detailed shows each track's tempo, key and mood as it is heard. You can change this while a session is preparing.";
+"settings.visuals.track_information.title" = "During a session";
+"settings.visuals.track_information.label" = "Show track information";
+"settings.visuals.track_information.hint"  = "Keeps the current track’s title, artist and artwork, and the preset now on screen, in a corner during the session. Off leaves nothing but the performance. Either way, what comes next stays unseen. You can change this during a session.";
 
 "settings.visuals.blocklist.title" = "Hidden preset families";
 

@@ -7,6 +7,7 @@
 //   - reducedMotion:            next frame / render tick (read by SessionStateViewModel)
 //   - showLiveAdaptationToasts: immediate (LiveAdaptationToastBridge reads on each event)
 //   - preparationView:          immediate, including mid-preparation (PreparationProgressView observes)
+//   - showTrackInformation:     immediate (PlaybackChromeView binds to it; the cluster toggles it)
 //   - resetOnboarding:          next app launch
 
 import Combine
@@ -34,6 +35,7 @@ final class SettingsStore: ObservableObject {
         static let showLiveAdaptationToasts = "uzume.settings.visuals.showLiveAdaptationToasts"
         static let showUncertifiedPresets   = "uzume.settings.visuals.showUncertifiedPresets"
         static let preparationView          = "uzume.settings.visuals.preparationView"
+        static let showTrackInformation     = "uzume.settings.visuals.showTrackInformation"
         // Diagnostics
         static let sessionRecorderEnabled  = "uzume.settings.diagnostics.sessionRecorderEnabled"
         static let sessionRetention        = "uzume.settings.diagnostics.sessionRetention"
@@ -72,6 +74,12 @@ final class SettingsStore: ObservableObject {
     /// How the preparation wait is shown: the cave (default) or the track list. DS.4.
     @Published var preparationView: PreparationViewPreference = .mysterious {
         didSet { encode(preparationView, forKey: Keys.preparationView) }
+    }
+
+    /// Whether the track card (title, artist, artwork, the preset on screen) shows
+    /// during a session. Default true. Only ever what is playing now (D-238). DS.6.
+    @Published var showTrackInformation: Bool = true {
+        didSet { defaults.set(showTrackInformation, forKey: Keys.showTrackInformation) }
     }
 
     // MARK: - Diagnostics
@@ -116,6 +124,9 @@ final class SettingsStore: ObservableObject {
         showLiveAdaptationToasts = defaults.bool(forKey: Keys.showLiveAdaptationToasts)
         showUncertifiedPresets   = defaults.bool(forKey: Keys.showUncertifiedPresets)
         preparationView = decodeOrDefault(.mysterious, forKey: Keys.preparationView)
+        showTrackInformation = defaults.object(forKey: Keys.showTrackInformation) == nil
+            ? true
+            : defaults.bool(forKey: Keys.showTrackInformation)
         sessionRecorderEnabled = defaults.object(forKey: Keys.sessionRecorderEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.sessionRecorderEnabled)
