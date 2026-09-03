@@ -40,5 +40,7 @@ The first live run of the count is what found the LF.4 routing shortcut
 (`docs/reviews/DS.5/DESIGN.md` §The problem, correction): no count, the push at `.ready`, a flat
 line for 95 s. Those frames are not kept; the sequence above is from the fixed build.
 
-Not captured live: the streaming waiting room with a real Spotify / Apple Music session (needs
-the listener's own account — that is the M7), and the timeout card (90 s, unchanged from U.5).
+Not captured: the streaming waiting room with a real Spotify session — Matt ran that live as the
+M7 (first pass found BUG-112 and the contrast issue; second pass: *"Ready waited for Spotify this
+time, copy reads fine"*), and the timeout card (90 s, unchanged from U.5). The `ready-*.png`
+renders are from the final build, scrim included.

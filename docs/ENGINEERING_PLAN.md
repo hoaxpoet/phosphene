@@ -77,15 +77,17 @@ playback chrome retokenized in place — never a parallel `CuratorControlSurface
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
 **DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** ✅ 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop; merged as [#188](https://github.com/hoaxpoet/uzume/pull/188) (`45b002ab`).
-**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all. **DS.5** design pass 2026-09-02 (`docs/reviews/DS.5/DESIGN.md`) + camera-push prototype; ✅ **code-complete 2026-09-03 (D-240)**, M7 pending — two ready experiences over the open cave, one camera push into it, plan preview deleted; see the entries below.
+**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all. **DS.5** design pass 2026-09-02 (`docs/reviews/DS.5/DESIGN.md`) + camera-push prototype; ✅ **2026-09-03 (D-240), M7 passed** — two ready experiences over the open cave, one camera push into it, plan preview deleted; the M7 found that Ready's first-audio autodetect had never listened (BUG-112, fixed same day); see the entries below.
 
 ## Recently Completed
 
-### Increment DS.5 — Ready becomes the arrival ✅ code-complete ⚠ awaiting M7 (2026-09-03, D-240)
+### Increment DS.5 — Ready becomes the arrival ✅ (2026-09-03, D-240, M7 passed)
 
 **Done-when:** reaching `.ready` is the aperture opening all the way and the camera moving into
 it; a local-file session never asks the listener to press play in an app that does not exist; the
-plan preview is gone. **Status: code-complete on `claude/ds5-design-pass`, live M7 pending.**
+plan preview is gone. **Status: ✅ M7 passed live 2026-09-03** — Matt, after the two same-day
+fixes from his first pass (BUG-112 + the scrim): *"Ready waited for Spotify this time, copy reads
+fine. Push it."*
 
 **Design pass first** (`docs/reviews/DS.5/DESIGN.md`, 2026-09-02), then a browser prototype of the
 one piece with no precedent — the camera push — which Matt rejected twice before approving:
@@ -108,7 +110,12 @@ beat announced; `ContentView` routes on `currentSource?.isLocalFile`. (7) The en
 observer no longer starts local audio: `LocalFileCountdownView` calls `handleLocalFileReady()` at
 zero, so the count runs over silence — and `ContentView`'s LF.4 shortcut routing local `.ready`
 straight to `PlaybackView` is removed, which the design doc's code reading had missed entirely
-(see Transferable (5)). (8) Plan preview deleted — four views/VM, the `PlaybackView`
+(see Transferable (5)). **(9) From Matt's M7, same day (session `2026-09-03T15-58-14Z`):** Ready
+self-advanced with `tap RMS 0.000` — the tap had only ever been installed after `.playing`, so the
+first-audio detector had always watched the surface's default `.active` (BUG-112). The engine's
+`.ready` sink now calls `startListeningForFirstAudio()` (reset to `.silent`, preflight, tap up)
+and `startAudio()` leaves a running tap alone. And `ApertureScrim` under the copy on both ready
+screens, replacing the text halo Matt flagged for contrast. (8) Plan preview deleted — four views/VM, the `PlaybackView`
 sheet, the `P` shortcut, `onShowPlanPreview` through the router and registry, every `plan_preview.*`
 string, two test files; `ReadyPulsingBorder` retired with it. `PlaybackView` came back under the
 400-line ceiling, so the lint directive the camera-push commit had added is gone again.
@@ -137,10 +144,13 @@ router, not just the view.** The design pass said a local-file session "shows 'P
 music app'"; it never reached `ReadyView` — `ContentView` sent local `.ready` straight to
 `PlaybackView`. The first live run of the built countdown showed it: no count, the push at
 `.ready`, a flat line for 95 s because nothing called `handleLocalFileReady()`. Twelve unit tests
-and a harness render were green the whole time; only running the build found it.
+and a harness render were green the whole time; only running the build found it. (6) **A screen
+nobody looks at hides its own bugs.** U.5's "press play and it starts" autodetect never listened
+— no tap existed during Ready — and it took Ready becoming a screen worth watching for anyone to
+see it self-advance. When a state becomes visible for the first time, re-verify what it claims to
+do, not just what it now looks like.
 
-**Follow-ups.** Live M7 — the streaming waiting room with a real Spotify session, the local-file
-count over a real folder, the push at fullscreen on the secondary display. `uzume-site` branch
+**Follow-ups.** `uzume-site` branch
 `claude/ds5-streaming-handoff-camera-push` (COMPONENTS.md: the handoff is a camera move, not a
 cut) is committed locally, not pushed. `handleLocalFileReady` keeps its name though it is now
 "start local playback" — rename when the LF file is next touched.

@@ -38,6 +38,8 @@ struct LocalFileCountdownView: View {
             UzumeAppColor.canvas.ignoresSafeArea()
             OpenAperture(character: character, reduceMotion: reduceMotion)
                 .ignoresSafeArea()
+            ApertureScrim()
+                .ignoresSafeArea()
 
             // After the count the cave holds alone until the engine has the audio up and
             // the push begins (a few seconds on a cold preset) — a "1" left standing over

@@ -1662,6 +1662,20 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-112 — RESOLVED (DS.5 M7): Ready's first-audio autodetect never listened — the tap was installed after `.playing`, so Ready always self-advanced (2026-09-03)
+
+**Severity:** P1 · **Domain:** `app.ui` / session flow · **Failure class:** `wiring`
+
+**Expected:** a streaming session at `.ready` waits until real audio is detected (`.silent → .active` sustained ≥250 ms, UX_SPEC §6.3) or the listener taps "Begin now".
+
+**Actual:** Matt, session `2026-09-03T15-58-14Z`: *"Uzume transitioned from preparing to ready but then automatically proceeded from the ready screen to start the show without me pressing any buttons."* The log: `startSession→ready` 15:59:47, `startAudio → SYSTEM-AUDIO TAP` 15:59:48, `tap RMS 0.000`, `signal quality → red: no signal`. Playback began one second after Ready with no audio at all.
+
+**Root cause:** the system-audio tap was installed only by `PlaybackView.setup()` — after `.playing`. During Ready there was no tap, so `FirstAudioDetector` subscribed to `CaptureStateSurface.audioSignalState` at its default value, `.active`; the detector's cold-start rule ("an initial `.active` counts") fired 250 ms later. U.5's autodetect had never actually run: Ready always self-advanced a quarter-second in, and until DS.5 made Ready a screen worth looking at, nobody noticed.
+
+**Fix (D-240 §8):** the engine's `.ready` sink calls `VisualizerEngine.startListeningForFirstAudio()` for streaming sessions — resets the surface to `.silent` (nothing heard yet), preflights the Screen Recording grant (never requests; the gate above the state switch already did), installs the tap. `startAudio()` at playback now leaves a running tap alone (`AudioInputRouter.start` begins with `stopInternal()`, which would have torn it down and reset the silence detector at the handoff). Matt chose this over removing autodetect and making "Begin now" the only door.
+
+**Verification:** ✅ Matt, live, same day, on the fixed build: *"Ready waited for Spotify this time."* Ready held on the open cave until play was pressed in Spotify.
+
 ### BUG-111 — RESOLVED (BUG111.1): the first-run permission card could not lead to a grant (2026-08-31)
 
 **Severity:** P1 · **Domain:** `app.ui` / permission · **Failure class:** `api-contract`

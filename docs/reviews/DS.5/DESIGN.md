@@ -225,6 +225,13 @@ a DS.4 decision, not making a new one.
 - **`uzume-site`'s branch is still local.** Unchanged: `claude/ds5-streaming-handoff-camera-push`,
   committed, not pushed. Pushing is Matt's call, separately from the app PR.
 
+- **From Matt's first M7 pass (same day, session `2026-09-03T15-58-14Z`), two more.** Ready
+  self-advanced with no audio — §Two ready experiences above says the detection mechanism "is
+  already built and does not change"; it was built, but it had never listened: the tap was only
+  installed after `.playing`, so the detector watched a default `.active` (BUG-112). The tap now
+  comes up at `.ready`. And the copy over the cave sits on `ApertureScrim` rather than a shadow —
+  Matt: *"concerned about sufficient color contrast."* Both his call between two options each.
+
 Also built, as decided above: `OpenAperture` behind both ready screens; `ReadyViewModel` takes
 `SessionOrigin?`; "Begin now" as a bordered button of the same weight as End session; the count
 runs over silence because `handleLocalFileReady()` now fires from the countdown's end rather than

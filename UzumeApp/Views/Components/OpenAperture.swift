@@ -32,3 +32,25 @@ struct OpenAperture: View {
         .accessibilityHidden(true)
     }
 }
+
+// MARK: - ApertureScrim
+
+/// Contrast for copy set over the open cave (Matt's M7: a text halo is not contrast —
+/// where the spill is bright the words compete with it). Canvas eased in over the lower
+/// half of the frame, so whatever the cave is doing, the bottom settles into darkness
+/// under the words. Eased, not linear: a straight ramp that begins against the flat
+/// white of the mouth reads as a hard line (a Mach band — measured, not guessed), so
+/// the slope starts at nothing and steepens only below the mouth. Proportional to the
+/// frame, so it holds at any window size. Purely decorative.
+struct ApertureScrim: View {
+    private static let stops: [Gradient.Stop] = [
+        (0.00, 0.00), (0.45, 0.00), (0.55, 0.06), (0.65, 0.22),
+        (0.75, 0.50), (0.85, 0.78), (0.93, 0.92), (1.00, 0.96),
+    ].map { .init(color: UzumeAppColor.canvas.opacity($0.1), location: $0.0) }
+
+    var body: some View {
+        LinearGradient(stops: Self.stops, startPoint: .top, endPoint: .bottom)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}

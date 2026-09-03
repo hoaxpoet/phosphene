@@ -71,6 +71,8 @@ struct ReadyView: View {
             UzumeAppColor.canvas.ignoresSafeArea()
             OpenAperture(character: character, reduceMotion: viewModel.reduceMotion)
                 .ignoresSafeArea()
+            ApertureScrim()
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer()
@@ -102,27 +104,23 @@ struct ReadyView: View {
         )
     }
 
-    /// Copy sits low, under the mouth of the cave, so it reads against rock and spill
-    /// rather than against the light itself.
+    /// Copy sits low, on the scrim, so it reads against dark whatever the cave is doing.
     private var mainContent: some View {
         VStack(spacing: 20) {
             Text(String(localized: "ready.headline"))
                 .font(.largeTitle.weight(.thin))
                 .foregroundColor(UzumeAppColor.textPrimary)
-                .legibleOverLight()
                 .accessibilityIdentifier(Self.headlineID)
 
             Text(String(format: String(localized: "ready.press_play"), viewModel.sourceName))
                 .font(.title3)
                 .foregroundColor(UzumeAppColor.textSecondary)
                 .multilineTextAlignment(.center)
-                .legibleOverLight()
 
             if viewModel.trackCount > 0 {
                 Text(planSummary)
                     .font(.subheadline)
                     .foregroundColor(UzumeAppColor.textTertiary)
-                    .legibleOverLight()
             }
 
             HStack(spacing: 16) {
@@ -180,15 +178,5 @@ struct ReadyView: View {
             .padding(40)
         }
         .accessibilityIdentifier(Self.timeoutOverlayID)
-    }
-}
-
-// MARK: - Legibility over the aperture
-
-private extension View {
-    /// A tight dark halo so text holds up wherever the spill happens to be bright.
-    func legibleOverLight() -> some View {
-        shadow(color: UzumeAppColor.canvas.opacity(0.9), radius: 3)
-            .shadow(color: UzumeAppColor.canvas.opacity(0.7), radius: 18)
     }
 }

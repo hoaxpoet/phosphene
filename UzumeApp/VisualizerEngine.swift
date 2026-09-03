@@ -1125,6 +1125,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                 }
                 if newState == .ready, self.sessionManager.currentSource?.isLocalFile != true {
                     self.buildPlan()
+                    // DS.5 M7 (D-240 §8): the tap comes up here, not at playback, so
+                    // Ready's first-audio detector hears real audio instead of the
+                    // surface's default.
+                    self.startListeningForFirstAudio()
                 }
                 if newState == .ended {
                     // LF.5.fix.2-FU2: halt the stem analyzer timer BEFORE

@@ -323,8 +323,9 @@ app" had a local session ever reached the view).
 ### 6.1 `ReadyView` (streaming)
 
 Full-bleed `OpenAperture` — the same `ApertureScene` as §5.2 at openness 1, still churning with the
-playlist's character. Copy sits low in the frame, under the mouth of the cave, with a tight dark
-halo so it holds against the spill:
+playlist's character. Copy sits low in the frame on `ApertureScrim`, a canvas-to-transparent
+gradient over the lower part of the frame, so the words are always on dark whatever the cave is
+doing (Matt's M7: a text halo is not contrast):
 
 **Headline:** "Ready." **Subtext:** "Press play in [Apple Music / Spotify]." Ad-hoc and any
 sourceless session fall back to "your music app". **Plan summary** when a plan exists: "Planned
@@ -359,6 +360,8 @@ without its roll; the count itself is information and is never removed.
 ### 6.3 First-audio autodetect
 
 `AudioInputRouter` signal transition from `.silent` → `.active` sustained for >250 ms triggers automatic advance to `.playing`. No user click needed.
+
+**The tap is installed at `.ready`, not at playback (DS.5 M7, BUG-112, D-240 §8).** Until then it was installed only by `PlaybackView`, so during Ready the detector watched the surface's default `.active` and Ready self-advanced 250 ms in — this rule had never actually run. `VisualizerEngine.startListeningForFirstAudio()` resets the surface to `.silent` (nothing heard yet), preflights the Screen Recording grant, and installs the tap; `startAudio()` at playback leaves a running tap alone.
 
 Fallback: if the user taps anywhere on `ReadyView`, show a one-shot hint: "Open your music app and press play." Don't advance on tap — the audio must actually start flowing. ("Begin now" is the deliberate way past this, §6.1.)
 
