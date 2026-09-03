@@ -10,6 +10,35 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-09-03-184358] DS.6 — the playback chrome, retokenized in place (M7 pending)
+
+**Same chrome, made right.** The track card, controls cluster, listening badge, progress dots,
+local transport and toasts are the composition they were, drawn from the design system only:
+no colour outside the tokens, the Phosphene dashboard palette confined to the diagnostic
+dashboard, no `.teal` / `.green` / `.orange`, the transport bar's purple glow replaced by the one
+shadow the system publishes. No second control tree.
+
+**Quiet, never gone.** After 3 s of inactivity the chrome no longer fades to nothing: the
+cluster reduces to End session alone and everything else fades. Mouse move, any key press and a
+track change bring it all back — the spec promised all three; only the mouse had ever been
+wired. Space still hides it outright. The first 3 s now start when the arrival has faded. State
+changes take the design system's 240 ms ease-out (was 500 ms); reduced motion crossfades.
+
+**Show / Hide track info.** A new control in the cluster, the same words the preparation screen
+uses, backed by `uzume.settings.visuals.showTrackInformation` (default shown, persisted, also in
+Settings beside the preparation-view preference). Hidden means the card, its artwork and the
+track-change announcement are gone. The card's "Planned / Reactive" pill is removed (D-241): it
+described the session's structure, which the surprise model keeps from the listener.
+
+**Also.** "Still preparing" is now a status placement (info tone). Every chrome control declares a
+VoiceOver label and a hint. `Localizable.strings` used lowercase `\uXXXX` escapes, which `.strings`
+does not support — the still-preparing tooltip read "weu2019ll"; all fourteen are literal characters now.
+**BUG-113** — every toast rendered as a full-window panel inside the chrome (a `Color` accent bar
+accepting the whole proposed height); one `.fixedSize` and a layout test.
+
+Review page: `docs/reviews/DS.6/CAPTURES.md` (harness before/after pairs + live window captures).
+Findings for the site repo: `docs/reviews/DS.6/UPSTREAM-FINDINGS.md`. Decision: D-241.
+
 ### [dev-2026-09-03-152625] DS.5 — Ready becomes the arrival (M7 passed)
 
 **Ready is the payoff of the cave, not a room to wait in.** The aperture the listener watched
