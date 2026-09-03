@@ -265,12 +265,12 @@ struct PlaybackView: View {
         let registry = buildRegistry(router: router)
         currentRegistry = registry
         keyMonitor.install(registry: registry)
-        chromeVM.observeKeyPresses()
+        chromeVM.observeInput()
     }
 
     private func teardown() {
         keyMonitor.uninstall()
-        chromeVM.stopObservingKeyPresses()
+        chromeVM.stopObservingInput()
         fullscreenObserver.detach()
     }
 

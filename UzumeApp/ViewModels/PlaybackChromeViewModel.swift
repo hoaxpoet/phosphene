@@ -27,11 +27,11 @@
 //
 // 7-8. Fullscreen + multi-display handled in Part D.
 //
-// Visibility (DS.6, D-241): three states, not two. After inactivity the chrome goes
-// `.quiet` — the cluster reduces to End session — never `.hidden`; only the Space
-// toggle hides it outright. Mouse move, any key, and a track change restore `.full`.
-// The first-show timer waits for the arrival (`PlaybackArrivalOverlay`) to fade before
-// its 3 s start.
+// Visibility (DS.6, D-241 — Matt's call): after 3 s of inactivity the chrome disappears
+// completely so the listener can focus on the visuals. Mouse movement, a tap on the
+// screen, any key, and a track change bring all of it back; Space toggles it. The
+// first-show timer waits for the arrival (`PlaybackArrivalOverlay`) to fade before its
+// 3 s start.
 //
 // Threading: @MainActor. All Combine subscriptions arrive on the main run loop.
 
@@ -62,16 +62,6 @@ struct PresetDisplay: Equatable {
     let family: String
 }
 
-/// How much of the chrome is on screen (DS.6, D-241).
-enum ChromeVisibility: Equatable {
-    /// Everything: card, cluster, badge, transport, toasts.
-    case full
-    /// After inactivity: End session alone, top-trailing. Never undiscoverable.
-    case quiet
-    /// The Space toggle: nothing drawn.
-    case hidden
-}
-
 /// Track-list progress summary for SessionProgressDotsView.
 struct SessionProgressData: Equatable {
     let totalTracks: Int
@@ -95,10 +85,9 @@ final class PlaybackChromeViewModel: ObservableObject {
     @Published private(set) var sessionProgress: SessionProgressData = SessionProgressData(
         totalTracks: 0, currentIndex: -1, isReactiveMode: true
     )
-    @Published private(set) var visibility: ChromeVisibility = .full
-    /// True only when the whole chrome is up. `.quiet` counts as not visible here — the
-    /// card, badge and transport are gone; only End session remains.
-    var overlayVisible: Bool { visibility == .full }
+    /// The whole chrome, or nothing (D-241): false after 3 s of inactivity, true again on
+    /// any input. Space toggles it.
+    @Published private(set) var overlayVisible: Bool = true
     @Published private(set) var showListeningBadge: Bool = false
     @Published private(set) var reduceMotion: Bool
     /// True while background track preparation is still in flight (6.1).
@@ -116,10 +105,10 @@ final class PlaybackChromeViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var hideTask: Task<Void, Never>?
-    private var keyMonitor: Any?
+    private var inputMonitor: Any?
     private let delay: any DelayProviding
 
-    /// Seconds of inactivity before the chrome goes quiet (UX_SPEC §7.2).
+    /// Seconds of inactivity before the chrome disappears (UX_SPEC §7.2).
     static let inactivityDelay: Double = 3
 
     private var livePlan: PlannedSession?
@@ -169,7 +158,7 @@ final class PlaybackChromeViewModel: ObservableObject {
         self.delay = delay
         self.reduceMotion = false   // overwritten immediately by the publisher below
 
-        // Start the initial quiet timer, after the arrival has faded.
+        // Start the initial hide timer, after the arrival has faded.
         scheduleHide(after: firstShowDelay + Self.inactivityDelay)
 
         // Reduce-motion: sourced from AccessibilityState via publisher injection.
@@ -298,46 +287,49 @@ final class PlaybackChromeViewModel: ObservableObject {
 
     deinit {
         hideTask?.cancel()
-        // The key monitor is removed by `stopObservingKeyPresses()` from PlaybackView's
+        // The input monitor is removed by `stopObservingInput()` from PlaybackView's
         // teardown — `NSEvent.removeMonitor` is not something a nonisolated deinit may call.
     }
 
     // MARK: - Activity
 
-    /// Call on any user activity (mouse move, key press, track change): the full chrome
-    /// comes back and the quiet timer restarts.
+    /// Call on any user activity (mouse move, tap, key press, track change): the chrome
+    /// comes back and the hide timer restarts.
     func onActivity() {
-        visibility = .full
+        overlayVisible = true
         scheduleHide()
     }
 
-    /// The Space toggle: hides the chrome outright from `.full`; from `.quiet` or
-    /// `.hidden`, brings it all back and restarts the quiet timer.
+    /// The Space toggle: hides the chrome outright while it is up; brings it back — and
+    /// restarts the hide timer — while it is not.
     func toggleOverlay() {
-        if visibility == .full {
+        if overlayVisible {
             hideTask?.cancel()
-            visibility = .hidden
+            overlayVisible = false
         } else {
             onActivity()
         }
     }
 
-    /// Any key press counts as activity (UX_SPEC §7.2). Installed by `PlaybackView`
-    /// alongside its shortcut monitor; the event passes through untouched. Space is
-    /// skipped so `toggleOverlay` sees the state the listener pressed it in.
-    func observeKeyPresses() {
-        guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode != Self.spaceKeyCode {
+    /// A tap on the screen or any key press counts as activity (UX_SPEC §7.2; mouse
+    /// movement is `PlaybackView`'s hover). Installed by `PlaybackView` alongside its
+    /// shortcut monitor; every event passes through untouched. Space is skipped so
+    /// `toggleOverlay` sees the state the listener pressed it in.
+    func observeInput() {
+        guard inputMonitor == nil else { return }
+        inputMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            if !(event.type == .keyDown && event.keyCode == Self.spaceKeyCode) {
                 Task { @MainActor [weak self] in self?.onActivity() }
             }
             return event
         }
     }
 
-    func stopObservingKeyPresses() {
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        keyMonitor = nil
+    func stopObservingInput() {
+        if let inputMonitor { NSEvent.removeMonitor(inputMonitor) }
+        inputMonitor = nil
     }
 
     private static let spaceKeyCode: UInt16 = 49
@@ -350,7 +342,7 @@ final class PlaybackChromeViewModel: ObservableObject {
             guard let self else { return }
             try? await self.delay.sleep(seconds: seconds)
             guard !Task.isCancelled else { return }
-            self.visibility = .quiet
+            self.overlayVisible = false
         }
     }
 

@@ -121,38 +121,35 @@ struct PlaybackChromeViewModelTests {
         // over the worst-observed delay.
         try await Task.sleep(for: .milliseconds(1000))
         #expect(!vm.overlayVisible)
-        // DS.6 (D-241): inactivity lands on quiet — End session stays — never hidden.
-        #expect(vm.visibility == .quiet)
     }
 
-    // MARK: - DS.6 visibility states
+    // MARK: - DS.6 visibility (D-241: gone after inactivity, back on any input)
 
-    @Test func spaceToggle_fromFull_hides_andBack() {
+    @Test func spaceToggle_fromVisible_hides_andBack() {
         let (vm, _, _, _, _) = makeVM(delay: NeverDelay())
         vm.toggleOverlay()
-        #expect(vm.visibility == .hidden)
         #expect(!vm.overlayVisible)
         vm.toggleOverlay()
-        #expect(vm.visibility == .full)
+        #expect(vm.overlayVisible)
     }
 
-    @Test func onActivity_fromQuiet_restoresFull() async throws {
+    @Test func onActivity_fromHidden_restoresTheChrome() async throws {
         let (vm, _, _, _, _) = makeVM(delay: InstantDelay())
         try await Task.sleep(for: .milliseconds(1000))
-        #expect(vm.visibility == .quiet)
-        vm.onActivity()
-        #expect(vm.visibility == .full)
+        #expect(!vm.overlayVisible)
+        vm.onActivity()   // mouse movement, a tap, or a key — all route here
+        #expect(vm.overlayVisible)
     }
 
-    @Test func trackChange_restoresFullChrome() async throws {
+    @Test func trackChange_restoresTheChrome() async throws {
         let (vm, _, trackPub, _, _) = makeVM(delay: NeverDelay())
         trackPub.send(TrackMetadata(title: "First", artist: "A"))
         try await Task.sleep(for: .milliseconds(20))
         vm.toggleOverlay()
-        #expect(vm.visibility == .hidden)
+        #expect(!vm.overlayVisible)
         trackPub.send(TrackMetadata(title: "Second", artist: "A"))
         try await Task.sleep(for: .milliseconds(20))
-        #expect(vm.visibility == .full, "a track change is activity (UX_SPEC §7.2)")
+        #expect(vm.overlayVisible, "a track change is activity (UX_SPEC §7.2)")
     }
 
     @Test func firstTrack_doesNotResetTheArrivalTimer() async throws {

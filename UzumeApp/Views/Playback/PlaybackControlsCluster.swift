@@ -2,10 +2,8 @@
 //
 // DS.6: the `PerformanceControls` component (COMPONENTS.md). Three controls — Show/Hide
 // track info (the same words DS.4a gave the preparation screen, D-239), Settings, End
-// session — behind the session-position dots. When the chrome goes quiet the cluster
-// reduces to End session alone: the one control a Curator may need without a mouse
-// move, and the reason the chrome cannot become undiscoverable. Every control declares
-// a label and a hint that says what it does now.
+// session — behind the session-position dots. Every control declares a label and a
+// hint that says what it does now.
 
 import SwiftUI
 
@@ -24,36 +22,30 @@ struct PlaybackControlsCluster: View {
     let progress: SessionProgressData
     let reduceMotion: Bool
     @Binding var showTrackInformation: Bool
-    /// True after inactivity: only End session stays.
-    var quiet: Bool = false
     let onSettings: () -> Void
     let onEndSession: () -> Void
 
     var body: some View {
         HStack(spacing: UzumeSpace.x3) {
-            if !quiet {
-                SessionProgressDotsView(progress: progress, reduceMotion: reduceMotion)
+            SessionProgressDotsView(progress: progress, reduceMotion: reduceMotion)
 
-                Rectangle()
-                    .fill(UzumeAppColor.line)
-                    .frame(width: 1, height: 16)
+            Rectangle()
+                .fill(UzumeAppColor.line)
+                .frame(width: 1, height: 16)
 
-                trackInfoToggle
+            trackInfoToggle
 
-                ClusterButton(
-                    symbol: "gearshape",
-                    label: String(localized: "playback.controls.settings.tooltip"),
-                    hint: String(localized: "a11y.playback.settings.hint"),
-                    action: onSettings
-                )
-            }
+            ClusterButton(
+                symbol: "gearshape",
+                label: String(localized: "playback.controls.settings.tooltip"),
+                hint: String(localized: "a11y.playback.settings.hint"),
+                action: onSettings
+            )
 
             ClusterButton(
                 symbol: "xmark.circle",
                 label: String(localized: "playback.controls.endSession.tooltip"),
-                hint: String(localized: quiet
-                    ? "a11y.playback.endSession.hint.quiet"
-                    : "a11y.playback.endSession.hint"),
+                hint: String(localized: "a11y.playback.endSession.hint"),
                 action: onEndSession
             )
             .accessibilityIdentifier(Self.endSessionID)

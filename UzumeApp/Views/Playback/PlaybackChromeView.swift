@@ -7,13 +7,11 @@
 //   bottom-centre:   LocalFileTransportBar (local-file sessions only)
 //   bottom-trailing: ToastRegion
 //
-// Three visibility states, owned by `PlaybackChromeViewModel` (D-241):
-//   .full   — everything above, hit-testable.
-//   .quiet  — after inactivity: the cluster reduces to End session alone and every
-//             other surface fades. The chrome can go quiet but never undiscoverable
-//             (DESIGN.md §Curator Control Surface).
-//   .hidden — the Space toggle only: nothing drawn, nothing hit-testable.
-// Transitions are the standard 240 ms state change; reduced motion crossfades.
+// Visibility is `PlaybackChromeViewModel.overlayVisible` (D-241, Matt's call): after 3 s
+// of inactivity the whole chrome disappears so the listener can focus on the visuals —
+// nothing drawn, nothing hit-testable — and mouse movement, a tap, any key or a track
+// change bring all of it back. The fade is the standard 240 ms state change; reduced
+// motion crossfades.
 
 import SwiftUI
 
@@ -56,7 +54,7 @@ private struct PreparationBackgroundIndicator: View {
 
 // MARK: - PlaybackChromeView
 
-/// Auto-quieting overlay chrome layer for PlaybackView.
+/// Auto-hiding overlay chrome layer for PlaybackView.
 ///
 /// Composed as a ZStack and placed as `.overlay` on the full-bleed MetalView.
 struct PlaybackChromeView: View {
@@ -78,7 +76,6 @@ struct PlaybackChromeView: View {
     var onLocalFilePlayPause: () -> Void = {}
     var onLocalFileNext: () -> Void = {}
 
-    private var isFull: Bool { viewModel.visibility == .full }
     private var motion: Animation { UzumeAppMotion.stateChange(reduceMotion: viewModel.reduceMotion) }
 
     var body: some View {
@@ -92,23 +89,19 @@ struct PlaybackChromeView: View {
                 )
                 .padding(UzumeSpace.x6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .fadesUnlessFull(isFull, motion: motion)
             }
 
-            // Top-trailing: controls cluster (reduces to End session when quiet) +
-            // the "still preparing" status.
+            // Top-trailing: controls cluster + the "still preparing" status.
             VStack(alignment: .trailing, spacing: UzumeSpace.x1) {
                 PlaybackControlsCluster(
                     progress: viewModel.sessionProgress,
                     reduceMotion: viewModel.reduceMotion,
                     showTrackInformation: $showTrackInformation,
-                    quiet: viewModel.visibility == .quiet,
                     onSettings: onSettings,
                     onEndSession: onEndSession
                 )
                 if viewModel.isBackgroundPreparationActive {
                     PreparationBackgroundIndicator(reduceMotion: viewModel.reduceMotion)
-                        .fadesUnlessFull(isFull, motion: motion)
                 }
             }
             .padding(UzumeSpace.x6)
@@ -122,7 +115,6 @@ struct PlaybackChromeView: View {
             .padding(.top, UzumeSpace.x12)
             .frame(maxWidth: .infinity, alignment: .top)
             .frame(maxHeight: .infinity, alignment: .top)
-            .fadesUnlessFull(isFull, motion: motion)
 
             // Bottom-centre: LF.5.fix D-LF5-3 transport bar (LF mode only).
             if viewModel.isLocalFileSession {
@@ -136,30 +128,16 @@ struct PlaybackChromeView: View {
                 .padding(.bottom, 36)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .frame(maxHeight: .infinity, alignment: .bottom)
-                .fadesUnlessFull(isFull, motion: motion)
             }
 
             // Bottom-trailing: toasts
             ToastRegion(toastManager: toastManager, reduceMotion: viewModel.reduceMotion)
                 .padding(UzumeSpace.x6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .fadesUnlessFull(isFull, motion: motion)
         }
-        .opacity(viewModel.visibility == .hidden ? 0 : 1)
-        .animation(motion, value: viewModel.visibility)
-        .allowsHitTesting(viewModel.visibility != .hidden)
+        .opacity(viewModel.overlayVisible ? 1 : 0)
+        .animation(motion, value: viewModel.overlayVisible)
+        .allowsHitTesting(viewModel.overlayVisible)
         .accessibilityIdentifier(Self.accessibilityID)
-    }
-}
-
-// MARK: - Fade helper
-
-private extension View {
-    /// Fades a chrome surface out — and takes it out of hit-testing — whenever the
-    /// chrome is not `.full`. The cluster is the one surface that stays for `.quiet`.
-    func fadesUnlessFull(_ isFull: Bool, motion: Animation) -> some View {
-        opacity(isFull ? 1 : 0)
-            .allowsHitTesting(isFull)
-            .animation(motion, value: isFull)
     }
 }

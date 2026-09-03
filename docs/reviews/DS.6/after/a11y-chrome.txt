@@ -9,7 +9,6 @@ toggle track info (shown)	Hide track info — hint: Takes the current track and 
 toggle track info (hidden)	Show track info — hint: Puts the current track and preset back in the corner	uzume.playback.toggleTrackInfo
 settings button	Settings — hint: Opens Uzume’s settings over the performance	(none)
 end session button	End session (Esc) — hint: Asks before stopping the visualizer	uzume.playback.endSession
-end session button (quiet)	End session (Esc) — hint: Asks before stopping the visualizer. Move the mouse or press a key to bring the other controls back	uzume.playback.endSession
 still preparing indicator	Still preparing — hint: Still preparing tracks — we’ll keep going as you listen.	(none)
 listening badge	Waiting for audio	uzume.playback.listeningBadge
 local transport (container)	(no explicit label — children read in order)	uzume.playback.lfTransport

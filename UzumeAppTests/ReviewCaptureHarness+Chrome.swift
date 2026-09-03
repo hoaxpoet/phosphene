@@ -9,9 +9,9 @@
 // by scripted publishers — the same seam `PlaybackView` uses — over a stand-in for the
 // live frame (the performed-light gradient, so the backdrop has something bright to
 // blur). Reduced motion on so the pulse and the spinner hold still; the live captures
-// beside these show them moving. The quiet timer never fires here (except for the
-// `chrome-quiet` scenario, which lets it), so each capture is a settled state; the
-// fade itself is a moment in an animation and is captured live, not rendered.
+// beside these show them moving. The hide timer never fires here, so each capture is a
+// settled state; the fade itself is a moment in an animation and is captured live, not
+// rendered.
 
 import Audio
 import Combine
@@ -42,7 +42,7 @@ extension ReviewCaptureHarness {
 
 // MARK: - Scenarios
 
-/// A delay that never elapses, so the chrome's auto-hide cannot fire mid-capture.
+/// A delay that never elapses, so the chrome's hide timer cannot fire mid-capture.
 private struct NeverDelay: DelayProviding {
     func sleep(seconds: Double) async throws {
         try await Task.sleep(for: .seconds(3600))
@@ -146,10 +146,8 @@ enum ChromeCaptureScenario {
                 streaming(feeds)
                 feeds.toasts.enqueue(UzumeToast(severity: .fatal, copy: "No audio detected."))
             }),
-            // The Space toggle: the only way to hide the chrome outright after DS.6.
+            // Hidden: what 3 s of inactivity (or Space) leaves on screen — nothing (D-241).
             Scenario(name: "chrome-hidden", script: streaming, afterBind: { $0.toggleOverlay() }),
-            // DS.6: after inactivity — End session alone (an InstantDelay lets the timer fire).
-            Scenario(name: "chrome-quiet", script: localFile, delay: InstantDelay()),
             // DS.6: track information off — no card, no artwork, the toggle reads "Show".
             Scenario(name: "chrome-trackInfoHidden", script: localFile, showTrackInformation: false),
         ]
@@ -191,7 +189,6 @@ enum ChromeCaptureScenario {
         let settingsHint = String(localized: "a11y.playback.settings.hint")
         let endTip = String(localized: "playback.controls.endSession.tooltip")
         let endHint = String(localized: "a11y.playback.endSession.hint")
-        let endQuietHint = String(localized: "a11y.playback.endSession.hint.quiet")
         let showInfo = String(localized: "preparation.toggle_track_info.show")
         let hideInfo = String(localized: "preparation.toggle_track_info.hide")
         let showHint = String(localized: "a11y.playback.toggleTrackInfo.hint.show")
@@ -214,7 +211,6 @@ enum ChromeCaptureScenario {
             "toggle track info (hidden)\t\(showInfo) — hint: \(showHint)\t\(toggleID)",
             "settings button\t\(settingsTip) — hint: \(settingsHint)\t(none)",
             "end session button\t\(endTip) — hint: \(endHint)\t\(endID)",
-            "end session button (quiet)\t\(endTip) — hint: \(endQuietHint)\t\(endID)",
             "still preparing indicator\t\(preparing) — hint: \(preparingTip)\t(none)",
             "listening badge\t\(String(localized: "a11y.listeningBadge.label"))\t\(ListeningBadgeView.accessibilityID)",
             "local transport (container)\t(no explicit label — children read in order)"
