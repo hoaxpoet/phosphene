@@ -25,14 +25,21 @@ cubic-bézier (0.16, 1, 0.3, 1). Publishing `--motion-feedback` / `--motion-stan
 `DESIGN.md` §Shadow Vocabulary defines `Raised` (`0 16px 42px rgb(0 0 0 / 32%)`) and `Focus`.
 The package publishes neither. The app added `UzumeAppShadow.raised` for the local transport bar.
 
-## 3. "Quiet edge controls" vs. the contrast floor
+## 3. The chrome disappears completely after inactivity — a product decision, not a gap
 
-`DESIGN.md` §Curator Control Surface allows the chrome to "reduce to quiet edge controls after
-inactivity". Read literally as a low-opacity glyph over the live frame, that cannot meet the
-document's own 3:1 floor for meaningful icons on a bright preset. The app's reading (D-241): the
-quiet control is one small control on the certified backdrop at full opacity — small and alone,
-not faint. `COMPONENTS.md` §`PerformanceChrome` §States could name the quiet state and say that
-it keeps the contrast contract, so the next reader does not re-derive this.
+`COMPONENTS.md` §`PerformanceChrome` and `DESIGN.md` §Curator Control Surface say the chrome
+"may reduce to quiet edge controls after inactivity but cannot become undiscoverable". Matt
+decided otherwise for the app (D-241, 2026-09-03): *"Chrome should disappear completely after a
+brief period of inactivity so that the user can focus on the visuals. When mouse activity is
+detected or the user taps the screen, the chrome returns."* Uzume ships that: after 3 s nothing
+is on screen; mouse movement, a tap, any key press or a track change bring all of it back.
+Discoverability is the mouse and the tap. This is for `uzume-site` to adopt — the sentence in
+both documents should say what the product does.
+
+One note for whoever revisits "quiet edge controls" later: a low-opacity glyph over the live
+frame cannot meet the document's own 3:1 floor for meaningful icons on a bright preset. If a
+quiet control ever returns, it belongs on the certified backdrop at full opacity — small and
+alone, not faint.
 
 ## 4. `COMPONENTS.md` names `ToastContainerView`
 

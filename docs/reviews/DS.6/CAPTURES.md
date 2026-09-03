@@ -36,8 +36,7 @@ See §Live captures below.
 | `chrome-listening` | `audioSignalState == .silent` (≥ 3 s): "Listening…" badge top-centre | **yes** — sustained silence mid-session |
 | `chrome-stillPreparing` | `ProgressiveReadinessLevel < .fullyPrepared`: "Still preparing" under the cluster | **yes** — "Start now" before the playlist finished preparing |
 | `chrome-toast-info` / `-warning` / `-degradation` / `-fatal` | one toast per `UzumeToast.Severity`, bottom-trailing | **yes** — display connected / disconnected / stem failure / sustained silence (D-236). **`before/` shows BUG-113**: the toast is the full window height. Found here, confirmed live, fixed in DS.6. |
-| `chrome-hidden` | `overlayVisible == false`: nothing drawn, hit-testing off | **yes, before DS.6** — 3 s after any activity. After DS.6 this state is reachable only by the Space toggle; inactivity lands on `chrome-quiet` |
-| `chrome-quiet` *(after only)* | the DS.6 quiet state: one End-session control top-trailing, everything else gone | **yes, after DS.6** — 3 s after any activity |
+| `chrome-hidden` | `overlayVisible == false`: nothing drawn, hit-testing off | **yes** — 3 s after any input, and on Space. Matt's call (D-241): nothing stays on screen; mouse, tap, key or track change bring it back |
 | `chrome-trackInfoHidden` *(after only)* | `uzume.settings.visuals.showTrackInformation == false`: no card, no artwork, cluster shows "Show track info" | **yes, after DS.6** |
 | *chrome mid-fade* | — | **not rendered.** The fade is a moment inside a 240 ms (was 500 ms) opacity animation; the harness renders settled states. Covered by the live captures. |
 | *end confirmation* | the `confirmationDialog` on End session | **not rendered** — it is `PlaybackView`'s dialog (Layer 6), not chrome; unchanged by DS.6. |
@@ -97,10 +96,11 @@ session (`UZUME_LOCAL_FILE_PLAYBACK=…/so_what.m4a`, 900 × 632 window, 2×), d
 | file | moment |
 |---|---|
 | `live-full-after-arrival.png` | the full chrome, the arrival just faded (card, cluster with three controls, transport) |
-| `live-quiet.png` | 3 s later: End session alone, top-trailing |
+| `live-hidden.png` | 3 s later: nothing on screen (D-241, Matt's call) |
 | `live-restored-mouse.png` | a mouse move brings the full chrome back |
-| `live-restored-key.png` | after quiet again, a key press (`j`) brings it back |
-| `live-hidden-space.png` | Space: hidden outright — the only way to nothing |
+| `live-restored-tap.png` | after it has gone again, a tap on the screen brings it back |
+| `live-restored-key.png` | after it has gone again, a key press (`j`) brings it back |
+| `live-hidden-space.png` | Space: hidden at once |
 | `live-trackInfoShown.png` / `live-trackInfoHidden.png` | the cluster's Show/Hide track info control, clicked; the card and its artwork leave the tree |
 | `live-toast-BUG113-before-fix.png` | `l` (diagnostic hold) raises a toast — and the build before the fix drew it floor to ceiling over the cluster. The evidence for BUG-113; the `after/chrome-toast-*.png` renders are from the fixed build |
 
@@ -109,4 +109,4 @@ M7, as at DS.5. The streaming states (card without artwork, planned dots, reacti
 evidenced by the harness renders above.
 
 Pairs for review, by filename: every `before/chrome-*.png` has an `after/chrome-*.png`;
-`after/` adds `chrome-quiet` and `chrome-trackInfoHidden`.
+`after/` adds `chrome-trackInfoHidden`.

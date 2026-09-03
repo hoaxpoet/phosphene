@@ -78,7 +78,7 @@ playback chrome retokenized in place — never a parallel `CuratorControlSurface
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
 **DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** ✅ 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop; merged as [#188](https://github.com/hoaxpoet/uzume/pull/188) (`45b002ab`).
 **DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all. **DS.5** design pass 2026-09-02 (`docs/reviews/DS.5/DESIGN.md`) + camera-push prototype; ✅ **2026-09-03 (D-240), M7 passed** — two ready experiences over the open cave, one camera push into it, plan preview deleted; the M7 found that Ready's first-audio autodetect had never listened (BUG-112, fixed same day); see the entries below.
-**DS.6** code-complete 2026-09-03 (D-241) on `claude/ds6-prompt-execution-bbd3e4`, **M7 pending** — the chrome retokenized in place, quiet after inactivity but never gone, Show/Hide track info, the orchestrator pill removed; found and fixed BUG-113 (toasts stretched to the window height). **DS.7** waits on a design pass with Matt: `PerformancePreflight` comes only after its integration point and settings summary model are defined in the app (census §Migration order, step 7).
+**DS.6** code-complete 2026-09-03 (D-241) on `claude/ds6-prompt-execution-bbd3e4`, **M7 pending** — the chrome retokenized in place, gone completely after inactivity and back on mouse / tap / key / track change (Matt's call), Show/Hide track info, the orchestrator pill removed; found and fixed BUG-113 (toasts stretched to the window height). **DS.7** waits on a design pass with Matt: `PerformancePreflight` comes only after its integration point and settings summary model are defined in the app (census §Migration order, step 7).
 
 ## Recently Completed
 
@@ -87,9 +87,10 @@ behaviour or hierarchy and each needs its own review; DS.1 deliberately does not
 **Done-when:** the chrome the Curator sees over a running show is drawn entirely from the design
 system and reorganized as the `PerformanceChrome` component — same composition, same files; no
 colour outside the tokens, no `DashboardTokens` outside `Views/Dashboard/`, nothing on screen
-that tells the listener what comes next, and a control surface that can go quiet but never
-become undiscoverable. **Status: code-complete, every automated gate green; Matt's M7 pending**
-(the verdict goes here in his words).
+that tells the listener what comes next; after a brief inactivity the chrome is gone completely
+and comes back on mouse, tap, key or track change (Matt's call, overriding the design system's
+"cannot become undiscoverable"). **Status: code-complete, every automated gate green; Matt's M7
+pending** (the verdict goes here in his words).
 
 **Before anything changed:** `ReviewCaptureHarness+Chrome.swift` — the shipped
 `PlaybackChromeView` driven through the real view model by scripted publishers, twelve settled
@@ -109,10 +110,12 @@ under reduced motion. (5) `TrackInfoCardView` loses the Planned/Reactive pill an
 track-change announcement are out of the tree. (6) `PlaybackControlsCluster` carries Show/Hide
 track info (`uzume.playback.toggleTrackInfo`, the DS.4a words), Settings and End session
 (`uzume.playback.endSession`), each with a label and a hint; "Still preparing" is a
-`StatusTone.info` placement. (7) `PlaybackChromeViewModel` owns `ChromeVisibility` — full /
-quiet / hidden — with the first timer offset by `ArrivalTransitionView.totalDuration`; a local
-`keyDown` monitor and the track sink make key press and track change activity, which UX_SPEC
-§7.2 had promised and nothing had wired. (8) **BUG-113**, found by the harness and confirmed
+`StatusTone.info` placement. (7) `PlaybackChromeViewModel` keeps its two-state
+`overlayVisible`, the first timer offset by `ArrivalTransitionView.totalDuration`; a local
+mouseDown/keyDown monitor and the track sink make tap, key press and track change activity —
+UX_SPEC §7.2 had promised key and track change and nothing had wired them. The prompt's default
+(End session left alone as a quiet edge control) was built and captured first, then replaced the
+same session when Matt's answer arrived: the chrome disappears completely. (8) **BUG-113**, found by the harness and confirmed
 live: every toast rendered as a full-window panel over the cluster because its `Color` accent
 bar accepted the whole proposed height; `.fixedSize(vertical:)` and `PerformanceToastLayoutTests`.
 (9) `Localizable.strings`' fourteen lowercase `\uXXXX` escapes — which `.strings` renders
@@ -121,18 +124,17 @@ literally ("weu2019ll") — replaced by the characters.
 **Evidence.** Increment gates: `DashboardTokens` outside the dashboard — none; colour / radius /
 `.impeccable` literals in `Views/Playback` — none; `system(size:)` — none; every pre-existing
 identifier resolves plus the two additions; `git diff main` on `PresetContrastCertificationTests`
-— empty (the backdrop numbers did not move). `PlaybackChromeViewModelTests` covers the three
-states, the toggle, the track-change restore and the first-show timing;
+— empty (the backdrop numbers did not move). `PlaybackChromeViewModelTests` covers the hide, the
+toggle, the restore, the track-change restore and the first-show timing;
 `PlaybackChromeReducedMotionTests` renders the cluster and badge twice under reduced motion and
 asserts identical pixels. Harness after/ renders and eight window-only live captures of a
-local-file session (full after the arrival, quiet, restored by mouse, by key, hidden by Space,
-track info shown / hidden, and the BUG-113 toast before its fix): `docs/reviews/DS.6/CAPTURES.md`.
+local-file session (full after the arrival, gone after 3 s, restored by mouse, by tap, by key,
+hidden by Space, track info shown / hidden, and the BUG-113 toast before its fix): `docs/reviews/DS.6/CAPTURES.md`.
 
-**Decisions taken on the prompt's defaults, for Matt's M7:** the pill is removed; quiet = End
-session alone — at full opacity on the certified backdrop, **not** the low-opacity glyph the
-default described, because a dimmed glyph over a bright preset cannot hold the 3:1 icon floor
-(D-241 §4); track information shown by default and persisted. Kept as-is and flagged: toasts
-still fade with the chrome (a toast while quiet is unseen until the mouse moves); the local-file
+**Decisions, for Matt's M7:** inactivity → the chrome disappears completely (Matt's own call,
+relayed mid-session through the updated prompt; D-241 §3–4); the pill is removed and track
+information is shown by default and persisted (the prompt's defaults). Kept as-is and flagged:
+toasts still fade with the chrome (a toast while hidden is unseen until the next input); the local-file
 card reads the filename as title and "local file" as artist and shows no preset line (pre-existing,
 not chrome).
 

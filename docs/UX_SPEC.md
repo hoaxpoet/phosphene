@@ -397,18 +397,17 @@ Three:
 
 ### 7.2 Overlay chrome behavior
 
-Visible in full for 3 s once the arrival (§6, D-240) has faded, then goes **quiet**. Full chrome
-returns on:
+Visible for 3 s once the arrival (§6, D-240) has faded, then **disappears completely** so the
+listener can focus on the visuals (Matt's call, D-241). It returns on:
 
 - Mouse move (any displacement)
+- A tap on the screen (any mouse button)
 - Any key press (Space excepted — it is the toggle, §7.7)
-- Track change (full for 3 s, then quiet again)
+- Track change (visible for 3 s, then gone again)
 
-**Quiet, never gone (DS.6, D-241).** After inactivity the chrome reduces to one control — End
-session, top-trailing, on the same backdrop as the full cluster — and every other surface fades.
-The design system's rule: the Curator control surface "may reduce to quiet edge controls after
-inactivity but cannot become undiscoverable". Only the Space toggle hides the chrome outright;
-mouse, key or track change bring it all back from either state.
+Nothing stays on screen while hidden — no quiet glyph, no edge control; discoverability is the
+mouse and the tap. This deliberately deviates from the design system's "cannot become
+undiscoverable" (`COMPONENTS.md` §`PerformanceChrome`), recorded upstream as a product decision.
 
 State changes take the design system's standard 240 ms exponential ease-out (`UzumeAppMotion`);
 reduced motion crossfades. The render surface is unmodified during fades — overlay chrome is a
@@ -417,9 +416,7 @@ separate compositing layer.
 **Minimum contrast:** overlay text must achieve ≥ 4.5:1 against worst-case preset frame. Because
 presets are unpredictable, chrome sits on `PerformanceBackdrop` — `.ultraThinMaterial` under a
 **measured 45 %** black tint (`UzumeAppColor.Performance.backdropTint`), certified against real
-preset frames by `PresetContrastCertificationTests`. The quiet End-session control sits on the same
-backdrop at full opacity for the same reason: a dimmed glyph over a bright preset cannot hold the
-3:1 icon floor.
+preset frames by `PresetContrastCertificationTests`.
 
 ### 7.3 Overlay content
 
@@ -437,13 +434,13 @@ now (D-238):
   in ad-hoc sessions; a count above 30 tracks)
 - Show / Hide track info (`uzume.playback.toggleTrackInfo`)
 - Settings gear
-- End session (`uzume.playback.endSession`) — the one control that survives the quiet state
+- End session (`uzume.playback.endSession`)
 - Beneath the cluster while background preparation is still running: "Still preparing", a
   `StatusTone.info` placement.
 
 Every control declares a VoiceOver label and a hint that says what it does now.
 
-**No playback controls — streaming path only.** For connector-driven sessions (Apple Music, Spotify) Uzume does not control the source app; any "pause" button on `PlaybackView` would be a lie. **LF.5.fix carve-out (2026-05-28):** for local-file sessions Uzume IS the player, so a transport bar (Stop / Prev / Play-Pause / Next) renders at the bottom-center of `PlaybackView` whenever `currentSource?.isLocalFile == true`. The bar follows the chrome's visibility and goes quiet with the rest of it. UX-2 in §10 carries the same carve-out language.
+**No playback controls — streaming path only.** For connector-driven sessions (Apple Music, Spotify) Uzume does not control the source app; any "pause" button on `PlaybackView` would be a lie. **LF.5.fix carve-out (2026-05-28):** for local-file sessions Uzume IS the player, so a transport bar (Stop / Prev / Play-Pause / Next) renders at the bottom-center of `PlaybackView` whenever `currentSource?.isLocalFile == true`. The bar follows the chrome's visibility and disappears with the rest of it. UX-2 in §10 carries the same carve-out language.
 
 ### 7.4 Live adaptation controls (keyboard-only, invisible to viewers)
 

@@ -18,11 +18,13 @@ no colour outside the tokens, the Phosphene dashboard palette confined to the di
 dashboard, no `.teal` / `.green` / `.orange`, the transport bar's purple glow replaced by the one
 shadow the system publishes. No second control tree.
 
-**Quiet, never gone.** After 3 s of inactivity the chrome no longer fades to nothing: the
-cluster reduces to End session alone and everything else fades. Mouse move, any key press and a
-track change bring it all back — the spec promised all three; only the mouse had ever been
-wired. Space still hides it outright. The first 3 s now start when the arrival has faded. State
-changes take the design system's 240 ms ease-out (was 500 ms); reduced motion crossfades.
+**Gone after a brief inactivity, back on any input — Matt's call.** After 3 s the chrome
+disappears completely so the listener can focus on the visuals. Mouse movement, a tap on the
+screen, any key press and a track change bring it all back — the spec promised key and track
+change; only the mouse had ever been wired. Space still toggles. The first 3 s now start when the
+arrival has faded. State changes take the design system's 240 ms ease-out (was 500 ms); reduced
+motion crossfades. A deliberate deviation from the design system's "cannot become undiscoverable",
+recorded upstream.
 
 **Show / Hide track info.** A new control in the cluster, the same words the preparation screen
 uses, backed by `uzume.settings.visuals.showTrackInformation` (default shown, persisted, also in
