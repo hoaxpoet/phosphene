@@ -147,6 +147,15 @@ struct ViewIdentifierTests {
     @Test("ReadyView carries correct identifier")
     func readyViewIdentifier() {
         #expect(ReadyView.accessibilityID == "uzume.view.ready")
+        #expect(ReadyView.beginNowButtonID == "uzume.ready.beginNow")
+    }
+
+    @Test("LocalFileCountdownView carries correct identifiers and announces each beat (DS.5)")
+    func localFileCountdownIdentifiers() {
+        #expect(LocalFileCountdownView.accessibilityID == "uzume.view.ready.countdown")
+        #expect(LocalFileCountdownView.countID == "uzume.ready.countdown")
+        #expect(LocalFileCountdownView.beats == [3, 2, 1])
+        #expect(LocalFileCountdownView.accessibilityLabel(3) == "Starting in 3")
     }
 }
 

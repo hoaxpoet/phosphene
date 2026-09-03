@@ -77,9 +77,85 @@ playback chrome retokenized in place — never a parallel `CuratorControlSurface
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
 **DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** ✅ 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop; merged as [#188](https://github.com/hoaxpoet/uzume/pull/188) (`45b002ab`).
-**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all; see the entries below.
+**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all. **DS.5** design pass 2026-09-02 (`docs/reviews/DS.5/DESIGN.md`) + camera-push prototype; ✅ **2026-09-03 (D-240), M7 passed** — two ready experiences over the open cave, one camera push into it, plan preview deleted; the M7 found that Ready's first-audio autodetect had never listened (BUG-112, fixed same day); see the entries below.
 
 ## Recently Completed
+
+### Increment DS.5 — Ready becomes the arrival ✅ (2026-09-03, D-240, M7 passed)
+
+**Done-when:** reaching `.ready` is the aperture opening all the way and the camera moving into
+it; a local-file session never asks the listener to press play in an app that does not exist; the
+plan preview is gone. **Status: ✅ M7 passed live 2026-09-03** — Matt, after the two same-day
+fixes from his first pass (BUG-112 + the scrim): *"Ready waited for Spotify this time, copy reads
+fine. Push it."*
+
+**Design pass first** (`docs/reviews/DS.5/DESIGN.md`, 2026-09-02), then a browser prototype of the
+one piece with no precedent — the camera push — which Matt rejected twice before approving:
+a redrawn approximation of the aperture (*"I literally just want you to go from the last frame of
+the preparing graphic and move the camera forward"*), then a uniform zoom on the real frame (*"It
+looks like the aperture is coming out, not the camera moving into it"*). The fix both times was
+the same lesson: use the real production math, and model the perception (a flat scale has no
+parallax; streaks racing past a fixed vanishing point do). *"Looks right, build it for real."*
+
+**Built, in order.** (1) `ApertureColor.swift` — the aperture's colour math extracted so the push
+shares it rather than a driftable copy; `ApertureScene.RGB`/`.Palette` become typealiases, no
+behaviour change. (2) `ArrivalPushScene` + `ArrivalTransitionView` — the real `ApertureScene`
+under a 100-streak radial burst, whiteout, 0.52 s hold, 0.6 s fade uncovering the already-live
+`MetalView`; reduced motion holds still then fades. (3) `PlaybackArrivalOverlay` as `PlaybackView`
+Layer 7, one line at the call site. (4) `OpenAperture` — the cave at openness 1 behind both ready
+screens. (5) `ReadyView` rebuilt for streaming: source-named copy, "Begin now" (bordered, same
+weight as End session), detector and timeout unchanged, `ReadyViewModel` now takes `SessionOrigin?`
+so it knows local from streaming. (6) `LocalFileCountdownView` — 3-2-1 over the open cave, each
+beat announced; `ContentView` routes on `currentSource?.isLocalFile`. (7) The engine's `.ready`
+observer no longer starts local audio: `LocalFileCountdownView` calls `handleLocalFileReady()` at
+zero, so the count runs over silence — and `ContentView`'s LF.4 shortcut routing local `.ready`
+straight to `PlaybackView` is removed, which the design doc's code reading had missed entirely
+(see Transferable (5)). **(9) From Matt's M7, same day (session `2026-09-03T15-58-14Z`):** Ready
+self-advanced with `tap RMS 0.000` — the tap had only ever been installed after `.playing`, so the
+first-audio detector had always watched the surface's default `.active` (BUG-112). The engine's
+`.ready` sink now calls `startListeningForFirstAudio()` (reset to `.silent`, preflight, tap up)
+and `startAudio()` leaves a running tap alone. And `ApertureScrim` under the copy on both ready
+screens, replacing the text halo Matt flagged for contrast. (8) Plan preview deleted — four views/VM, the `PlaybackView`
+sheet, the `P` shortcut, `onShowPlanPreview` through the router and registry, every `plan_preview.*`
+string, two test files; `ReadyPulsingBorder` retired with it. `PlaybackView` came back under the
+400-line ceiling, so the lint directive the camera-push commit had added is gone again.
+
+**Evidence.** `ArrivalPushSceneTests` — progress 0 matches the bare aperture; progress 1 is light
+(luma > 0.85); flash across the full push maxΔ/frame **0.0174** (gate < 0.05, D-157). Live capture
+of the real build: `docs/reviews/DS.5/after/arrival-*.png` (push → streak burst → whiteout).
+`ReadyViewModelTests` gains the local-origin and "Begin now" cases. Suite green (see the closeout
+block); the two `SpotifyConnectionViewModel` retry-backoff tests flake under full-suite load and
+pass in isolation — pre-existing, filed as a separate task.
+
+**Corrected in the design doc.** Its forecast that a literal camera move would need a GPU pass
+"closer to how the real preset renderer works" was wrong; the streak burst over the live 2D scene
+sells the move at zero cost to the preset pipeline. The doc now says what was built.
+
+**Transferable.** (1) Two prototype rejections in one afternoon, both fixed by re-deriving from the
+real artifact rather than tuning an approximation — the prototype must render the production
+math, not a lookalike. (2) A blind full-display `screencapture` loop caught the listener's own
+unrelated screen when the secondary display switched Spaces mid-loop; capture the window, or poll
+the accessibility tree for the element you are waiting on, never the display. (3) A `private`
+member is file-scoped even from an extension of the same type — cross-file helpers take the value
+as a parameter. (4) A scaled `.largeTitle` rasterises blurry — the harness capture showed a pixelated "3";
+a display-sized numeral is laid out at its real size (NSFont from the frame's short side),
+which is what `DynamicTypeRegressionTests`' `.system(size:)` ban is not about. (5) **Read the
+router, not just the view.** The design pass said a local-file session "shows 'Press play in your
+music app'"; it never reached `ReadyView` — `ContentView` sent local `.ready` straight to
+`PlaybackView`. The first live run of the built countdown showed it: no count, the push at
+`.ready`, a flat line for 95 s because nothing called `handleLocalFileReady()`. Twelve unit tests
+and a harness render were green the whole time; only running the build found it. (6) **A screen
+nobody looks at hides its own bugs.** U.5's "press play and it starts" autodetect never listened
+— no tap existed during Ready — and it took Ready becoming a screen worth watching for anyone to
+see it self-advance. When a state becomes visible for the first time, re-verify what it claims to
+do, not just what it now looks like.
+
+**Follow-ups.** `uzume-site` branch
+`claude/ds5-streaming-handoff-camera-push` (COMPONENTS.md: the handoff is a camera move, not a
+cut) is committed locally, not pushed. `handleLocalFileReady` keeps its name though it is now
+"start local playback" — rename when the LF file is next touched.
+
+**References.** [D-240]; `docs/reviews/DS.5/DESIGN.md`; `docs/UX_SPEC.md` §6 (rewritten).
 
 ### Increment DS.4a — the preparation-view toggle gets a reachable, symmetric control ✅ (2026-09-02, D-239)
 
@@ -143,8 +219,8 @@ antialiasing seams that read as spokes; one conic gradient under a radial mask i
 frames. (5) `log` is a zsh builtin; the unified-log CLI is `/usr/bin/log`, and `xcodebuild` forwards only
 `TEST_RUNNER_`-prefixed environment variables to the test host.
 
-**Open for DS.5.** Whether the opening persists into `.ready` as a held image or reaching ready is the
-moment it finally opens all the way — Matt's call before DS.5 is written.
+**Resolved at DS.5 (D-240).** Reaching ready is the moment it opens all the way, and the camera
+moves into it.
 
 ### Increment DS.3b — the banner's three errors do not share a severity ✅ (2026-09-01, D-237)
 

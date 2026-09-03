@@ -1,69 +1,67 @@
-// ReadyView — Shown when SessionManager.state == .ready (Increment U.5).
+// ReadyView — the streaming handoff: Uzume is ready, the listener presses play.
+// (DS.5 / D-240)
 //
-// Four surfaces per UX_SPEC §6.1–§6.4:
-//  A. Layout: headline (source-aware), subtext, "Preview the plan" CTA, pulsing border.
-//  B. Plan preview panel (sheet) — wired in Part B.
-//  C. Background preset at 0.3× opacity — gradient placeholder until U.5b.
-//  D. 90-second timeout overlay with Retry / End session.
+// The cave the listener watched widen through preparation is fully open behind the
+// copy — Ready is the arrival, not a waiting room. Uzume still genuinely does not
+// control a streaming source, so this screen keeps asking for the one thing only the
+// listener can do (press play in Spotify / Apple Music), listens for real audio
+// (FirstAudioDetector, ≥250 ms sustained, UX_SPEC §6.3), and keeps the 90 s timeout
+// card (§6.4). "Begin now" — a bordered button, the same weight as End session — starts
+// the show without waiting for audio. Either path lands in `.playing`, where
+// PlaybackArrivalOverlay runs the camera push through this same aperture.
 //
-// First-audio autodetect: ReadyViewModel owns FirstAudioDetector and emits
-// shouldAdvanceToPlaying when signal is sustained ≥250 ms in .active.
+// Local-file sessions never see this view: ContentView routes them to
+// LocalFileCountdownView, because there is no external app to press play in.
 
 import Audio
 import Combine
 import Orchestrator
-import Presets
 import Session
 import SwiftUI
 
 // MARK: - ReadyView
 
-/// Top-level view for the `.ready` session state.
+/// Top-level view for the `.ready` session state of a streaming session.
 ///
-/// Creates and owns `ReadyViewModel` via `@StateObject`; all layout and
-/// logic lives in the ViewModel. Auto-advances to `.playing` on first audio.
+/// Creates and owns `ReadyViewModel` via `@StateObject`; the detector, timeout and
+/// copy live there. Advances to `.playing` on first audio or on "Begin now".
 @MainActor
 struct ReadyView: View {
     static let accessibilityID      = "uzume.view.ready"
     static let headlineID           = "uzume.ready.headline"
-    static let previewPlanButtonID  = "uzume.ready.previewPlan"
+    static let beginNowButtonID     = "uzume.ready.beginNow"
     static let endSessionButtonID   = "uzume.ready.endSession"
     static let retryButtonID        = "uzume.ready.retry"
     static let timeoutOverlayID     = "uzume.ready.timeoutOverlay"
 
     @StateObject private var viewModel: ReadyViewModel
 
-    /// Called by ContentView to advance .ready → .playing after audio confirmed.
+    /// What Uzume heard — the same character the preparation aperture was drawn with.
+    private let character: PreparationCharacter
+
+    /// Called to advance .ready → .playing, on first audio or on "Begin now".
     private let onBeginPlayback: () -> Void
-
-    /// Plan publisher and regenerate closure forwarded to PlanPreviewView (Part B+D).
-    private let planPublisher: AnyPublisher<PlannedSession?, Never>
-    private let onRegenerate: @MainActor (Set<TrackIdentity>, [TrackIdentity: PresetDescriptor]) -> Void
-
-    @State private var showingPlanPreview: Bool = false
-    @State private var currentPlan: PlannedSession?
 
     // MARK: - Init
 
     init(
-        sessionSource: PlaylistSource?,
+        origin: SessionOrigin?,
+        character: PreparationCharacter,
         sessionManager: SessionManager,
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         planPublisher: AnyPublisher<PlannedSession?, Never>,
         onBeginPlayback: @escaping () -> Void,
-        onRegenerate: @escaping @MainActor (Set<TrackIdentity>, [TrackIdentity: PresetDescriptor]) -> Void,
         reduceMotion: Bool
     ) {
         _viewModel = StateObject(wrappedValue: ReadyViewModel(
-            sessionSource: sessionSource,
+            origin: origin,
             sessionManager: sessionManager,
             audioSignalStatePublisher: audioSignalStatePublisher,
             planPublisher: planPublisher,
             reduceMotion: reduceMotion
         ))
-        self.planPublisher = planPublisher
+        self.character = character
         self.onBeginPlayback = onBeginPlayback
-        self.onRegenerate = onRegenerate
     }
 
     // MARK: - Body
@@ -71,17 +69,16 @@ struct ReadyView: View {
     var body: some View {
         ZStack {
             UzumeAppColor.canvas.ignoresSafeArea()
-            ReadyBackgroundPresetView()
+            OpenAperture(character: character, reduceMotion: viewModel.reduceMotion)
+                .ignoresSafeArea()
+            ApertureScrim()
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer()
                 mainContent
-                Spacer()
-                endSessionLink
-                    .padding(.bottom, 28)
+                    .padding(.bottom, 40)
             }
-
-            ReadyPulsingBorder(reduceMotion: viewModel.reduceMotion)
 
             if viewModel.isTimedOut {
                 timeoutOverlay
@@ -91,16 +88,6 @@ struct ReadyView: View {
         .accessibilityIdentifier(Self.accessibilityID)
         .onReceive(viewModel.shouldAdvanceToPlaying) { _ in
             onBeginPlayback()
-        }
-        .onReceive(planPublisher.compactMap { $0 }) { plan in
-            currentPlan = plan
-        }
-        .sheet(isPresented: $showingPlanPreview) {
-            PlanPreviewView(
-                initialPlan: currentPlan,
-                planPublisher: planPublisher,
-                onRegenerate: onRegenerate
-            )
         }
     }
 
@@ -117,6 +104,7 @@ struct ReadyView: View {
         )
     }
 
+    /// Copy sits low, on the scrim, so it reads against dark whatever the cave is doing.
     private var mainContent: some View {
         VStack(spacing: 20) {
             Text(String(localized: "ready.headline"))
@@ -135,25 +123,25 @@ struct ReadyView: View {
                     .foregroundColor(UzumeAppColor.textTertiary)
             }
 
-            Button(String(localized: "ready.preview_plan_button")) {
-                showingPlanPreview = true
+            HStack(spacing: 16) {
+                Button(String(localized: "ready.end_session_button")) {
+                    viewModel.endSession()
+                }
+                .buttonStyle(.bordered)
+                .foregroundColor(UzumeAppColor.textSecondary)
+                .accessibilityIdentifier(Self.endSessionButtonID)
+
+                Button(String(localized: "ready.begin_now_button")) {
+                    viewModel.beginNow()
+                }
+                .buttonStyle(.bordered)
+                .foregroundColor(UzumeAppColor.textSecondary)
+                .accessibilityHint(String(localized: "a11y.ready.begin_now.hint"))
+                .accessibilityIdentifier(Self.beginNowButtonID)
             }
-            .buttonStyle(.bordered)
-            .disabled(!viewModel.planPreviewEnabled)
-            .opacity(viewModel.planPreviewEnabled ? 1 : 0.4)
             .padding(.top, 12)
-            .accessibilityIdentifier(Self.previewPlanButtonID)
         }
         .padding(.horizontal, 40)
-    }
-
-    private var endSessionLink: some View {
-        Button(String(localized: "ready.end_session_button")) {
-            viewModel.endSession()
-        }
-        .foregroundColor(UzumeAppColor.textDisabled)
-        .font(.caption)
-        .accessibilityIdentifier(Self.endSessionButtonID)
     }
 
     private var timeoutOverlay: some View {
@@ -190,28 +178,5 @@ struct ReadyView: View {
             .padding(40)
         }
         .accessibilityIdentifier(Self.timeoutOverlayID)
-    }
-}
-
-// MARK: - ReadyBackgroundPresetView
-
-// TODO(U.5.C): Replace the gradient placeholder with a live preset preview once
-// the engine grows a preview render path (Increment U.5b). The background should
-// render the first planned track's preset at 0.3× opacity per UX_SPEC §6.1.
-// Part C DEFERRED (U.5b): see DECISIONS.md D-048 and ENGINEERING_PLAN.md U.5b.
-private struct ReadyBackgroundPresetView: View {
-
-    var body: some View {
-        LinearGradient(
-            colors: [
-                Color(white: 0.08),
-                Color(white: 0.04),
-                Color(white: 0.02)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .opacity(0.3)
-        .ignoresSafeArea()
     }
 }

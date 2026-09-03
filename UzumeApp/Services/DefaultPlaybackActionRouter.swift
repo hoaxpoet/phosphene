@@ -9,7 +9,7 @@
 //   time via the `adaptationFields(at:)` snapshot method.
 //
 // All engine operations are injected as closures at init so that unit tests can supply
-// in-memory doubles without a VisualizerEngine (same pattern as PlanPreviewViewModel).
+// in-memory doubles without a VisualizerEngine.
 
 import Combine
 import Foundation
@@ -98,7 +98,6 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
     private let onRePlanSession: () -> Void
     private let onApplyPresetOverride: (String, Bool) -> Void
     private let onRestorePlan: (PlannedSession) -> Void
-    private let onShowPlanPreview: () -> Void
 
     // Ceiling timers for boundary-or-8s transitions.
     private var ceilingTimerTask: Task<Void, Never>?
@@ -126,8 +125,7 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
         onReshuffle: @escaping (Set<TrackIdentity>, [TrackIdentity: PresetDescriptor]) -> Void = { _, _ in },
         onRePlanSession: @escaping () -> Void = {},
         onApplyPresetOverride: @escaping (String, Bool) -> Void = { _, _ in },
-        onRestorePlan: @escaping (PlannedSession) -> Void = { _ in },
-        onShowPlanPreview: @escaping () -> Void = {}
+        onRestorePlan: @escaping (PlannedSession) -> Void = { _ in }
     ) {
         self.sessionManager = sessionManager
         self.toastBridge = toastBridge
@@ -144,7 +142,6 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
         self.onRePlanSession = onRePlanSession
         self.onApplyPresetOverride = onApplyPresetOverride
         self.onRestorePlan = onRestorePlan
-        self.onShowPlanPreview = onShowPlanPreview
 
         // Reset all adaptation state whenever a new session begins or the old one ends.
         if let mgr = sessionManager {
@@ -435,7 +432,6 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
     func rePlanSession() {
         pushHistory()
         onRePlanSession()
-        onShowPlanPreview()
         toastBridge?.emitAck("Replanned")
         logger.info("U.6b: rePlanSession")
     }
@@ -485,8 +481,7 @@ extension DefaultPlaybackActionRouter {
     @MainActor
     static func live(
         engine: VisualizerEngine,
-        toastBridge: LiveAdaptationToastBridge?,
-        onShowPlanPreview: @escaping () -> Void
+        toastBridge: LiveAdaptationToastBridge?
     ) -> DefaultPlaybackActionRouter {
         DefaultPlaybackActionRouter(
             sessionManager: engine.sessionManager,
@@ -509,8 +504,7 @@ extension DefaultPlaybackActionRouter {
                 engine?.regeneratePlan(lockedTracks: [], lockedPresets: [:])
             },
             onApplyPresetOverride: { [weak engine] presetID, _ in engine?.applyPresetByID(presetID) },
-            onRestorePlan: { [weak engine] plan in engine?.restoreLivePlan(plan) },
-            onShowPlanPreview: onShowPlanPreview
+            onRestorePlan: { [weak engine] plan in engine?.restoreLivePlan(plan) }
         )
     }
 }

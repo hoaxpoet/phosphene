@@ -13,6 +13,11 @@
 		E10032 /* PerformanceToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20032; };
 		E10031 /* InlineNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20031; };
 		E10030 /* NoticeBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20030; };
+		DA41012 /* ArrivalTransitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42012; };
+		DA41011 /* ArrivalPushScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42011; };
+		DA41010 /* ApertureColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42010; };
+		DA41016 /* LocalFileCountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42016; };
+		DA41015 /* OpenAperture.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42015; };
 		DA41008 /* ApertureScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42008; };
 		DA41006 /* PreparationAperture.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42006; };
 		DA41005 /* PreparationStatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42005; };
@@ -20,6 +25,8 @@
 		E10029 /* RecoveryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20029; };
 		E10028 /* StatusTone.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20028; };
 		E10027 /* ReviewCaptureHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20027; };
+		DA41014 /* ArrivalPushSceneTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42014; };
+		DA41017 /* ReviewCaptureHarness+Ready.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42017; };
 		DA41007 /* PreparationApertureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42007; };
 		DA41003 /* ReviewCaptureScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42003; };
 		DA41002 /* ReviewCaptureHarness+Preparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42002; };
@@ -40,6 +47,7 @@
 		C10004 /* PreparationProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20004; };
 		C10005 /* ReadyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20005; };
 		C10006 /* PlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20006; };
+		DA41013 /* PlaybackView+Arrival.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA42013; };
 		C10007 /* EndedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20007; };
 		D10001 /* ScreenCapturePermissionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20001; };
 		D10002 /* PermissionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20002; };
@@ -121,18 +129,11 @@
 		F10006 /* PreparationETAEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20006; };
 		F10007 /* PreparationCancelIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20007; };
 		G10001 /* ReadyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20001; };
-		G10002 /* PlanPreviewViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20002; };
 		G10003 /* FirstAudioDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20003; };
-		G10005 /* ReadyPulsingBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20005; };
-		G10007 /* PlanPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20007; };
-		G10008 /* PlanPreviewRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20008; };
-		G10009 /* PlanPreviewTransitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20009; };
 		G10020 /* FirstAudioDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20020; };
 		G10025 /* StemSeparationCadenceRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20025; };
 		G10026 /* AnalysisTimeBaseRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20026; };
 		G10021 /* ReadyViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20021; };
-		G10022 /* PlanPreviewViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20022; };
-		G10023 /* PlanPreviewRegenerateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20023; };
 		G10024 /* ReadyViewTimeoutIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20024; };
 		H10001 /* UzumeToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20001; };
 		H10002 /* PlaybackChromeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20002; };
@@ -228,6 +229,11 @@
 		E20032 /* PerformanceToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceToast.swift; sourceTree = "<group>"; };
 		E20031 /* InlineNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineNotice.swift; sourceTree = "<group>"; };
 		E20030 /* NoticeBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoticeBanner.swift; sourceTree = "<group>"; };
+		DA42012 /* ArrivalTransitionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArrivalTransitionView.swift"; sourceTree = "<group>"; };
+		DA42011 /* ArrivalPushScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArrivalPushScene.swift"; sourceTree = "<group>"; };
+		DA42010 /* ApertureColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ApertureColor.swift"; sourceTree = "<group>"; };
+		DA42016 /* LocalFileCountdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalFileCountdownView.swift"; sourceTree = "<group>"; };
+		DA42015 /* OpenAperture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenAperture.swift"; sourceTree = "<group>"; };
 		DA42008 /* ApertureScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ApertureScene.swift"; sourceTree = "<group>"; };
 		DA42006 /* PreparationAperture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreparationAperture.swift"; sourceTree = "<group>"; };
 		DA42005 /* PreparationStatusIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreparationStatusIndicator.swift"; sourceTree = "<group>"; };
@@ -235,6 +241,8 @@
 		E20029 /* RecoveryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryScreen.swift; sourceTree = "<group>"; };
 		E20028 /* StatusTone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusTone.swift; sourceTree = "<group>"; };
 		E20027 /* ReviewCaptureHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewCaptureHarness.swift; sourceTree = "<group>"; };
+		DA42014 /* ArrivalPushSceneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArrivalPushSceneTests.swift"; sourceTree = "<group>"; };
+		DA42017 /* ReviewCaptureHarness+Ready.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureHarness+Ready.swift"; sourceTree = "<group>"; };
 		DA42007 /* PreparationApertureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreparationApertureTests.swift"; sourceTree = "<group>"; };
 		DA42003 /* ReviewCaptureScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureScenarios.swift"; sourceTree = "<group>"; };
 		DA42002 /* ReviewCaptureHarness+Preparation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewCaptureHarness+Preparation.swift"; sourceTree = "<group>"; };
@@ -309,6 +317,7 @@
 		C20004 /* PreparationProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProgressView.swift; sourceTree = "<group>"; };
 		C20005 /* ReadyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyView.swift; sourceTree = "<group>"; };
 		C20006 /* PlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackView.swift; sourceTree = "<group>"; };
+		DA42013 /* PlaybackView+Arrival.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlaybackView+Arrival.swift"; sourceTree = "<group>"; };
 		C20007 /* EndedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndedView.swift; sourceTree = "<group>"; };
 		D20001 /* ScreenCapturePermissionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCapturePermissionProvider.swift; sourceTree = "<group>"; };
 		D20002 /* PermissionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionMonitor.swift; sourceTree = "<group>"; };
@@ -339,18 +348,11 @@
 		F20006 /* PreparationETAEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationETAEstimatorTests.swift; sourceTree = "<group>"; };
 		F20007 /* PreparationCancelIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationCancelIntegrationTests.swift; sourceTree = "<group>"; };
 		G20001 /* ReadyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewModel.swift; sourceTree = "<group>"; };
-		G20002 /* PlanPreviewViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewViewModel.swift; sourceTree = "<group>"; };
 		G20003 /* FirstAudioDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstAudioDetector.swift; sourceTree = "<group>"; };
-		G20005 /* ReadyPulsingBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyPulsingBorder.swift; sourceTree = "<group>"; };
-		G20007 /* PlanPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewView.swift; sourceTree = "<group>"; };
-		G20008 /* PlanPreviewRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewRowView.swift; sourceTree = "<group>"; };
-		G20009 /* PlanPreviewTransitionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewTransitionView.swift; sourceTree = "<group>"; };
 		G20020 /* FirstAudioDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstAudioDetectorTests.swift; sourceTree = "<group>"; };
 		G20025 /* StemSeparationCadenceRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StemSeparationCadenceRegressionTests.swift; sourceTree = "<group>"; };
 		G20026 /* AnalysisTimeBaseRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisTimeBaseRegressionTests.swift; sourceTree = "<group>"; };
 		G20021 /* ReadyViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewModelTests.swift; sourceTree = "<group>"; };
-		G20022 /* PlanPreviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewViewModelTests.swift; sourceTree = "<group>"; };
-		G20023 /* PlanPreviewRegenerateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewRegenerateTests.swift; sourceTree = "<group>"; };
 		G20024 /* ReadyViewTimeoutIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewTimeoutIntegrationTests.swift; sourceTree = "<group>"; };
 		H20001 /* UzumeToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UzumeToast.swift; sourceTree = "<group>"; };
 		H20002 /* PlaybackChromeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeViewModel.swift; sourceTree = "<group>"; };
@@ -550,7 +552,6 @@
 				F20003 /* PreparationProgressViewModel.swift */,
 				I20003 /* PreparationErrorViewModel.swift */,
 				G20001 /* ReadyViewModel.swift */,
-				G20002 /* PlanPreviewViewModel.swift */,
 				H20002 /* PlaybackChromeViewModel.swift */,
 				H20003 /* ToastManager.swift */,
 				H20004 /* EndSessionConfirmViewModel.swift */,
@@ -581,6 +582,10 @@
 		E40024 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				DA42015 /* OpenAperture.swift */,
+				DA42012 /* ArrivalTransitionView.swift */,
+				DA42011 /* ArrivalPushScene.swift */,
+				DA42010 /* ApertureColor.swift */,
 				DA42008 /* ApertureScene.swift */,
 				DA42006 /* PreparationAperture.swift */,
 				DA42005 /* PreparationStatusIndicator.swift */,
@@ -678,11 +683,8 @@
 		C40005 /* Ready */ = {
 			isa = PBXGroup;
 			children = (
+				DA42016 /* LocalFileCountdownView.swift */,
 				C20005 /* ReadyView.swift */,
-				G20005 /* ReadyPulsingBorder.swift */,
-				G20007 /* PlanPreviewView.swift */,
-				G20008 /* PlanPreviewRowView.swift */,
-				G20009 /* PlanPreviewTransitionView.swift */,
 			);
 			path = Ready;
 			sourceTree = "<group>";
@@ -690,6 +692,7 @@
 		C40006 /* Playback */ = {
 			isa = PBXGroup;
 			children = (
+				DA42013 /* PlaybackView+Arrival.swift */,
 				E20033 /* ToastRegion.swift */,
 				E20032 /* PerformanceToast.swift */,
 				C20006 /* PlaybackView.swift */,
@@ -751,6 +754,8 @@
 		B40001 /* UzumeAppTests */ = {
 			isa = PBXGroup;
 			children = (
+				DA42017 /* ReviewCaptureHarness+Ready.swift */,
+				DA42014 /* ArrivalPushSceneTests.swift */,
 				DA42007 /* PreparationApertureTests.swift */,
 				DA42003 /* ReviewCaptureScenarios.swift */,
 				DA42002 /* ReviewCaptureHarness+Preparation.swift */,
@@ -773,8 +778,6 @@
 				G20025 /* StemSeparationCadenceRegressionTests.swift */,
 				G20026 /* AnalysisTimeBaseRegressionTests.swift */,
 				G20021 /* ReadyViewModelTests.swift */,
-				G20022 /* PlanPreviewViewModelTests.swift */,
-				G20023 /* PlanPreviewRegenerateTests.swift */,
 				G20024 /* ReadyViewTimeoutIntegrationTests.swift */,
 				H20030 /* PlaybackChromeViewModelTests.swift */,
 				H20031 /* PlaybackShortcutRegistryTests.swift */,
@@ -939,6 +942,11 @@
 				E10032 /* PerformanceToast.swift in Sources */,
 				E10031 /* InlineNotice.swift in Sources */,
 				E10030 /* NoticeBanner.swift in Sources */,
+				DA41012 /* ArrivalTransitionView.swift in Sources */,
+				DA41011 /* ArrivalPushScene.swift in Sources */,
+				DA41010 /* ApertureColor.swift in Sources */,
+				DA41016 /* LocalFileCountdownView.swift in Sources */,
+				DA41015 /* OpenAperture.swift in Sources */,
 				DA41008 /* ApertureScene.swift in Sources */,
 				DA41006 /* PreparationAperture.swift in Sources */,
 				DA41005 /* PreparationStatusIndicator.swift in Sources */,
@@ -984,6 +992,7 @@
 				C10004 /* PreparationProgressView.swift in Sources */,
 				C10005 /* ReadyView.swift in Sources */,
 				C10006 /* PlaybackView.swift in Sources */,
+				DA41013 /* PlaybackView+Arrival.swift in Sources */,
 				C10007 /* EndedView.swift in Sources */,
 				D10001 /* ScreenCapturePermissionProvider.swift in Sources */,
 				D10002 /* PermissionMonitor.swift in Sources */,
@@ -1005,7 +1014,6 @@
 				F10003 /* PreparationProgressViewModel.swift in Sources */,
 				F10004 /* PreparationETAEstimator.swift in Sources */,
 				G10001 /* ReadyViewModel.swift in Sources */,
-				G10002 /* PlanPreviewViewModel.swift in Sources */,
 				G10003 /* FirstAudioDetector.swift in Sources */,
 				H10001 /* UzumeToast.swift in Sources */,
 				H10002 /* PlaybackChromeViewModel.swift in Sources */,
@@ -1029,10 +1037,6 @@
 				H10017 /* PlaybackChromeView.swift in Sources */,
 				H10018 /* ShortcutHelpOverlayView.swift in Sources */,
 				H10021 /* TrackChangeAnimationView.swift in Sources */,
-				G10005 /* ReadyPulsingBorder.swift in Sources */,
-				G10007 /* PlanPreviewView.swift in Sources */,
-				G10008 /* PlanPreviewRowView.swift in Sources */,
-				G10009 /* PlanPreviewTransitionView.swift in Sources */,
 				I10001 /* LocalizedCopy.swift in Sources */,
 				I10002 /* ReachabilityMonitor.swift in Sources */,
 				I10003 /* PreparationErrorViewModel.swift in Sources */,
@@ -1069,6 +1073,8 @@
 				E10035 /* StatusToneTests.swift in Sources */,
 				E10034 /* StatusPlacementIdentifierTests.swift in Sources */,
 				E10027 /* ReviewCaptureHarness.swift in Sources */,
+				DA41014 /* ArrivalPushSceneTests.swift in Sources */,
+				DA41017 /* ReviewCaptureHarness+Ready.swift in Sources */,
 				DA41007 /* PreparationApertureTests.swift in Sources */,
 				DA41003 /* ReviewCaptureScenarios.swift in Sources */,
 				DA41002 /* ReviewCaptureHarness+Preparation.swift in Sources */,
@@ -1088,8 +1094,6 @@
 				G10025 /* StemSeparationCadenceRegressionTests.swift in Sources */,
 				G10026 /* AnalysisTimeBaseRegressionTests.swift in Sources */,
 				G10021 /* ReadyViewModelTests.swift in Sources */,
-				G10022 /* PlanPreviewViewModelTests.swift in Sources */,
-				G10023 /* PlanPreviewRegenerateTests.swift in Sources */,
 				G10024 /* ReadyViewTimeoutIntegrationTests.swift in Sources */,
 				H10030 /* PlaybackChromeViewModelTests.swift in Sources */,
 				H10031 /* PlaybackShortcutRegistryTests.swift in Sources */,

@@ -51,7 +51,7 @@ private func makeTestPreset() throws -> PresetDescriptor {
 // swiftlint:disable large_tuple
 @MainActor
 private func makeViewModel(
-    source: PlaylistSource? = .appleMusicCurrentPlaylist,
+    origin: SessionOrigin? = .playlist(.appleMusicCurrentPlaylist),
     signalState: AudioSignalState = .silent,
     reduceMotion: Bool = false
 ) -> (ReadyViewModel, FakeStatePublisher, FakePlanPublisher, SessionManager) {
@@ -59,7 +59,7 @@ private func makeViewModel(
     let planPub = FakePlanPublisher()
     let mgr = SessionManager.testInstance()
     let vm = ReadyViewModel(
-        sessionSource: source,
+        origin: origin,
         sessionManager: mgr,
         audioSignalStatePublisher: sigPub.publisher,
         planPublisher: planPub.publisher,
@@ -76,18 +76,39 @@ private func makeViewModel(
 struct ReadyViewModelTests {
 
     @Test func init_appleMusicSource_setsSourceName() {
-        let (vm, _, _, _) = makeViewModel(source: .appleMusicCurrentPlaylist)
+        let (vm, _, _, _) = makeViewModel(origin: .playlist(.appleMusicCurrentPlaylist))
         #expect(vm.sourceName == "Apple Music")
+        #expect(!vm.isLocalFile)
     }
 
     @Test func init_spotifySource_setsSourceName() {
-        let (vm, _, _, _) = makeViewModel(source: .spotifyCurrentQueue)
+        let (vm, _, _, _) = makeViewModel(origin: .playlist(.spotifyCurrentQueue))
         #expect(vm.sourceName == "Spotify")
     }
 
     @Test func init_nilSource_fallsBackToGenericCopy() {
-        let (vm, _, _, _) = makeViewModel(source: nil)
+        let (vm, _, _, _) = makeViewModel(origin: nil)
         #expect(vm.sourceName == "your music app")
+    }
+
+    @Test("a local-file origin is known as such, and never names an app to press play in (DS.5)")
+    func init_localFileOrigin_isLocalFile() {
+        let url = URL(fileURLWithPath: "/tmp/track.m4a")
+        let (vm, _, _, _) = makeViewModel(origin: .localFolder(url, expanded: [url]))
+        #expect(vm.isLocalFile)
+        #expect(vm.sourceName == "your music app")
+    }
+
+    @Test("beginNow emits the advance signal without waiting for audio, and cancels the timeout (DS.5)")
+    func beginNow_emitsAdvanceSignal() {
+        let (vm, _, _, _) = makeViewModel()
+        var advanced = false
+        let cancellable = vm.shouldAdvanceToPlaying.sink { advanced = true }
+        vm.beginNow()
+        #expect(advanced)
+        #expect(!vm.isTimedOut)
+        #expect(!vm.hasDetectedAudio, "beginNow is not audio detection")
+        _ = cancellable
     }
 
     @Test func planPublisher_updatesTrackCountAndDuration() async throws {

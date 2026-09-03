@@ -7,6 +7,7 @@
 //   4. ShortcutHelpOverlayView — Shift+?
 //   5. DebugOverlayView — D key (developer only)
 //   6. End-session confirm dialog — Esc
+//   7. PlaybackArrivalOverlay — the camera push through the aperture (DS.5)
 //
 // Publisher-injection pattern: ContentView passes engine.$xxx.eraseToAnyPublisher()
 // at callsite, same as ReadyView. PlaybackView creates @StateObjects from the injected
@@ -48,7 +49,6 @@ struct PlaybackView: View {
 
     @State private var showDebug: Bool = false
     @State private var showHelp: Bool = false
-    @State private var showPlanPreview: Bool = false
     @State private var showSettings: Bool = false
     /// QR.4 / D-091: must be `@EnvironmentObject`, never `@StateObject`. A
     /// `@StateObject SettingsStore()` here creates a parallel state world —
@@ -176,6 +176,7 @@ struct PlaybackView: View {
                         removal: .opacity
                     ))
             }
+            PlaybackArrivalOverlay(engine: engine, reduceMotion: reduceMotion) // DS.5
         }
         .frame(minWidth: 800, minHeight: 600)
         .accessibilityIdentifier(Self.accessibilityID)
@@ -205,15 +206,6 @@ struct PlaybackView: View {
             teardown()
             engine.dashboardOverlayVisible = false
         }
-        .sheet(isPresented: $showPlanPreview) {
-            PlanPreviewView(
-                initialPlan: engine.livePlannedSession,
-                planPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
-                onRegenerate: { @MainActor lockedTracks, lockedPresets in
-                    engine.regeneratePlan(lockedTracks: lockedTracks, lockedPresets: lockedPresets)
-                }
-            )
-        }
         .sheet(isPresented: $showSettings) {
             SettingsView(store: settingsStore)
         }
@@ -230,8 +222,7 @@ struct PlaybackView: View {
         // Build action router — U.6b: uses live factory wired to the engine.
         let router = DefaultPlaybackActionRouter.live(
             engine: engine,
-            toastBridge: toastBridge,
-            onShowPlanPreview: { showPlanPreview = true }
+            toastBridge: toastBridge
         )
         actionRouter = router
 
@@ -374,7 +365,6 @@ struct PlaybackView: View {
                 }
             },
             onShowHelp: { showHelp = true },
-            onShowPlanPreview: { showPlanPreview = true },
             onToggleDiagnosticHold: diagHoldAction,
             onToggleForceSpider: forceSpiderAction,
             onToggleAudioStallCard: audioStallCardAction,

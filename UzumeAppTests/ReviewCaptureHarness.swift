@@ -32,7 +32,7 @@ import Testing
 @MainActor
 struct ReviewCaptureHarness {
 
-    private static var captureSet: String {
+    static var captureSet: String {
         ProcessInfo.processInfo.environment["UZUME_CAPTURE_SET"] ?? "status,preparation"
     }
 
@@ -231,7 +231,7 @@ struct ReviewCaptureHarness {
     /// preparation list is a `LazyVStack` inside a `ScrollView`, and lazy containers
     /// only lay out inside a real hosting view. The run-loop hop lets the view's
     /// `@StateObject` view models receive their main-queue Combine deliveries.
-    private func render(_ view: AnyView, to url: URL) async throws {
+    func render(_ view: AnyView, to url: URL) async throws {
         let hosting = NSHostingView(rootView: view.preferredColorScheme(.dark))
         let size = hosting.fittingSize
         let bounds = CGRect(origin: .zero, size: size)
@@ -267,7 +267,7 @@ struct ReviewCaptureHarness {
         window.close()
     }
 
-    private func outputDirectory() throws -> URL {
+    func outputDirectory() throws -> URL {
         guard let raw = ProcessInfo.processInfo.environment["UZUME_CAPTURE_DIR"] else {
             throw CaptureError.missingOutputDirectory
         }

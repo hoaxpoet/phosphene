@@ -23,6 +23,39 @@ extension VisualizerEngine {
 
     // MARK: - Public API
 
+    /// True while the system-audio tap is up (DS.5 / D-240 §8): `startAudio()` must not
+    /// restart it — `AudioInputRouter.start` begins with `stopInternal()`, which would tear
+    /// down a live tap and reset the silence detector at the very moment Ready handed off.
+    @MainActor
+    private var isSystemAudioCaptureRunning: Bool {
+        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter,
+           audioRouter.activeMode == .systemAudio {
+            return true
+        }
+        return false
+    }
+
+    /// Bring the tap up at `.ready` for a streaming session so `FirstAudioDetector` hears
+    /// real audio (DS.5 M7 / BUG-112 / D-240 §8). Until DS.5 the tap was installed only
+    /// by `PlaybackView`, after `.playing` — so during Ready the detector watched the
+    /// surface's default `.active`, fired 250 ms in, and Ready always self-advanced.
+    ///
+    /// The surface is reset to `.silent` first: nothing has been heard yet, and only a
+    /// transition the tap itself publishes may count. Permission is preflighted, never
+    /// requested — the permission gate above the state switch has already handled that;
+    /// if it somehow is not granted, `startAudio()` at playback requests as before.
+    @MainActor
+    func startListeningForFirstAudio() {
+        guard sessionManager.currentSource?.isLocalFile != true, !isSystemAudioCaptureRunning else { return }
+        captureState.setSignalState(.silent)
+        guard CGPreflightScreenCaptureAccess() else {
+            sessionRecorder?.log("WIRING: startListeningForFirstAudio SKIPPED — no Screen Recording grant yet")
+            return
+        }
+        sessionRecorder?.log("WIRING: startListeningForFirstAudio → SYSTEM-AUDIO TAP at .ready")
+        startAudioCapture()
+    }
+
     /// Start audio capture and metadata observation.
     @MainActor
     func startAudio() {
@@ -56,7 +89,12 @@ extension VisualizerEngine {
         if !permitted { permitted = CGRequestScreenCaptureAccess() }
         captureState.setScreenCapturePermission(permitted)
         if permitted {
-            startAudioCapture()
+            if isSystemAudioCaptureRunning {
+                // DS.5: the tap came up at .ready (startListeningForFirstAudio). Leave it.
+                sessionRecorder?.log("WIRING: startAudio — tap already up from .ready, not restarted")
+            } else {
+                startAudioCapture()
+            }
             startStemPipeline()
         } else {
             apiLogger.info("Screen capture denied — grant in System Settings for audio capture")

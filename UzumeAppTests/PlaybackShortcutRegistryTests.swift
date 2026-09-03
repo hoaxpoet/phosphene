@@ -37,8 +37,7 @@ private func makeRegistry() -> (PlaybackShortcutRegistry, StubActionRouter) {
         onToggleOverlay: {},
         onToggleDebug: {},
         onHandleEsc: {},
-        onShowHelp: {},
-        onShowPlanPreview: {}
+        onShowHelp: {}
     )
     return (registry, router)
 }
@@ -60,7 +59,7 @@ struct PlaybackShortcutRegistryTests {
         let (registry, _) = makeRegistry()
         let expectedIDs: Set<String> = [
             "fullscreenToggle", "fullscreenSecondary", "overlayToggle", "moodLock",
-            "endSession", "helpOverlay", "planPreview",
+            "endSession", "helpOverlay",
             "moreLikeThis", "lessLikeThis", "reshuffleUpcoming",
             "presetNudgeNext", "presetNudgePrev", "presetCutNext", "presetCutPrev",
             "rePlan", "undoAdaptation", "debugToggle"
