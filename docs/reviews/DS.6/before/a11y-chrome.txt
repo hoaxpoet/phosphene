@@ -1,0 +1,31 @@
+surface	declared VoiceOver label	accessibility identifier
+chrome (container)	(no explicit label)	uzume.playback.chrome
+track info card	Take Five, Dave Brubeck, Skein — hint: Now playing	uzume.playback.trackInfoCard
+artwork slot	(hidden from VoiceOver — the card's combined label carries the track)	uzume.playback.trackInfoCard.artwork
+orchestrator state pill	(no label — "Planned" / "Reactive" read as plain text inside the card)	(none)
+progress dots	Session progress — value: Track 3 of 6	uzume.playback.progressDots
+controls cluster (container)	(no explicit label)	uzume.playback.controlsCluster
+settings button	(no label — tooltip: Settings)	(none)
+end session button	(no label — tooltip: End session (Esc))	(none)
+still preparing indicator	(no label — tooltip: Still preparing tracks — weu2019ll keep going as you listen.)	(none)
+listening badge	Waiting for audio	uzume.playback.listeningBadge
+local transport (container)	(no explicit label — children read in order)	uzume.playback.lfTransport
+transport — stop	Stop playback and end session	(none)
+transport — previous	Skip to previous track	(none)
+transport — play	Resume playback	(none)
+transport — pause	Pause playback	(none)
+transport — next	Skip to next track	(none)
+toast — info	Info: Display connected.	(none — announced on insert)
+toast — warning	Warning: Display disconnected mid-session.	(none — announced on insert)
+toast — degradation	Alert: Stem separation failed.	(none — announced on insert)
+toast — fatal	Critical: No audio detected.	(none — announced on insert)
+
+identifier	declared by
+uzume.playback.chrome	PlaybackChromeView
+uzume.playback.trackInfoCard	TrackInfoCardView
+uzume.playback.trackInfoCard.artwork	TrackInfoCardView
+uzume.playback.controlsCluster	PlaybackControlsCluster
+uzume.playback.progressDots	SessionProgressDotsView
+uzume.playback.listeningBadge	ListeningBadgeView
+uzume.playback.lfTransport	LocalFileTransportBar
+uzume.playback.shortcutHelp	ShortcutHelpOverlayView (Layer 4, not chrome)
