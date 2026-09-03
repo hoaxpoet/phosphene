@@ -378,6 +378,13 @@
 
 "a11y.listeningBadge.label"                 = "Waiting for audio";
 
+// Playback chrome controls (DS.6) — label = what it is, hint = what it does now
+"a11y.playback.settings.hint"              = "Opens Uzume’s settings over the performance";
+"a11y.playback.endSession.hint"            = "Asks before stopping the visualizer";
+"a11y.playback.endSession.hint.quiet"      = "Asks before stopping the visualizer. Move the mouse or press a key to bring the other controls back";
+"a11y.playback.toggleTrackInfo.hint.show"  = "Puts the current track and preset back in the corner";
+"a11y.playback.toggleTrackInfo.hint.hide"  = "Takes the current track and preset off the screen";
+
 "a11y.toast.severity.info"                  = "Info";
 "a11y.toast.severity.warning"               = "Warning";
 "a11y.toast.severity.degradation"           = "Alert";

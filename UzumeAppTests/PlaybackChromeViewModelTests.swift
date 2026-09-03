@@ -37,10 +37,27 @@ private final class FakePlanPublisher2 {
     func send(_ plan: PlannedSession?) { subject.send(plan) }
 }
 
+/// A delay that never elapses: the quiet timer is armed but never fires.
+private struct NeverDelay: DelayProviding {
+    func sleep(seconds: Double) async throws { try await Task.sleep(for: .seconds(3600)) }
+}
+
+/// Records every requested sleep, then yields like `InstantDelay`.
+private final class RecordingDelay: DelayProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var log: [Double] = []
+    var requested: [Double] { lock.withLock { log } }
+    func sleep(seconds: Double) async throws {
+        lock.withLock { log.append(seconds) }
+        await Task.yield()
+    }
+}
+
 // swiftlint:disable large_tuple
 @MainActor
 private func makeVM(
     signal: AudioSignalState = .active,
+    firstShowDelay: Double = 0,
     delay: any DelayProviding = InstantDelay()
 ) -> (PlaybackChromeViewModel, FakeSignalPublisher, FakeTrackPublisher, FakePresetPublisher, FakePlanPublisher2) {
     let sig = FakeSignalPublisher(signal)
@@ -52,6 +69,7 @@ private func makeVM(
         currentTrackPublisher: track.publisher,
         currentPresetNamePublisher: preset.publisher,
         livePlanPublisher: plan.publisher,
+        firstShowDelay: firstShowDelay,
         delay: delay
     )
     return (vm, sig, track, preset, plan)
@@ -103,6 +121,57 @@ struct PlaybackChromeViewModelTests {
         // over the worst-observed delay.
         try await Task.sleep(for: .milliseconds(1000))
         #expect(!vm.overlayVisible)
+        // DS.6 (D-241): inactivity lands on quiet — End session stays — never hidden.
+        #expect(vm.visibility == .quiet)
+    }
+
+    // MARK: - DS.6 visibility states
+
+    @Test func spaceToggle_fromFull_hides_andBack() {
+        let (vm, _, _, _, _) = makeVM(delay: NeverDelay())
+        vm.toggleOverlay()
+        #expect(vm.visibility == .hidden)
+        #expect(!vm.overlayVisible)
+        vm.toggleOverlay()
+        #expect(vm.visibility == .full)
+    }
+
+    @Test func onActivity_fromQuiet_restoresFull() async throws {
+        let (vm, _, _, _, _) = makeVM(delay: InstantDelay())
+        try await Task.sleep(for: .milliseconds(1000))
+        #expect(vm.visibility == .quiet)
+        vm.onActivity()
+        #expect(vm.visibility == .full)
+    }
+
+    @Test func trackChange_restoresFullChrome() async throws {
+        let (vm, _, trackPub, _, _) = makeVM(delay: NeverDelay())
+        trackPub.send(TrackMetadata(title: "First", artist: "A"))
+        try await Task.sleep(for: .milliseconds(20))
+        vm.toggleOverlay()
+        #expect(vm.visibility == .hidden)
+        trackPub.send(TrackMetadata(title: "Second", artist: "A"))
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(vm.visibility == .full, "a track change is activity (UX_SPEC §7.2)")
+    }
+
+    @Test func firstTrack_doesNotResetTheArrivalTimer() async throws {
+        let recorder = RecordingDelay()
+        let (vm, _, trackPub, _, _) = makeVM(firstShowDelay: 3.82, delay: recorder)
+        trackPub.send(TrackMetadata(title: "First", artist: "A"))
+        try await Task.sleep(for: .milliseconds(50))
+        _ = vm
+        #expect(recorder.requested.count == 1, "the first track must not re-arm the timer")
+    }
+
+    @Test func firstShow_waitsForTheArrival_thenThreeSeconds() async throws {
+        let recorder = RecordingDelay()
+        let (vm, _, _, _, _) = makeVM(firstShowDelay: 3.82, delay: recorder)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(recorder.requested.first == 3.82 + PlaybackChromeViewModel.inactivityDelay)
+        vm.onActivity()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(recorder.requested.last == PlaybackChromeViewModel.inactivityDelay)
     }
 
     @Test func sustainedSilence_showsListeningBadge() async throws {
@@ -134,15 +203,13 @@ struct PlaybackChromeViewModelTests {
         planPub.send(nil)
         try await Task.sleep(for: .milliseconds(20))
         #expect(vm.sessionProgress.isReactiveMode)
-        #expect(vm.orchestratorState == .reactive)
     }
 
-    @Test func orchestratorStateIndicator_planned_withPlan() async throws {
+    @Test func plannedSession_sessionProgress_carriesThePlan() async throws {
         let (vm, _, _, _, planPub) = makeVM()
         let plan = try makePlan()
         planPub.send(plan)
         try await Task.sleep(for: .milliseconds(20))
-        #expect(vm.orchestratorState == .planned)
         #expect(!vm.sessionProgress.isReactiveMode)
         #expect(vm.sessionProgress.totalTracks == 1)
     }

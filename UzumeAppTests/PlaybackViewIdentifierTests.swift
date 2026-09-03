@@ -23,6 +23,15 @@ struct PlaybackChromeIdentifierTests {
         #expect(PlaybackControlsCluster.accessibilityID == "uzume.playback.controlsCluster")
     }
 
+    // DS.6: the two controls the cluster gained identifiers for. Extend, never edit.
+    @Test func playbackControlsCluster_toggleTrackInfo_hasExpectedID() {
+        #expect(PlaybackControlsCluster.toggleTrackInfoID == "uzume.playback.toggleTrackInfo")
+    }
+
+    @Test func playbackControlsCluster_endSession_hasExpectedID() {
+        #expect(PlaybackControlsCluster.endSessionID == "uzume.playback.endSession")
+    }
+
     @Test func listeningBadgeView_hasExpectedID() {
         #expect(ListeningBadgeView.accessibilityID == "uzume.playback.listeningBadge")
     }

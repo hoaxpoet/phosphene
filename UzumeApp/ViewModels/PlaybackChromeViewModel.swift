@@ -19,12 +19,19 @@
 //    territory: covers, remasters, and encoding-different versions broke the
 //    match silently.
 //
-// 5. OrchestratorDisplayState: no existing property. Derived from livePlan != nil.
-//    .adapting requires U.6b wiring — omitted for now with TODO.
+// 5. OrchestratorDisplayState: removed at DS.6 (D-241) — the track card no longer says
+//    whether the session is planned; the surprise model (D-238) keeps that from the
+//    listener. `sessionProgress.isReactiveMode` still carries it to the dots.
 //
 // 6. Keyboard handling: migrated from .onKeyPress to PlaybackKeyMonitor (NSEvent).
 //
 // 7-8. Fullscreen + multi-display handled in Part D.
+//
+// Visibility (DS.6, D-241): three states, not two. After inactivity the chrome goes
+// `.quiet` — the cluster reduces to End session — never `.hidden`; only the Space
+// toggle hides it outright. Mouse move, any key, and a track change restore `.full`.
+// The first-show timer waits for the arrival (`PlaybackArrivalOverlay`) to fade before
+// its 3 s start.
 //
 // Threading: @MainActor. All Combine subscriptions arrive on the main run loop.
 
@@ -55,11 +62,14 @@ struct PresetDisplay: Equatable {
     let family: String
 }
 
-/// High-level orchestrator mode label shown in TrackInfoCardView.
-enum OrchestratorDisplayState: String, Equatable {
-    case planned  = "Planned"
-    case reactive = "Reactive"
-    // .adapting wired in U.6b when LiveAdapter emits events via PlaybackActionRouter.
+/// How much of the chrome is on screen (DS.6, D-241).
+enum ChromeVisibility: Equatable {
+    /// Everything: card, cluster, badge, transport, toasts.
+    case full
+    /// After inactivity: End session alone, top-trailing. Never undiscoverable.
+    case quiet
+    /// The Space toggle: nothing drawn.
+    case hidden
 }
 
 /// Track-list progress summary for SessionProgressDotsView.
@@ -82,15 +92,17 @@ final class PlaybackChromeViewModel: ObservableObject {
 
     @Published private(set) var currentTrack: TrackInfoDisplay?
     @Published private(set) var currentPreset: PresetDisplay?
-    @Published private(set) var orchestratorState: OrchestratorDisplayState = .reactive
     @Published private(set) var sessionProgress: SessionProgressData = SessionProgressData(
         totalTracks: 0, currentIndex: -1, isReactiveMode: true
     )
-    @Published var overlayVisible: Bool = true
+    @Published private(set) var visibility: ChromeVisibility = .full
+    /// True only when the whole chrome is up. `.quiet` counts as not visible here — the
+    /// card, badge and transport are gone; only End session remains.
+    var overlayVisible: Bool { visibility == .full }
     @Published private(set) var showListeningBadge: Bool = false
     @Published private(set) var reduceMotion: Bool
     /// True while background track preparation is still in flight (6.1).
-    /// Drives the subtle "still preparing" teal dot in `PlaybackControlsCluster`.
+    /// Drives the "still preparing" status beneath `PlaybackControlsCluster`.
     @Published private(set) var isBackgroundPreparationActive: Bool = false
     /// True when the active session is a local-file playback (LF.4 / LF.5).
     /// Drives whether `LocalFileTransportBar` renders in the chrome.
@@ -104,7 +116,11 @@ final class PlaybackChromeViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var hideTask: Task<Void, Never>?
+    private var keyMonitor: Any?
     private let delay: any DelayProviding
+
+    /// Seconds of inactivity before the chrome goes quiet (UX_SPEC §7.2).
+    static let inactivityDelay: Double = 3
 
     private var livePlan: PlannedSession?
     private var currentTrackIndex: Int?
@@ -126,8 +142,11 @@ final class PlaybackChromeViewModel: ObservableObject {
     ///     Defaults to a `Just(false)` publisher (normal motion) for backwards compatibility in
     ///     unit tests that don't need to exercise the reduce-motion path.
     ///   - progressiveReadinessPublisher: Emits `ProgressiveReadinessLevel` from `SessionManager`.
-    ///     Drives the "still preparing" teal dot indicator. Defaults to `.fullyPrepared` so the
+    ///     Drives the "still preparing" status. Defaults to `.fullyPrepared` so the
     ///     indicator is hidden in unit tests and in ad-hoc (no-playlist) sessions.
+    ///   - firstShowDelay: Seconds the first inactivity timer waits before its own 3 s —
+    ///     `PlaybackView` passes the arrival's duration so "visible for 3 s on session
+    ///     start" begins when the arrival has faded (DS.6). Defaults to 0.
     ///   - delay: Injectable sleep; defaults to `RealDelay` (use `InstantDelay` in tests).
     init(
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
@@ -144,13 +163,14 @@ final class PlaybackChromeViewModel: ObservableObject {
             Just(nil).eraseToAnyPublisher(),
         isLocalFilePausedPublisher: AnyPublisher<Bool, Never> =
             Just(false).eraseToAnyPublisher(),
+        firstShowDelay: Double = 0,
         delay: any DelayProviding = RealDelay()
     ) {
         self.delay = delay
         self.reduceMotion = false   // overwritten immediately by the publisher below
 
-        // Start the initial auto-hide timer.
-        scheduleHide()
+        // Start the initial quiet timer, after the arrival has faded.
+        scheduleHide(after: firstShowDelay + Self.inactivityDelay)
 
         // Reduce-motion: sourced from AccessibilityState via publisher injection.
         // Replaces the direct NSWorkspace observation from U.6 (U.9 migration).
@@ -169,30 +189,10 @@ final class PlaybackChromeViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Current track + artwork → TrackInfoDisplay. LF.6: bind both
-        // publishers together via CombineLatest so the view sees title and
-        // artwork as one projection. The engine writes both fields back-to-
-        // back inside the same MainActor block (see
-        // `VisualizerEngine.currentTrackArtworkData` invariant); CombineLatest
-        // emits per-upstream change, so a track-advance briefly carries the
-        // previous track's artwork into the next emission — acceptable per
-        // the kickoff's "back-to-back" invariant since the second emission
-        // lands within sub-frame time and the chrome's opacity-animate
-        // covers it.
-        Publishers.CombineLatest(currentTrackPublisher, currentTrackArtworkDataPublisher)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] meta, artworkData in
-                guard let self else { return }
-                self.currentTrack = meta.map {
-                    TrackInfoDisplay(
-                        title: $0.title ?? "Unknown",
-                        artist: $0.artist ?? "",
-                        albumArtData: artworkData
-                    )
-                }
-                self.refreshProgress()
-            }
-            .store(in: &cancellables)
+        wireTrackPublishers(
+            currentTrackPublisher: currentTrackPublisher,
+            currentTrackArtworkDataPublisher: currentTrackArtworkDataPublisher
+        )
 
         // QR.4 / D-091: bind sessionProgress directly to the published
         // currentTrackIndex from the engine. No more lowercased title+artist
@@ -214,13 +214,12 @@ final class PlaybackChromeViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Live plan → orchestratorState + sessionProgress.
+        // Live plan → sessionProgress.
         livePlanPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] plan in
                 guard let self else { return }
                 self.livePlan = plan
-                self.orchestratorState = plan != nil ? .planned : .reactive
                 self.refreshProgress()
             }
             .store(in: &cancellables)
@@ -237,6 +236,44 @@ final class PlaybackChromeViewModel: ObservableObject {
             currentSourcePublisher: currentSourcePublisher,
             isLocalFilePausedPublisher: isLocalFilePausedPublisher
         )
+    }
+
+    /// Current track + artwork → TrackInfoDisplay. Extracted from `init` at DS.6 to
+    /// keep it under the SwiftLint function-body-length cap.
+    private func wireTrackPublishers(
+        currentTrackPublisher: AnyPublisher<TrackMetadata?, Never>,
+        currentTrackArtworkDataPublisher: AnyPublisher<Data?, Never>
+    ) {
+        // Current track + artwork → TrackInfoDisplay. LF.6: bind both
+        // publishers together via CombineLatest so the view sees title and
+        // artwork as one projection. The engine writes both fields back-to-
+        // back inside the same MainActor block (see
+        // `VisualizerEngine.currentTrackArtworkData` invariant); CombineLatest
+        // emits per-upstream change, so a track-advance briefly carries the
+        // previous track's artwork into the next emission — acceptable per
+        // the kickoff's "back-to-back" invariant since the second emission
+        // lands within sub-frame time and the chrome's opacity-animate
+        // covers it.
+        Publishers.CombineLatest(currentTrackPublisher, currentTrackArtworkDataPublisher)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] meta, artworkData in
+                guard let self else { return }
+                let previousTitle = self.currentTrack?.title
+                self.currentTrack = meta.map {
+                    TrackInfoDisplay(
+                        title: $0.title ?? "Unknown",
+                        artist: $0.artist ?? "",
+                        albumArtData: artworkData
+                    )
+                }
+                self.refreshProgress()
+                // A track change brings the chrome back for 3 s (UX_SPEC §7.2). Not on
+                // the first track: that one arrives under the arrival's own timer.
+                if let previousTitle, let title = self.currentTrack?.title, title != previousTitle {
+                    self.onActivity()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// LF.5.fix D-LF5-3: local-file-session detection drives whether the
@@ -261,31 +298,59 @@ final class PlaybackChromeViewModel: ObservableObject {
 
     deinit {
         hideTask?.cancel()
+        // The key monitor is removed by `stopObservingKeyPresses()` from PlaybackView's
+        // teardown — `NSEvent.removeMonitor` is not something a nonisolated deinit may call.
     }
 
     // MARK: - Activity
 
-    /// Call on any user activity (mouse move, key press) to reset the auto-hide timer.
+    /// Call on any user activity (mouse move, key press, track change): the full chrome
+    /// comes back and the quiet timer restarts.
     func onActivity() {
-        overlayVisible = true
+        visibility = .full
         scheduleHide()
     }
 
-    /// Toggle the overlay manually (Space key). Resets the timer if making visible.
+    /// The Space toggle: hides the chrome outright from `.full`; from `.quiet` or
+    /// `.hidden`, brings it all back and restarts the quiet timer.
     func toggleOverlay() {
-        overlayVisible.toggle()
-        if overlayVisible { scheduleHide() }
+        if visibility == .full {
+            hideTask?.cancel()
+            visibility = .hidden
+        } else {
+            onActivity()
+        }
     }
+
+    /// Any key press counts as activity (UX_SPEC §7.2). Installed by `PlaybackView`
+    /// alongside its shortcut monitor; the event passes through untouched. Space is
+    /// skipped so `toggleOverlay` sees the state the listener pressed it in.
+    func observeKeyPresses() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode != Self.spaceKeyCode {
+                Task { @MainActor [weak self] in self?.onActivity() }
+            }
+            return event
+        }
+    }
+
+    func stopObservingKeyPresses() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+    }
+
+    private static let spaceKeyCode: UInt16 = 49
 
     // MARK: - Private
 
-    private func scheduleHide() {
+    private func scheduleHide(after seconds: Double = PlaybackChromeViewModel.inactivityDelay) {
         hideTask?.cancel()
         hideTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await self.delay.sleep(seconds: 3)
+            try? await self.delay.sleep(seconds: seconds)
             guard !Task.isCancelled else { return }
-            self.overlayVisible = false
+            self.visibility = .quiet
         }
     }
 

@@ -31,6 +31,13 @@ struct ArrivalTransitionView: View {
     private static let revealDuration: Double = 0.6
     private static let reducedMotionHold: Double = 0.5
 
+    /// How long the arrival covers the frame, push through fade — what the chrome's
+    /// first-show timer waits for (DS.6), so "visible for 3 s on session start" starts
+    /// when the arrival has faded rather than underneath it.
+    static func totalDuration(reduceMotion: Bool) -> Double {
+        (reduceMotion ? reducedMotionHold : pushDuration + holdDuration) + revealDuration
+    }
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
             Canvas { ctx, size in
