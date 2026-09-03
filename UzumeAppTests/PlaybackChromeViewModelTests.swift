@@ -166,6 +166,19 @@ struct PlaybackChromeViewModelTests {
         let (vm, _, _, _, _) = makeVM(firstShowDelay: 3.82, delay: recorder)
         try await Task.sleep(for: .milliseconds(50))
         #expect(recorder.requested.first == 3.82 + PlaybackChromeViewModel.inactivityDelay)
+        // Activity while the arrival is still running (the pointer resting over the window
+        // fires the hover the moment PlaybackView appears) must not cut the first show short.
+        vm.onActivity()
+        try await Task.sleep(for: .milliseconds(50))
+        let rearmed = try #require(recorder.requested.last)
+        #expect(rearmed > 3.82 + PlaybackChromeViewModel.inactivityDelay - 0.5)
+        #expect(rearmed <= 3.82 + PlaybackChromeViewModel.inactivityDelay)
+    }
+
+    @Test func activityAfterTheArrival_rearmsThreeSeconds() async throws {
+        let recorder = RecordingDelay()
+        let (vm, _, _, _, _) = makeVM(firstShowDelay: 0, delay: recorder)
+        try await Task.sleep(for: .milliseconds(50))
         vm.onActivity()
         try await Task.sleep(for: .milliseconds(50))
         #expect(recorder.requested.last == PlaybackChromeViewModel.inactivityDelay)

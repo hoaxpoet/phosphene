@@ -95,7 +95,8 @@ session (`UZUME_LOCAL_FILE_PLAYBACK=…/so_what.m4a`, 900 × 632 window, 2×), d
 
 | file | moment |
 |---|---|
-| `live-full-after-arrival.png` | the full chrome, the arrival just faded (card, cluster with three controls, transport) |
+| `live-arrival-push.png` | the camera push (D-240) still running over the chrome's first show |
+| `live-full-after-arrival.png` | the full chrome, the arrival just faded (card, cluster with three controls, transport) — held for 3 s even though the pointer was already resting over the window |
 | `live-hidden.png` | 3 s later: nothing on screen (D-241, Matt's call) |
 | `live-restored-mouse.png` | a mouse move brings the full chrome back |
 | `live-restored-tap.png` | after it has gone again, a tap on the screen brings it back |

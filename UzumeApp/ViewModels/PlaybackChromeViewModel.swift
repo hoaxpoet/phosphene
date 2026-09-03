@@ -110,6 +110,10 @@ final class PlaybackChromeViewModel: ObservableObject {
 
     /// Seconds of inactivity before the chrome disappears (UX_SPEC §7.2).
     static let inactivityDelay: Double = 3
+    /// When the arrival has faded. Activity before then — the pointer already resting over
+    /// the window fires the hover the moment PlaybackView appears — must not shorten the
+    /// first show: the listener has not seen the chrome yet.
+    private let firstShowEnds: Date
 
     private var livePlan: PlannedSession?
     private var currentTrackIndex: Int?
@@ -157,6 +161,7 @@ final class PlaybackChromeViewModel: ObservableObject {
     ) {
         self.delay = delay
         self.reduceMotion = false   // overwritten immediately by the publisher below
+        self.firstShowEnds = Date(timeIntervalSinceNow: firstShowDelay)
 
         // Start the initial hide timer, after the arrival has faded.
         scheduleHide(after: firstShowDelay + Self.inactivityDelay)
@@ -294,10 +299,11 @@ final class PlaybackChromeViewModel: ObservableObject {
     // MARK: - Activity
 
     /// Call on any user activity (mouse move, tap, key press, track change): the chrome
-    /// comes back and the hide timer restarts.
+    /// comes back and the hide timer restarts — never to earlier than 3 s past the arrival.
     func onActivity() {
         overlayVisible = true
-        scheduleHide()
+        let untilArrivalEnds = max(0, firstShowEnds.timeIntervalSinceNow)
+        scheduleHide(after: untilArrivalEnds + Self.inactivityDelay)
     }
 
     /// The Space toggle: hides the chrome outright while it is up; brings it back — and
