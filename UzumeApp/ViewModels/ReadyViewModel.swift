@@ -1,19 +1,17 @@
-// ReadyViewModel — Observable state for ReadyView (Increment U.5).
+// ReadyViewModel — Observable state for ReadyView (Increment U.5; DS.5 / D-240).
 //
 // Responsibilities:
-//   1. Surface source-aware headline copy (Apple Music / Spotify / fallback).
+//   1. Surface source-aware headline copy (Apple Music / Spotify / fallback) from the
+//      session's `SessionOrigin` — not just its `PlaylistSource`, which is nil for
+//      every local-file origin and used to leave local sessions reading
+//      "press play in your music app" (DS.5 fixed the routing; this type now knows).
 //   2. Own FirstAudioDetector and emit shouldAdvanceToPlaying when sustained
-//      audio is confirmed (>.250 ms in .active state).
+//      audio is confirmed (>.250 ms in .active state), or when the listener asks
+//      to begin now.
 //   3. Run a 90-second timeout; surface isTimedOut for the overlay card.
 //   4. Forward retry() and endSession() to the appropriate subsystems.
 //   5. Publish trackCount and estimatedDuration (updated when the plan arrives
 //      via planPublisher).
-//
-// Pre-flight audit finding (U.5): livePlannedSession is set synchronously in
-// buildPlan(), which fires from the sessionManager.$state .ready sink before
-// SwiftUI re-renders ReadyView. Initial track/duration values come from the
-// plan publisher; ReadyViewModel subscribes to update them if the plan changes
-// (e.g., after regeneratePlan() in Part D).
 
 import Audio
 import Combine
@@ -35,6 +33,11 @@ final class ReadyViewModel: ObservableObject {
     /// Display name for the music source ("Apple Music", "Spotify", or "your music app").
     @Published private(set) var sourceName: String
 
+    /// True for any local-file origin. `ContentView` routes those to
+    /// `LocalFileCountdownView` before this type is ever built for them; kept so the
+    /// view model is correct on its own, whoever constructs it.
+    let isLocalFile: Bool
+
     /// Number of tracks in the planned session. Updates if the plan is regenerated.
     @Published private(set) var trackCount: Int
 
@@ -47,17 +50,13 @@ final class ReadyViewModel: ObservableObject {
     /// True after 90 seconds with no audio detected. Surfaces the timeout card.
     @Published private(set) var isTimedOut: Bool = false
 
-    /// False until Part B lands; gates the "Preview the plan" CTA.
-    /// TODO(U.5.B): flip to true once PlanPreviewView is wired.
-    @Published var planPreviewEnabled: Bool = true
-
-    /// Honours the system reduced-motion preference. Forwarded to pulsing border.
+    /// Honours the system reduced-motion preference.
     @Published private(set) var reduceMotion: Bool
 
     // MARK: - Signals
 
-    /// Emits once when first-audio is confirmed. `ReadyView` observes this to
-    /// call `sessionManager.beginPlayback()`.
+    /// Emits once when playback should start — first audio confirmed, or "Begin now".
+    /// `ReadyView` observes this to call `sessionManager.beginPlayback()`.
     let shouldAdvanceToPlaying = PassthroughSubject<Void, Never>()
 
     // MARK: - Private
@@ -72,20 +71,25 @@ final class ReadyViewModel: ObservableObject {
     /// Create the ViewModel.
     ///
     /// - Parameters:
-    ///   - sessionSource: The `PlaylistSource` that originated this session.
-    ///   - sessionManager: The lifecycle manager; used for `beginPlayback` / `endSession`.
+    ///   - origin: The `SessionOrigin` of this session; a `.playlist` names the app to press play in.
+    ///   - sessionManager: The lifecycle manager; used for `endSession`.
     ///   - audioSignalStatePublisher: Publishes `AudioSignalState` transitions from the engine.
     ///   - planPublisher: Publishes updated `PlannedSession` values (nil = no plan/reactive mode).
     ///   - reduceMotion: Initial reduced-motion state; not live-updated (U.9 wires the full path).
     init(
-        sessionSource: PlaylistSource?,
+        origin: SessionOrigin?,
         sessionManager: SessionManager,
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         planPublisher: AnyPublisher<PlannedSession?, Never>,
         reduceMotion: Bool,
         delayProvider: any DelayProviding = RealDelay()
     ) {
-        self.sourceName = sessionSource?.displayName ?? String(localized: "ready.source.fallback")
+        if case .playlist(let source) = origin {
+            self.sourceName = source.displayName
+        } else {
+            self.sourceName = String(localized: "ready.source.fallback")
+        }
+        self.isLocalFile = origin?.isLocalFile ?? false
         self.sessionManager = sessionManager
         self.reduceMotion = reduceMotion
         self.firstAudioDetector = FirstAudioDetector(
@@ -105,6 +109,14 @@ final class ReadyViewModel: ObservableObject {
     }
 
     // MARK: - Actions
+
+    /// "Begin now": start without waiting for audio. The visuals run at their silent
+    /// baseline until the music actually arrives, which the app already handles.
+    func beginNow() {
+        timeoutTask?.cancel()
+        isTimedOut = false
+        shouldAdvanceToPlaying.send()
+    }
 
     /// Reset the detector and 90-second timer; dismiss the timeout overlay.
     func retry() {

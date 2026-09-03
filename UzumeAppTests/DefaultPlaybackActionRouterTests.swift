@@ -26,7 +26,6 @@ private final class CallTracker {
     var rePlanCalled = false
     var overrideCalled: (String, Bool)?
     var restoreCalled: PlannedSession?
-    var showPlanPreviewCalled = false
 }
 
 // swiftlint:disable type_body_length
@@ -69,8 +68,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             onReshuffle: { locked, presets in tracker.reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { tracker.rePlanCalled = true },
             onApplyPresetOverride: { id, imm in tracker.overrideCalled = (id, imm) },
-            onRestorePlan: { plan in tracker.restoreCalled = plan },
-            onShowPlanPreview: { tracker.showPlanPreviewCalled = true }
+            onRestorePlan: { plan in tracker.restoreCalled = plan }
         )
     }
 
@@ -127,7 +125,6 @@ struct DefaultPlaybackActionRouterU6bTests {
         var rePlanCalled = false
         var overrideCalled: (String, Bool)?
         var restoreCalled: PlannedSession?
-        var showPlanCalled = false
         var sessionTime = refTime
 
         let toastMgr = ToastManager()
@@ -141,8 +138,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { rePlanCalled = true },
             onApplyPresetOverride: { id, imm in overrideCalled = (id, imm) },
-            onRestorePlan: { plan in restoreCalled = plan },
-            onShowPlanPreview: { showPlanCalled = true }
+            onRestorePlan: { plan in restoreCalled = plan }
         )
 
         router.lessLikeThis()
@@ -190,7 +186,6 @@ struct DefaultPlaybackActionRouterU6bTests {
         var rePlanCalled = false
         var overrideCalled: (String, Bool)?
         var restoreCalled: PlannedSession?
-        var showPlanCalled = false
 
         let router = DefaultPlaybackActionRouter(
             toastBridge: toastBridge,
@@ -201,8 +196,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { rePlanCalled = true },
             onApplyPresetOverride: { id, imm in overrideCalled = (id, imm) },
-            onRestorePlan: { plan in restoreCalled = plan },
-            onShowPlanPreview: { showPlanCalled = true }
+            onRestorePlan: { plan in restoreCalled = plan }
         )
 
         // First press: sets lastNegativeNudgeAt, no hint yet.
@@ -232,7 +226,6 @@ struct DefaultPlaybackActionRouterU6bTests {
         var rePlanCalled = false
         var overrideCalled: (String, Bool)?
         var restoreCalled: PlannedSession?
-        var showPlanCalled = false
 
         var reshuffleCalled: ([TrackIdentity], [TrackIdentity: PresetDescriptor])?
         let toastBridge = LiveAdaptationToastBridge(toastManager: ToastManager())
@@ -251,8 +244,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             },
             onRePlanSession: { rePlanCalled = true },
             onApplyPresetOverride: { id, imm in overrideCalled = (id, imm) },
-            onRestorePlan: { plan in restoreCalled = plan },
-            onShowPlanPreview: { showPlanCalled = true }
+            onRestorePlan: { plan in restoreCalled = plan }
         )
 
         router.reshuffleUpcoming()
@@ -308,15 +300,14 @@ struct DefaultPlaybackActionRouterU6bTests {
         #expect(tracker.overrideCalled == nil, "no override must be called when lastPlayedPresetID is nil")
     }
 
-    // MARK: Test 9 — rePlanSession calls onRePlanSession and onShowPlanPreview
+    // MARK: Test 9 — rePlanSession calls onRePlanSession
 
-    @Test("rePlanSession calls onRePlanSession and onShowPlanPreview")
-    func rePlanSession_callsBothClosures() {
+    @Test("rePlanSession calls onRePlanSession")
+    func rePlanSession_callsRePlan() {
         let tracker = CallTracker()
         let router = Self.makeRouter(tracker: tracker)
         router.rePlanSession()
         #expect(tracker.rePlanCalled, "onRePlanSession must be called")
-        #expect(tracker.showPlanPreviewCalled, "onShowPlanPreview must be called")
     }
 
     // MARK: Test 10 — undoLastAdaptation restores plan but keeps familyBoosts
@@ -329,7 +320,6 @@ struct DefaultPlaybackActionRouterU6bTests {
         var reshuffleCalled: ([TrackIdentity], [TrackIdentity: PresetDescriptor])?
         var rePlanCalled = false
         var overrideCalled: (String, Bool)?
-        var showPlanCalled = false
 
         let router = DefaultPlaybackActionRouter(
             getSessionTime: { 0 },
@@ -340,8 +330,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { rePlanCalled = true },
             onApplyPresetOverride: { id, imm in overrideCalled = (id, imm) },
-            onRestorePlan: { plan in restoredPlan = plan },
-            onShowPlanPreview: { showPlanCalled = true }
+            onRestorePlan: { plan in restoredPlan = plan }
         )
 
         // Push a snapshot via moreLikeThis (which calls pushHistory internally).
@@ -368,7 +357,6 @@ struct DefaultPlaybackActionRouterU6bTests {
         var rePlanCalled = false
         var overrideCalled: (String, Bool)?
         var restoreCalled: PlannedSession?
-        var showPlanCalled = false
 
         let router = DefaultPlaybackActionRouter(
             toastBridge: toastBridge,
@@ -376,8 +364,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { rePlanCalled = true },
             onApplyPresetOverride: { id, imm in overrideCalled = (id, imm) },
-            onRestorePlan: { plan in restoreCalled = plan },
-            onShowPlanPreview: { showPlanCalled = true }
+            onRestorePlan: { plan in restoreCalled = plan }
         )
 
         router.undoLastAdaptation()
@@ -397,7 +384,6 @@ struct DefaultPlaybackActionRouterU6bTests {
         var rePlanCalled = false
         var overrideCalled: (String, Bool)?
         var restoreCalled: PlannedSession?
-        var showPlanCalled = false
 
         let router = DefaultPlaybackActionRouter(
             getSessionTime: { 0 },
@@ -408,8 +394,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { rePlanCalled = true },
             onApplyPresetOverride: { id, imm in overrideCalled = (id, imm) },
-            onRestorePlan: { plan in restoreCalled = plan },
-            onShowPlanPreview: { showPlanCalled = true }
+            onRestorePlan: { plan in restoreCalled = plan }
         )
 
         // Populate state.
@@ -446,7 +431,6 @@ struct DefaultPlaybackActionRouterU6bTests {
         var rePlanCalled = false
         var overrideCalled: (String, Bool)?
         var restoreCalled: PlannedSession?
-        var showPlanCalled = false
 
         let router = DefaultPlaybackActionRouter(
             getSessionTime: { 0 },
@@ -457,8 +441,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { rePlanCalled = true },
             onApplyPresetOverride: { id, imm in overrideCalled = (id, imm) },
-            onRestorePlan: { plan in restoreCalled = plan },
-            onShowPlanPreview: { showPlanCalled = true }
+            onRestorePlan: { plan in restoreCalled = plan }
         )
 
         // Push 10 entries.

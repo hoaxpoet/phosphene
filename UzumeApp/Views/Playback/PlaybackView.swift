@@ -1,9 +1,4 @@
 // PlaybackView — Shown when SessionManager.state == .playing (U.6 rewrite).
-// swiftlint:disable file_length
-// Already at the 400-line ceiling before DS.5; PlaybackArrivalOverlay (Layer 7) is one
-// line at the call site by construction (its own state, its own file) and there is no
-// remaining slack to trim without fragmenting buildRegistry, which has its own
-// deliberately-not-split note below. Revisit if a future increment adds real bulk here.
 //
 // Layer stack (bottom to top):
 //   1. MetalView — full-bleed render surface
@@ -54,7 +49,6 @@ struct PlaybackView: View {
 
     @State private var showDebug: Bool = false
     @State private var showHelp: Bool = false
-    @State private var showPlanPreview: Bool = false
     @State private var showSettings: Bool = false
     /// QR.4 / D-091: must be `@EnvironmentObject`, never `@StateObject`. A
     /// `@StateObject SettingsStore()` here creates a parallel state world —
@@ -212,15 +206,6 @@ struct PlaybackView: View {
             teardown()
             engine.dashboardOverlayVisible = false
         }
-        .sheet(isPresented: $showPlanPreview) {
-            PlanPreviewView(
-                initialPlan: engine.livePlannedSession,
-                planPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
-                onRegenerate: { @MainActor lockedTracks, lockedPresets in
-                    engine.regeneratePlan(lockedTracks: lockedTracks, lockedPresets: lockedPresets)
-                }
-            )
-        }
         .sheet(isPresented: $showSettings) {
             SettingsView(store: settingsStore)
         }
@@ -237,8 +222,7 @@ struct PlaybackView: View {
         // Build action router — U.6b: uses live factory wired to the engine.
         let router = DefaultPlaybackActionRouter.live(
             engine: engine,
-            toastBridge: toastBridge,
-            onShowPlanPreview: { showPlanPreview = true }
+            toastBridge: toastBridge
         )
         actionRouter = router
 
@@ -381,7 +365,6 @@ struct PlaybackView: View {
                 }
             },
             onShowHelp: { showHelp = true },
-            onShowPlanPreview: { showPlanPreview = true },
             onToggleDiagnosticHold: diagHoldAction,
             onToggleForceSpider: forceSpiderAction,
             onToggleAudioStallCard: audioStallCardAction,

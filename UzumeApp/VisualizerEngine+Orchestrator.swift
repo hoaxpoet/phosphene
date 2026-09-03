@@ -476,7 +476,7 @@ extension VisualizerEngine {
 
     /// Re-run the planner with a random seed, preserving any manually locked track picks.
     ///
-    /// Called from `PlanPreviewViewModel.regeneratePlan()` via an injected closure.
+    /// Called from `DefaultPlaybackActionRouter` (reshuffle / re-plan) via injected closures.
     /// Updates both `livePlan` (thread-safe) and `livePlannedSession` (@Published, main actor).
     @MainActor
     func regeneratePlan(lockedTracks: Set<TrackIdentity>, lockedPresets: [TrackIdentity: PresetDescriptor]) {

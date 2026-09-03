@@ -68,16 +68,7 @@ struct ContentView: View {
         case .preparing:
             preparingView
         case .ready:
-            // LF.4: local-file sessions don't show ReadyView (the user
-            // has nothing to confirm — Uzume IS the player). The engine's
-            // `.ready` handler advances to `.playing` in the same MainActor
-            // tick; routing the visible UI directly to PlaybackView avoids
-            // any flash of ReadyView during the cross-state transition.
-            if engine.sessionManager.currentSource?.isLocalFile == true {
-                playbackView
-            } else {
-                readyView
-            }
+            readyView
         case .playing:
             playbackView
         case .ended:
@@ -155,19 +146,30 @@ struct ContentView: View {
         )
     }
 
+    /// DS.5 (D-240): two Ready experiences, one per source. Local files count down and
+    /// start their own audio (`handleLocalFileReady`); streaming waits for the listener
+    /// to press play elsewhere. Both land in `.playing`, where the camera push runs.
     @ViewBuilder
     private var readyView: some View {
-        ReadyView(
-            sessionSource: engine.sessionManager.sessionSource,
-            sessionManager: engine.sessionManager,
-            audioSignalStatePublisher: engine.captureState.$audioSignalState.eraseToAnyPublisher(),
-            planPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
-            onBeginPlayback: { engine.sessionManager.beginPlayback() },
-            onRegenerate: { @MainActor lockedTracks, lockedPresets in
-                engine.regeneratePlan(lockedTracks: lockedTracks, lockedPresets: lockedPresets)
-            },
-            reduceMotion: viewModel.reduceMotion
-        )
+        let character = arrivalCharacter(from: engine)
+        if engine.sessionManager.currentSource?.isLocalFile == true {
+            LocalFileCountdownView(
+                character: character,
+                reduceMotion: viewModel.reduceMotion,
+                onBegin: { engine.handleLocalFileReady() },
+                onEndSession: { engine.sessionManager.endSession() }
+            )
+        } else {
+            ReadyView(
+                origin: engine.sessionManager.currentSource,
+                character: character,
+                sessionManager: engine.sessionManager,
+                audioSignalStatePublisher: engine.captureState.$audioSignalState.eraseToAnyPublisher(),
+                planPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
+                onBeginPlayback: { engine.sessionManager.beginPlayback() },
+                reduceMotion: viewModel.reduceMotion
+            )
+        }
     }
 
     @ViewBuilder

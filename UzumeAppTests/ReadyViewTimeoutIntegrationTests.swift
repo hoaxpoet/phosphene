@@ -34,7 +34,7 @@ private func makeReadyViewModel(
     let planSubject = CurrentValueSubject<PlannedSession?, Never>(nil)
     let mgr = SessionManager.testInstance()
     let vm = ReadyViewModel(
-        sessionSource: .appleMusicCurrentPlaylist,
+        origin: .playlist(.appleMusicCurrentPlaylist),
         sessionManager: mgr,
         audioSignalStatePublisher: sigPub.publisher,
         planPublisher: planSubject.eraseToAnyPublisher(),

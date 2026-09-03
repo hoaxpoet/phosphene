@@ -66,7 +66,6 @@ final class PlaybackShortcutRegistry {
     ///   - onToggleDebug: Toggle debug overlay (D).
     ///   - onHandleEsc: Esc — exit fullscreen or show end-session confirm.
     ///   - onShowHelp: Show shortcut help overlay (⇧?).
-    ///   - onShowPlanPreview: Show plan-preview sheet (P).
     init(
         actionRouter: any PlaybackActionRouter,
         onToggleFullscreen: @escaping @MainActor () -> Void,
@@ -75,7 +74,6 @@ final class PlaybackShortcutRegistry {
         onToggleDebug: @escaping @MainActor () -> Void,
         onHandleEsc: @escaping @MainActor () -> Void,
         onShowHelp: @escaping @MainActor () -> Void,
-        onShowPlanPreview: @escaping @MainActor () -> Void,
         onToggleDiagnosticHold: (@MainActor () -> Void)? = nil,
         onToggleForceSpider: (@MainActor () -> Void)? = nil,
         onToggleAudioStallCard: (@MainActor () -> Void)? = nil,
@@ -94,8 +92,7 @@ final class PlaybackShortcutRegistry {
             onToggleOverlay: onToggleOverlay,
             onToggleDebug: onToggleDebug,
             onHandleEsc: onHandleEsc,
-            onShowHelp: onShowHelp,
-            onShowPlanPreview: onShowPlanPreview
+            onShowHelp: onShowHelp
         )
         if let fn = onToggleDiagnosticHold {
             all.append(PlaybackShortcut(
@@ -222,8 +219,7 @@ final class PlaybackShortcutRegistry {
         onToggleOverlay: @escaping @MainActor () -> Void,
         onToggleDebug: @escaping @MainActor () -> Void,
         onHandleEsc: @escaping @MainActor () -> Void,
-        onShowHelp: @escaping @MainActor () -> Void,
-        onShowPlanPreview: @escaping @MainActor () -> Void
+        onShowHelp: @escaping @MainActor () -> Void
     ) -> [PlaybackShortcut] {
         [
             // MARK: Playback
@@ -274,14 +270,6 @@ final class PlaybackShortcutRegistry {
                 label: "Show keyboard shortcuts",
                 category: .playback,
                 action: onShowHelp
-            ),
-            PlaybackShortcut(
-                id: "planPreview",
-                key: "p",
-                modifiers: [],
-                label: "Preview the plan",
-                category: .playback,
-                action: onShowPlanPreview
             ),
 
             // MARK: Live Adaptation

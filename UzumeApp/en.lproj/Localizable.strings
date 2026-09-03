@@ -213,22 +213,17 @@
 "ready.press_play"          = "Press play in %@.";
 /* %1$d = track count, %2$@ = formatted duration e.g. "about 45 minutes" */
 "ready.plan_summary"        = "Planned %1$d tracks, %2$@.";
-"ready.preview_plan_button" = "Preview the plan";
 "ready.end_session_button"  = "End session";
+/* DS.5 (D-240): starts the show without waiting for the music */
+"ready.begin_now_button"    = "Begin now";
+"a11y.ready.begin_now.hint" = "Starts the show without waiting for the music.";
+/* %d = seconds remaining on the local-file countdown */
+"a11y.ready.countdown"      = "Starting in %d";
 
 "ready.timeout.headline"    = "Haven’t heard anything yet.";
 /* %@ = source name */
 "ready.timeout.subtext"     = "Is the music playing in %@?";
 "ready.timeout.retry_button" = "Retry";
-
-// MARK: - Plan preview
-
-"plan_preview.title_empty"      = "Session plan";
-/* %d = track count */
-"plan_preview.title_tracks"     = "Session plan — %d tracks";
-"plan_preview.close_button"     = "Close";
-"plan_preview.regenerate_button" = "Regenerate Plan";
-"plan_preview.empty_state"      = "No plan available yet.";
 
 // MARK: - Playback
 
@@ -255,16 +250,6 @@
 // MARK: - Idle (QR.4)
 
 "appName"                               = "Uzume";
-
-// MARK: - Plan preview empty / reactive states (QR.4)
-
-"plan_preview.empty"                    = "No plan available.";
-"plan_preview.reactive_mode"            = "Running in reactive mode — presets adapt in real time.";
-"plan_preview.modify_button"            = "Modify";
-"plan_preview.row.swap_preset"          = "Swap preset";
-"plan_preview.row.reset_lock"           = "Reset to planner pick";
-/* %1$lld = track number, %2$@ = title, %3$@ = artist, %4$@ = preset name, %5$@ = duration */
-"plan_preview.row.accessibility"        = "%1$lld. %2$@ by %3$@, %4$@, %5$@";
 
 // MARK: - Connecting (QR.4)
 
@@ -527,10 +512,3 @@
 
 // Preparation streaming subtitle — track count (PreparationProgressView)
 
-// Plan-preview transition labels (PlanPreviewTransitionView)
-"plan_preview.transition.cut"               = "cut";
-"plan_preview.transition.cut_structural"    = "cut at structural boundary";
-"plan_preview.transition.crossfade"         = "crossfade";
-"plan_preview.transition.crossfade_duration" = "crossfade %.1fs";
-"plan_preview.transition.morph"             = "morph";
-"plan_preview.transition.morph_duration"    = "morph %.1fs";
