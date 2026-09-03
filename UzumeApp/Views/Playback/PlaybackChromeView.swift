@@ -1,36 +1,54 @@
 // PlaybackChromeView — Overlay chrome composition for the .playing state.
 //
-// Three surfaces:
-//   top-leading:  TrackInfoCardView
-//   top-trailing: PlaybackControlsCluster (+ "still preparing" teal dot when applicable)
-//   top-center:   ListeningBadgeView
-//   bottom-trailing: toast slot (ToastRegion, wired in Part C)
+// The `PerformanceChrome` composition (COMPONENTS.md), retokenized in place at DS.6:
+//   top-leading:     TrackInfoCardView — only while the listener shows track information
+//   top-trailing:    PlaybackControlsCluster (+ the "still preparing" status beneath it)
+//   top-centre:      ListeningBadgeView
+//   bottom-centre:   LocalFileTransportBar (local-file sessions only)
+//   bottom-trailing: ToastRegion
 //
-// The entire chrome layer opacity-animates to 0 on auto-hide. When hidden,
-// allowsHitTesting is false so no interactions are intercepted.
+// Visibility is `PlaybackChromeViewModel.overlayVisible` (D-241, Matt's call): after 3 s
+// of inactivity the whole chrome disappears so the listener can focus on the visuals —
+// nothing drawn, nothing hit-testable — and mouse movement, a tap, any key or a track
+// change bring all of it back. The fade is the standard 240 ms state change; reduced
+// motion crossfades.
 
 import SwiftUI
 
 // MARK: - PreparationBackgroundIndicator
 
-/// Subtle teal dot shown while background track preparation is still in flight (6.1).
+/// "Still preparing" — shown while background track preparation is still in flight (6.1).
+///
+/// A status, so it takes its tone from `StatusTone` like every other status surface
+/// (D-234): symbol + text in the tone's foreground on its field, never a colour of its own.
+/// It is opaque, so it owes the live frame no contrast measurement.
 private struct PreparationBackgroundIndicator: View {
 
     @State private var visible = false
+    let reduceMotion: Bool
+
+    private let tone: StatusTone = .info
 
     var body: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(Color.teal)
-                .frame(width: 4, height: 4)
+        HStack(spacing: UzumeSpace.x1) {
+            Image(systemName: tone.symbol)
+                .font(.caption2)
             Text(String(localized: "playback.still_preparing"))
                 .font(.caption2)
-                .foregroundColor(.teal.opacity(0.85))
         }
+        .foregroundColor(tone.foreground)
+        .padding(.horizontal, UzumeSpace.x2)
+        .padding(.vertical, UzumeSpace.x1)
+        .background(tone.background)
+        .overlay(RoundedRectangle(cornerRadius: UzumeAppRadius.sm).stroke(tone.border, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: UzumeAppRadius.sm))
         .opacity(visible ? 1 : 0)
-        .animation(.easeIn(duration: 0.4), value: visible)
+        .animation(UzumeAppMotion.stateChange(reduceMotion: reduceMotion), value: visible)
         .onAppear { visible = true }
         .help(String(localized: "playback.still_preparing.tooltip"))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "playback.still_preparing"))
+        .accessibilityHint(String(localized: "playback.still_preparing.tooltip"))
     }
 }
 
@@ -45,6 +63,9 @@ struct PlaybackChromeView: View {
 
     @ObservedObject var viewModel: PlaybackChromeViewModel
     let toastManager: ToastManager
+    /// `uzume.settings.visuals.showTrackInformation` — bound, so the cluster's control and
+    /// Settings move the same value (DS.6).
+    @Binding var showTrackInformation: Bool
     let onSettings: () -> Void
     let onEndSession: () -> Void
     /// LF.5.fix D-LF5-3 transport-bar callbacks. Default no-ops keep streaming-
@@ -55,43 +76,47 @@ struct PlaybackChromeView: View {
     var onLocalFilePlayPause: () -> Void = {}
     var onLocalFileNext: () -> Void = {}
 
+    private var motion: Animation { UzumeAppMotion.stateChange(reduceMotion: viewModel.reduceMotion) }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Top-leading: track info
-            TrackInfoCardView(
-                trackInfo: viewModel.currentTrack,
-                preset: viewModel.currentPreset,
-                orchestratorState: viewModel.orchestratorState,
-                isLocalFileSession: viewModel.isLocalFileSession
-            )
-            .padding(24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // Top-leading: the current track. Gone from the tree, not faded, when hidden.
+            if showTrackInformation {
+                TrackInfoCardView(
+                    trackInfo: viewModel.currentTrack,
+                    preset: viewModel.currentPreset,
+                    isLocalFileSession: viewModel.isLocalFileSession
+                )
+                .padding(UzumeSpace.x6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
 
-            // Top-trailing: controls cluster + optional "still preparing" indicator
-            VStack(alignment: .trailing, spacing: 4) {
+            // Top-trailing: controls cluster + the "still preparing" status.
+            VStack(alignment: .trailing, spacing: UzumeSpace.x1) {
                 PlaybackControlsCluster(
                     progress: viewModel.sessionProgress,
                     reduceMotion: viewModel.reduceMotion,
+                    showTrackInformation: $showTrackInformation,
                     onSettings: onSettings,
                     onEndSession: onEndSession
                 )
                 if viewModel.isBackgroundPreparationActive {
-                    PreparationBackgroundIndicator()
+                    PreparationBackgroundIndicator(reduceMotion: viewModel.reduceMotion)
                 }
             }
-            .padding(24)
+            .padding(UzumeSpace.x6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
 
-            // Top-center: listening badge
+            // Top-centre: listening badge
             ListeningBadgeView(
                 isVisible: viewModel.showListeningBadge,
                 reduceMotion: viewModel.reduceMotion
             )
-            .padding(.top, 48)
+            .padding(.top, UzumeSpace.x12)
             .frame(maxWidth: .infinity, alignment: .top)
             .frame(maxHeight: .infinity, alignment: .top)
 
-            // Bottom-center: LF.5.fix D-LF5-3 transport bar (LF mode only).
+            // Bottom-centre: LF.5.fix D-LF5-3 transport bar (LF mode only).
             if viewModel.isLocalFileSession {
                 LocalFileTransportBar(
                     isPaused: viewModel.isLocalFilePaused,
@@ -105,16 +130,13 @@ struct PlaybackChromeView: View {
                 .frame(maxHeight: .infinity, alignment: .bottom)
             }
 
-            // Bottom-trailing: toast container (Part C)
-            ToastRegion(toastManager: toastManager)
-                .padding(24)
+            // Bottom-trailing: toasts
+            ToastRegion(toastManager: toastManager, reduceMotion: viewModel.reduceMotion)
+                .padding(UzumeSpace.x6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         }
         .opacity(viewModel.overlayVisible ? 1 : 0)
-        .animation(
-            viewModel.reduceMotion ? .none : .easeInOut(duration: 0.5),
-            value: viewModel.overlayVisible
-        )
+        .animation(motion, value: viewModel.overlayVisible)
         .allowsHitTesting(viewModel.overlayVisible)
         .accessibilityIdentifier(Self.accessibilityID)
     }

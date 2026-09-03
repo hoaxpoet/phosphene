@@ -397,29 +397,50 @@ Three:
 
 ### 7.2 Overlay chrome behavior
 
-Visible by default for 3 s on session start, then auto-hides. Re-appears on:
+Visible for 3 s once the arrival (§6, D-240) has faded, then **disappears completely** so the
+listener can focus on the visuals (Matt's call, D-241). It returns on:
 
 - Mouse move (any displacement)
-- Any key press
-- Track change (shows for 3 s then hides)
+- A tap on the screen (any mouse button)
+- Any key press (Space excepted — it is the toggle, §7.7)
+- Track change (visible for 3 s, then gone again)
 
-Auto-hide uses opacity fade over 500 ms. The render surface is unmodified during fades — overlay chrome is a separate compositing layer.
+Nothing stays on screen while hidden — no quiet glyph, no edge control; discoverability is the
+mouse and the tap. This deliberately deviates from the design system's "cannot become
+undiscoverable" (`COMPONENTS.md` §`PerformanceChrome`), recorded upstream as a product decision.
 
-**Minimum contrast:** overlay text must achieve ≥ 4.5:1 against worst-case preset frame. Because presets are unpredictable, chrome sits on a `RoundedRectangle` blur with 0.4 black opacity backdrop — the blur-and-tint handles the contrast guarantee generically.
+State changes take the design system's standard 240 ms exponential ease-out (`UzumeAppMotion`);
+reduced motion crossfades. The render surface is unmodified during fades — overlay chrome is a
+separate compositing layer.
+
+**Minimum contrast:** overlay text must achieve ≥ 4.5:1 against worst-case preset frame. Because
+presets are unpredictable, chrome sits on `PerformanceBackdrop` — `.ultraThinMaterial` under a
+**measured 45 %** black tint (`UzumeAppColor.Performance.backdropTint`), certified against real
+preset frames by `PresetContrastCertificationTests`.
 
 ### 7.3 Overlay content
 
-**Top-left (track info card):**
-- Track title, artist
+**Top-left (track information card)** — shown while `uzume.settings.visuals.showTrackInformation`
+is on (default on; toggled from the cluster or Settings; persisted). It says only what is playing
+now (D-238):
+- Track title, artist, artwork when the source has it
 - Currently playing preset name (subdued)
-- Orchestrator state indicator: "Planned" (session mode) / "Reactive" (ad-hoc) / "Adapting" (live adaptation fired)
+- Never the next track, the next preset, a transition, or the shape of the plan. The
+  "Planned / Reactive" orchestrator pill was removed at DS.6 (D-241) for that reason; "Adapting"
+  was never wired.
 
-**Top-right (controls cluster):**
-- Session progress dots (one per track, filled = played, highlighted = current)
+**Top-right (controls cluster)** — `PerformanceControls`:
+- Session progress dots (one per track, filled = played, highlighted = current; "Reactive" pulse
+  in ad-hoc sessions; a count above 30 tracks)
+- Show / Hide track info (`uzume.playback.toggleTrackInfo`)
 - Settings gear
-- Close/end session
+- End session (`uzume.playback.endSession`)
+- Beneath the cluster while background preparation is still running: "Still preparing", a
+  `StatusTone.info` placement.
 
-**No playback controls — streaming path only.** For connector-driven sessions (Apple Music, Spotify) Uzume does not control the source app; any "pause" button on `PlaybackView` would be a lie. **LF.5.fix carve-out (2026-05-28):** for local-file sessions Uzume IS the player, so a hover-revealed transport bar (Stop / Prev / Play-Pause / Next) renders at the bottom-center of `PlaybackView` whenever `currentSource?.isLocalFile == true`. The bar piggybacks on the existing `overlayVisible` auto-hide and disappears with the rest of the chrome. UX-2 in §10 carries the same carve-out language.
+Every control declares a VoiceOver label and a hint that says what it does now.
+
+**No playback controls — streaming path only.** For connector-driven sessions (Apple Music, Spotify) Uzume does not control the source app; any "pause" button on `PlaybackView` would be a lie. **LF.5.fix carve-out (2026-05-28):** for local-file sessions Uzume IS the player, so a transport bar (Stop / Prev / Play-Pause / Next) renders at the bottom-center of `PlaybackView` whenever `currentSource?.isLocalFile == true`. The bar follows the chrome's visibility and disappears with the rest of it. UX-2 in §10 carries the same carve-out language.
 
 ### 7.4 Live adaptation controls (keyboard-only, invisible to viewers)
 

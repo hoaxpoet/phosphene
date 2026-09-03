@@ -35,6 +35,17 @@ struct SettingsStoreTests {
         #expect(store.sessionRecorderEnabled == true)
         #expect(store.sessionRetention == .lastN10)
         #expect(store.preparationView == .mysterious, "DS.4: mysterious is the stated default")
+        #expect(store.showTrackInformation == true, "DS.6: track information is shown by default")
+    }
+
+    @Test func setAndReload_roundTripsShowTrackInformation() {
+        let defaults = makeSuite()
+        defer { teardown(defaults) }
+        let store = SettingsStore(defaults: defaults)
+        store.showTrackInformation = false
+
+        let store2 = SettingsStore(defaults: defaults)
+        #expect(store2.showTrackInformation == false, "DS.6: an explicit false must survive relaunch")
     }
 
     @Test func setAndReload_roundTripsAllEnumSettings() {

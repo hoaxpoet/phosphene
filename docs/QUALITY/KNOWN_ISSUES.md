@@ -46,6 +46,7 @@ reads" are not reads — see the entry.)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| OBS-DS6-1 | P3 · observed 2026-09-03 (DS.6 M7, Spotify session), recorded not chased | preset.fidelity / Ferrofluid Ocean | **Ferrofluid Ocean went black for a stretch mid-track.** Matt: *"the Ferrofluid Ocean preset blacked out at one point, unrelated to this work."* Session `~/Documents/uzume_sessions/2026-09-03T20-04-45Z`; frames were presented throughout (no drawable failures), and the tap saw ~3 s of near-silence (RMS 0.001) right after the preset began — whether the black is the preset's honest response to no energy or a defect is unverified. Needs a reproduction with a timestamp. |
 | OBS-DS4-1 | P3 · observed 2026-09-02 (DS.4 live run), recorded not fixed | dsp.mir / mood | **The detailed preparation view makes the analysis legible for the first time, and what it shows on a real 40-track playlist is suspiciously uniform: the first ten heard tracks read 132–138 BPM and nine of ten read "bright".** Tunes Club TC 29 spans ambient, techno and downtempo; a genuine spread would show it. The view reports faithfully (`TrackProfile.bpm` / `.mood` straight from `SessionPreparer+Analysis`), so this is a finding about the readout's *input*, not about DS.4 — it is the same 30 s-preview MIR the Orchestrator has always planned from, now visible. **No root cause asserted** (BUG-061 rule). Candidates worth measuring, not assuming: the mood scaler's valence bias (DYN.6.2 narrowed valence spread; BUG-066), and the preview-window tempo instability BUG-076 records. Evidence: `docs/reviews/DS.4/after/live-mid-detailed.png`. Worth its own increment before the detailed view ships to beta listeners as "what Uzume heard". |
 | COPY-001 | P2 · **RESOLVED 2026-09-01** | app.copy / product-claim | **The source picker's footer tells the user Uzume never controls playback, directly above a tile for which that is false.** `connector.picker.footer` = *"Uzume reads what's playing. It doesn't control playback."* renders on `ConnectorPickerView`, which offers Apple Music, Spotify **and Local files**. On the local path Uzume owns the audio and ships a full transport — stop / previous / play-pause / next in `LocalFileTransportBar` (`uzume.playback.lfTransport`). `EXPERIENCE_MODEL.md` states the correct rule: *"Local playback owns transport; streaming handoff listens for external audio and must not promise transport control."* The claim is right for two of three sources and wrong for the third. Matt spotted it on the DS.2 M7 page. **Not fixed here** — DS.2 may not edit `connector.picker.*` copy; the wording is a product call (scope the sentence to streaming, or move it onto the two streaming tiles). |
 | A11Y-001 | P3 · observed at DS.2's M7, 2026-09-01 | app.accessibility | **The three local-source tiles do not expose their own accessibility identifiers to the macOS accessibility tree — they report the parent view's.** Read live from both builds: each of the three announces `AXIdentifier = uzume.view.lf_source`, not `uzume.lf_source.tile.folder` / `.file` / `.playlist`. The connector tiles on the previous screen *do* surface theirs (as the value repeated four times, joined by `-`). **Unchanged by DS.2** — identical before on `main` and after on the branch — so it is pre-existing, not a consolidation regression. The constants exist and are unit-pinned by `SourceChoiceIdentifierTests`, but a UI test querying the LF tiles by identifier would not find them. **No root cause asserted** (BUG-061 rule): the observable difference is that `LocalSourceConnectionView` sets `.accessibilityIdentifier` on its root while the connector tiles sit inside a `NavigationLink`, but which of those actually drives it is untested. |
@@ -81,6 +82,16 @@ reads" are not reads — see the entry.)*
 ## Open
 
 ---
+
+### OBS-DS6-1 — Ferrofluid Ocean blacked out mid-track during the DS.6 M7 (2026-09-03, recorded not chased)
+
+**Severity:** P3 · **Domain:** `preset.fidelity` / Ferrofluid Ocean · **Failure class:** unknown (unverified)
+
+**Observed:** Matt, running the DS.6 M7 on a Spotify session: *"the Ferrofluid Ocean preset blacked out at one point, unrelated to this work."* No timestamp beyond "at one point".
+
+**Artifacts:** `~/Documents/uzume_sessions/2026-09-03T20-04-45Z/` (`session.log`, `features.csv`, `stems.csv`, `raw_tap.wav`, `chain_health.json`). Ferrofluid Ocean was the first real preset of the session (`preset → Ferrofluid Ocean` at 20:06:05Z, on "Billie Jean"). The `DRAWABLE_LIFECYCLE` heartbeats through its run report every frame presented, `failures=0`, `unpresented=0` — so the screen was black because the preset rendered black, not because frames stopped. The tap saw a near-silent window right after the preset began (RMS 0.145 at +5 s, then 0.0008–0.0012 for +6 s to +8 s, back to 0.032 at +9 s; `chain_health.json` verdict `degraded`, reason `tap_reinstalls(2)`).
+
+**What this is and is not:** an observation. Ferrofluid Ocean is driven from continuous energy, so a black frame during three seconds of near-silence could be the preset's honest response to no energy, a wrong-phase cold start, or a genuine render defect; nothing here distinguishes them. Not chased in DS.6 (chrome only). Next step, if it recurs: the moment it happened, so `features.csv` can be read at that row against `raw_tap.wav`, and a `PresetSessionReplay` of the capture through Ferrofluid Ocean.
 
 ### OBS-DS4-1 — The detailed preparation view shows a suspiciously uniform readout on a real playlist (2026-09-02, DS.4 live run)
 
@@ -1661,6 +1672,24 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ---
 
 ## Resolved (recent)
+
+### BUG-113 — RESOLVED (DS.6): every toast rendered as a floor-to-ceiling panel inside the chrome (2026-09-03)
+
+**Severity:** P2 · **Domain:** `app.ui` / playback chrome · **Failure class:** `api-contract`
+
+**Expected:** a `PerformanceToast` is one or two lines of copy tall (UX_SPEC §9.4: "the quietest thing that can still be noticed"), bottom-trailing, clear of the controls cluster.
+
+**Actual:** inside `PlaybackChromeView` every toast rendered as a panel the full height of the window, its 4 pt accent bar clipped to 100 pt at the top and the copy floating mid-panel, drawn over the top-trailing cluster. Present since the toast was written (the accent bar has been a `Color.frame(width: 4)` since U.6; DS.3's `PerformanceToast` kept it); never seen because no capture of the chrome with a toast in it existed until DS.6's harness rendered one.
+
+**Reproduce:** any toast during playback — the DS.6 harness `chrome-toast-*` scenarios, or live: press `l` (diagnostic hold) in a session.
+
+**Artifacts:** `docs/reviews/DS.6/before/chrome-toast-info.png` (harness, `main` at `d4fb16ea`) and `docs/reviews/DS.6/after/live-toast-BUG113-before-fix.png` (the real app, local-file session, 2026-09-03 — the "Diagnostic hold ON" toast covering the cluster).
+
+**Root cause:** `ToastRegion` sits in a `.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)`, so its `VStack` is offered the whole window height and offers it on to the toast's `HStack`. The accent bar is a `Color`, which accepts any proposal, so the `HStack` — and the toast — took the full height. The DS.3 harness never saw it because it rendered `PerformanceToast` alone in `.frame(width: 360)` with no height proposed.
+
+**Fix:** `.fixedSize(horizontal: false, vertical: true)` on the toast (one line, `PerformanceToast.swift`). Collapsed into one increment under the trivial-fix rule (<5 lines, root cause read straight off the view tree, no architectural risk); P2, so the multi-increment rule does not apply.
+
+**Verification:** *automated* — `PerformanceToastLayoutTests` hosts a toast the way the chrome does (a 960 × 600 frame, bottom-trailing) and measures the rendered accent bar: < 100 pt, red before the fix. Harness re-render: `docs/reviews/DS.6/after/chrome-toast-*.png` at copy height. *Manual* — Matt's DS.6 M7 (a toast during the live walk).
 
 ### BUG-112 — RESOLVED (DS.5 M7): Ready's first-audio autodetect never listened — the tap was installed after `.playing`, so Ready always self-advanced (2026-09-03)
 

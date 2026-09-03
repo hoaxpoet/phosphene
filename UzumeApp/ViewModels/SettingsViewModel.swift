@@ -102,6 +102,11 @@ final class SettingsViewModel: ObservableObject {
         set { store.preparationView = newValue }
     }
 
+    var showTrackInformation: Bool {
+        get { store.showTrackInformation }
+        set { store.showTrackInformation = newValue }
+    }
+
     var sessionRecorderEnabled: Bool {
         get { store.sessionRecorderEnabled }
         set { store.sessionRecorderEnabled = newValue }

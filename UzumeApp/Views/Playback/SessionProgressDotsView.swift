@@ -89,7 +89,7 @@ struct SessionProgressDotsView: View {
                         }
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: isCurrent)
+            .animation(UzumeAppMotion.stateChange(reduceMotion: reduceMotion), value: isCurrent)
     }
 
     private func dotColor(isCurrent: Bool, isPast: Bool) -> Color {

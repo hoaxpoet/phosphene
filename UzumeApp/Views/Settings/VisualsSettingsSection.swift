@@ -83,6 +83,20 @@ struct VisualsSettingsSection: View {
                     .foregroundColor(.secondary)
             }
 
+            // DS.6: the same affordance the playback chrome carries, made durable.
+            Section(NSLocalizedString("settings.visuals.track_information.title", comment: "")) {
+                Toggle(
+                    NSLocalizedString("settings.visuals.track_information.label", comment: ""),
+                    isOn: Binding(
+                        get: { viewModel.showTrackInformation },
+                        set: { viewModel.showTrackInformation = $0 }
+                    )
+                )
+                Text(NSLocalizedString("settings.visuals.track_information.hint", comment: ""))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section(NSLocalizedString("settings.visuals.blocklist.title", comment: "")) {
                 PresetCategoryBlocklistPicker(
                     selection: Binding(

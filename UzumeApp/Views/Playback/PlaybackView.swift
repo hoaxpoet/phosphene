@@ -107,7 +107,8 @@ struct PlaybackView: View {
             reduceMotionPublisher: reduceMotionPublisher,
             progressiveReadinessPublisher: progressiveReadinessPublisher,
             currentSourcePublisher: currentSourcePublisher,
-            isLocalFilePausedPublisher: isLocalFilePausedPublisher
+            isLocalFilePausedPublisher: isLocalFilePausedPublisher,
+            firstShowDelay: ArrivalTransitionView.totalDuration(reduceMotion: reduceMotion)
         ))
         _endSessionVM = StateObject(wrappedValue: EndSessionConfirmViewModel(
             sessionManager: sessionManager
@@ -124,9 +125,9 @@ struct PlaybackView: View {
             // Layer 1: Metal render
             MetalView(context: engine.context, pipeline: engine.pipeline)
 
-            // Layer 2: Track-change center animation
+            // Layer 2: Track-change center animation (only while track information is shown)
             TrackChangeAnimationView(
-                trackInfo: chromeVM.currentTrack,
+                trackInfo: settingsStore.showTrackInformation ? chromeVM.currentTrack : nil,
                 reduceMotion: reduceMotion,
                 namespace: trackAnimNamespace
             )
@@ -135,6 +136,7 @@ struct PlaybackView: View {
             PlaybackChromeView(
                 viewModel: chromeVM,
                 toastManager: toastManager,
+                showTrackInformation: $settingsStore.showTrackInformation,
                 onSettings: { showSettings = true },
                 onEndSession: { endSessionVM.requestEnd() },
                 onLocalFileStop: { engine.stopLocalFilePlayback() },
@@ -167,8 +169,7 @@ struct PlaybackView: View {
             // Layer 6: Dashboard overlay (top-trailing SwiftUI — instruments).
             // DASH.7 SwiftUI port (D-087); DASH.7.1 brand-aligned (D-088).
             // The transition is asymmetric — descend gently in, fade quietly
-            // out — per the .impeccable.md "appears when needed, disappears
-            // when not" principle.
+            // out: it appears when needed and disappears when not.
             if showDebug {
                 DashboardOverlayView(viewModel: dashboardVM)
                     .transition(.asymmetric(
@@ -264,10 +265,12 @@ struct PlaybackView: View {
         let registry = buildRegistry(router: router)
         currentRegistry = registry
         keyMonitor.install(registry: registry)
+        chromeVM.observeInput()
     }
 
     private func teardown() {
         keyMonitor.uninstall()
+        chromeVM.stopObservingInput()
         fullscreenObserver.detach()
     }
 

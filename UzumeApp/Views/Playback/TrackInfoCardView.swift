@@ -1,11 +1,17 @@
-// TrackInfoCardView — Top-left overlay card showing track + preset + orchestrator state.
+// TrackInfoCardView — Top-left overlay card: the current track, and the preset on screen.
+//
+// DS.6: the orchestrator-state pill ("Planned" / "Reactive") is gone (D-241). It reported
+// how the session is structured, which the surprise model (D-238) treats as the
+// listener's not to know; the card now says only what is playing now. The card is
+// drawn in tokens only, and `PlaybackChromeView` leaves it out of the tree entirely
+// when `uzume.settings.visuals.showTrackInformation` is off.
 
 import AppKit
 import SwiftUI
 
 // MARK: - TrackInfoCardView
 
-/// Displays the current track title, artist, active preset name, and orchestrator mode.
+/// Displays the current track title, artist, artwork and the active preset name.
 ///
 /// Sits top-leading on `PlaybackChromeView` with a 24 pt inset. Applies
 /// `PerformanceBackdrop` for contrast guarantee.
@@ -22,7 +28,6 @@ struct TrackInfoCardView: View {
 
     let trackInfo: TrackInfoDisplay?
     let preset: PresetDisplay?
-    let orchestratorState: OrchestratorDisplayState
     /// LF.6: true when the active session is a local-file playback. Drives
     /// whether the artwork slot renders the fallback glyph (LF — distinctive
     /// chrome geometry) or hides entirely (streaming — text-only fallback
@@ -30,13 +35,13 @@ struct TrackInfoCardView: View {
     var isLocalFileSession: Bool = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: UzumeSpace.x3) {
             if showArtworkSlot {
                 artworkSlot
             }
             textColumn
         }
-        .padding(12)
+        .padding(UzumeSpace.x3)
         .frame(minWidth: 200, maxWidth: 380, alignment: .leading)
         .performanceBackdrop()
         .accessibilityIdentifier(Self.accessibilityID)
@@ -99,7 +104,7 @@ struct TrackInfoCardView: View {
 
     @ViewBuilder
     private var textColumn: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: UzumeSpace.x1 / 2) {
             // Track title
             Text(trackInfo?.title ?? "—")
                 .font(.headline)
@@ -114,7 +119,7 @@ struct TrackInfoCardView: View {
                     .lineLimit(1)
             }
 
-            Spacer().frame(height: 4)
+            Spacer().frame(height: UzumeSpace.x1)
 
             // Preset name
             if let name = preset?.name {
@@ -124,22 +129,6 @@ struct TrackInfoCardView: View {
                     .foregroundColor(UzumeAppColor.textTertiary)
                     .lineLimit(1)
             }
-
-            // Orchestrator state pill
-            orchestratorStatePill
         }
-    }
-
-    @ViewBuilder
-    private var orchestratorStatePill: some View {
-        let label = orchestratorState.rawValue
-        let color: Color = orchestratorState == .planned ? .green.opacity(0.7) : .orange.opacity(0.7)
-        Text(label)
-            .font(.caption2.weight(.semibold).monospaced())
-            .foregroundColor(color)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15))
-            .clipShape(Capsule())
     }
 }

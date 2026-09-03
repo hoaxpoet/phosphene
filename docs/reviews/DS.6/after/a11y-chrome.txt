@@ -1,0 +1,35 @@
+surface	declared VoiceOver label	accessibility identifier
+chrome (container)	(no explicit label)	uzume.playback.chrome
+track info card	Take Five, Dave Brubeck, Skein — hint: Now playing	uzume.playback.trackInfoCard
+artwork slot	(hidden from VoiceOver — the card's combined label carries the track)	uzume.playback.trackInfoCard.artwork
+orchestrator state pill	(removed — DS.6, D-241)	(none)
+progress dots	Session progress — value: Track 3 of 6	uzume.playback.progressDots
+controls cluster (container)	(no explicit label)	uzume.playback.controlsCluster
+toggle track info (shown)	Hide track info — hint: Takes the current track and preset off the screen	uzume.playback.toggleTrackInfo
+toggle track info (hidden)	Show track info — hint: Puts the current track and preset back in the corner	uzume.playback.toggleTrackInfo
+settings button	Settings — hint: Opens Uzume’s settings over the performance	(none)
+end session button	End session (Esc) — hint: Asks before stopping the visualizer	uzume.playback.endSession
+still preparing indicator	Still preparing — hint: Still preparing tracks — we’ll keep going as you listen.	(none)
+listening badge	Waiting for audio	uzume.playback.listeningBadge
+local transport (container)	(no explicit label — children read in order)	uzume.playback.lfTransport
+transport — stop	Stop playback and end session	(none)
+transport — previous	Skip to previous track	(none)
+transport — play	Resume playback	(none)
+transport — pause	Pause playback	(none)
+transport — next	Skip to next track	(none)
+toast — info	Info: Display connected.	(none — announced on insert)
+toast — warning	Warning: Display disconnected mid-session.	(none — announced on insert)
+toast — degradation	Alert: Stem separation failed.	(none — announced on insert)
+toast — fatal	Critical: No audio detected.	(none — announced on insert)
+
+identifier	declared by
+uzume.playback.chrome	PlaybackChromeView
+uzume.playback.trackInfoCard	TrackInfoCardView
+uzume.playback.trackInfoCard.artwork	TrackInfoCardView
+uzume.playback.controlsCluster	PlaybackControlsCluster
+uzume.playback.toggleTrackInfo	PlaybackControlsCluster (new — DS.6)
+uzume.playback.endSession	PlaybackControlsCluster (new — DS.6)
+uzume.playback.progressDots	SessionProgressDotsView
+uzume.playback.listeningBadge	ListeningBadgeView
+uzume.playback.lfTransport	LocalFileTransportBar
+uzume.playback.shortcutHelp	ShortcutHelpOverlayView (Layer 4, not chrome)

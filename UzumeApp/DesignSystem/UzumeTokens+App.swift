@@ -176,3 +176,39 @@ enum UzumeAppRadius {
     static let md: CGFloat = 12  // --radius-md  (0.75rem)
     static let lg: CGFloat = 16  // --radius-lg  (1rem)
 }
+
+// MARK: - UzumeAppMotion
+
+/// Motion durations from `DESIGN.md` §Shared States and Motion, which the vendored
+/// tokens do not carry: control feedback 120 ms, standard state change 240 ms, authored
+/// opening 480 ms, all exponential ease-out. Reduced motion keeps opacity crossfades and
+/// drops everything spatial — DESIGN.md: "content appears immediately or through a
+/// native crossfade". Added at DS.6; recorded in docs/reviews/DS.6/UPSTREAM-FINDINGS.md.
+enum UzumeAppMotion {
+    static let feedback: Double = 0.12   // control feedback
+    static let standard: Double = 0.24   // standard state change
+    static let opening: Double = 0.48    // authored opening
+
+    /// Exponential ease-out. SwiftUI has no `easeOutExpo`; this is the cubic-bézier
+    /// approximation of it (0.16, 1, 0.3, 1).
+    static func easeOut(_ duration: Double) -> Animation {
+        .timingCurve(0.16, 1, 0.3, 1, duration: duration)
+    }
+
+    /// A state change: the ease-out, or under reduced motion a plain crossfade of the
+    /// same length. Opacity only either way — callers keep spatial transitions out.
+    static func stateChange(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .linear(duration: standard) : easeOut(standard)
+    }
+}
+
+// MARK: - UzumeAppShadow
+
+/// `--shadow-raised` from `DESIGN.md` §Shadow Vocabulary: `0 16px 42px rgb(0 0 0 / 32%)`.
+/// The Tonal-First Rule: only for content that genuinely floats over another surface
+/// (the local-file transport bar over the live frame).
+enum UzumeAppShadow {
+    static let raisedColor = Color.black.opacity(0.32)
+    static let raisedRadius: CGFloat = 21   // a 42 px blur is a 21 pt radius
+    static let raisedY: CGFloat = 16
+}
