@@ -35,7 +35,7 @@ See §Live captures below.
 | `chrome-localFile-paused` | the same, play glyph | **yes** — after Space / the transport's pause |
 | `chrome-listening` | `audioSignalState == .silent` (≥ 3 s): "Listening…" badge top-centre | **yes** — sustained silence mid-session |
 | `chrome-stillPreparing` | `ProgressiveReadinessLevel < .fullyPrepared`: "Still preparing" under the cluster | **yes** — "Start now" before the playlist finished preparing |
-| `chrome-toast-info` / `-warning` / `-degradation` / `-fatal` | one toast per `UzumeToast.Severity`, bottom-trailing | **yes** — display connected / disconnected / stem failure / sustained silence (D-236) |
+| `chrome-toast-info` / `-warning` / `-degradation` / `-fatal` | one toast per `UzumeToast.Severity`, bottom-trailing | **yes** — display connected / disconnected / stem failure / sustained silence (D-236). **`before/` shows BUG-113**: the toast is the full window height. Found here, confirmed live, fixed in DS.6. |
 | `chrome-hidden` | `overlayVisible == false`: nothing drawn, hit-testing off | **yes, before DS.6** — 3 s after any activity. After DS.6 this state is reachable only by the Space toggle; inactivity lands on `chrome-quiet` |
 | `chrome-quiet` *(after only)* | the DS.6 quiet state: one End-session control top-trailing, everything else gone | **yes, after DS.6** — 3 s after any activity |
 | `chrome-trackInfoHidden` *(after only)* | `uzume.settings.visuals.showTrackInformation == false`: no card, no artwork, cluster shows "Show track info" | **yes, after DS.6** |
@@ -53,25 +53,25 @@ these rows and nothing else (fixed-font gate: no output; identifier gate: no out
 
 | # | file:line | what it is | replaced by | resolved |
 |---|---|---|---|---|
-| 1 | `PlaybackChromeView.swift:24` | `Color.teal` — the "still preparing" dot | `StatusTone.info` — the indicator becomes a status placement: `tone.symbol` in `tone.foreground` on `tone.background`, bordered `tone.border` (D-234) | |
-| 2 | `PlaybackChromeView.swift:28` | `.teal.opacity(0.85)` — its text | `StatusTone.info.foreground` | |
-| 3 | `PlaybackChromeView.swift:31` | `.easeIn(duration: 0.4)` — indicator appear | `UzumeAppMotion.standard` (240 ms, exponential ease-out) | |
-| 4 | `PlaybackChromeView.swift:115` | `.easeInOut(duration: 0.5)` — the chrome fade | `UzumeAppMotion.standard` | |
-| 5 | `TrackInfoCardView.swift:136` | `.green.opacity(0.7)` / `.orange.opacity(0.7)` — the Planned/Reactive pill | removed with the pill (D-241 §1) | |
-| 6 | `TrackInfoCardView.swift:142` | `color.opacity(0.15)` — the pill's field | removed with the pill | |
-| 7 | `PlaybackControlsCluster.swift:25` | `Divider().opacity(0.4)` — the separator, a system colour at an ad-hoc alpha | a 1 × 16 pt rule in `UzumeAppColor.line` | |
-| 8 | `SessionProgressDotsView.swift:45`, `:86` | `easeInOut(1.0).repeatForever` — the current-dot pulse | **kept** — an ambient pulse, not a state change; the three design-system durations govern feedback / state / opening. Already removed under reduced motion; `PlaybackChromeReducedMotionTests` pins that | |
-| 9 | `SessionProgressDotsView.swift:92` | `.easeInOut(duration: 0.25)` — current-dot change | `UzumeAppMotion.standard` | |
-| 10 | `ListeningBadgeView.swift:31` | `linear(1.5).repeatForever` — the spinner | **kept** — continuous by design, removed under reduced motion (pinned by the same test) | |
-| 11 | `ListeningBadgeView.swift:45` | `.easeInOut(duration: 0.4)` — badge fade | `UzumeAppMotion.standard` | |
-| 12 | `ToastRegion.swift:26` | `.easeInOut(duration: 0.3)` + `.move(edge:)` — toast insert | `UzumeAppMotion.standard`; reduced motion drops the slide for a crossfade | |
-| 13 | `LocalFileTransportBar.swift:3`, `:13` | the `.impeccable.md` / "coral is action" header | rewritten to the design system's rule: violet is the interaction accent | |
-| 14 | `LocalFileTransportBar.swift:66` | `DashboardTokens.Color.surfaceRaised` | `UzumeAppColor.surfaceRaised` (`--color-surface-raised`) | |
-| 15 | `LocalFileTransportBar.swift:68` | `DashboardTokens.Color.purpleGlow.opacity(0.55)`, radius 28 — the purple glow | `UzumeAppShadow.raised` (`--shadow-raised`: 0 16 42 / 32 % black). DESIGN.md: the bar genuinely floats, so it takes the raised shadow; "vaporwave glow" is a listed Don't | |
-| 16 | `LocalFileTransportBar.swift:76` | `DashboardTokens.Color.border.opacity(0.6)` | `UzumeAppColor.line` (`--color-line`) | |
-| 17 | `LocalFileTransportBar.swift:114`, `:147` | `.easeInOut(duration: 0.15)` — hover | `UzumeAppMotion.feedback` (120 ms) | |
-| 18 | `LocalFileTransportBar.swift:135`, `:136` | `DashboardTokens.Color.textBody` / `.textMuted` — glyph fills | `UzumeAppColor.textPrimary` / `.textTertiary` | |
-| 19 | `PlaybackView.swift:170` | the `.impeccable.md` citation in the dashboard-overlay comment | comment rewritten (the layer itself is untouched — Layer 6 is out of scope) | |
+| 1 | `PlaybackChromeView.swift:24` | `Color.teal` — the "still preparing" dot | `StatusTone.info` — the indicator becomes a status placement: `tone.symbol` in `tone.foreground` on `tone.background`, bordered `tone.border` (D-234) | ✅ |
+| 2 | `PlaybackChromeView.swift:28` | `.teal.opacity(0.85)` — its text | `StatusTone.info.foreground` | ✅ |
+| 3 | `PlaybackChromeView.swift:31` | `.easeIn(duration: 0.4)` — indicator appear | `UzumeAppMotion.standard` (240 ms, exponential ease-out) | ✅ |
+| 4 | `PlaybackChromeView.swift:115` | `.easeInOut(duration: 0.5)` — the chrome fade | `UzumeAppMotion.standard` | ✅ |
+| 5 | `TrackInfoCardView.swift:136` | `.green.opacity(0.7)` / `.orange.opacity(0.7)` — the Planned/Reactive pill | removed with the pill (D-241 §1) | ✅ |
+| 6 | `TrackInfoCardView.swift:142` | `color.opacity(0.15)` — the pill's field | removed with the pill | ✅ |
+| 7 | `PlaybackControlsCluster.swift:25` | `Divider().opacity(0.4)` — the separator, a system colour at an ad-hoc alpha | a 1 × 16 pt rule in `UzumeAppColor.line` | ✅ |
+| 8 | `SessionProgressDotsView.swift:45`, `:86` | `easeInOut(1.0).repeatForever` — the current-dot pulse | **kept** — an ambient pulse, not a state change; the three design-system durations govern feedback / state / opening. Already removed under reduced motion; `PlaybackChromeReducedMotionTests` pins that | ✅ |
+| 9 | `SessionProgressDotsView.swift:92` | `.easeInOut(duration: 0.25)` — current-dot change | `UzumeAppMotion.standard` | ✅ |
+| 10 | `ListeningBadgeView.swift:31` | `linear(1.5).repeatForever` — the spinner | **kept** — continuous by design, removed under reduced motion (pinned by the same test) | ✅ |
+| 11 | `ListeningBadgeView.swift:45` | `.easeInOut(duration: 0.4)` — badge fade | `UzumeAppMotion.standard` | ✅ |
+| 12 | `ToastRegion.swift:26` | `.easeInOut(duration: 0.3)` + `.move(edge:)` — toast insert | `UzumeAppMotion.standard`; reduced motion drops the slide for a crossfade | ✅ |
+| 13 | `LocalFileTransportBar.swift:3`, `:13` | the `.impeccable.md` / "coral is action" header | rewritten to the design system's rule: violet is the interaction accent | ✅ |
+| 14 | `LocalFileTransportBar.swift:66` | `DashboardTokens.Color.surfaceRaised` | `UzumeAppColor.surfaceRaised` (`--color-surface-raised`) | ✅ |
+| 15 | `LocalFileTransportBar.swift:68` | `DashboardTokens.Color.purpleGlow.opacity(0.55)`, radius 28 — the purple glow | `UzumeAppShadow.raised` (`--shadow-raised`: 0 16 42 / 32 % black). DESIGN.md: the bar genuinely floats, so it takes the raised shadow; "vaporwave glow" is a listed Don't | ✅ |
+| 16 | `LocalFileTransportBar.swift:76` | `DashboardTokens.Color.border.opacity(0.6)` | `UzumeAppColor.line` (`--color-line`) | ✅ |
+| 17 | `LocalFileTransportBar.swift:114`, `:147` | `.easeInOut(duration: 0.15)` — hover | `UzumeAppMotion.feedback` (120 ms) | ✅ |
+| 18 | `LocalFileTransportBar.swift:135`, `:136` | `DashboardTokens.Color.textBody` / `.textMuted` — glyph fills | `UzumeAppColor.textPrimary` / `.textTertiary` | ✅ |
+| 19 | `PlaybackView.swift:170` | the `.impeccable.md` citation in the dashboard-overlay comment | comment rewritten (the layer itself is untouched — Layer 6 is out of scope) | ✅ |
 
 Not in the table because no gate fires on them and the design system does not own them: the
 48 pt artwork slot, the 200–380 pt card width, the 44 / 30 pt transport targets (DESIGN.md's
@@ -90,4 +90,23 @@ is extended, not edited.
 
 ## Live captures
 
-*(filled at task 10)*
+Window-only captures (`screencapture -x -o -l<CGWindowID>`) of the real DS.6 build in a local-file
+session (`UZUME_LOCAL_FILE_PLAYBACK=…/so_what.m4a`, 900 × 632 window, 2×), driven by synthetic
+`CGEvent` input after activating the app. In order:
+
+| file | moment |
+|---|---|
+| `live-full-after-arrival.png` | the full chrome, the arrival just faded (card, cluster with three controls, transport) |
+| `live-quiet.png` | 3 s later: End session alone, top-trailing |
+| `live-restored-mouse.png` | a mouse move brings the full chrome back |
+| `live-restored-key.png` | after quiet again, a key press (`j`) brings it back |
+| `live-hidden-space.png` | Space: hidden outright — the only way to nothing |
+| `live-trackInfoShown.png` / `live-trackInfoHidden.png` | the cluster's Show/Hide track info control, clicked; the card and its artwork leave the tree |
+| `live-toast-BUG113-before-fix.png` | `l` (diagnostic hold) raises a toast — and the build before the fix drew it floor to ceiling over the cluster. The evidence for BUG-113; the `after/chrome-toast-*.png` renders are from the fixed build |
+
+**Not captured live: a real streaming session.** It needs Spotify playing; Matt runs that as the
+M7, as at DS.5. The streaming states (card without artwork, planned dots, reactive dot) are
+evidenced by the harness renders above.
+
+Pairs for review, by filename: every `before/chrome-*.png` has an `after/chrome-*.png`;
+`after/` adds `chrome-quiet` and `chrome-trackInfoHidden`.
