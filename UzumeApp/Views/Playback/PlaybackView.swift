@@ -1,4 +1,9 @@
 // PlaybackView — Shown when SessionManager.state == .playing (U.6 rewrite).
+// swiftlint:disable file_length
+// Already at the 400-line ceiling before DS.5; PlaybackArrivalOverlay (Layer 7) is one
+// line at the call site by construction (its own state, its own file) and there is no
+// remaining slack to trim without fragmenting buildRegistry, which has its own
+// deliberately-not-split note below. Revisit if a future increment adds real bulk here.
 //
 // Layer stack (bottom to top):
 //   1. MetalView — full-bleed render surface
@@ -7,6 +12,7 @@
 //   4. ShortcutHelpOverlayView — Shift+?
 //   5. DebugOverlayView — D key (developer only)
 //   6. End-session confirm dialog — Esc
+//   7. PlaybackArrivalOverlay — the camera push through the aperture (DS.5)
 //
 // Publisher-injection pattern: ContentView passes engine.$xxx.eraseToAnyPublisher()
 // at callsite, same as ReadyView. PlaybackView creates @StateObjects from the injected
@@ -176,6 +182,7 @@ struct PlaybackView: View {
                         removal: .opacity
                     ))
             }
+            PlaybackArrivalOverlay(engine: engine, reduceMotion: reduceMotion) // DS.5
         }
         .frame(minWidth: 800, minHeight: 600)
         .accessibilityIdentifier(Self.accessibilityID)
