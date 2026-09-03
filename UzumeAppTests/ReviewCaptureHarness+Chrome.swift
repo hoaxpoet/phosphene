@@ -9,9 +9,9 @@
 // by scripted publishers — the same seam `PlaybackView` uses — over a stand-in for the
 // live frame (the performed-light gradient, so the backdrop has something bright to
 // blur). Reduced motion on so the pulse and the spinner hold still; the live captures
-// beside these show them moving. The auto-hide delay never fires here, so each
-// capture is a settled state; the fade itself is a moment in an animation and is
-// captured live, not rendered.
+// beside these show them moving. The quiet timer never fires here (except for the
+// `chrome-quiet` scenario, which lets it), so each capture is a settled state; the
+// fade itself is a moment in an animation and is captured live, not rendered.
 
 import Audio
 import Combine
@@ -66,7 +66,7 @@ enum ChromeCaptureScenario {
         let paused = CurrentValueSubject<Bool, Never>(false)
         let toasts = ToastManager()
 
-        func makeViewModel() -> PlaybackChromeViewModel {
+        func makeViewModel(delay: any DelayProviding) -> PlaybackChromeViewModel {
             PlaybackChromeViewModel(
                 audioSignalStatePublisher: signal.eraseToAnyPublisher(),
                 currentTrackPublisher: track.eraseToAnyPublisher(),
@@ -78,7 +78,7 @@ enum ChromeCaptureScenario {
                 progressiveReadinessPublisher: readiness.eraseToAnyPublisher(),
                 currentSourcePublisher: source.eraseToAnyPublisher(),
                 isLocalFilePausedPublisher: paused.eraseToAnyPublisher(),
-                delay: NeverDelay()
+                delay: delay
             )
         }
     }
@@ -86,6 +86,8 @@ enum ChromeCaptureScenario {
     struct Scenario {
         let name: String
         let script: @MainActor (Feeds) -> Void
+        var showTrackInformation = true
+        var delay: any DelayProviding = NeverDelay()
         var afterBind: @MainActor (PlaybackChromeViewModel) -> Void = { _ in }
     }
 
@@ -144,7 +146,12 @@ enum ChromeCaptureScenario {
                 streaming(feeds)
                 feeds.toasts.enqueue(UzumeToast(severity: .fatal, copy: "No audio detected."))
             }),
-            Scenario(name: "chrome-hidden", script: streaming, afterBind: { $0.overlayVisible = false }),
+            // The Space toggle: the only way to hide the chrome outright after DS.6.
+            Scenario(name: "chrome-hidden", script: streaming, afterBind: { $0.toggleOverlay() }),
+            // DS.6: after inactivity — End session alone (an InstantDelay lets the timer fire).
+            Scenario(name: "chrome-quiet", script: localFile, delay: InstantDelay()),
+            // DS.6: track information off — no card, no artwork, the toggle reads "Show".
+            Scenario(name: "chrome-trackInfoHidden", script: localFile, showTrackInformation: false),
         ]
     }
 
@@ -153,11 +160,12 @@ enum ChromeCaptureScenario {
         try all().map { scenario in
             let feeds = Feeds()
             scenario.script(feeds)
-            let viewModel = feeds.makeViewModel()
+            let viewModel = feeds.makeViewModel(delay: scenario.delay)
             scenario.afterBind(viewModel)
             let chrome = PlaybackChromeView(
                 viewModel: viewModel,
                 toastManager: feeds.toasts,
+                showTrackInformation: .constant(scenario.showTrackInformation),
                 onSettings: {},
                 onEndSession: {}
             )
@@ -180,21 +188,37 @@ enum ChromeCaptureScenario {
         let card = AccessibilityLabels.trackInfoCardLabel(title: "Take Five", artist: "Dave Brubeck", preset: "Skein")
         let cardHint = String(localized: "a11y.trackInfoCard.hint")
         let settingsTip = String(localized: "playback.controls.settings.tooltip")
+        let settingsHint = String(localized: "a11y.playback.settings.hint")
         let endTip = String(localized: "playback.controls.endSession.tooltip")
+        let endHint = String(localized: "a11y.playback.endSession.hint")
+        let endQuietHint = String(localized: "a11y.playback.endSession.hint.quiet")
+        let showInfo = String(localized: "preparation.toggle_track_info.show")
+        let hideInfo = String(localized: "preparation.toggle_track_info.hide")
+        let showHint = String(localized: "a11y.playback.toggleTrackInfo.hint.show")
+        let hideHint = String(localized: "a11y.playback.toggleTrackInfo.hint.hide")
+        let preparing = String(localized: "playback.still_preparing")
         let preparingTip = String(localized: "playback.still_preparing.tooltip")
+        let toggleID = PlaybackControlsCluster.toggleTrackInfoID
+        let endID = PlaybackControlsCluster.endSessionID
         var rows = [
             "surface\tdeclared VoiceOver label\taccessibility identifier",
             "chrome (container)\t(no explicit label)\t\(PlaybackChromeView.accessibilityID)",
             "track info card\t\(card) — hint: \(cardHint)\t\(TrackInfoCardView.accessibilityID)",
-            "artwork slot\t(hidden from VoiceOver — the card's combined label carries the track)\t\(TrackInfoCardView.artworkSlotID)",
-            "orchestrator state pill\t(no label — \"Planned\" / \"Reactive\" read as plain text inside the card)\t(none)",
-            "progress dots\t\(String(localized: "a11y.progressDots.label")) — value: Track 3 of 6\t\(SessionProgressDotsView.accessibilityID)",
+            "artwork slot\t(hidden from VoiceOver — the card's combined label carries the track)"
+                + "\t\(TrackInfoCardView.artworkSlotID)",
+            "orchestrator state pill\t(removed — DS.6, D-241)\t(none)",
+            "progress dots\t\(String(localized: "a11y.progressDots.label")) — value: Track 3 of 6"
+                + "\t\(SessionProgressDotsView.accessibilityID)",
             "controls cluster (container)\t(no explicit label)\t\(PlaybackControlsCluster.accessibilityID)",
-            "settings button\t(no label — tooltip: \(settingsTip))\t(none)",
-            "end session button\t(no label — tooltip: \(endTip))\t(none)",
-            "still preparing indicator\t(no label — tooltip: \(preparingTip))\t(none)",
+            "toggle track info (shown)\t\(hideInfo) — hint: \(hideHint)\t\(toggleID)",
+            "toggle track info (hidden)\t\(showInfo) — hint: \(showHint)\t\(toggleID)",
+            "settings button\t\(settingsTip) — hint: \(settingsHint)\t(none)",
+            "end session button\t\(endTip) — hint: \(endHint)\t\(endID)",
+            "end session button (quiet)\t\(endTip) — hint: \(endQuietHint)\t\(endID)",
+            "still preparing indicator\t\(preparing) — hint: \(preparingTip)\t(none)",
             "listening badge\t\(String(localized: "a11y.listeningBadge.label"))\t\(ListeningBadgeView.accessibilityID)",
-            "local transport (container)\t(no explicit label — children read in order)\t\(LocalFileTransportBar.accessibilityID)",
+            "local transport (container)\t(no explicit label — children read in order)"
+                + "\t\(LocalFileTransportBar.accessibilityID)",
             "transport — stop\t\(String(localized: "playback.transport.stop.a11y"))\t(none)",
             "transport — previous\t\(String(localized: "playback.transport.prev.a11y"))\t(none)",
             "transport — play\t\(String(localized: "playback.transport.play.a11y"))\t(none)",
@@ -222,6 +246,8 @@ enum ChromeCaptureScenario {
             (TrackInfoCardView.accessibilityID, "TrackInfoCardView"),
             (TrackInfoCardView.artworkSlotID, "TrackInfoCardView"),
             (PlaybackControlsCluster.accessibilityID, "PlaybackControlsCluster"),
+            (PlaybackControlsCluster.toggleTrackInfoID, "PlaybackControlsCluster (new — DS.6)"),
+            (PlaybackControlsCluster.endSessionID, "PlaybackControlsCluster (new — DS.6)"),
             (SessionProgressDotsView.accessibilityID, "SessionProgressDotsView"),
             (ListeningBadgeView.accessibilityID, "ListeningBadgeView"),
             (LocalFileTransportBar.accessibilityID, "LocalFileTransportBar"),
