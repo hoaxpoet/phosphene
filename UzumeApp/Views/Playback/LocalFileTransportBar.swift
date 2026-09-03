@@ -1,19 +1,19 @@
-// LocalFileTransportBar — LF.5.fix D-LF5-3 + GAP C redesign (2026-05-28).
+// LocalFileTransportBar — LF.5.fix D-LF5-3; GAP C redesign (2026-05-28); DS.6 retokenized.
 //
-// Hover-revealed transport for local-file sessions. Per .impeccable.md design
-// context: coral is action (the play/pause focal disc); purple is ambient
-// presence (soft purple-tinted shadow behind the bar); skip/stop glyphs sit
-// at `--text-muted`, brighten to `--text-body` on hover. Custom geometric
-// Shape glyphs replace SF Symbols so the bar stops reading as Spotify
-// chrome. Solid `--surface-raised` replaces `.ultraThinMaterial` — kills the
-// glassmorphism AI tell. The coral disc is the 10% focal weight per the
-// 60-30-10 hierarchy rule.
+// Transport for local-file sessions only — it renders because Uzume owns this playback
+// (COMPONENTS.md §LocalPlaybackTransport); a streaming session never sees it. Per the
+// design system (DESIGN.md §Colors): violet is the interaction accent, so the play/pause
+// disc is `UzumeAppColor.accent`; skip/stop glyphs sit at `textTertiary` and brighten
+// to `textPrimary` on hover. The custom geometric Shape glyphs stay — they exist so the
+// bar does not read as Spotify chrome. The bar is a solid `surfaceRaised` (not the
+// blurred backdrop: an opaque surface owes the live frame no contrast measurement),
+// bordered in `line`, and because it genuinely floats over the frame it takes the one
+// shadow the system publishes, `--shadow-raised` — no glow (DESIGN.md §Don't).
 //
-// Brand colour values come from `DashboardTokens` (Shared module) which
-// already maps the `.impeccable.md` OKLCH spec to sRGB NSColors — single
-// source of truth for the palette across SwiftUI chrome.
+// DS.1 moved the disc to violet; DS.6 finished the bar. Every colour here is a token
+// from `UzumeTokens+App.swift`; the Phosphene-era dashboard palette this bar used to
+// draw from is now confined to the diagnostic dashboard.
 
-import Shared
 import SwiftUI
 
 // MARK: - LocalFileTransportBar
@@ -63,24 +63,24 @@ struct LocalFileTransportBar: View {
         .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: UzumeAppRadius.lg, style: .continuous)
-                .fill(Color(nsColor: DashboardTokens.Color.surfaceRaised))
+                .fill(UzumeAppColor.surfaceRaised)
                 .shadow(
-                    color: Color(nsColor: DashboardTokens.Color.purpleGlow).opacity(0.55),
-                    radius: 28,
+                    color: UzumeAppShadow.raisedColor,
+                    radius: UzumeAppShadow.raisedRadius,
                     x: 0,
-                    y: 0
+                    y: UzumeAppShadow.raisedY
                 )
         )
         .overlay(
             RoundedRectangle(cornerRadius: UzumeAppRadius.lg, style: .continuous)
-                .stroke(Color(nsColor: DashboardTokens.Color.border).opacity(0.6), lineWidth: 1)
+                .stroke(UzumeAppColor.line, lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(Self.accessibilityID)
     }
 }
 
-// MARK: - PlayPauseTransportButton (coral disc — primary action)
+// MARK: - PlayPauseTransportButton (violet disc — the primary action)
 
 private struct PlayPauseTransportButton: View {
 
@@ -111,7 +111,7 @@ private struct PlayPauseTransportButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .animation(UzumeAppMotion.easeOut(UzumeAppMotion.feedback), value: isHovered)
         .help(tooltip)
         .accessibilityLabel(a11yLabel)
     }
@@ -131,9 +131,7 @@ private struct MutedTransportButton: View {
     var body: some View {
         Button(action: action) {
             glyph
-                .fill(Color(nsColor: isHovered
-                    ? DashboardTokens.Color.textBody
-                    : DashboardTokens.Color.textMuted))
+                .fill(isHovered ? UzumeAppColor.textPrimary : UzumeAppColor.textTertiary)
                 .frame(width: 16, height: 16)
                 .frame(width: 30, height: 30)
                 .background(
@@ -144,7 +142,7 @@ private struct MutedTransportButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .animation(UzumeAppMotion.easeOut(UzumeAppMotion.feedback), value: isHovered)
         .help(tooltip)
         .accessibilityLabel(a11yLabel)
     }
