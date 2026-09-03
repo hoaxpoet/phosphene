@@ -10,6 +10,38 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-09-03-152625] DS.5 — Ready becomes the arrival (M7 passed)
+
+**Ready is the payoff of the cave, not a room to wait in.** The aperture the listener watched
+widen through preparation is fully open behind the ready screen, and starting the show is the
+camera moving into it: the real aperture under a burst of streaks racing outward from the opening,
+the screen filling with light, a brief hold, then the first preset already running underneath.
+Same push for every source; only the trigger differs.
+
+**Two ready screens.** Streaming keeps a real waiting room — "Ready. Press play in Spotify / Apple
+Music.", first-audio detection and the 90 s timeout unchanged — and gains **Begin now**, a bordered
+button next to End session that starts without waiting. Local files get no waiting room: a
+**3-2-1 count** over the open cave, no app named, no timeout, and the music starts at zero — until
+now local audio started in the same instant as `.ready`, and `ContentView` sent local sessions
+straight to playback (the ready view it would have shown asked for "your music app").
+
+**The plan preview is gone** — the sheet, the `P` shortcut, "Preview the plan" on the ready screen
+and its strings. DS.4's surprise model already ruled it out; this is the increment that executes
+that. The pulsing border goes with it.
+
+**Measured.** Flash safety across the whole push in the Mitosis idiom: maxΔ/frame **0.0174**
+against the 0.05 gate. Live capture of the built app: `docs/reviews/DS.5/after/`.
+
+**From Matt's first M7 pass (same day).** Ready self-advanced with no audio: the system-audio tap
+had only ever been installed after playback began, so the "first audio" detector had always
+watched a default value and Ready had always self-advanced a quarter-second in — nobody had
+looked at the screen long enough to notice (BUG-112). The tap now comes up at Ready and only what
+it actually hears counts. And the copy over the cave now sits on a scrim, not a shadow.
+
+**Design pass + prototype:** `docs/reviews/DS.5/DESIGN.md`. Two prototype rounds were rejected
+before the build — a redrawn aperture, then a uniform zoom that read as the light coming out rather
+than the viewer going in. Decision: D-240.
+
 ### [dev-2026-09-02-160000] DS.4 — the preparation screen becomes the overture (M7 pending)
 
 **The wait is something you watch, and the listener chooses how.** `PreparationProgressView` is

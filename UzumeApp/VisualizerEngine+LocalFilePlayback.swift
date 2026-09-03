@@ -9,10 +9,12 @@
 //      cached data SessionManager then stores into the in-memory `StemCache` and
 //      whose synthetic identity drives plan + state transitions.
 //
-//   2. `.ready` observer — when `sessionManager.state == .ready` AND
-//      `currentSource` is a local file, the engine installs the cached BeatGrid
-//      via `resetStemPipeline(for:)`, starts the LF audio router, and advances
-//      the session to `.playing`.
+//   2. `handleLocalFileReady()` — once the session is `.ready` with a local-file
+//      `currentSource`, installs the cached BeatGrid via `resetStemPipeline(for:)`,
+//      starts the LF audio router, and advances the session to `.playing`. Until
+//      DS.5 the engine's `.ready` observer called this directly; now
+//      `LocalFileCountdownView` calls it when its 3-2-1 reaches zero (D-240), so
+//      the count runs over silence and the music starts with the show.
 //
 // This replaces the LF.1 / LF.2 / LF.3 entry points
 // (`startLocalFilePlayback(url:)`, `prepareAndStartLocalFilePlayback(url:)`,
@@ -101,11 +103,11 @@ extension VisualizerEngine: LocalFilePreparing {
         }.value
     }
 
-    // MARK: - .ready observer (called from the engine init's Combine sub)
+    // MARK: - Local-file start (called when the Ready countdown reaches zero)
 
-    /// Called from the engine's `sessionManager.$state` subscription when the
-    /// state machine transitions to `.ready` AND `currentSource` is a local
-    /// file (LF.4 single-file or LF.5 multi-file / folder / playlist). Installs
+    /// Called by `ContentView` when `LocalFileCountdownView` finishes its count
+    /// (DS.5 / D-240), with the state machine at `.ready` and `currentSource` a
+    /// local file (LF.4 single-file or LF.5 multi-file / folder / playlist). Installs
     /// the cached BeatGrid (cache lookup hits the in-memory `StemCache` that
     /// SessionManager populated during preparation), starts the LF audio router
     /// with the **first** URL in the queue, and advances the session to

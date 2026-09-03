@@ -1,0 +1,11 @@
+surface	declared VoiceOver label	accessibility identifier
+ready headline (streaming)	Ready.	uzume.ready.headline
+press play — Apple Music	Press play in Apple Music.	(none)
+press play — Spotify	Press play in Spotify.	(none)
+press play — no source	Press play in your music app.	(none)
+begin now button	Begin now — hint: Starts the show without waiting for the music.	uzume.ready.beginNow
+end session button (streaming)	End session	uzume.ready.endSession
+countdown numeral — 3 / 2 / 1	Starting in 3 / Starting in 2 / Starting in 1 (each announced)	uzume.ready.countdown
+end session button (countdown)	End session	uzume.ready.countdown.endSession
+preview the plan button	(removed — DS.5, D-240)	(none)
+pulsing border	(removed — DS.5)	(none)

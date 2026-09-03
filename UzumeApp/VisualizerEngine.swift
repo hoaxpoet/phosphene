@@ -1082,10 +1082,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         )
 
         // Trigger plan construction whenever the session reaches .ready.
-        // For LF sessions (`currentSource.isLocalFile`), `handleLocalFileReady()`
-        // installs the cached BeatGrid + starts the LF audio router + advances
-        // the session to `.playing` directly. For streaming sessions, `buildPlan()`
-        // produces the planned-session structure.
+        // For streaming sessions, `buildPlan()` produces the planned-session
+        // structure. LF sessions (`currentSource.isLocalFile`) do nothing here:
+        // DS.5 (D-240) runs a 3-2-1 countdown over silence first, and it is
+        // `LocalFileCountdownView` that then calls `handleLocalFileReady()` — the
+        // cached BeatGrid install + LF audio router start + advance to `.playing`.
         // Also reset currentSessionPlanSeed on .connecting so each session gets a fresh seed.
         // R3.1/R3.2: bridge the child surfaces' change signals into the engine's.
         nowPlayingBridgeCancellable = nowPlaying.objectWillChange
@@ -1122,12 +1123,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // field remains nil until handleLocalFileReady commits it.
                     self.lastStartedLocalFilePlaybackURL = nil
                 }
-                if newState == .ready {
-                    if self.sessionManager.currentSource?.isLocalFile == true {
-                        self.handleLocalFileReady()
-                    } else {
-                        self.buildPlan()
-                    }
+                if newState == .ready, self.sessionManager.currentSource?.isLocalFile != true {
+                    self.buildPlan()
+                    // DS.5 M7 (D-240 §8): the tap comes up here, not at playback, so
+                    // Ready's first-audio detector hears real audio instead of the
+                    // surface's default.
+                    self.startListeningForFirstAudio()
                 }
                 if newState == .ended {
                     // LF.5.fix.2-FU2: halt the stem analyzer timer BEFORE

@@ -58,7 +58,7 @@ The person invited by the Curator to experience the playlist and visuals. They w
 | `.idle` | `IdleView` | Uzume logo, "Connect a playlist" CTA, "Start listening" (ad-hoc fallback) | Pick a source, start ad-hoc mode, open settings, **Open Local File…** (`File → ⌘O` or drag-and-drop) |
 | `.connecting` | `ConnectingView` | Per-connector spinner with honest copy ("Asking Apple Music for your playlist…") | Cancel |
 | `.preparing` | `PreparationProgressView` | Track list with per-track status + aggregate progress + partial-ready CTA | Cancel, "Start now" (when progressive-ready), retry individual track |
-| `.ready` | `ReadyView` (streaming) / `PlaybackView` (local file) | Streaming: "Press play in [Apple Music / Spotify / your music app]" + plan-preview affordance (§6.2). Local file: routes to `PlaybackView` immediately (engine controls playback). | Streaming: preview plan, modify plan, return to preparation, cancel session. Local file: same as `.playing`. |
+| `.ready` | `ReadyView` (streaming) / `LocalFileCountdownView` (local file) | The cave from `.preparing`, fully open, behind both (§6). Streaming: "Ready. Press play in [Apple Music / Spotify]." Local file: a 3-2-1 count over silence, then Uzume starts the audio itself (§6.2). | Streaming: "Begin now", end session; first audio advances on its own. Local file: end session (cancels the count). |
 | `.playing` | `PlaybackView` | Visuals full-bleed + auto-hiding overlay chrome + hidden recovery shortcuts | Toggle overlay, fullscreen, feedback nudges, preset nudges, re-plan, end session |
 | `.ended` | `EndedView` | Summary card: track count played, session duration, "Open sessions folder" | Start new session, quit |
 
@@ -300,54 +300,70 @@ Reactive mode is `DefaultReactiveOrchestrator` — the ad-hoc fallback. This gua
 
 ## 6. Ready + Handoff
 
-The transition from `.ready` to `.playing` is where the Curator commits — and where trust has to be earned. v0.1 assumed the Curator would press play in their music app without wanting to see what was coming. In practice, especially for unfamiliar playlists or mid-session re-plans, Curators want to preview the plan before pressing play.
+**Ready is the arrival, not a waiting room (DS.5, D-240).** The cave that was shut, cracked, and
+widening all through `.preparing` (§5.2) is fully open behind the ready screen, and reaching
+`.playing` is the camera moving into it. There is one aperture and one camera push; what differs
+by source is what the listener is asked to do while it stands open — and for local files that is
+nothing at all.
 
-### 6.1 `ReadyView` layout
+|  | Streaming (Apple Music / Spotify) | Local files |
+|---|---|---|
+| View | `ReadyView` | `LocalFileCountdownView` |
+| Asked of the listener | Press play in the named app | Nothing — wait three beats |
+| What ends the wait | Real audio detected (§6.3), or **"Begin now"** | The count reaching zero |
+| Copy naming an external app | Yes — the source, never "your music app" for a known source | Never — Uzume owns local transport (§7.5) |
+| Timeout (§6.4) | 90 s, unchanged | None — nothing external can fail to arrive |
 
-Full-bleed but muted. The first-track's preset runs as a background at 0.3× opacity, at silent-mode baseline. Overlaid:
+`ContentView` routes `.ready` to `readyView`, which picks the view on
+`SessionManager.currentSource?.isLocalFile` — the LF.4 shortcut that sent local `.ready` straight
+to `PlaybackView` is gone. `ReadyViewModel` takes the `SessionOrigin`, not just a
+`PlaylistSource` (`nil` for every local origin, which would have read "press play in your music
+app" had a local session ever reached the view).
 
-**Headline:** "Ready. Press play in [Apple Music / Spotify / your music app]."
+### 6.1 `ReadyView` (streaming)
 
-The detected source determines the trailing word. If the user came in via local folder, it's "your music app."
+Full-bleed `OpenAperture` — the same `ApertureScene` as §5.2 at openness 1, still churning with the
+playlist's character. Copy sits low in the frame on `ApertureScrim`, a canvas-to-transparent
+gradient over the lower part of the frame, so the words are always on dark whatever the cave is
+doing (Matt's M7: a text halo is not contrast):
 
-**Subtext:** track listing summary — "Planned [N] tracks, about [M] minutes."
+**Headline:** "Ready." **Subtext:** "Press play in [Apple Music / Spotify]." Ad-hoc and any
+sourceless session fall back to "your music app". **Plan summary** when a plan exists: "Planned
+[N] tracks, about [M] min" — a count and a length, never which preset or what comes next (D-238's
+surprise model).
 
-**Secondary affordance:** `Preview the plan` button — opens the plan-preview panel described in §6.2. Non-modal; dismissible.
+**Two bordered buttons of equal weight:** `End session` and `Begin now` (`uzume.ready.beginNow`,
+hint *"Starts the show without waiting for the music."*). "Begin now" advances to `.playing`
+immediately; the visuals run at their silent baseline until audio arrives (§7.5). It is a real
+button, not a link — DS.4a established that anything quieter does not read as an affordance.
 
-**Ambient indicator:** a soft pulsing border on the window to draw attention without being obnoxious.
+No "Preview the plan", no plan sheet, no pulsing border: the plan preview violated D-238's
+surprise model and is deleted (views, view model, the `P` shortcut, strings); the open cave is the
+ambient signal.
 
-### 6.2 Plan preview
+### 6.2 `LocalFileCountdownView` (local files)
 
-Tappable compact panel showing the orchestrator's planned sequence:
+The same `OpenAperture`, with a single large numeral over the mouth of the cave — **3, 2, 1**,
+one second each — and a bordered `End session` below. No headline, no app name, no timeout.
 
-```
-━━━━━ PLAN PREVIEW ━━━━━
-  1. Blossom                   organic      3:24
-       ↓ crossfade 1.2s
-  2. Volumetric Lithograph     fluid        4:01
-       ↓ cut at structural boundary
-  3. Gossamer                  organic      2:48
-       ↓ crossfade 0.8s
-  ...
+The count runs over silence: local audio does not start until the count reaches zero, when the
+view calls `VisualizerEngine.handleLocalFileReady()` (cached BeatGrid, LF audio router, advance to
+`.playing`). Until DS.5 the engine's `.ready` observer did that itself, in the same tick as
+`.ready`, which is why this screen never visibly existed before. `End session` during the count
+cancels it; nothing starts.
 
-          [Regenerate Plan]  [Modify]
-```
-
-**Row tap:** loops a 10-second preview of that preset at silent-mode baseline with the track's pre-analyzed stems driving it. Curator can sample what each choice will look like without starting the session.
-
-**Long-press / right-click row:** reveals "Swap preset for this track" — a compatible-preset picker. Any manual pick is sticky for the session.
-
-**Regenerate Plan:** re-runs `DefaultSessionPlanner.plan()` with a different random seed. Preserves any manually-locked picks. Unlocked tracks get re-scored and re-assigned. Cost: <1 second. Useful when the Curator doesn't like the feel of the plan.
-
-**Modify:** opens a fuller editor where the Curator can drag to reorder, swap transitions (cut vs crossfade), or tag tracks with mood/energy overrides that re-feed the orchestrator.
-
-Plan preview and modification are optional — pressing play works fine without ever opening the panel. But they're available when the Curator wants them, which answers the v0.2-revision concern: *does the Curator trust that the output will be solid?* They don't have to trust. They can verify.
+**Accessibility:** each beat posts an `AccessibilityNotification.Announcement` — *"Starting in
+3"* — and the numeral carries the same string as its label (`uzume.ready.countdown`), so
+VoiceOver hears the count rather than a changing digit. Under reduced motion the numeral changes
+without its roll; the count itself is information and is never removed.
 
 ### 6.3 First-audio autodetect
 
 `AudioInputRouter` signal transition from `.silent` → `.active` sustained for >250 ms triggers automatic advance to `.playing`. No user click needed.
 
-Fallback: if the user taps anywhere on `ReadyView`, show a one-shot hint: "Open your music app and press play." Don't advance on tap — the audio must actually start flowing.
+**The tap is installed at `.ready`, not at playback (DS.5 M7, BUG-112, D-240 §8).** Until then it was installed only by `PlaybackView`, so during Ready the detector watched the surface's default `.active` and Ready self-advanced 250 ms in — this rule had never actually run. `VisualizerEngine.startListeningForFirstAudio()` resets the surface to `.silent` (nothing heard yet), preflights the Screen Recording grant, and installs the tap; `startAudio()` at playback leaves a running tap alone.
+
+Fallback: if the user taps anywhere on `ReadyView`, show a one-shot hint: "Open your music app and press play." Don't advance on tap — the audio must actually start flowing. ("Begin now" is the deliberate way past this, §6.1.)
 
 ### 6.4 Ready timeout
 
@@ -355,7 +371,17 @@ If no audio is detected within 90 s of entering `.ready`, overlay:
 
 > "Haven't heard anything yet. Is the music playing?"
 
-Two CTAs: "Retry" (stays in `.ready`, audio detection re-primes), "End session" (advances to `.ended`).
+Two CTAs: "Retry" (stays in `.ready`, audio detection re-primes), "End session" (advances to `.ended`). Streaming only — the local-file count has nothing to time out.
+
+### 6.5 The camera push (`.ready → .playing`)
+
+On entry to `.playing`, `PlaybackArrivalOverlay` (PlaybackView Layer 7) runs `ArrivalPushScene`
+over the already-live `MetalView`: the real `ApertureScene` scaled modestly toward its own centre,
+under a hundred streaks racing outward from the opening's centre with near/far parallax — what
+reads as the viewer moving in, where a plain zoom read as the light coming out — then a whiteout
+(2.7 s push), a 0.52 s hold filled with light, and a 0.6 s fade uncovering the first preset. Same
+push for both sources; the trigger is the only difference. Flash-gated in the D-157 idiom
+(maxΔ/frame 0.0174, gate 0.05). Reduced motion: a still hold, then the same fade.
 
 ---
 
@@ -444,7 +470,7 @@ Combined reference for shortcuts defined in §7.4 plus general playback controls
 | `D` | Debug overlay toggle (developer-facing — shows FFT, stems, frame timing, orchestrator state) |
 | `Esc` | Exit fullscreen if fullscreen, else end session (with confirm) |
 
-Shortcuts are listed in a help overlay accessible via `Shift+?` (to avoid conflict with the plan-preview shortcut; final key binding TBD in Increment U.6).
+Shortcuts are listed in a help overlay accessible via `Shift+?`. (The `P` plan-preview shortcut was removed at DS.5, D-240.)
 
 ### 7.8 Multi-display awareness
 
@@ -538,7 +564,7 @@ This is not a forced prompt — it's a hint. Dismisses after 5 seconds. Once per
 
 ### 8.3 Plan revision (pre-play and mid-session)
 
-The plan preview from §6.2 is accessible mid-session via `?`. Overlays on top of the current visuals with the current position highlighted. Curator can:
+*The pre-play plan preview and its mid-session overlay were removed at DS.5 (D-240): showing which preset each track will get is the "emotional arc across the session" D-238's surprise model forbids. The re-plan (`R`) and reshuffle shortcuts in §7.7 remain; what follows is the pre-DS.5 design of the overlay, kept for the record.* Curator could:
 
 - Tap any upcoming track row to see its preset's 10-second preview (on the controller window, if in Mode B, or overlaid at reduced opacity if Mode A)
 - Long-press any upcoming row to swap presets
@@ -573,9 +599,9 @@ Returns to `.idle`. Typical use: change playlist, change source, or abandon the 
 
 Before pressing play in the music app, the Curator may want to change their mind about the plan. `ReadyView` (§6.1) supports this without needing to "reset":
 
-- **Preview the plan** (§6.2) — see what's coming, lock specific presets, regenerate unlocked ones
+- ~~**Preview the plan** — see what's coming, lock specific presets, regenerate unlocked ones~~ *(removed at DS.5, D-240 — forbidden by D-238's surprise model)*
 - **"Not this playlist after all"** — back button returns to `ConnectorPickerView` without discarding the prepared cache. If the user comes back with a different playlist, any overlapping tracks reuse their cached analysis.
-- **"Let me just preview"** — tap any track in the plan preview to auto-play a 10-second preset demo
+- ~~**"Let me just preview"** — tap any track in the plan preview to auto-play a 10-second preset demo~~ *(removed with the plan preview)*
 
 v0.1's `ReadyView` only had pressure forward (press play, we're ready). v0.2 supports both directions.
 
@@ -592,8 +618,7 @@ New user-facing capabilities on existing engine components. All have correspondi
 - `SessionManager.replanSession()` — preserves prepared tracks, re-runs planner with different seed. Depends on existing Increment 4.3 planner.
 - `SessionManager.reanalyzeAndReplan()` — full restart from `.preparing`. Depends on Increment 2.5.3 cache invalidation.
 - `LiveAdapter.applyFeedback(_:)` — accepts `FeedbackNudge` enum (`.moreLikeThis`, `.lessLikeThis`, `.reshuffleUpcoming`). Extends Increment 4.5.
-- `PlanPreviewView` — new view renders the orchestrator's `PlannedSession` as a tappable timeline.
-- `PlanPreviewViewModel` — coordinates preset-preview playback and swap/regenerate actions.
+- ~~`PlanPreviewView` / `PlanPreviewViewModel`~~ — built at U.5, deleted at DS.5 (D-240).
 
 ---
 
@@ -759,7 +784,7 @@ In addition: the orchestrator's family-repeat penalty (Increment 4.1) and fatigu
 
 ### 12.5 Dynamic Type
 
-All text in `SettingsView`, `PreparationProgressView`, `IdleView`, `PermissionOnboardingView`, `ConnectorPickerView`, `ReadyView`, `PlanPreviewView`, and overlay chrome respects Dynamic Type sizing. `PlaybackView` render surface is fixed (it's Metal).
+All text in `SettingsView`, `PreparationProgressView`, `IdleView`, `PermissionOnboardingView`, `ConnectorPickerView`, `ReadyView`, `LocalFileCountdownView` (its End session button; the numeral is a display element sized to the frame like the cave, not text), and overlay chrome respects Dynamic Type sizing. `PlaybackView` render surface is fixed (it's Metal).
 
 ### 12.6 Color-blindness
 
@@ -790,9 +815,8 @@ UzumeApp/
       PreparationProgressHeader.swift
       PreparationActionBar.swift
     Ready/
-      ReadyView.swift
-      PlanPreviewView.swift           → §6.2
-      PlanPreviewRow.swift
+      ReadyView.swift                 → §6.1 (streaming)
+      LocalFileCountdownView.swift    → §6.2 (local files)
     Playback/
       PlaybackView.swift
       OverlayChromeView.swift
@@ -823,7 +847,6 @@ UzumeApp/
     SessionStateViewModel.swift    → observes SessionManager
     PreparationViewModel.swift     → observes SessionPreparer via PreparationProgressPublishing
     PlaybackOverlayViewModel.swift → tracks overlay visibility + fade timers
-    PlanPreviewViewModel.swift     → §6.2 / §8.3 plan preview and swap/regenerate
     LiveAdaptationViewModel.swift  → §7.4 feedback nudge dispatch
     SettingsViewModel.swift        → persists via UserDefaults
   Copy/
@@ -843,7 +866,7 @@ No view file exceeds 200 lines. ViewModels are `@MainActor` subclasses of `Obser
 | U.2 | Permission onboarding | Permission flow working + 4 tests |
 | U.3 | Playlist connector picker | Three connector flows end-to-end |
 | U.4 | Preparation progress UI | Per-track status + `PreparationProgressPublishing` protocol |
-| U.5 | Ready + plan preview | `PlanPreviewView`, first-audio autodetect, preset-preview loop |
+| U.5 | Ready + plan preview | `PlanPreviewView` (deleted at DS.5, D-240), first-audio autodetect, preset-preview loop |
 | U.6 | In-session chrome | Auto-hide chrome + keyboard shortcuts (including live-adaptation) |
 | U.7 | Error taxonomy + toast system | Every row in §9 table has `UserFacingError` case |
 | U.8 | Settings panel | All four settings groups persisted, including Output Display picker |
@@ -888,7 +911,7 @@ These are UX-level decisions that are non-obvious; append them to `DECISIONS.md`
 - **UX-6: Every user-facing string is externalized even in English-only v1.** Future localization is additive.
 - **UX-7: Debug overlay is separate from user overlay chrome.** Never shown to users by default.
 - **UX-8: Preparation time tolerance is 2 minutes, not 30 seconds.** Curators will wait if Uzume earns the time. Progressive-ready CTA surfaces at 3 tracks; 90 s and 2 min escapes surface reactive-mode alternatives.
-- **UX-9: Pre-play plan preview is a first-class affordance.** Curators do not have to blind-trust the orchestrator. They can verify.
+- ~~**UX-9: Pre-play plan preview is a first-class affordance.** Curators do not have to blind-trust the orchestrator. They can verify.~~ **Retired at DS.5 (D-240):** D-238's surprise model forbids exposing upcoming content; trust is earned by the show, not verified in advance.
 - **UX-10: Live adaptation is silent by default.** Feedback nudges (`+` / `-` / `.`) don't surface viewer-visible acknowledgments. The Active Viewer experiences continuity; the Curator controls from behind the curtain.
 - **UX-11: Dedicated output display is a first-class flow, not a workaround.** Settings → Output display, `⌘Shift+F` shortcut, display-disconnect resilience. Two-window controller + output is deferred to v2 but informs the v1 design.
 - **UX-12: Uzume never routes audio.** Output device selection is the source app's responsibility. Uzume documents this once in Settings rather than surfacing audio-routing controls it would not actually control.
@@ -978,7 +1001,7 @@ As a physical object: a Braun audio component redesigned today — precise, purp
 |---|---|---|---|
 | Display / headings | Clash Display | Fontshare (free) | 500–600 |
 | Body / UI | Epilogue | Google Fonts (free) | 400–500 |
-| Monospace (debug, plan preview) | Berkeley Mono or SF Mono | Licensed / System | — |
+| Monospace (debug) | Berkeley Mono or SF Mono | Licensed / System | — |
 
 **Type scale (fixed for app UI — no fluid clamp in product interfaces):**
 
@@ -998,7 +1021,7 @@ As a physical object: a Braun audio component redesigned today — precise, purp
 
 2. **The wait is ceremonial, not transactional.** Preparation is not a loading screen — it's the room going quiet before a performance. Per-track status should feel like watching a crew set the stage.
 
-3. **Whitespace as signal; density as exception.** Default state is spacious. When density appears (track list, plan preview, debug overlay), it signals important data. The contrast between sparse and dense is itself information.
+3. **Whitespace as signal; density as exception.** Default state is spacious. When density appears (track list, debug overlay), it signals important data. The contrast between sparse and dense is itself information.
 
 4. **Color carries meaning — never decorate with it.** Purple for ambient presence. Coral for energy and action. Teal for precision and data. A surface is never purple "to look good" — it's purple because something is in session.
 

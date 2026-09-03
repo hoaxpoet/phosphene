@@ -77,9 +77,85 @@ playback chrome retokenized in place — never a parallel `CuratorControlSurface
 **DS.7** `PerformancePreflight` once its integration point exists. Steps 2–7 change
 behaviour or hierarchy and each needs its own review; DS.1 deliberately does not.
 **DS.2** ✅ 2026-09-01 (D-233), M7 approved. **DS.3** ✅ 2026-09-01 (D-234, D-235) + **DS.3a** (D-236, silence is fatal) + **DS.3b** (D-237, the banner severity split) — both called by Matt at the M7 hard stop; merged as [#188](https://github.com/hoaxpoet/uzume/pull/188) (`45b002ab`).
-**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all; see the entries below.
+**DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all. **DS.5** design pass 2026-09-02 (`docs/reviews/DS.5/DESIGN.md`) + camera-push prototype; ✅ **2026-09-03 (D-240), M7 passed** — two ready experiences over the open cave, one camera push into it, plan preview deleted; the M7 found that Ready's first-audio autodetect had never listened (BUG-112, fixed same day); see the entries below.
 
 ## Recently Completed
+
+### Increment DS.5 — Ready becomes the arrival ✅ (2026-09-03, D-240, M7 passed)
+
+**Done-when:** reaching `.ready` is the aperture opening all the way and the camera moving into
+it; a local-file session never asks the listener to press play in an app that does not exist; the
+plan preview is gone. **Status: ✅ M7 passed live 2026-09-03** — Matt, after the two same-day
+fixes from his first pass (BUG-112 + the scrim): *"Ready waited for Spotify this time, copy reads
+fine. Push it."*
+
+**Design pass first** (`docs/reviews/DS.5/DESIGN.md`, 2026-09-02), then a browser prototype of the
+one piece with no precedent — the camera push — which Matt rejected twice before approving:
+a redrawn approximation of the aperture (*"I literally just want you to go from the last frame of
+the preparing graphic and move the camera forward"*), then a uniform zoom on the real frame (*"It
+looks like the aperture is coming out, not the camera moving into it"*). The fix both times was
+the same lesson: use the real production math, and model the perception (a flat scale has no
+parallax; streaks racing past a fixed vanishing point do). *"Looks right, build it for real."*
+
+**Built, in order.** (1) `ApertureColor.swift` — the aperture's colour math extracted so the push
+shares it rather than a driftable copy; `ApertureScene.RGB`/`.Palette` become typealiases, no
+behaviour change. (2) `ArrivalPushScene` + `ArrivalTransitionView` — the real `ApertureScene`
+under a 100-streak radial burst, whiteout, 0.52 s hold, 0.6 s fade uncovering the already-live
+`MetalView`; reduced motion holds still then fades. (3) `PlaybackArrivalOverlay` as `PlaybackView`
+Layer 7, one line at the call site. (4) `OpenAperture` — the cave at openness 1 behind both ready
+screens. (5) `ReadyView` rebuilt for streaming: source-named copy, "Begin now" (bordered, same
+weight as End session), detector and timeout unchanged, `ReadyViewModel` now takes `SessionOrigin?`
+so it knows local from streaming. (6) `LocalFileCountdownView` — 3-2-1 over the open cave, each
+beat announced; `ContentView` routes on `currentSource?.isLocalFile`. (7) The engine's `.ready`
+observer no longer starts local audio: `LocalFileCountdownView` calls `handleLocalFileReady()` at
+zero, so the count runs over silence — and `ContentView`'s LF.4 shortcut routing local `.ready`
+straight to `PlaybackView` is removed, which the design doc's code reading had missed entirely
+(see Transferable (5)). **(9) From Matt's M7, same day (session `2026-09-03T15-58-14Z`):** Ready
+self-advanced with `tap RMS 0.000` — the tap had only ever been installed after `.playing`, so the
+first-audio detector had always watched the surface's default `.active` (BUG-112). The engine's
+`.ready` sink now calls `startListeningForFirstAudio()` (reset to `.silent`, preflight, tap up)
+and `startAudio()` leaves a running tap alone. And `ApertureScrim` under the copy on both ready
+screens, replacing the text halo Matt flagged for contrast. (8) Plan preview deleted — four views/VM, the `PlaybackView`
+sheet, the `P` shortcut, `onShowPlanPreview` through the router and registry, every `plan_preview.*`
+string, two test files; `ReadyPulsingBorder` retired with it. `PlaybackView` came back under the
+400-line ceiling, so the lint directive the camera-push commit had added is gone again.
+
+**Evidence.** `ArrivalPushSceneTests` — progress 0 matches the bare aperture; progress 1 is light
+(luma > 0.85); flash across the full push maxΔ/frame **0.0174** (gate < 0.05, D-157). Live capture
+of the real build: `docs/reviews/DS.5/after/arrival-*.png` (push → streak burst → whiteout).
+`ReadyViewModelTests` gains the local-origin and "Begin now" cases. Suite green (see the closeout
+block); the two `SpotifyConnectionViewModel` retry-backoff tests flake under full-suite load and
+pass in isolation — pre-existing, filed as a separate task.
+
+**Corrected in the design doc.** Its forecast that a literal camera move would need a GPU pass
+"closer to how the real preset renderer works" was wrong; the streak burst over the live 2D scene
+sells the move at zero cost to the preset pipeline. The doc now says what was built.
+
+**Transferable.** (1) Two prototype rejections in one afternoon, both fixed by re-deriving from the
+real artifact rather than tuning an approximation — the prototype must render the production
+math, not a lookalike. (2) A blind full-display `screencapture` loop caught the listener's own
+unrelated screen when the secondary display switched Spaces mid-loop; capture the window, or poll
+the accessibility tree for the element you are waiting on, never the display. (3) A `private`
+member is file-scoped even from an extension of the same type — cross-file helpers take the value
+as a parameter. (4) A scaled `.largeTitle` rasterises blurry — the harness capture showed a pixelated "3";
+a display-sized numeral is laid out at its real size (NSFont from the frame's short side),
+which is what `DynamicTypeRegressionTests`' `.system(size:)` ban is not about. (5) **Read the
+router, not just the view.** The design pass said a local-file session "shows 'Press play in your
+music app'"; it never reached `ReadyView` — `ContentView` sent local `.ready` straight to
+`PlaybackView`. The first live run of the built countdown showed it: no count, the push at
+`.ready`, a flat line for 95 s because nothing called `handleLocalFileReady()`. Twelve unit tests
+and a harness render were green the whole time; only running the build found it. (6) **A screen
+nobody looks at hides its own bugs.** U.5's "press play and it starts" autodetect never listened
+— no tap existed during Ready — and it took Ready becoming a screen worth watching for anyone to
+see it self-advance. When a state becomes visible for the first time, re-verify what it claims to
+do, not just what it now looks like.
+
+**Follow-ups.** `uzume-site` branch
+`claude/ds5-streaming-handoff-camera-push` (COMPONENTS.md: the handoff is a camera move, not a
+cut) is committed locally, not pushed. `handleLocalFileReady` keeps its name though it is now
+"start local playback" — rename when the LF file is next touched.
+
+**References.** [D-240]; `docs/reviews/DS.5/DESIGN.md`; `docs/UX_SPEC.md` §6 (rewritten).
 
 ### Increment DS.4a — the preparation-view toggle gets a reachable, symmetric control ✅ (2026-09-02, D-239)
 
@@ -143,8 +219,8 @@ antialiasing seams that read as spokes; one conic gradient under a radial mask i
 frames. (5) `log` is a zsh builtin; the unified-log CLI is `/usr/bin/log`, and `xcodebuild` forwards only
 `TEST_RUNNER_`-prefixed environment variables to the test host.
 
-**Open for DS.5.** Whether the opening persists into `.ready` as a held image or reaching ready is the
-moment it finally opens all the way — Matt's call before DS.5 is written.
+**Resolved at DS.5 (D-240).** Reaching ready is the moment it opens all the way, and the camera
+moves into it.
 
 ### Increment DS.3b — the banner's three errors do not share a severity ✅ (2026-09-01, D-237)
 
@@ -1116,136 +1192,12 @@ Lint 0/519, `RayMarchScaleBudgetTests` + `PresetFrameBudgetTests` green.
 > renamed here.
 
 ### Increment CHR.3k — Stave CERTIFIED ✅ (2026-08-19)
-
-**Matt's M7** on `2026-08-19T18-23-44Z`: *"Looks good. I recommend we keep 0.88."* Stave is the
-**19th certified preset** and the first in the `waveform` family.
-
-**The build was verified before the pass was recorded, and that mattered — twice.** Two earlier
-sign-offs in this same sequence turned out to be on the wrong value:
-
-| session | binary's `zoom` | Matt |
-|---|---|---|
-| 17:50 | 0.93 | *"the size of the visual looked the same"* |
-| 18:16 | 0.93 (again — #128 had not merged) | *"looks good"* |
-| **18:23** | **0.88** (`.o` compiled 18:23:25 UTC, 21 s before the session) | *"Looks good. Keep 0.88."* |
-
-The 18:16 approval was of the value he had just called invisible, because the newer build had
-not reached his machine. Checking the object timestamp against the merge time is what caught it;
-the app bundle's own timestamp would not have, since the launcher relinks without recompiling.
-
-**What the certification covers.** `zoom: 0.88` (−9.2 % visible extent, measured on rendered
-frames), the CHR.3g route declaration (`band_dispersion ← waveformOccupancy`, proved by QG.1),
-and the CHR.3b concept — the visible spectrum aligned to the frequency spectrum.
-
-**What it explicitly does not cover: BUG-100.** Matt's earlier *"performance slowed over time"*
-was traced to a whole-app limit under sustained 4K that affects every preset, with three
-preset-side hypotheses falsified. Certifying Stave does not close it, and it remains open.
-
-**Roster: 29 presets, 19 certified.**
-
-Also in this increment: `TempVLPerf.swift`, a throwaway VL timing probe, was swept into the
-CHR.3j commit by `git add -A` and reached main. Removed. It was env-gated so it never ran, but a
-scratch file in the test target is noise the next reader has to identify and discard.
-
-Suite green, lint 0.
-
 ### Increment CHR.3j — Stave's size reduction was real and too small; a wrong theory published and retracted ✅ (2026-08-19)
-
-**Matt, after testing CHR.3h: *"Not sure that I tested with the right build - the size of the
-visual looked the same."*** He had the right build, and the change had applied. Both halves of
-that took measuring to establish.
-
-**The build was correct.** `StaveDispersionModel.o` compiled 17:50:15 UTC, the session began
-17:50:32 — 17 s later. The production call site (`VisualizerEngine.swift:1391`) constructs
-`StaveConfiguration(sampleRate:)` and takes the default, so `zoom: 0.93` was live.
-
-**A wrong theory, published and then killed by measurement.** The first explanation was that the
-frame knee absorbs the zoom: `zoom` is applied *before* the knee, and a peak of 1.5 folds to
-0.9996 at zoom 1.0 versus 0.9994 at 0.93, so the tall excursions that define the envelope are
-pinned either way. The arithmetic is correct and the conclusion was wrong. Moving `zoom` after
-the knee and A/B-ing rendered frames:
-
-| build | lit vertical extent |
-|---|---|
-| zoom 1.00 | 688 px |
-| zoom 0.93, **old** order (before knee) | 653 px (**−5.1 %**) |
-| zoom 0.93, new order (after knee) | 647 px (−6.0 %) |
-
-**The old order already worked.** The knee was not absorbing it; the reorder bought 0.9
-percentage points. It was **reverted** rather than kept for that, because it changed load-bearing
-containment logic on a justification that had just been falsified.
-
-**The actual problem was magnitude.** 0.93 gives −5.1 %, the very bottom of the 5–10 % Matt
-asked for, and below what reads as different. Swept on rendered frames: 0.93 → −5.1 %,
-0.90 → −7.6 %, 0.86 → −11.0 %, 0.82 → −14.7 %. **Shipping 0.88 → −9.2 %**, near the top of his
-range. Frame fit is unaffected: peak |y| 0.975 NDC, 0/120 frames outside the frame.
-
-**Method note.** The CPU model's `peak |y|` moved only 0.992 → 0.985 for a 7 % zoom, which is
-what suggested the knee theory in the first place — it is the wrong instrument for "how big does
-this look", because it reports the folded peak rather than the drawn image. Measuring lit pixels
-in the rendered PNGs answered it directly. **Fourth metric misread in a day**; the pattern is
-identical each time — the number was real, and what it measured was not what the question asked.
-
-Suite 1876/1876, lint 0.
-
 ### Increment CHR.3h — Stave M7: the size change, and the slowdown that was not Stave's ✅ (2026-08-19)
-
-**Matt's Stave M7** (`2026-08-19T17-01-15Z`): *"looks good, but performance slowed over time,
-which led to some choppiness, and I think it would be less visually overwhelming in fullscreen
-mode if the design was reduced in size by 5-10%."*
-
-**The size change: `zoom` 1.0 → 0.93** (7 %, the middle of his range), applied globally rather
-than only above some resolution — a size that changed with window size would make Stave a
-different composition at different sizes, and the framing the reference set was tuned against
-would then be correct at only one of them. ⚠ Note this is a *different request* from CHR.3e,
-where zoom was ruled out for CONTAINMENT because that needed 35–50 %; the frame knee still does
-containment, and 7 % for breathing room is a separate, much smaller ask.
-
-**The slowdown is NOT Stave — filed as BUG-100.** Three preset-side hypotheses were falsified
-before concluding that, which is the part worth keeping:
-
-1. **Stave accumulates something.** An offline soak of 1920 frames at 3840×2160 through the real
-   path is **flat at 22.3 ms** across eight blocks.
-2. **The fan opens over the track**, raising overdraw. `waveformOccupancy` is flat at 0.081–0.095
-   for the whole segment; **r(GPU, occupancy) = −0.11**.
-3. **It is preset-specific.** It is not — the degradation **persists into the next preset** and
-   partially recovers after a low-resolution interlude.
-
-What the data does say: over 70 s at 4K, `frame_cpu_ms` 17.4 → 43.6 and `frame_gpu_ms` 2.9 →
-11.7, **while the app's own CPU work stays flat** (`encode_cpu_ms` 12.9 → 15.2,
-`renderframe_cpu_ms` 9.8 → 11.0). Same work, less delivered.
-
-⚠ **A second finding inside it, and probably the more tractable half:** `encode_cpu_ms` is
-**15–16 ms at 4K** — the entire 60 fps budget spent on CPU encode before any GPU work — and it
-**scales with resolution** (9.1 ms at 2.07 MP). CPU-side encode should not scale with pixel
-count.
-
-**Stave is therefore still uncertified**, and correctly so: one of the two M7 items is a
-whole-app defect that no preset change can fix. The size change alone does not earn the flip.
-
-Suite 1866/1866, lint 0.
-
 ### Increment CHR.3f — recurate the Stave reference set ✅ (2026-08-17)
 ### Increment CHR.3e — frame fit ✅ (2026-08-17)
 ### Increment CHR.3c — the routable waveform-derived primitive ✅ (2026-08-17)
 ### Increment CHR.3d — regenerate the route-coverage fixtures ✅ (2026-08-19; done at BUG-090 / CHR.3g)
-
-**Blocks certification of every waveform-driven preset, Stave included.** The committed
-`Fixtures/route_coverage/` CSVs carry only `spectralCentroid` and `spectralFlux` — they predate
-`spectral_density` (routable for some time) and now `waveform_occupancy`. `RouteCoverageTests`
-fails loud on an absent column, so a preset declaring either primitive cannot be gated, and
-`FidelityRubricTests.certifiedPresetsDeclareAudioRoutes` requires a non-empty manifest to
-certify. Stave therefore ships with `audio_routes: []` rather than declaring routes it cannot
-prove.
-
-**Done when:** `FixtureSessionCaptureGenerator` is re-run over the three fixture clips, the
-refreshed `features.csv` / `stems.csv` are copied in, Stave declares
-`spectral_fan ← waveformOccupancy` (continuous), and `RouteCoverageTests` is green.
-**Blast radius, deliberately deferred (Matt, 2026-08-17):** regenerating refreshes the corpus
-every preset's route gate replays, so it re-asserts all 13+ manifests against new data. That is
-expected to be an improvement — the columns are additive — but it is not a Stave-only change
-and wants its own increment.
-
 ### Increment CHR.3b — Stave rebuilt: the visible spectrum aligned to the frequency spectrum ✅ (2026-08-16)
 ### Increment CHR.3 — Stave: authoring to code-complete ✅ (2026-08-14)
 ### Increment CHR.1.3 — Stave: the design-doc half CHR.1 withheld ✅ (2026-08-14)
