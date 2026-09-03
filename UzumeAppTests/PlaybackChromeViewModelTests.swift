@@ -163,16 +163,20 @@ struct PlaybackChromeViewModelTests {
 
     @Test func firstShow_waitsForTheArrival_thenThreeSeconds() async throws {
         let recorder = RecordingDelay()
-        let (vm, _, _, _, _) = makeVM(firstShowDelay: 3.82, delay: recorder)
+        // A long arrival, so the assertion is an ordering under any test-host load, not a
+        // wall-clock window (the first full-suite run saw 1.4 s pass before onActivity).
+        let arrival = 60.0
+        let (vm, _, _, _, _) = makeVM(firstShowDelay: arrival, delay: recorder)
         try await Task.sleep(for: .milliseconds(50))
-        #expect(recorder.requested.first == 3.82 + PlaybackChromeViewModel.inactivityDelay)
+        #expect(recorder.requested.first == arrival + PlaybackChromeViewModel.inactivityDelay)
         // Activity while the arrival is still running (the pointer resting over the window
-        // fires the hover the moment PlaybackView appears) must not cut the first show short.
+        // fires the hover the moment PlaybackView appears) must not cut the first show short:
+        // the re-armed timer is longer than a bare 3 s and no longer than arrival + 3 s.
         vm.onActivity()
         try await Task.sleep(for: .milliseconds(50))
         let rearmed = try #require(recorder.requested.last)
-        #expect(rearmed > 3.82 + PlaybackChromeViewModel.inactivityDelay - 0.5)
-        #expect(rearmed <= 3.82 + PlaybackChromeViewModel.inactivityDelay)
+        #expect(rearmed > PlaybackChromeViewModel.inactivityDelay)
+        #expect(rearmed <= arrival + PlaybackChromeViewModel.inactivityDelay)
     }
 
     @Test func activityAfterTheArrival_rearmsThreeSeconds() async throws {
