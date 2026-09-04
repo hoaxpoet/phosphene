@@ -40,6 +40,39 @@ struct LowBarLineProbe {
         return (mono, format.sampleRate)
     }
 
+
+    @Test("PR.12 — grid coverage and cost on Low, clamped vs whole-track",
+          .enabled(if: ProcessInfo.processInfo.environment["UZUME_LOW_COVERAGE"] == "1"))
+    func coverage() throws {
+        let dir = URL(fileURLWithPath: "/Volumes/Extreme SSD/B/Bowie, David/[1977] - Low")
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+        let files = (try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))
+            .filter { $0.pathExtension == "flac" && !$0.lastPathComponent.hasPrefix("._") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        print("\n  track                            len   clampSpan  cover   wholeSpan  cover   clamp_s  whole_s")
+        var totalClamp = 0.0, totalWhole = 0.0
+        for url in files {
+            guard let (audio, rate) = try? Self.decodeMono(url: url), !audio.isEmpty else { continue }
+            let len = Double(audio.count) / rate
+            var t0 = Date()
+            let clamp = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate, wholeTrack: false)
+            let clampS = Date().timeIntervalSince(t0)
+            t0 = Date()
+            let whole = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate, wholeTrack: true)
+            let wholeS = Date().timeIntervalSince(t0)
+            totalClamp += clampS; totalWhole += wholeS
+            let cs = (clamp.beats.last ?? 0) - (clamp.beats.first ?? 0)
+            let ws = (whole.beats.last ?? 0) - (whole.beats.first ?? 0)
+            let name = url.deletingPathExtension().lastPathComponent
+            let pad = String(repeating: " ", count: max(0, 32 - name.count))
+            print(String(format: "  %@%@%6.0fs %8.0fs %6.1f%% %9.0fs %6.1f%% %8.2f %8.2f",
+                         name, pad, len, cs, cs / len * 100, ws, ws / len * 100, clampS, wholeS))
+        }
+        print(String(format: "\n  TOTAL analysis time — clamped %.1f s, whole-track %.1f s (%.1fx)",
+                     totalClamp, totalWhole, totalWhole / max(totalClamp, 0.001)))
+    }
+
     @Test("bar line on Bowie's Low, before and after adoption",
           .enabled(if: ProcessInfo.processInfo.environment["UZUME_LOW_PROBE"] == "1"))
     func lowAlbum() throws {

@@ -664,7 +664,12 @@ extension VisualizerEngine: LocalFilePreparing {
             classifier: inputs.classifier,
             beatGridAnalyzer: inputs.beatGridAnalyzer,
             familyAnalyzer: inputs.familyAnalyzer,
-            prefetchedProfile: nil
+            prefetchedProfile: nil,
+            // PR.12 — this call site holds the WHOLE decoded file (same reason it can
+            // measure `loudnessProfile` and streaming cannot, DYN.1c). Without this the
+            // beat grid covered 6.7–11.4 % of the track and everything past it ran on one
+            // averaged BPM, which is BUG-065's drift.
+            wholeTrackAudio: true
         )
         let series = analyzeStemSeriesForLocalFile(
             preview: preview,

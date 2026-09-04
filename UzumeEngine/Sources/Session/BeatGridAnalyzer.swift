@@ -23,8 +23,26 @@ public protocol BeatGridAnalyzing: Sendable {
     ///   - samples: Mono Float32 PCM at `sampleRate`.
     ///   - sampleRate: The native sample rate of `samples` (e.g. 44100). The
     ///     preprocessor resamples internally to 22050 Hz.
+    ///   - wholeTrack: `true` when `samples` is the ENTIRE track and the grid should
+    ///     span it. The local-file path passes `true`; streaming passes `false` because
+    ///     its input is a 30 s preview and there is nothing more to analyse.
+    ///
+    ///     This is the difference PR.12 measured. `BeatThisModel.tMax` clamps inference to
+    ///     1500 frames (30 s at 50 fps), which costs a 30 s preview nothing and truncates a
+    ///     local FLAC to **6.7–11.4 %** of its length. Past the end of `BeatGrid.beats`,
+    ///     `localTiming` falls back to `60.0 / bpm` — a whole-track AVERAGE — so ~90 % of
+    ///     every local track ran on one averaged tempo. A constant period against changing
+    ///     music is a linear phase error, which is BUG-065's drift ramp.
     /// - Returns: Resolved `BeatGrid`; `.empty` on failure (graceful degradation).
-    func analyzeBeatGrid(samples: [Float], sampleRate: Double) -> BeatGrid
+    func analyzeBeatGrid(samples: [Float], sampleRate: Double, wholeTrack: Bool) -> BeatGrid
+}
+
+extension BeatGridAnalyzing {
+    /// Streaming-shaped call: analyse whatever was passed under the 30 s clamp.
+    /// Kept so the many existing call sites (tests, diagnostics, BeatBench) are unchanged.
+    public func analyzeBeatGrid(samples: [Float], sampleRate: Double) -> BeatGrid {
+        analyzeBeatGrid(samples: samples, sampleRate: sampleRate, wholeTrack: false)
+    }
 }
 
 // MARK: - DefaultBeatGridAnalyzer
@@ -54,7 +72,9 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
 
     // MARK: - BeatGridAnalyzing
 
-    public func analyzeBeatGrid(samples: [Float], sampleRate: Double) -> BeatGrid {
+    public func analyzeBeatGrid(
+        samples: [Float], sampleRate: Double, wholeTrack: Bool
+    ) -> BeatGrid {
         let (spec, frameCount) = preprocessor.process(
             samples: samples,
             inputSampleRate: sampleRate
@@ -86,7 +106,16 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
             // still turns both on so the FT.4 arm stays reproducible.
             let env = ProcessInfo.processInfo.environment
             let both = env["UZUME_FULLTRACK_BARS"] == "1"
-            let fullTrack = both || env["UZUME_FULLTRACK_DECODE"] == "1"
+            // PR.12 (Matt, 2026-09-04: "fix the local path to analyze the whole track").
+            // `wholeTrack` is the local-file path saying it holds the entire file. The env
+            // flags remain for A/B and for forcing the behaviour on the streaming path.
+            //
+            // FT.4.1 disqualified full-track decode on bleed 115.00 -> 123.62. That was a
+            // SCORING artifact: BeatBench trims the reference to each grid's own span, so
+            // the 30 s grid was graded on 30 s and the full-track grid on six minutes.
+            // Scored over an identical span, beat F is equal or better on 8 of 9 fixtures
+            // and bleed itself goes 0.99 -> 1.00 (PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md).
+            let fullTrack = both || wholeTrack || env["UZUME_FULLTRACK_DECODE"] == "1"
             // NOT adopted. Default-on was tried at PR.3d and REVERTED the same day
             // (Matt: "the failure rate here is too high"). It was recommended off nine
             // benchmark fixtures without measuring the album Matt actually reviewed; on

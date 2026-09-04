@@ -14,7 +14,10 @@ import XCTest
 private final class SpyBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendable {
     private(set) var callCount = 0
     private(set) var lastSampleCount = 0
-    func analyzeBeatGrid(samples: [Float], sampleRate: Double) -> BeatGrid {
+    /// PR.12 — records whether the caller asked for a whole-track grid.
+    private(set) var lastWholeTrack: Bool?
+    func analyzeBeatGrid(samples: [Float], sampleRate: Double, wholeTrack: Bool) -> BeatGrid {
+        lastWholeTrack = wholeTrack
         callCount += 1
         lastSampleCount = samples.count
         return .empty

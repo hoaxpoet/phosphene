@@ -106,7 +106,7 @@ private final class CountingBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Send
     private let lock = NSLock()
     private var _callCount = 0
     var callCount: Int { lock.withLock { _callCount } }
-    func analyzeBeatGrid(samples: [Float], sampleRate: Double) -> BeatGrid {
+    func analyzeBeatGrid(samples: [Float], sampleRate: Double, wholeTrack: Bool) -> BeatGrid {
         lock.withLock { _callCount += 1 }
         return .empty
     }
@@ -117,7 +117,7 @@ private final class CountingBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Send
 private final class FixedBPMBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendable {
     let fixedBPM: Double
     init(fixedBPM: Double) { self.fixedBPM = fixedBPM }
-    func analyzeBeatGrid(samples: [Float], sampleRate: Double) -> BeatGrid {
+    func analyzeBeatGrid(samples: [Float], sampleRate: Double, wholeTrack: Bool) -> BeatGrid {
         let beatPeriod = 60.0 / fixedBPM
         let beats = (0..<60).map { Double($0) * beatPeriod }
         let downbeats = stride(from: 0.0, to: Double(beats.count), by: 4)

@@ -306,6 +306,38 @@ different estimator from an online integrator, and **this probe did not test it*
 proposed — two levers have failed, the two-strikes rule applies, a third needs Matt's sign-off.
 Report: [`PR11_OFFLINE_PERIOD_ERROR_2026-09-04.md`](diagnostics/PR11_OFFLINE_PERIOD_ERROR_2026-09-04.md).
 
+**PR.12 — the local path analyses the whole track** ✅ (2026-09-04, Matt: *"you need to rethink the
+beat analyzer — it cannot throw away 80 % or more of a track"* → *"the problem is beat averaging"* →
+*"fix the local path to analyze the whole track"*).
+
+`BeatThisModel.tMax` clamps inference to 1500 frames — exactly 30 s — and **nothing in the beat-grid
+path branched on local vs streaming**. A preview IS 30 s so the clamp cost it nothing; a local FLAC
+was decoded in full and truncated to **7.6–26 %** of its length. Past the end of `BeatGrid.beats`,
+`localTiming` falls back to `60.0 / bpm`, a whole-track AVERAGE — so ~90 % of every local track ran
+on one averaged tempo, and a constant period against changing music is a linear phase error. **That
+is BUG-065's ramp.** `beats` was always a tempo record over the duration; the clamp is what defeated
+it.
+
+**The evidence against fixing this was a scoring artifact.** D-210, FT.4.1 and BUG-107 all rest on
+"full-track decode regresses beats" (bleed 115.00 → 123.62). BeatBench trims the reference to each
+grid's OWN span, so the 30 s grid was graded on 30 s — the opening, the most regular part — and the
+full-track grid on six minutes. Scored over an identical span, beat F is **equal or better on 8 of 9
+fixtures**, and bleed itself goes **0.99 → 1.00**. Two stitching mechanisms were tested and rejected
+before this was found (edge taper → 124.41; nearest-centre, no averaging → 124.68, both null), which
+is what pointed at the scoring.
+
+**Shipped:** `analyzeBeatGrid` gains `wholeTrack:` with a protocol extension preserving the
+streaming-shaped call, `analyzePreview` gains `wholeTrackAudio:`, and **only the local-file call site
+passes `true`** — the DYN.1c seam. On *Low*: coverage **7.6–26 % → 92–99 %** on all 11 tracks
+(Warszawa 7.6 % → 96.3 %). Cost **+2.9 s for the whole album**, ~0.26 s/track against PREP.1's
+~50 s/track — **~0.5 % of the budget**; the earlier "10–14 passes will hurt preparation" caution was
+wrong. Gated by `WholeTrackGridWiringTests`.
+
+**Not done:** `computeMeter` still derives `beatsPerBar` from the averaged `bpm` and should use local
+period — the remaining half of Matt's point. Streaming is untouched and needs live adaptation, not
+offline analysis. **No live confirmation**: coverage and cost are measured, the felt result is not.
+Report: [`PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md`](diagnostics/PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md).
+
 **PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.
