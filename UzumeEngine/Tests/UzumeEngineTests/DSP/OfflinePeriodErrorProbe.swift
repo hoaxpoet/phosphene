@@ -112,6 +112,86 @@ struct OfflinePeriodErrorProbe {
         bpm(beats.filter { $0 >= from && $0 <= to })
     }
 
+
+    /// F-measure at +/-70 ms, greedy one-to-one — BeatBench's headline metric, recomputed
+    /// here so both grids can be scored over an IDENTICAL span.
+    private static func fMeasure(reference: [Double], estimate: [Double]) -> Double {
+        guard !reference.isEmpty, !estimate.isEmpty else { return 0 }
+        var used = [Bool](repeating: false, count: estimate.count)
+        var hits = 0
+        for r in reference {
+            var best = -1
+            var bestD = 0.070
+            for (i, e) in estimate.enumerated() where !used[i] {
+                let d = abs(e - r)
+                if d <= bestD { bestD = d; best = i }
+            }
+            if best >= 0 { used[best] = true; hits += 1 }
+        }
+        let p = Double(hits) / Double(estimate.count)
+        let rc = Double(hits) / Double(reference.count)
+        return (p + rc) > 0 ? 2 * p * rc / (p + rc) : 0
+    }
+
+    @Test("fair comparison: 30 s clamp vs whole-track, scored over the SAME span",
+          .enabled(if: ProcessInfo.processInfo.environment["UZUME_FAIR_SPAN"] == "1"))
+    func fairSpan() throws {
+        let fixtures = URL(fileURLWithPath: (NSHomeDirectory() as NSString)
+            .appendingPathComponent("uzume_beatbench_fixtures"))
+        let gtDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fixtures/beatbench/groundtruth")
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+
+        print("""
+
+          Both grids scored over the CLAMP's span only (the first ~30 s), so the
+          comparison is like-for-like. BeatBench trims the reference to each grid's own
+          span, which grades the 30 s grid on 30 s and the whole-track grid on the whole
+          track — not the same exam.
+
+          track                 clampF  wholeF   clampSpan  wholeSpan  coverage
+        """)
+        for gtURL in (try FileManager.default.contentsOfDirectory(
+                        at: gtDir, includingPropertiesForKeys: nil)).sorted(by: {
+                            $0.lastPathComponent < $1.lastPathComponent }) {
+            guard gtURL.lastPathComponent.hasSuffix(".groundtruth.json") else { continue }
+            let name = gtURL.lastPathComponent.replacingOccurrences(of: ".groundtruth.json", with: "")
+            guard let gt = try? JSONDecoder().decode(GroundTruth.self, from: Data(contentsOf: gtURL)),
+                  let truth = gt.beatsS, truth.count > 8 else { continue }
+            var audioURL: URL?
+            for ext in ["mp3", "wav", "m4a", "flac"] {
+                let u = fixtures.appendingPathComponent("\(name).\(ext)")
+                if FileManager.default.fileExists(atPath: u.path) { audioURL = u; break }
+            }
+            guard let audioURL, let (audio, rate) = try? Self.decodeMono(url: audioURL),
+                  !audio.isEmpty else { continue }
+            setenv("UZUME_FULLTRACK_DECODE", "0", 1)
+            let clamp = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate).beats
+            setenv("UZUME_FULLTRACK_DECODE", "1", 1)
+            let whole = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate).beats
+            setenv("UZUME_FULLTRACK_DECODE", "0", 1)
+            guard let lo = clamp.first, let hi = clamp.last, hi > lo else { continue }
+            let ref = truth.filter { $0 >= lo - 1 && $0 <= hi + 1 }
+            let clampIn = clamp.filter { $0 >= lo - 1 && $0 <= hi + 1 }
+            let wholeIn = whole.filter { $0 >= lo - 1 && $0 <= hi + 1 }
+            guard ref.count > 4 else { continue }
+            let trackLen = Double(audio.count) / rate
+            let pad = String(repeating: " ", count: max(0, 20 - name.count))
+            print(String(format: "  %@%@ %6.2f  %6.2f   %7.1fs  %8.1fs  %6.1f%%",
+                         name, pad,
+                         Self.fMeasure(reference: ref, estimate: clampIn),
+                         Self.fMeasure(reference: ref, estimate: wholeIn),
+                         hi - lo, (whole.last ?? 0) - (whole.first ?? 0),
+                         (hi - lo) / trackLen * 100))
+        }
+        print("""
+
+          coverage = how much of the track the 30 s clamp's grid actually spans.
+        """)
+    }
+
     @Test("offline period error: single-window vs multi-window",
           .enabled(if: ProcessInfo.processInfo.environment["UZUME_PERIOD_PROBE"] == "1"))
     func probe() throws {
