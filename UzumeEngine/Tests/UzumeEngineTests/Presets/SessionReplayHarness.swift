@@ -47,7 +47,7 @@ struct SessionReplayHarness {
 
     /// One row of a session's `features.csv`, mapped onto the fields the render
     /// path actually reads. Unlisted columns are ignored rather than guessed at.
-    private struct Row {
+    struct Row {
         var time: Float = 0
         var deltaTime: Float = 1.0 / 60.0
         var bass: Float = 0, mid: Float = 0, treble: Float = 0
@@ -77,7 +77,23 @@ struct SessionReplayHarness {
         var tonalConsonance: Float = 0
         var harmonicFlux: Float = 0
         var midAttRel: Float = 0
+        // PR.10 — the fields non-ray-march presets declare. Every one of these was
+        // ALREADY in the recorded CSVs; the harness simply never read them, so any
+        // preset routed off them replayed against ZERO. Names differ between the CSV
+        // (snake) and FeatureVector (camel) — that mismatch is why an earlier audit
+        // wrongly reported them as unrecorded.
+        var bassAtt: Float = 0
+        var trebleAtt: Float = 0
+        var midDev: Float = 0
+        var trebDev: Float = 0
+        var highMid: Float = 0
+        var high: Float = 0
+        var spectralLevelRise: Float = 0
+        var spectralSectionRatio: Float = 0
+        var waveformOccupancy: Float = 0
     }
+
+    static func loadRowsForReplay(_ csv: URL) throws -> [Row] { try loadRows(csv) }
 
     private static func loadRows(_ csv: URL) throws -> [Row] {
         let text = try String(contentsOf: csv, encoding: .utf8)
@@ -117,10 +133,21 @@ struct SessionReplayHarness {
             r.tonalConsonance = get(f, "tonal_consonance")
             r.harmonicFlux = get(f, "harmonic_flux")
             r.midAttRel = get(f, "mid_att_rel")
+            r.bassAtt = get(f, "bass_att")
+            r.trebleAtt = get(f, "treble_att")
+            r.midDev = get(f, "mid_dev")
+            r.trebDev = get(f, "treb_dev")
+            r.highMid = get(f, "highMid")
+            r.high = get(f, "high")
+            r.spectralLevelRise = get(f, "spectral_level_rise")
+            r.spectralSectionRatio = get(f, "spectral_section_ratio")
+            r.waveformOccupancy = get(f, "waveform_occupancy")
             out.append(r)
         }
         return out
     }
+
+    static func featureForReplay(from r: Row, aspect: Float) -> FeatureVector { feature(from: r, aspect: aspect) }
 
     private static func feature(from r: Row, aspect: Float) -> FeatureVector {
         var f = FeatureVector(time: r.time, deltaTime: r.deltaTime,
@@ -139,6 +166,12 @@ struct SessionReplayHarness {
         f.tonalConsonance = r.tonalConsonance
         f.harmonicFlux = r.harmonicFlux
         f.midAttRel = r.midAttRel
+        f.bassAtt = r.bassAtt; f.trebleAtt = r.trebleAtt
+        f.midDev = r.midDev; f.trebDev = r.trebDev
+        f.highMid = r.highMid; f.high = r.high
+        f.spectralLevelRise = r.spectralLevelRise
+        f.spectralSectionRatio = r.spectralSectionRatio
+        f.waveformOccupancy = r.waveformOccupancy
         f.aspectRatio = aspect
         return f
     }
@@ -148,6 +181,8 @@ struct SessionReplayHarness {
     /// replayed against SILENCE — the routes could not move, and any look or coupling
     /// conclusion drawn from those frames was about an image production never makes.
     /// `stems.csv` column names match the `StemFeatures` property names exactly.
+    static func loadStemsForReplay(_ csv: URL) -> [StemFeatures] { loadStems(csv) }
+
     private static func loadStems(_ csv: URL) -> [StemFeatures] {
         guard let text = try? String(contentsOf: csv, encoding: .utf8) else { return [] }
         let lines = text.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
@@ -177,6 +212,14 @@ struct SessionReplayHarness {
             s.otherOnsetRate = g("otherOnsetRate");   s.otherAttackRatio = g("otherAttackRatio")
             s.vocalsPitchHz = g("vocalsPitchHz")
             s.vocalsPitchConfidence = g("vocalsPitchConfidence")
+            // PR.10 — stem spectral shape + instrument families (Skein, Ricercar).
+            s.drumsCentroid = g("drumsCentroid");   s.bassCentroid = g("bassCentroid")
+            s.vocalsCentroid = g("vocalsCentroid"); s.otherCentroid = g("otherCentroid")
+            s.vocalsBand1 = g("vocalsBand1");       s.otherBand1 = g("otherBand1")
+            s.stringsActivityDev = g("stringsActivityDev")
+            s.brassActivityDev = g("brassActivityDev")
+            s.woodwindsActivityDev = g("woodwindsActivityDev")
+            s.percussionActivityDev = g("percussionActivityDev")
             out.append(s)
         }
         return out

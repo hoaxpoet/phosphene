@@ -134,11 +134,83 @@ public enum BarLineEstimator {
 
     /// Minimum summed margin to return a bar rather than decline.
     ///
-    /// Set from the measured margin distribution in FT.3 task 5, not from taste (D-207:
-    /// "a threshold set from the margin's measured distribution"). See
-    /// `docs/diagnostics/FT3_BARLINE_PORT_2026-08-19.md` for the distribution and the
-    /// correct/incorrect overlap this operating point sits in.
-    public static let declineThreshold: Double = 1.24
+    /// Set from the measured margin distribution, not from taste (D-207: "a threshold set
+    /// from the margin's measured distribution"), by FT.3's own method: the objective
+    /// *(correct kept − incorrect admitted)* plateaus over an interval containing no
+    /// observation, and the threshold is that interval's midpoint.
+    ///
+    /// **Re-derived at PR.3d from 1.24.** FT.3 fitted 1.24 to margins measured at 22050 Hz;
+    /// FT.4.1 then A/B'd the arm through the production analyzer, which — per BUG-114 — was
+    /// running the estimator at HALF that analysis window and so produced systematically
+    /// smaller margins. FT.4.1's "answers 2 of 9, both right, zero confident-wrong" was a
+    /// product of that mis-calibration. With BUG-114 fixed the margins rise, and **bleed
+    /// crosses 1.24 at 1.348 answering meter 3 on a 4/4 track** — a confident-wrong bar,
+    /// the precise failure D-207's decline rule exists to prevent.
+    ///
+    /// Corrected distribution (production decode: native rate, manual channel average;
+    /// `MetricalLevelCensus`), answers only:
+    ///
+    ///     bleed        1.348   meter 3 vs tapped 4   INCORRECT
+    ///     take_five    1.735   meter 5 vs tapped 5   correct
+    ///     billie_jean  2.603   meter 4 vs tapped 4   correct
+    ///
+    /// The empty interval separating the incorrect answer from the correct ones is
+    /// (1.348, 1.735); 1.54 is its midpoint. **Honest bound: three answers over nine
+    /// fixtures is a thin basis** — much thinner than FT.3's, whose empty region spanned
+    /// (0.226, 2.254). Re-derive again when the catalogue grows or the front-end moves.
+    public static let declineThreshold: Double = 1.54
+
+    // MARK: - PR.3 options
+
+    /// Which corrections to the feature front-end are active.
+    ///
+    /// Two INDEPENDENT switches, deliberately not one. FT.4 bundled the tiler and the
+    /// estimator into a single flag and its A/B could not tell take_five's bar win apart
+    /// from bleed's beat loss; FT.4.1 had to unbundle them to learn anything. Same
+    /// discipline here.
+    public struct Options: Sendable, Hashable {
+
+        /// Resample to `referenceSampleRate` before extracting features (PR.3 arm A).
+        ///
+        /// `nFFT` is fixed in SAMPLES, so the per-beat analysis window's DURATION scales
+        /// with the input rate: 92.9 ms at the 22050 Hz `declineThreshold` was calibrated
+        /// on, 46.4 ms at the 44.1 kHz production actually passes. The parity test decodes
+        /// to 22050 explicitly and so cannot see the gap. Measured cost: the margin falls
+        /// on 6 of 7 probe tracks at the short window and around_the_world flips
+        /// 1.265 ANSWER → 0.147 decline.
+        public var resampleToReferenceRate: Bool
+
+        /// Average the per-beat spectrum across the whole inter-beat interval instead of
+        /// one fixed `nFFT` frame at the beat (PR.3 arm B).
+        ///
+        /// At 120 BPM a beat is ~500 ms and one 2048-sample frame at 44.1 kHz covers 46 ms
+        /// — under 10 % of it, and the part dominated by the attack transient. That starves
+        /// `harmonic_change`, whose pitch-class profile is the strongest downbeat cue in
+        /// most music: it is measured on the drum hit rather than the chord. Averaging the
+        /// magnitude spectrum over the beat is what beat-synchronous chroma means.
+        public var fullBeatWindow: Bool
+
+        /// With `fullBeatWindow`, average over the beat for the CHROMA only and read the
+        /// transient features (`low_energy`, `rms`, `flux`) at the attack frame (PR.3 arm C).
+        /// The four features have different natural windows: harmony wants the beat, the
+        /// attack features want the attack.
+        public var beatAveragedChromaOnly: Bool
+
+        public init(resampleToReferenceRate: Bool = false,
+                    fullBeatWindow: Bool = false,
+                    beatAveragedChromaOnly: Bool = false) {
+            self.resampleToReferenceRate = resampleToReferenceRate
+            self.fullBeatWindow = fullBeatWindow
+            self.beatAveragedChromaOnly = beatAveragedChromaOnly
+        }
+
+        /// The FT.3 front-end exactly as ported and calibrated. Default, so the parity
+        /// gate and every committed measurement keep their meaning.
+        public static let legacy = Options()
+    }
+
+    /// The rate FT.3's reference measurement and `declineThreshold` were derived at.
+    public static let referenceSampleRate: Double = 22050.0
 
     // MARK: - Public API
 
@@ -153,12 +225,26 @@ public enum BarLineEstimator {
     public static func estimate(
         beats: [Double],
         audio: [Float],
-        sampleRate: Double = 22050.0
+        sampleRate: Double = 22050.0,
+        options: Options = .legacy
     ) -> BarLineEstimate {
         guard let smallest = meters.min(), beats.count > smallest * 2 else {
             return .declined(.tooFewBeats)
         }
-        let features = beatFeatures(audio: audio, beats: beats, sampleRate: sampleRate)
+        var workingAudio = audio
+        var workingRate = sampleRate
+        if options.resampleToReferenceRate, sampleRate != referenceSampleRate {
+            workingAudio = BeatThisPreprocessor.resample(
+                audio, from: sampleRate, to: referenceSampleRate)
+            workingRate = referenceSampleRate
+        }
+        let features = beatFeatures(
+            audio: workingAudio,
+            beats: beats,
+            sampleRate: workingRate,
+            fullBeatWindow: options.fullBeatWindow,
+            chromaOnly: options.beatAveragedChromaOnly
+        )
         return score(features: features)
     }
 

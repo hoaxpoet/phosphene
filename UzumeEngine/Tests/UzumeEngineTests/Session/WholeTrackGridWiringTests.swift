@@ -1,0 +1,67 @@
+// PR.12 — the local path must ask for a whole-track grid; streaming must not.
+//
+// `BeatThisModel.tMax` clamps inference to 1500 frames (30 s at 50 fps). For a streaming
+// preview that costs nothing — the preview IS 30 s. For a local file it truncated the grid
+// to 6.7–26 % of the track, and past the end of `BeatGrid.beats` `localTiming` falls back
+// to `60.0 / bpm`, a whole-track AVERAGE. ~90 % of every local track therefore ran on one
+// averaged tempo, which against changing music is a linear phase error — BUG-065's drift.
+//
+// This gates the WIRING, which is the part a refactor silently breaks: the flag has to
+// reach the analyzer, and only from the local path.
+import Testing
+import Foundation
+@testable import Session
+@testable import Shared
+@testable import DSP
+
+@Suite("Whole-track grid wiring")
+struct WholeTrackGridWiringTests {
+
+    /// Records what the analyzer was asked for. Returns a grid whose span reflects the
+    /// request, so a caller that drops the flag is visible in the output too.
+    private final class RecordingAnalyzer: BeatGridAnalyzing, @unchecked Sendable {
+        private(set) var requests: [Bool] = []
+        func analyzeBeatGrid(samples: [Float], sampleRate: Double, wholeTrack: Bool) -> BeatGrid {
+            requests.append(wholeTrack)
+            let seconds = wholeTrack ? Double(samples.count) / sampleRate : 30.0
+            let period = 0.5
+            let beats = stride(from: 0.0, to: max(seconds, period * 4), by: period).map { $0 }
+            return BeatGrid(beats: beats, downbeats: [], bpm: 120,
+                            beatsPerBar: 4, barConfidence: 1,
+                            frameRate: 50, frameCount: beats.count)
+        }
+    }
+
+    @Test("the default (streaming) call does not request a whole-track grid")
+    func streamingStaysClamped() {
+        let analyzer = RecordingAnalyzer()
+        _ = analyzer.analyzeBeatGrid(samples: [Float](repeating: 0, count: 44100), sampleRate: 44100)
+        #expect(analyzer.requests == [false],
+                "the compatibility overload must keep streaming's 30 s behaviour")
+    }
+
+    @Test("an explicit whole-track request reaches the analyzer")
+    func wholeTrackRequestIsThreaded() {
+        let analyzer = RecordingAnalyzer()
+        _ = analyzer.analyzeBeatGrid(samples: [Float](repeating: 0, count: 44100),
+                                     sampleRate: 44100, wholeTrack: true)
+        #expect(analyzer.requests == [true])
+    }
+
+    /// The reason the flag exists: with it, the grid spans the track; without it, ~30 s.
+    /// A five-minute track is the case that matters — Bowie's Warszawa measured 7.6 %
+    /// coverage before this change and 96.3 % after.
+    @Test("a whole-track grid spans the track; a clamped one does not")
+    func spanReflectsTheRequest() {
+        let analyzer = RecordingAnalyzer()
+        let fiveMinutes = [Float](repeating: 0, count: 44100 * 300)
+        let clamped = analyzer.analyzeBeatGrid(samples: fiveMinutes, sampleRate: 44100)
+        let whole = analyzer.analyzeBeatGrid(samples: fiveMinutes, sampleRate: 44100,
+                                             wholeTrack: true)
+        let clampedSpan = (clamped.beats.last ?? 0) - (clamped.beats.first ?? 0)
+        let wholeSpan = (whole.beats.last ?? 0) - (whole.beats.first ?? 0)
+        #expect(clampedSpan < 40, "clamped span was \(clampedSpan) s")
+        #expect(wholeSpan > 250, "whole-track span was \(wholeSpan) s")
+        #expect(wholeSpan / clampedSpan > 5)
+    }
+}

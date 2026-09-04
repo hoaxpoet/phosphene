@@ -169,7 +169,7 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
         // 1. Resample if needed
         let signal: [Float] = inputSampleRate == Double(Self.sampleRate)
             ? samples
-            : resample(samples, from: inputSampleRate, to: Double(Self.sampleRate))
+            : Self.resample(samples, from: inputSampleRate, to: Double(Self.sampleRate))
 
         let nSamples = signal.count
         // PUB.2 (ultra-review): the reflect-pad below reads signal[padSize]
@@ -356,7 +356,10 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
     ///
     /// Note: vDSP has no general-ratio resampler; AVAudioConverter (libresample under
     /// the hood) produces quality comparable to torchaudio's soxr default.
-    private func resample(
+    /// `static` + `internal` since PR.3 so `BarLineEstimator` can reuse it rather than
+    /// carry a second AVAudioConverter path. Behaviour is unchanged — it never read
+    /// instance state.
+    static func resample(
         _ samples: [Float],
         from srcRate: Double,
         to dstRate: Double
