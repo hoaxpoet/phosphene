@@ -88,17 +88,56 @@ cold cache, wall-clock to `.ready` ([D-242]). It is currently missed by ~6.7×: 
 decodes and analyses whole files where streaming analyses a 30 s preview, and whose outer loop
 (`SessionPreparer._runLocalFilePreparation`) is serial.
 
-**PREP.1 — where the preparation minutes go** 🔨 next. **Measurement only**, run as the
-`defect-handling` protocol's instrumentation step: per-stage, per-track timings on a cold-cache
-local run (hash, decode, `analyzePreview`, the LFSTEM.1 stem sweep, the DYN.1c loudness profile,
-beat grid, instrument family, cache write), emitted as a `preparation.csv` session sidecar; the
-same treatment on a streaming playlist as the control; format (FLAC vs AAC) and track-length
-comparisons; a report at `docs/diagnostics/PREP1_PREPARATION_TIMING_<date>.md` ending in ranked
-options, each stating what the listener loses. **Nothing is optimised in PREP.1** — the obvious
-suspect (the whole-file stem sweep) is also work that passed an M7 and removed a 2.5 s stem
-latency, so cutting it is a product decision that needs numbers first. Prompt:
-`prompts/PREP.1-prompt.md`. **Done-when:** the 50 s/track figure is reproduced, every stage is
-timed, and Matt has the report and has picked a direction.
+### Increment PREP.1 — where the preparation minutes go ✅ measured (2026-09-04); awaiting Matt's direction
+
+**Measurement only — nothing was optimised.** Run as the `defect-handling` protocol's
+instrumentation step. Report: [`docs/diagnostics/PREP1_PREPARATION_TIMING_2026-09-04.md`](diagnostics/PREP1_PREPARATION_TIMING_2026-09-04.md);
+per-run artifacts in `docs/diagnostics/PREP1/`. Prompt: `prompts/PREP.1-prompt.md`.
+
+**Reproduced, on Matt's own files.** His D-242 session (`2026-09-03T21-38-45Z`, Bowie *Low*, 11
+FLAC, cold cache) took **697 s / 11 = 63.4 s per track**, `prepareLocalFiles ENTER` → `DONE` →
+`startLocalFiles→ready` in the same second. The same 11 files through the same code headless:
+**54.4 s/track**.
+
+**Two findings, and the rest is a rounding error.** ① **The 50 s/track was measured on a `-Onone`
+build** — every app bundle in DerivedData is Debug (35 of them, zero Release;
+`SWIFT_OPTIMIZATION_LEVEL = -Onone` at `project.pbxproj:1222`), and the bundle whose build/access
+times match the session is `UzumeApp-dcaulglwfskxnqcjhmawykzaxizg/…/Debug/Uzume.app`. Identical
+inputs compiled `-O`: **14.3 s/track — a 3.8× factor that is purely build configuration**, so
+D-242's "~6.7× over" is ~2.2× over on an optimised build of today's code. Debug also *changes which
+stage looks like the problem* (pure-Swift DSP runs 23–78× slower; the MPSGraph stages barely move).
+② **Of what remains the LFSTEM.1 sweep is 89.2 %** (140.5 s of 157.6 s); the next stage is MIR at
+3.2 %. Not slow code — the sweep separates every second of audio ≈**5×** (9.985 s separator window,
+`hopSeconds = 2.0`), which is deliberate: it is what gives every frame the ~8 s of preceding
+context live separation has.
+
+**The rest of the measurements.** Cost per second of audio is **flat** (66.1–72.3 ms/s across
+112.9 s → 383.7 s tracks) — no stage scales badly, the pipeline is uniformly heavy. Format is a
+**null result**: FLAC vs AAC 16.0 vs 15.7 s/track, decode differing by 0.6 % of preparation.
+Streaming control (the shared `analyzePreview` on a 30 s window): **0.39 s/track vs 14.3 s** — 37×,
+of which 12.8 s is the sweep alone. The serial-loop question is answered with a number, not an
+inference: **two tracks at once = ~1.7×** (157.6 → 96.3 s), so the stages overlap rather than
+contend — but **four workers was killed by macOS `memorystatus` at 23–45 GB**, an unexplained
+transient footprint PREP.2 must measure before choosing a worker count. 40 tracks × 4 min projects
+to 2,467 s Debug / **650 s Release serial** / 397 s at two workers, against the 300 s budget.
+
+**Also found, not fixed:** `SessionManager.startLocalFiles` awaits the **whole** walk before
+`.ready`, so on the local path the listener waits for track 40, not track 1 — while preparation
+runs ≈15× faster than playback. `startNow()` / `progressiveReadinessLevel` already exist and the
+local walk already publishes per-track `.ready`; whether local playback starts correctly from a
+`startNow` transition is **unverified** and is PREP.2's first question.
+
+**Instrumentation shipped** (gated, `UZUME_PREP_TIMING=1`, off by default and measured to cost
+nothing): `PrepStageProbe` / `PrepStageSink` writing a `preparation.csv` sidecar beside
+`features.csv`; stage timings through `analyzePreview`'s six sub-stages; and
+`PrepTimingRunner`, a headless CLI. To make the CLI measure the shipping pipeline rather than a
+copy of it, the LF.4 worker (`runLocalFilePreparation` and friends) moved **verbatim** from
+`VisualizerEngine+LocalFilePlayback` into `Session.LocalFilePreparationPipeline` — no behaviour
+change; every function was already `nonisolated static` over engine types. **No behavioural change
+to beat sync** — `computeBeatGrids` is timed and nothing else.
+
+**Done-when:** ✅ the figure is reproduced, ✅ every stage is timed (stages sum to 100.0 % of
+per-track wall clock), ⏸ **Matt has the report and picks a direction** — the hard stop.
 
 **PREP.2** is whichever option Matt picks. Two are named in the prompt so the report addresses
 them directly: **concurrency across tracks** (the serial loop — worth it only if the dominant
