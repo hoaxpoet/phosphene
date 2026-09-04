@@ -210,7 +210,43 @@ Filigree's motion rate measurably differs between a fast and a slow track from t
 harness, the coupling is declared in the sidecar's `audio_routes` (so QG.1 route coverage gates it),
 and Matt has confirmed the Filigree proof before any other preset is touched.
 
-**PR.3 — the review re-corroborates a parked beat-sync defect** (decision, not implementation).
+**PR.3 — chasing the downbeat, not tolerating it** 🔨 (2026-09-04). **Scope changed by Matt
+mid-increment.** This began as "surface the corroboration and let Matt decide" and then as a
+proposal to keep the estimator's *meter* while declining its *phase* — a right-length bar on a
+possibly-wrong anchor. Matt rejected both: *"we want the correct downbeat to be identified. you are
+not recommending what is best for uzume and its user experience."* He is right, and the record of
+the wrong turn stays here: both were optimisations inside constraints someone else had already
+measured, not answers to what the product needs.
+
+**PR.3a — BUG-114, the estimator ran at half its calibrated window** ✅ (2026-09-04). `nFFT = 2048`
+is fixed in samples, so the per-beat analysis window is 92.9 ms at the 22050 Hz FT.3's
+`declineThreshold = 1.24` was derived on and **46.4 ms at the 44.1 kHz production passed through**.
+The parity test hardcodes 22050 and could not see it. Measured over 7 fixtures: the margin falls at
+the short window on 6 of 7, and around_the_world flips **1.265 ANSWER → 0.147 decline**. Fixed via
+`Options.resampleToReferenceRate`; `Options.legacy` unchanged and every legacy margin reproduces
+exactly. **Done-when: ✅** — but read the honest bound: it recovers **one answered track of seven**
+and removes a mis-calibration. It does not make the estimator identify more downbeats.
+
+**PR.3b — two beat-averaging arms, measured and NOT adopted** ✅ (2026-09-04). Hypothesis: the
+chroma — the strongest downbeat cue — is starved by a 46 ms window on a ~500 ms beat. Half right.
+Arm B (average all four features across the inter-beat interval) gains around_the_world 0.147 →
+3.512 but **loses** billie_jean 2.051 → 1.204, because averaging dilutes the transient `low_energy`
+/ `rms` / `flux` depend on. Arm C (average the chroma only, transient features on the attack frame)
+strengthens every answered track with no losses — and **converts no decline arm A does not**. Both
+kept behind `Options`, neither shipped, per the FT.4 rule that two changes never share one arm.
+Report: [`PR3_BARLINE_WINDOW_2026-09-04.md`](diagnostics/PR3_BARLINE_WINDOW_2026-09-04.md).
+
+**PR.3c — the objective is NOT met; here is what is actually in the way** ⏳ next. bleed,
+bohemian_rhapsody, clair_de_lune and girl_from_ipanema decline at every window tested, and the
+probe counts **answers, not correct answers** — it has no downbeat ground truth, so no arm above can
+claim a *correct* downbeat. Two things stand between here and Matt's requirement: (1) re-derive
+`declineThreshold` against FT.3's labelled set on the corrected distribution — 1.24 was fitted to a
+distribution the code no longer produces; (2) bleed and bohemian_rhapsody are D-210 wrong-metrical-
+level cases where bar phase is unrecoverable regardless of the feature front-end, so the level has
+to be right first. **Done-when:** a decline rate and a *correct*-downbeat rate measured against
+ground truth, not an answer count.
+
+**PR.3d — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.
 The matching open defects:

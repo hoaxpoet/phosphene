@@ -1673,6 +1673,34 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-114 — RESOLVED (PR.3): the bar-line estimator ran at half its calibrated analysis window (2026-09-04)
+
+**Expected.** `BarLineEstimator` is a verbatim port of `tools/barline_probe.py`, and
+`declineThreshold = 1.24` was derived in FT.3 from that reference's margin distribution at
+**22050 Hz**, where the fixed `nFFT = 2048` window spans **92.9 ms** per beat.
+
+**Actual.** `BeatGridAnalyzer.applyBarLineEstimate` passed the analyzer's own samples and rate
+through unchanged, and `nFFT` is fixed in *samples* — so the per-beat window silently became
+**46.4 ms** at 44.1 kHz and 42.7 ms at 48 kHz: under 10 % of a 500 ms beat at 120 BPM, and the part
+dominated by the attack transient rather than the beat's harmonic body. Bin maps *do* use
+`sampleRate`, so frequency mapping stayed correct and only the duration moved — no wrong-looking
+numbers, just uniformly smaller margins.
+
+**Why no gate caught it.** `BarLineEstimatorParityTests` calls `estimate(beats:audio:)` on the
+**default** `sampleRate: 22050` — it proves the port matches Python at the reference rate and says
+nothing about the rate production passes.
+
+**Evidence + fix.** `BarLineWindowProbe` over 7 fixtures: the margin falls at the short window on
+**6 of 7**, and around_the_world flips **1.265 ANSWER → 0.147 decline** across the 1.24 threshold.
+`Options.resampleToReferenceRate` now resamples to 22050 before feature extraction and
+`applyBarLineEstimate` passes it; `Options.legacy` (the parity default) is unchanged and every
+legacy margin reproduces exactly.
+
+**Not fixed:** bleed, bohemian_rhapsody, clair_de_lune, girl_from_ipanema decline at both windows
+(the first two are D-210 wrong-level cases). **The probe counts ANSWERS, not CORRECT answers** — no
+downbeat ground truth. Two beat-averaging arms measured and **not adopted**. Full per-arm table and
+reasoning: [`PR3_BARLINE_WINDOW_2026-09-04.md`](../diagnostics/PR3_BARLINE_WINDOW_2026-09-04.md).
+
 ### BUG-113 — RESOLVED (DS.6): every toast rendered as a floor-to-ceiling panel inside the chrome (2026-09-03)
 
 **Severity:** P2 · **Domain:** `app.ui` / playback chrome · **Failure class:** `api-contract`

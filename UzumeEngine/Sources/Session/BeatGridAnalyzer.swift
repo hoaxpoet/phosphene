@@ -130,8 +130,18 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
         samples: [Float],
         sampleRate: Double
     ) -> BeatGrid {
+        // PR.3 / BUG-114: run the estimator at the rate its `declineThreshold` was
+        // calibrated on. `nFFT` is fixed in SAMPLES, so passing the file's native rate
+        // straight through halves the per-beat analysis window (92.9 ms → 46.4 ms at
+        // 44.1 kHz) and depresses every margin. The parity test decodes to 22050
+        // explicitly, so it cannot see this. Measured: around_the_world 0.147 → 1.265,
+        // crossing the 1.24 threshold from decline to answer.
         let estimate = BarLineEstimator.estimate(
-            beats: grid.beats, audio: samples, sampleRate: sampleRate)
+            beats: grid.beats,
+            audio: samples,
+            sampleRate: sampleRate,
+            options: .init(resampleToReferenceRate: true)
+        )
         guard let beatsPerBar = estimate.beatsPerBar, let phase = estimate.barLinePhase else {
             let why = estimate.decline.rawValue
             logger.info("BeatGrid FT.4: bar line DECLINED (\(why), margin \(estimate.margin)) — no bars")
