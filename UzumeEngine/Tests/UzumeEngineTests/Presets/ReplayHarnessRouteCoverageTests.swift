@@ -83,7 +83,42 @@ struct ReplayHarnessRouteCoverageTests {
         "drumsEnergyDev", "bassEnergyDev", "vocalsEnergyDev", "otherEnergyDev",
         "drumsOnsetRate", "bassOnsetRate", "vocalsOnsetRate", "otherOnsetRate",
         "drumsAttackRatio", "bassAttackRatio", "vocalsAttackRatio", "otherAttackRatio",
-        "vocalsPitchHz", "vocalsPitchConfidence"
+        "vocalsPitchHz", "vocalsPitchConfidence",
+        // PR.10 — mapped when the harness reached past ray-march. Every one of these was
+        // ALREADY present in recorded sessions; the harness just never read them, so any
+        // preset routed off them replayed against ZERO. The CSV spells them snake_case
+        // and FeatureVector camelCase, which is why an earlier audit of this gap wrongly
+        // reported them as unrecorded — match on the VALUE, not the spelling.
+        "bassAtt", "trebleAtt", "midDev", "trebDev", "highMid", "high",
+        "spectralLevelRise", "spectralSectionRatio", "waveformOccupancy",
+        "drumsCentroid", "bassCentroid", "vocalsCentroid", "otherCentroid",
+        "vocalsBand1", "otherBand1",
+        "stringsActivityDev", "brassActivityDev", "woodwindsActivityDev",
+        "percussionActivityDev"
+    ]
+
+    /// Primitives that are NOT `FeatureVector` / `StemFeatures` fields and so cannot be
+    /// carried by the CSV mapping at all.
+    ///
+    /// `sectionIndex` (`kind: "structural"`) lives on `StructuralPrediction`, which is
+    /// CPU-only and never uploaded to a GPU buffer — the same class of gap as Lumen
+    /// Mosaic's slot-8 state, not a missing column. It is listed here so the gate NAMES
+    /// it instead of a preset routed off it silently replaying against zero, which is the
+    /// exact failure this suite exists to prevent. Driving it is its own increment.
+    static let structuralPrimitivesNotDriven: Set<String> = ["sectionIndex"]
+
+    /// Paradigms `SessionReplayHarness` can replay from a recorded session.
+    ///
+    /// Before PR.10 this was `.rayMarch` alone, and the gate below was scoped to match —
+    /// so the 23 non-ray-march presets declared routes that were carried by nothing AND
+    /// checked by nothing. Widen this set and the harness together, never one without the
+    /// other: a harness that reaches a paradigm the gate does not check is the FLY.6
+    /// silent-zero hole with a wider mouth.
+    /// `MultiPassRenderHarness.render` dispatches all of these down their real render
+    /// paths; `SessionDrivenMultiPassReplay` feeds it recorded rows. `.staged` is absent
+    /// because its only member is the Staged Sandbox harness fixture (PR.0).
+    static let replayablePasses: Set<RenderPass> = [
+        .rayMarch, .mvWarp, .feedback, .direct, .particles, .meshShader, .postProcess
     ]
 
     /// Presets whose slot-8 state the harness actually drives. A preset that reads
@@ -142,11 +177,14 @@ struct ReplayHarnessRouteCoverageTests {
         for jsonURL in jsonFiles {
             let descriptor = try decoder.decode(PresetDescriptor.self,
                                                 from: try Data(contentsOf: jsonURL))
-            // The harness replays ray-march presets (it drives RayMarchPipeline.render).
-            guard descriptor.passes.contains(.rayMarch) else { continue }
+            guard descriptor.passes.contains(where: { Self.replayablePasses.contains($0) })
+            else { continue }
             let missing = descriptor.audioRoutes
                 .map(\.primitive)
-                .filter { !Self.carriedPrimitives.contains($0) }
+                .filter {
+                    !Self.carriedPrimitives.contains($0)
+                        && !Self.structuralPrimitivesNotDriven.contains($0)
+                }
             if !missing.isEmpty {
                 uncarried[descriptor.name] = Array(Set(missing)).sorted()
             }

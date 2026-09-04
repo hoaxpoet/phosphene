@@ -374,7 +374,35 @@ honest default for any that does not earn the effort. **Done-when:** every `cert
 has an explicit certify-or-remove decision from Matt with a date, and none remains undecided at the
 beta cut.
 
-**PR.10 — the replay harness past ray-march** (unblocks the production-path evidence route for 23 of
+**PR.10 — session-driven replay across every paradigm** ✅ (2026-09-04). **The premise in PR.1 was
+half wrong and the increment is much smaller than it scoped.** PR.1 reported that 23 of 26 flagged
+presets "cannot be replayed from a real session". True of `SessionReplayHarness` (it drives
+`RayMarchPipeline.render`, gate scoped `.rayMarch`) — **and wrong about the codebase**:
+`MultiPassRenderHarness.render` already dispatches Dragon Bloom, Skein, Witchlight, Ricercar,
+Filigree, Meniscus, Stave, Mitosis, Cytokinesis, Nacre, Glaze, Floret, Fata Morgana, Fractal Tree,
+Lumen Mosaic, Volumetric Lithograph, Cymatic Resonance and the four `direct` presets down their real
+paths. The only missing piece was real INPUT. Two halves existed; neither knew about the other.
+
+Delivered: **`SessionDrivenMultiPassReplay`** joins `SessionReplayHarness`'s CSV loaders to
+`MultiPassRenderHarness`'s dispatch, and the carried-primitive set goes **27 → 46**. Every one of the
+20 previously-uncarried routes (Ricercar's 6, Skein's 7, Murmuration's 4, Witchlight's 2, Fractal
+Tree's 2, Nacre's, Stave's) **was already recorded** — an earlier audit called them unrecorded because
+the CSV spells them snake_case and `FeatureVector` camelCase. `sectionIndex` is the one real gap:
+`kind: "structural"`, it lives on CPU-only `StructuralPrediction`, so the gate **names** it
+(`structuralPrimitivesNotDriven`) rather than letting Witchlight and Skein replay it as zero.
+
+The coverage gate widened with the harness in the same commit — `replayablePasses` now covers
+ray-march, mv_warp, feedback, direct, particles, mesh and post-process — and was **verified to bite**:
+removing one mapping fails it by name (`["Skein": ["drumsCentroid"]]`).
+
+**It immediately corrected PR.5.** Dragon Bloom replayed over 120 REAL *Low* frames measures
+**clipped 0.338 / saturation 0.541 / meanLuma 0.723**, against the synthetic harness's
+**0.914 / 0.141 / 0.929**. The synthetic waveform badly overstated the white-out; peaks still reach
+98.8 % clipped, so Matt's report is real but **intermittent**, not the constant wash the synthetic
+run implied. Acting on the synthetic number would have produced a far more drastic change than the
+music warrants — which is precisely what FA #27 and the PR.3d standing rule exist to prevent.
+
+**PR.10-superseded — the original scoping** (unblocks the production-path evidence route for 23 of
 26 flagged presets). `SessionReplayHarness` and `ReplayHarnessRouteCoverageTests` are both scoped to
 `.rayMarch`. The per-paradigm multi-frame templates already exist (QG.4 / D-182:
 `FeedbackPathHarnessTemplate`, `AuroraVeilMVWarpAccumulationTest`, `StagedPathHarnessTemplate`, all on
