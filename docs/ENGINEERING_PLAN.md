@@ -282,6 +282,30 @@ stereo→mono with `AVAudioConverter` and the other averaged channels manually, 
 production does. Different downmix → different beats → different features → the margin crossed the
 threshold. **A probe that does not decode the way production decodes is not measuring production.**
 
+**PR.11 — offline period refinement is dead, for a measured reason** ✅ (2026-09-04, Matt: *"measure
+whether the offline period error is recoverable. figure out how to close the gap on BUG-065."*).
+
+**Result: NOT recoverable. The period error is 10–100× smaller than the precision of any offline
+tempo estimator we have.** The drift IS a constant period error — PR.1's ramps, R² 0.63–0.91,
+0.04–0.20 % — but the offline estimator's window-to-window scatter is 0.14–99.9 % (0.5–4 % even on
+stable tracks). The signal sits one to two orders of magnitude below the instrument's noise floor.
+
+Tested properly rather than by internal consistency: the offline estimate's implied drift was
+compared against PR.1's **independently measured** per-track ramp slopes on *Low*. **Sign agrees on
+6 of 11 — chance — and magnitudes are 8–690× too large.** A first run was two orders out because BPM
+came from the median inter-beat interval, which quantises to Beat This!'s 20 ms frame grid (±3.9 % at
+117 BPM); replaced with a regression of beat time on beat index. The cross-check against an
+independent quantity is what caught it.
+
+**The finding that reframes BUG-065: the system already measures the period error more precisely
+than it can estimate it.** Drift integrates the error over minutes — 0.1 % across 300 s is 300 ms of
+signal, which is why the ramps are so clean — while any 30 s audio estimate is a 10–100× worse
+instrument. Nothing currently consumes that measurement; TRK.1 tried with an online per-onset PI
+controller and D-206 killed it on the onset evidence layer. A batch fit of accumulated drift is a
+different estimator from an online integrator, and **this probe did not test it**. No mechanism
+proposed — two levers have failed, the two-strikes rule applies, a third needs Matt's sign-off.
+Report: [`PR11_OFFLINE_PERIOD_ERROR_2026-09-04.md`](diagnostics/PR11_OFFLINE_PERIOD_ERROR_2026-09-04.md).
+
 **PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.
