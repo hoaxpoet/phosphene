@@ -360,6 +360,36 @@ defeated four attempts (TRK.2, DBN.2, MDL.1, FT.1). It is that **`barConfidence`
 something**: 1.00 where the bar structure is real, 0.36–0.86 where it is not. A consumer can gate
 bar-locked events on it — D-207's "decline when unsure" with a signal that reflects reality.
 
+**PR.15 — the bar problem is mis-shaped, not unsolvable** 🔨 (2026-09-04, Matt: *"The beat and bar
+issue is not resolved … why are we abandoning it?"*). It should not have been abandoned.
+
+**The confound behind "four failed attempts":** `BarLineEstimator.estimate`'s own doc says its
+`beats` should come from a **full-track decode, "not a 30 s window"** — and in production it has
+never had that, because `applyBarLineEstimate` receives the clamped grid. FT.3's calibration, FT.4's
+A/B, FT.4.1's split and PR.3d's adoption ALL fed it ~40–60 beats where it was designed for ~300–700.
+PR.12 removed that confound.
+
+**First hypothesis — more beats — FALSIFIED.** Whole-track beats made margins *worse* (bleed
+1.348 → 0.075; take_five 1.735 → 1.428, losing a correct answer). Correct answers 2 → 1. The margin
+is a contrast against a permutation null over the whole span, so one bar-phase across 900 beats
+blends verse, chorus and bridge.
+
+**The finding: bar structure is LOCAL.** Scored over 80-beat (~40 s) windows of the same beat
+sequence: **take_five 11 of 11 windows → 5** (global declines), **money 2 windows → 7** — the
+defining hard case of the programme (BUG-001, BUG-013, D-207, four attempts) — billie_jean 6 of 7
+→ 4. The meterless tracks stay silent (clair_de_lune peak 0.17, pyramid_song 0.33), so the
+confident-wrong protection is intact. Three more sit just under the gate (bleed 1.179,
+bohemian_rhapsody 1.419, solsbury_hill 1.412 vs 1.54) — and that threshold was fitted to a GLOBAL
+margin distribution, so it is the wrong operating point here and must be re-derived.
+
+**Same lesson as PR.12:** Matt's *"record it over the duration, don't average it"* applies to the bar
+exactly as it did to tempo — and this increment's first hypothesis went the wrong way, making the bar
+MORE global. One meter-and-phase per track is the wrong output shape.
+
+**Nothing ships yet:** `BeatGrid` carries one `beatsPerBar` and one phase, no consumer can express a
+per-section bar, and the threshold needs re-deriving first.
+Report: [`PR15_BAR_IS_LOCAL_2026-09-04.md`](diagnostics/PR15_BAR_IS_LOCAL_2026-09-04.md).
+
 **PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.
