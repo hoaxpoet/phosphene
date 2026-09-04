@@ -347,6 +347,7 @@ public final class SessionPreparer: ObservableObject {
         // tolerates the duplicate key instead of trapping; both occurrences are
         // still walked by `_runLocalFilePreparation` below.
         trackStatuses = Dictionary(placeholders.map { ($0, .queued) }, uniquingKeysWith: { first, _ in first })
+        orderedLocalTracks = placeholders
         trackProfiles = [:]
         progress = (0, urls.count)
         networkFailedTracks = []
@@ -376,50 +377,48 @@ public final class SessionPreparer: ObservableObject {
         return result
     }
 
-    private func _runLocalFilePreparation(
-        urls: [URL],
-        placeholders: [TrackIdentity],
-        delegate: (any LocalFilePreparing)?
-    ) async -> SessionPreparationResult {
-        var outcomes = PrepOutcomes()
-
-        for (index, pair) in zip(urls, placeholders).enumerated() {
-            if Task.isCancelled { break }
-            let (url, placeholder) = pair
-
-            trackStatuses[placeholder] = .analyzing(stage: .stemSeparation)
-            let result: LocalFilePrepResult? = await (delegate?.prepareLocalFile(url: url))
-            if Task.isCancelled { break }
-
-            let sourceLabel: String
-            if let result {
-                trackStatuses[placeholder] = .analyzing(stage: .caching)
-                cache.store(result.cached, for: result.identity)
-                trackProfiles[placeholder] = result.cached.trackProfile
-                trackStatuses[placeholder] = .ready
-                outcomes.success(result.identity)
-                sourceLabel = result.source.label
-            } else {
-                trackStatuses[placeholder] = .partial(reason: "Stems unavailable")
-                outcomes.failure(placeholder)
-                sourceLabel = "noCache"
-            }
-
-            progress = (outcomes.walkedCount, urls.count)
-            let perFileMsg = "WIRING: SessionPreparer.prepareLocalFile #\(index + 1) " +
-                "of \(urls.count) file='\(url.lastPathComponent)' source=\(sourceLabel)"
-            sessionRecorder?.log(perFileMsg)
-        }
-
-        let doneMsg = "WIRING: SessionPreparer.prepareLocalFiles DONE " +
-            "cached=\(outcomes.cached.count) failed=\(outcomes.failed.count) total=\(urls.count)"
-        sessionRecorder?.log(doneMsg)
-        logger.info("\(doneMsg, privacy: .public)")
-
-        return outcomes.result(cache: cache)
-    }
-
     // MARK: - PreparationProgressPublishing
+
+    /// PREP.2 — pace the local walk once the music is playing.
+    ///
+    /// Until playback starts the walk runs flat out: the listener is waiting for
+    /// the readiness prefix and every second counts. Once they are listening they
+    /// are not waiting for the rest of the walk at all — it only has to stay
+    /// ahead of the music — so continuing to saturate the GPU behind a playing
+    /// session buys nothing and risks the frames.
+    ///
+    /// PREP.1 measured the walk at ~0.068 s of preparation per second of audio,
+    /// i.e. ~15x faster than playback, which is entirely spent on the LFSTEM.1
+    /// sweep's MPSGraph dispatches (~100 % duty on the ML queue flat out). Pacing
+    /// to `pacingRate` x realtime scales that duty by `pacingRate / 15`: at the
+    /// default 2.0 the walk still gains a track on the listener every two tracks
+    /// while holding roughly 14 % ML-queue duty — an order of magnitude under
+    /// flat out, and near the ~7 % live-separation load LFSTEM.2 measured at 4K
+    /// as costing no frames.
+    ///
+    /// `2.0` is a default chosen from arithmetic, not from a frame-time
+    /// measurement under a real playing session — PREP.1 could not make that
+    /// measurement (see `docs/diagnostics/PREP1_PREPARATION_TIMING_2026-09-04.md`
+    /// §5b). It is a property so the follow-up can tune it against one.
+    public var pacingRate: Double = 2.0
+
+    /// Set by `SessionManager` when the session reaches `.playing`. Gates
+    /// `pacingRate` — before playback the walk is the wait, so it does not pace.
+    public var isPlaybackActive: Bool = false
+
+    /// PREP.2 — the local-file queue's identities in playlist order, seeded with
+    /// the placeholders `prepareLocalFiles` was handed and replaced slot by slot
+    /// as each file resolves to its real `local:sha256:` identity.
+    ///
+    /// It exists because the local path can now reach `.ready` before the walk
+    /// finishes ([D-242] amendment): `SessionManager` needs a plan in playlist
+    /// order *while* preparation is still running, and a plan of placeholders
+    /// would miss the `StemCache` on every lookup — the cached beat grid and the
+    /// LFSTEM.1 series are keyed by the real identity. Publishing per track keeps
+    /// the plan correct for everything already prepared, and leaves the rest as
+    /// placeholders that fall through to the LF.1 live-analysis path if the
+    /// listener skips ahead of the walk.
+    @Published public private(set) var orderedLocalTracks: [TrackIdentity] = []
 
     /// Publisher emitting the full `trackStatuses` dictionary on every change.
     public var trackStatusesPublisher: AnyPublisher<[TrackIdentity: TrackPreparationStatus], Never> {
@@ -732,3 +731,83 @@ extension SessionPreparer: PreparationProgressPublishing {}
 
 // BUG-006.1 wiring logs and BUG-008.2 BPM-mismatch warning live in
 // `SessionPreparer+WiringLogs.swift` so this file stays under the 400-line gate.
+
+// MARK: - Local-file walk
+//
+// The LF.5 queue walk and its PREP.2 pacing, in an extension rather than the
+// class body: the additions took `SessionPreparer` past SwiftLint's 300-line
+// type-body cap, and the walk is the most separable half. Same file, so the
+// class's `private(set)` publishers are still writable here — moving it to its
+// own file would mean widening five of them for a lint rule.
+extension SessionPreparer {
+
+    private func _runLocalFilePreparation(
+        urls: [URL],
+        placeholders: [TrackIdentity],
+        delegate: (any LocalFilePreparing)?
+    ) async -> SessionPreparationResult {
+        var outcomes = PrepOutcomes()
+
+        for (index, pair) in zip(urls, placeholders).enumerated() {
+            if Task.isCancelled { break }
+            let (url, placeholder) = pair
+
+            trackStatuses[placeholder] = .analyzing(stage: .stemSeparation)
+            let fileStart = Date()
+            let result: LocalFilePrepResult? = await (delegate?.prepareLocalFile(url: url))
+            if Task.isCancelled { break }
+
+            let sourceLabel: String
+            if let result {
+                trackStatuses[placeholder] = .analyzing(stage: .caching)
+                cache.store(result.cached, for: result.identity)
+                trackProfiles[placeholder] = result.cached.trackProfile
+                trackStatuses[placeholder] = .ready
+                outcomes.success(result.identity)
+                sourceLabel = result.source.label
+            } else {
+                trackStatuses[placeholder] = .partial(reason: "Stems unavailable")
+                outcomes.failure(placeholder)
+                sourceLabel = "noCache"
+            }
+
+            progress = (outcomes.walkedCount, urls.count)
+            // PREP.2: publish this slot's real identity now, not at the end of the
+            // walk — a session that goes `.ready` at the prefix needs the plan to
+            // be right for every track prepared so far.
+            if index < orderedLocalTracks.count, let result {
+                orderedLocalTracks[index] = result.identity
+            }
+            let perFileMsg = "WIRING: SessionPreparer.prepareLocalFile #\(index + 1) " +
+                "of \(urls.count) file='\(url.lastPathComponent)' source=\(sourceLabel)"
+            sessionRecorder?.log(perFileMsg)
+
+            await paceIfPlaying(preparedSeconds: result?.decodedDuration, spent: fileStart)
+        }
+
+        let doneMsg = "WIRING: SessionPreparer.prepareLocalFiles DONE " +
+            "cached=\(outcomes.cached.count) failed=\(outcomes.failed.count) total=\(urls.count)"
+        sessionRecorder?.log(doneMsg)
+        logger.info("\(doneMsg, privacy: .public)")
+
+        return outcomes.result(cache: cache)
+    }
+
+    /// PREP.2 — hold the walk back to `pacingRate` x realtime while the music
+    /// is playing, by idling out whatever is left of this track's share of wall
+    /// clock. A no-op before playback starts, when pacing is off, or when the
+    /// track already took longer than its share (a very long track, or a machine
+    /// under load — in which case the walk is behind its own pace and must not
+    /// be slowed further).
+    ///
+    /// Cancellation-safe: a cancelled sleep returns immediately and the loop's
+    /// own `Task.isCancelled` check breaks on the next pass.
+    private func paceIfPlaying(preparedSeconds: TimeInterval?, spent fileStart: Date) async {
+        guard isPlaybackActive, pacingRate > 0,
+              let audioSeconds = preparedSeconds, audioSeconds > 0 else { return }
+        let share = audioSeconds / pacingRate
+        let idle = share - Date().timeIntervalSince(fileStart)
+        guard idle > 0 else { return }
+        try? await Task.sleep(nanoseconds: UInt64(idle * 1_000_000_000))
+    }
+}

@@ -133,6 +133,11 @@ public final class SessionManager: ObservableObject {
     /// Retains the trackStatuses subscription during preparation.
     private var statusCancellable: AnyCancellable?
 
+    /// PREP.2 — keeps `currentPlan` in step with the local walk's resolved
+    /// identities while preparation is still running. Streaming has no twin: its
+    /// plan is known in full from the connector before any track is prepared.
+    private var localPlanCancellable: AnyCancellable?
+
     /// Full ordered track list from the connected playlist. Preserved until session ends.
     private var allSessionTracks: [TrackIdentity] = []
 
@@ -488,6 +493,97 @@ public final class SessionManager: ObservableObject {
         return false
     }
 
+    /// Shared transition into `.ready` for the LF.5 multi-file path. Writes the
+    /// `SessionPlan`, advances `progressiveReadinessLevel`, clears
+    /// `preparingTracks`, and flips state.
+    @MainActor
+
+    /// Signal that the user has started playback.
+    ///
+    /// Transitions `.ready` → `.playing`. A no-op for any other state.
+    public func beginPlayback() {
+        guard state == .ready else {
+            let current = self.state.rawValue
+            logger.info("SessionManager: ignoring beginPlayback (state=\(current))")
+            return
+        }
+        state = .playing
+        // PREP.2: from here the listener is listening, not waiting. Any walk still
+        // running behind them stops racing and paces itself (SessionPreparer
+        // `pacingRate`), so background preparation cannot spend the frame budget
+        // the visuals are now using.
+        preparer.isPlaybackActive = true
+        logger.info("SessionManager: playback started")
+    }
+
+    /// Resume preparation for tracks that previously failed due to network errors.
+    ///
+    /// Pass-through to `SessionPreparer.resumeFailedNetworkTracks()`. Safe to call
+    /// when state is not `.preparing` — the preparer will find no eligible tracks
+    /// and return immediately. D-061(d).
+    public func resumeFailedNetworkTracks() async {
+        await preparer.resumeFailedNetworkTracks()
+    }
+
+    /// Transitions state to `.idle` immediately.
+    ///
+    /// A no-op when state is already `.idle`.
+    public func cancel() {
+        guard state != .idle else { return }
+        // CLEAN.1.3 (BUG-032): advance the generation so a prep task completing
+        // after this cancel cannot mutate a later session.
+        streamingSessionGen &+= 1
+        cancellationRequested = true
+        preparer.cancelPreparation()
+        sessionPreparationTask?.cancel()
+        sessionPreparationTask = nil
+        statusCancellable?.cancel()
+        statusCancellable = nil
+        localPlanCancellable?.cancel()
+        localPlanCancellable = nil
+        preparer.isPlaybackActive = false
+        preparingTracks = []
+        progressiveReadinessLevel = .preparing
+        currentSource = nil
+        sessionSource = nil
+        currentPlan = nil
+        state = .idle
+        logger.info("SessionManager: cancelled — returning to .idle")
+    }
+
+    /// End the current session.
+    ///
+    /// Transitions any state → `.ended`. Safe to call at any point.
+    public func endSession() {
+        // CLEAN.1.3 (BUG-032): endSession() now tears down the in-flight
+        // preparation (mirroring cancel()) AND advances the generation, so the
+        // prep task can neither keep running over the shared StemSeparator nor
+        // complete into the next session. Previously it did neither — the orphan
+        // hijacked the next session's plan/state.
+        streamingSessionGen &+= 1
+        sessionPreparationTask?.cancel()
+        sessionPreparationTask = nil
+        statusCancellable?.cancel()
+        statusCancellable = nil
+        localPlanCancellable?.cancel()
+        localPlanCancellable = nil
+        preparer.isPlaybackActive = false
+        currentSource = nil
+        state = .ended
+        logger.info("SessionManager: session ended")
+    }
+
+    // Progressive readiness computation lives in `SessionManager+Readiness.swift`.
+}
+
+// MARK: - Local-file session transitions
+//
+// The LF.5 entry/exit transitions and their label helpers, in an extension
+// rather than the class body: PREP.2's readiness + plan wiring took
+// `SessionManager` past SwiftLint's 300-line type-body cap. Same file, so the
+// class's private state is still reachable.
+extension SessionManager {
+
     /// Shared entry transition for `startLocalFiles(at:origin:)`: clears the
     /// cancellation flag, seeds placeholder identities, flips state to
     /// `.preparing`, and emits the WIRING breadcrumb.
@@ -499,6 +595,35 @@ public final class SessionManager: ObservableObject {
         preparingTracks = placeholders
         progressiveReadinessLevel = .preparing
         state = .preparing
+
+        // PREP.2 ([D-242] amendment) — the local path now drives progressive
+        // readiness the way streaming has since D-056, so the listener waits for
+        // the first few tracks instead of all forty. Before this, nothing on this
+        // path ever moved `progressiveReadinessLevel` off `.preparing` and
+        // `allSessionTracks` was never populated, so `startNow()`'s guard could
+        // not pass and the Start-now control never appeared on a local session.
+        preparer.isPlaybackActive = false
+        allSessionTracks = placeholders
+        // A plan from the first moment, as `_beginPreparation` does for streaming:
+        // `startNow()` flips to `.ready` without building one, so it has to exist
+        // already. Placeholders are replaced slot by slot below.
+        currentPlan = SessionPlan(tracks: placeholders)
+        statusCancellable = preparer.$trackStatuses
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] statuses in
+                guard let self else { return }
+                self.progressiveReadinessLevel = Self.computeReadiness(
+                    statuses: statuses,
+                    trackList: self.allSessionTracks,
+                    cache: self.preparer.cache
+                )
+            }
+        localPlanCancellable = preparer.$orderedLocalTracks
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] ordered in
+                guard let self, !ordered.isEmpty else { return }
+                self.currentPlan = SessionPlan(tracks: ordered)
+            }
         let firstName = urls.first?.lastPathComponent ?? "?"
         logger.info(
             "SessionManager: preparing \(urls.count) local file(s) — first='\(firstName, privacy: .public)'"
@@ -508,18 +633,27 @@ public final class SessionManager: ObservableObject {
         sessionRecorder?.log(openMsg)
     }
 
-    /// Shared transition into `.ready` for the LF.5 multi-file path. Writes the
-    /// `SessionPlan`, advances `progressiveReadinessLevel`, clears
-    /// `preparingTracks`, and flips state.
-    @MainActor
     private func _completeLocalFilesReady(tracks: [TrackIdentity]) {
+        statusCancellable?.cancel()
+        statusCancellable = nil
+        localPlanCancellable?.cancel()
+        localPlanCancellable = nil
         currentPlan = SessionPlan(tracks: tracks)
         progressiveReadinessLevel = .fullyPrepared
         preparingTracks = []
-        state = .ready
+        // PREP.2: only the walk that is still the *reason* the session is waiting
+        // may flip the state. Once the listener has started early — `startNow()`
+        // took `.preparing` → `.ready`, and the countdown then took `.ready` →
+        // `.playing` — the walk finishing behind them must not drag a playing
+        // session back to `.ready`. Streaming's completion block has carried the
+        // same `if state == .preparing` guard since BUG-006.1; the local path
+        // never needed one until now.
+        if state == .preparing {
+            state = .ready
+        }
         logger.info("SessionManager: local files ready — \(tracks.count) track(s)")
         let readyMsg = "WIRING: SessionManager.startLocalFiles→ready " +
-            "count=\(tracks.count)"
+            "count=\(tracks.count) state=\(state.rawValue)"
         sessionRecorder?.log(readyMsg)
     }
 
@@ -549,70 +683,4 @@ public final class SessionManager: ObservableObject {
             return "localPlaylist('\(playlist.lastPathComponent)',\(expanded.count))"
         }
     }
-
-    /// Signal that the user has started playback.
-    ///
-    /// Transitions `.ready` → `.playing`. A no-op for any other state.
-    public func beginPlayback() {
-        guard state == .ready else {
-            let current = self.state.rawValue
-            logger.info("SessionManager: ignoring beginPlayback (state=\(current))")
-            return
-        }
-        state = .playing
-        logger.info("SessionManager: playback started")
-    }
-
-    /// Resume preparation for tracks that previously failed due to network errors.
-    ///
-    /// Pass-through to `SessionPreparer.resumeFailedNetworkTracks()`. Safe to call
-    /// when state is not `.preparing` — the preparer will find no eligible tracks
-    /// and return immediately. D-061(d).
-    public func resumeFailedNetworkTracks() async {
-        await preparer.resumeFailedNetworkTracks()
-    }
-
-    /// Transitions state to `.idle` immediately.
-    ///
-    /// A no-op when state is already `.idle`.
-    public func cancel() {
-        guard state != .idle else { return }
-        // CLEAN.1.3 (BUG-032): advance the generation so a prep task completing
-        // after this cancel cannot mutate a later session.
-        streamingSessionGen &+= 1
-        cancellationRequested = true
-        preparer.cancelPreparation()
-        sessionPreparationTask?.cancel()
-        sessionPreparationTask = nil
-        statusCancellable?.cancel()
-        statusCancellable = nil
-        preparingTracks = []
-        progressiveReadinessLevel = .preparing
-        currentSource = nil
-        sessionSource = nil
-        currentPlan = nil
-        state = .idle
-        logger.info("SessionManager: cancelled — returning to .idle")
-    }
-
-    /// End the current session.
-    ///
-    /// Transitions any state → `.ended`. Safe to call at any point.
-    public func endSession() {
-        // CLEAN.1.3 (BUG-032): endSession() now tears down the in-flight
-        // preparation (mirroring cancel()) AND advances the generation, so the
-        // prep task can neither keep running over the shared StemSeparator nor
-        // complete into the next session. Previously it did neither — the orphan
-        // hijacked the next session's plan/state.
-        streamingSessionGen &+= 1
-        sessionPreparationTask?.cancel()
-        sessionPreparationTask = nil
-        statusCancellable?.cancel()
-        statusCancellable = nil
-        currentSource = nil
-        state = .ended
-        logger.info("SessionManager: session ended")
-    }
-
-    // Progressive readiness computation lives in `SessionManager+Readiness.swift`.
 }

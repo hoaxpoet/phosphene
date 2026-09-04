@@ -155,13 +155,55 @@ to beat sync** — `computeBeatGrids` is timed and nothing else.
 **Done-when:** ✅ the figure is reproduced, ✅ every stage is timed (stages sum to 100.0 % of
 per-track wall clock), ⏸ **Matt has the report and picks a direction** — the hard stop.
 
-**PREP.2** is whichever option Matt picks. Two are named in the prompt so the report addresses
-them directly: **concurrency across tracks** (the serial loop — worth it only if the dominant
-stage is not already saturating the machine, which is why PREP.1 measures CPU/GPU/disk behaviour
-and not just durations), and **splitting the budget in two** — progressive readiness already lets
-playback start before the walk finishes, so "time to `.ready`" and "time to fully prepared" may
-deserve separate targets, since the listener waits only for the first. That split would be a
-[D-242] amendment.
+### Increment PREP.2 — Release, an early start, and a paced walk ✅ code-complete (2026-09-04), pending live validation
+
+**Matt's pick from PREP.1's options: *"do 1 and 4, pace the walk."*** [D-242] amended accordingly
+(§Amendment — two budgets, and Release is the configuration they are measured in). Option 2 (the
+sweep's kept span) is **not** taken — it can change what the listener sees and wants an A/B first.
+
+**① Release.** The app now builds clean in `-configuration Release` (verified; the first Release
+product ever produced on the dev machine — DerivedData held 35 Debug bundles and zero Release).
+A wall-clock claim about preparation states its configuration or it means nothing.
+
+**② The early start — and the root cause behind the ten-minute wait.** Progressive readiness
+(D-056) has let *streaming* start after three consecutive prepared tracks since Increment 6.1;
+**the local path never used it.** `_beginMultiFileTransition` set `progressiveReadinessLevel` to
+`.preparing` and nothing ever updated it, and `allSessionTracks` — which `computeReadiness` reads —
+was never populated, so `startNow()`'s guard could not pass and the Start-now control (rendered
+under `if viewModel.canStartNow`) never appeared on a local session. The local walk now drives the
+same readiness computation, and a second subscription keeps `currentPlan` in step with
+`SessionPreparer.orderedLocalTracks` — placeholders replaced slot by slot as each file resolves, so
+a session that starts early looks its prepared tracks up in `StemCache` under the real
+`local:sha256:` identity instead of missing on `local:<path>` and losing the cached grid and the
+LFSTEM.1 series. `_completeLocalFilesReady` gained streaming's `if state == .preparing` guard: a
+walk finishing behind a playing session must not drag it back to `.ready`. `extendPlan()` was
+already subscribed to readiness, so plan growth came for free.
+
+**③ The paced walk.** `SessionPreparer.pacingRate` (default **2.0 × realtime**), armed by
+`beginPlayback()` and cleared on every session boundary, idles out the remainder of each track's
+share of wall clock once the music is playing. Flat out before that — the listener is waiting and
+the walk *is* the wait. PREP.1 measured preparation at ~0.068 s per second of audio (~15× realtime,
+~100 % ML-queue duty); pacing to 2.0 scales that to ~14 % while the walk still gains a track on the
+listener every two tracks. **The number is arithmetic, not a frame-time measurement under a real
+playing session** — PREP.1 could not make that measurement (report §5b), so `pacingRate` is a
+property the follow-up can tune against one.
+
+**Done-when:** ✅ engine + app green, lint 0, doc gates green; ✅ `LocalFileEarlyStartTests` (5)
+pins readiness advancing mid-walk, the plan carrying resolved identities mid-walk, a late walk not
+resetting a playing session, pacing off before playback and on after it — three of them fail on the
+pre-PREP.2 code. ⏸ **Live validation outstanding:** one local folder session, started early from the
+Start-now control, confirming the music starts, the first tracks carry their cached grids, and the
+visuals hold while the walk continues behind. That session is also the frame-time measurement §5b
+could not make.
+
+**PREP.3 candidates:** tune `pacingRate` against the live number; the unexplained 23–45 GB at four
+concurrent workers (PREP.1 §5); and Option 2 if Matt wants *fully prepared* inside 300 s.
+
+**Superseded planning note.** PREP.2 was originally "whichever option Matt picks", with concurrency
+across tracks and splitting the budget in two named as the likely candidates. The budget split is
+what he took (plus Release); **concurrency across tracks was not taken** — it is a 1.7× on a walk
+that no longer blocks the listener, and PREP.1 found four workers being OOM-killed at 23–45 GB, so
+it needs the memory question answered before it is worth anything.
 
 ## Recently Completed
 

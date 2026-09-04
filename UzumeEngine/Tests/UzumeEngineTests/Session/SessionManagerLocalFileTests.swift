@@ -117,6 +117,23 @@ private func makeLFManager() throws -> SessionManager {
     return SessionManager(connector: StubConnectorLF(), preparer: preparer)
 }
 
+/// Twin of `makeLFManager()` that hands back the preparer as well, for the PREP.2
+/// tests that need to reach the pacing knobs (`SessionManager.preparer` is private,
+/// and widening it for a test would be the wrong trade).
+@MainActor
+private func makeLFManagerWithPreparer() throws -> (SessionManager, SessionPreparer) {
+    let device = try #require(MTLCreateSystemDefaultDevice(), "Metal device required")
+    let stemSeparator = try InstantStemSeparatorLF(device: device)
+    let preparer = SessionPreparer(
+        resolver: InstantResolverLF(),
+        downloader: InstantDownloaderLF(),
+        stemSeparator: stemSeparator,
+        stemAnalyzer: InstantStemAnalyzerLF(),
+        moodClassifier: MockMoodClassifier()
+    )
+    return (SessionManager(connector: StubConnectorLF(), preparer: preparer), preparer)
+}
+
 /// Synthesise a `LocalFilePrepResult` with the LF.3 `local:sha256:` identity form.
 private func makeStubPrepResult(
     url: URL,
@@ -904,5 +921,177 @@ struct SessionManagerLocalFileTests {
 
         // B should have prepared its one file normally.
         #expect(stubB.callCount == 1)
+    }
+}
+
+// MARK: - PREP.2 — early start + paced walk ([D-242] amendment)
+
+/// Before PREP.2 the local path reached `.ready` only when the whole walk
+/// finished, and nothing on it ever moved `progressiveReadinessLevel` off
+/// `.preparing` — `_beginMultiFileTransition` set the level and no subscription
+/// updated it, and `allSessionTracks` (which `computeReadiness` reads) was never
+/// populated. So `startNow()`'s guard could not pass, the Start-now control never
+/// appeared, and a 40-track folder made the listener wait for track 40.
+///
+/// These pin what had to become true. Three of them fail on the pre-PREP.2 code
+/// for the same root cause — readiness never advances, so `startNow()` is refused
+/// and `.playing` is unreachable early — and `currentPlan` was `nil` until the walk
+/// ended. `pacesOnlyOncePlaying` is the guard on the other side: it passes before
+/// PREP.2 too (vacuously, since there was no pacing), and exists so a later tuning
+/// pass cannot quietly start pacing the wait itself.
+@Suite("Local files: early start and paced preparation (PREP.2)")
+@MainActor
+struct LocalFileEarlyStartTests {
+
+    private func urls(_ names: [String]) -> [URL] {
+        names.map { URL(fileURLWithPath: "/tmp/prep2/\($0)") }
+    }
+
+    private func results(_ names: [String]) -> [String: LocalFilePrepResult] {
+        Dictionary(uniqueKeysWithValues: names.enumerated().map { index, name in
+            let url = URL(fileURLWithPath: "/tmp/prep2/\(name)")
+            // Distinct hashes so each slot's identity is distinguishable in the plan.
+            let hash = String(repeating: String(index), count: 64)
+            return (name, makeStubPrepResult(url: url, hash: hash))
+        })
+    }
+
+    @Test("readiness advances past .preparing while the walk is still running")
+    func readinessAdvancesDuringTheWalk() async throws {
+        let names = (1...6).map { "t\($0).flac" }
+        let manager = try makeLFManager()
+        // 40 ms per file × 6 = ~240 ms of walk; sample readiness in the middle.
+        let stub = MultiStubLocalFilePreparer(results: results(names), preparationDelayMs: 40)
+        manager.localFilePreparer = stub
+
+        let walk = Task { await manager.startLocalFiles(at: urls(names), origin: .localFiles(urls(names))) }
+        var sawEarlyReadiness = false
+        for _ in 0..<60 {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            if manager.state == .preparing, manager.progressiveReadinessLevel >= .readyForFirstTracks {
+                sawEarlyReadiness = true
+                break
+            }
+        }
+        await walk.value
+
+        #expect(sawEarlyReadiness, """
+                progressiveReadinessLevel never reached .readyForFirstTracks while the walk was \
+                still running — the local path is not driving readiness, so Start-now can never \
+                appear and the listener waits for the last track.
+                """)
+    }
+
+    @Test("the plan carries a prepared track's real identity before the walk ends")
+    func planCarriesRealIdentitiesDuringTheWalk() async throws {
+        let names = (1...6).map { "t\($0).flac" }
+        let manager = try makeLFManager()
+        let stub = MultiStubLocalFilePreparer(results: results(names), preparationDelayMs: 40)
+        manager.localFilePreparer = stub
+
+        let walk = Task { await manager.startLocalFiles(at: urls(names), origin: .localFiles(urls(names))) }
+        var firstTrackResolved = false
+        for _ in 0..<60 {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            let first = manager.currentPlan?.tracks.first?.spotifyID ?? ""
+            if manager.state == .preparing, first.hasPrefix("local:sha256:") {
+                firstTrackResolved = true
+                break
+            }
+        }
+        await walk.value
+
+        #expect(firstTrackResolved, """
+                currentPlan still held the placeholder identity for track 1 while the walk ran. \
+                A session that starts early would look every track up in StemCache under \
+                `local:<path>` and miss, losing the cached beat grid and the LFSTEM.1 series.
+                """)
+    }
+
+    @Test("a walk finishing behind a playing session does not drag it back to .ready")
+    func lateWalkDoesNotResetAPlayingSession() async throws {
+        let names = (1...6).map { "t\($0).flac" }
+        let (manager, preparer) = try makeLFManagerWithPreparer()
+        let stub = MultiStubLocalFilePreparer(results: results(names), preparationDelayMs: 40)
+        manager.localFilePreparer = stub
+        // This test is about the state flip, not the pacing — a rate this high
+        // makes every track's share of wall clock shorter than its preparation,
+        // so `paceIfPlaying` never idles and the suite stays fast. Pacing itself
+        // is covered by `pacingEngagesOncePlaying`.
+        preparer.pacingRate = 100_000
+
+        let walk = Task { await manager.startLocalFiles(at: urls(names), origin: .localFiles(urls(names))) }
+        for _ in 0..<60 {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            if manager.progressiveReadinessLevel >= .readyForFirstTracks { break }
+        }
+        manager.startNow()
+        manager.beginPlayback()
+        #expect(manager.state == .playing, "startNow + beginPlayback should reach .playing early")
+
+        await walk.value
+        #expect(manager.state == .playing, """
+                _completeLocalFilesReady flipped a PLAYING session back to .ready when the \
+                background walk finished — the listener's music would be interrupted by \
+                preparation completing behind them.
+                """)
+        #expect(manager.progressiveReadinessLevel == .fullyPrepared)
+    }
+
+    @Test("the walk paces itself only once playback has started")
+    func pacingIsGatedOnPlayback() async throws {
+        let manager = try makeLFManager()
+        // decodedDuration is 12.5 s per stub track; at rate 2.0 each track's share
+        // of wall clock is 6.25 s. Two tracks unpaced must finish far inside that.
+        let names = ["t1.flac", "t2.flac"]
+        let stub = MultiStubLocalFilePreparer(results: results(names), preparationDelayMs: 10)
+        manager.localFilePreparer = stub
+
+        let started = Date()
+        await manager.startLocalFiles(at: urls(names), origin: .localFiles(urls(names)))
+        let unpaced = Date().timeIntervalSince(started)
+
+        #expect(unpaced < 2.0, """
+                The walk paced itself before playback started (took \(unpaced) s for two 12.5 s \
+                tracks). Until the music is playing the walk IS the wait and must run flat out.
+                """)
+        #expect(manager.state == .ready)
+    }
+
+    @Test("the walk paces itself once the listener has started early")
+    func pacingEngagesOncePlaying() async throws {
+        let names = (1...6).map { "t\($0).flac" }
+        let (manager, preparer) = try makeLFManagerWithPreparer()
+        let stub = MultiStubLocalFilePreparer(results: results(names), preparationDelayMs: 5)
+        manager.localFilePreparer = stub
+        // Stub tracks carry 12.5 s of audio; at rate 25 each owns 0.5 s of wall
+        // clock where preparing one costs ~5 ms. Same shape as the production
+        // default (2.0 → 6.25 s a track), small enough to live in a suite.
+        preparer.pacingRate = 25
+
+        // `_beginMultiFileTransition` clears `isPlaybackActive` on entry, so the
+        // flag can only be reached the way production reaches it: readiness →
+        // startNow → beginPlayback, with the walk still running behind.
+        let walk = Task { await manager.startLocalFiles(at: urls(names), origin: .localFiles(urls(names))) }
+        for _ in 0..<100 {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+            if manager.progressiveReadinessLevel >= .readyForFirstTracks { break }
+        }
+        manager.startNow()
+        manager.beginPlayback()
+        #expect(preparer.isPlaybackActive, "beginPlayback must arm pacing")
+
+        let fromPlayback = Date()
+        await walk.value
+        let paced = Date().timeIntervalSince(fromPlayback)
+
+        // At least two tracks remain after the 3-track prefix; each must idle out
+        // its 0.5 s share. Unpaced the remainder finishes in milliseconds.
+        #expect(paced > 0.8, """
+                The walk did not pace after playback began. Unpaced, background preparation \
+                holds ~100 % duty on the ML queue behind a playing session (PREP.1 §5b) — the \
+                load nothing has cleared.
+                """)
+        #expect(paced < 5.0, "paced far longer than the rate asks for")
     }
 }
