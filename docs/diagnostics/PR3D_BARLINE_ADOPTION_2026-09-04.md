@@ -88,3 +88,71 @@ win as suite 2 cleared.
 
 `UZUME_BARLINE` defaults **on**; `UZUME_BARLINE=0` is the kill switch. Rolling back only restores
 wrong bars — the beat layer is unaffected either way.
+
+---
+
+## 5. REVERTED the same day
+
+Matt, 2026-09-04: *"the failure rate here is too high and you should not have recommended it in the
+first place."* `UZUME_BARLINE` is back to default-off. Correct call, and the reason is that the
+recommendation above was made against the wrong evidence.
+
+**What the recommendation was based on:** nine benchmark fixtures, headlined by take_five's
+downbeat F 0.26 → 0.97. **What it was never checked against:** the album Matt had actually reviewed,
+which was on disk and had already been analysed in PR.1. Running it there takes five minutes.
+
+## 6. What it does to *Low* — the measurement that should have come first
+
+`LowBarLineProbe`, production-faithful decode, `UZUME_BARLINE=0` vs `=1`:
+
+| track | before | after | |
+|---|---|---|---|
+| 01 Speed Of Life | 4 ✓ | 4 ✓ | unchanged |
+| 02 Breaking Glass | 4 ✓ | 4 ✓ | unchanged |
+| **03 What In The World** | **2 ✗** | **4 ✓** | **fixed** |
+| 04 Sound And Vision | 4 ✓ | 4 ✓ | unchanged |
+| 05 Always Crashing | 4 ✓ | 4 ✓ | unchanged |
+| **06 Be My Wife** | **4 ✓** | **decline** | **correct bar LOST** |
+| **07 A New Career** | **4 ✓** | **decline** | **correct bar LOST** |
+| 08 Warszawa | 3 ✗ | decline | wrong → silent |
+| 09 Art Decade | 2 ✗ | decline | wrong → silent |
+| 10 Weeping Wall | 2 ✗ | decline | wrong → silent |
+| 11 Subterraneans | 3 ✗ | decline | wrong → silent |
+
+**Bar coverage 11/11 → 5/11. One track fixed, two working tracks broken.** Be My Wife is the clean
+counterexample: correct meter *and* the tightest phase on the record (28 % of frames outside the
+perceptual window, p50 39 ms, best of the eleven). Its bar accents worked, and adoption removed them.
+
+It is not a threshold problem — Be My Wife sits at margin 0.507 and A New Career at 0.766, far below
+even the old 1.24. No threshold that keeps zero-confident-wrong on the benchmark recovers them.
+
+**Side benefit of running this: it independently confirms PR.1.** The true OFF meters are
+`4,4,2,4,4,4,4,3,2,2,3` — exactly the values Matt's session logged.
+
+## 7. What stays, and the standing rule
+
+**Kept** (both are correct independent of adoption): the **BUG-114** window fix, a genuine defect —
+a ported algorithm was running at half its calibrated window — and the **1.24 → 1.54** threshold
+re-derivation, which is the correct operating point *given* that fix, and without which any future
+adoption would ship bleed's wrong meter 3.
+
+**Reverted:** `UZUME_BARLINE` default-on.
+
+**Standing rule, from this failure:** *a change to what the listener sees is not recommended until
+it has been measured on Matt's own material.* Benchmark fixtures gate regressions; they do not
+establish that something is an improvement to Uzume. take_five is not on Bowie's *Low*, and leading
+with it was measuring the wrong thing and reporting the result as if it were the right one.
+
+## 8. Where bar position actually stands
+
+Neither available option is good enough, and that — not a recommendation — is the finding:
+
+| option | correct bars | wrong bars | silent |
+|---|---:|---:|---:|
+| shipping (model downbeat head) | 6/11 | **5/11** | 0 |
+| estimator, decline to silence | 5/11 | 0 | **6/11** |
+| estimator, fall back to head | **7/11** | 4/11 | 0 |
+
+A 45 % wrong-bar rate, a 55 % silence rate, or a 36 % wrong-bar rate. None of these is a feature
+worth shipping on, and no threshold move changes that — the failure is upstream, in how bar position
+is estimated at all.

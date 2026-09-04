@@ -1,0 +1,85 @@
+// PR.3e — what does the adopted bar-line estimator actually do to Matt's own album?
+//
+// The five-suite table says take_five 0.26 -> 0.97 and seven fixtures go quiet. That is
+// nine tracks of benchmark material. This asks the question that decides whether the
+// change is an improvement to UZUME: on the album Matt reviewed, how many tracks get a
+// bar at all, and does the meter it returns look like the music?
+//
+// Run: UZUME_LOW_PROBE=1 swift test --package-path UzumeEngine --filter LowBarLineProbe
+import Testing
+import Foundation
+import AVFoundation
+import Metal
+@testable import DSP
+@testable import Session
+
+@Suite("LowBarLineProbe")
+struct LowBarLineProbe {
+
+    /// Production-faithful decode: native rate, manual channel average.
+    private static func decodeMono(url: URL) throws -> ([Float], Double) {
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat
+        let frames = AVAudioFrameCount(file.length)
+        guard frames > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)
+        else { return ([], 0) }
+        try file.read(into: buffer)
+        guard let channels = buffer.floatChannelData else { return ([], 0) }
+        let count = Int(buffer.frameLength)
+        let channelCount = Int(format.channelCount)
+        if channelCount == 1 {
+            return (Array(UnsafeBufferPointer(start: channels[0], count: count)), format.sampleRate)
+        }
+        var mono = [Float](repeating: 0, count: count)
+        let scale = 1.0 / Float(channelCount)
+        for channel in 0..<channelCount {
+            let pointer = UnsafeBufferPointer(start: channels[channel], count: count)
+            for index in 0..<count { mono[index] += pointer[index] * scale }
+        }
+        return (mono, format.sampleRate)
+    }
+
+    @Test("bar line on Bowie's Low, before and after adoption",
+          .enabled(if: ProcessInfo.processInfo.environment["UZUME_LOW_PROBE"] == "1"))
+    func lowAlbum() throws {
+        let dir = URL(fileURLWithPath:
+            "/Volumes/Extreme SSD/B/Bowie, David/[1977] - Low")
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+        let files = (try FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil))
+            .filter { $0.pathExtension == "flac" && !$0.lastPathComponent.hasPrefix("._") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        print("\n  threshold = \(BarLineEstimator.declineThreshold)")
+        print("  track                              bpm   OFF meter   margin   ON meter")
+        var offBars = 0, onBars = 0
+        for url in files {
+            guard let (audio, rate) = try? Self.decodeMono(url: url), !audio.isEmpty else {
+                print("  \(url.lastPathComponent) — could not decode"); continue
+            }
+            let grid = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate)
+            var gaps = (0..<max(grid.beats.count - 1, 0)).map { grid.beats[$0 + 1] - grid.beats[$0] }
+            gaps.sort()
+            let bpm = gaps.isEmpty ? 0 : 60.0 / gaps[gaps.count / 2]
+            let est = BarLineEstimator.estimate(
+                beats: grid.beats,
+                audio: audio,
+                sampleRate: rate,
+                options: .init(resampleToReferenceRate: true)
+            )
+            let answers = est.margin >= BarLineEstimator.declineThreshold
+            // OFF = the model's downbeat head, i.e. grid.beatsPerBar; 1 means it collapsed.
+            if grid.beatsPerBar > 1 { offBars += 1 }
+            if answers { onBars += 1 }
+            let name = url.deletingPathExtension().lastPathComponent
+            let pad = String(repeating: " ", count: max(0, 34 - name.count))
+            print("  \(name)\(pad) \(String(format: "%5.1f", bpm))   "
+                  + "\(grid.beatsPerBar)          "
+                  + "\(String(format: "%6.3f", est.margin))   "
+                  + "\(answers ? String(est.beatsPerBar ?? 0) : "decline")")
+        }
+        print("\n  tracks with a bar — OFF: \(offBars)/\(files.count)   ON: \(onBars)/\(files.count)")
+    }
+}

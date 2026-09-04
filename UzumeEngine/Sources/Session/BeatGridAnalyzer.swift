@@ -87,11 +87,14 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
             let env = ProcessInfo.processInfo.environment
             let both = env["UZUME_FULLTRACK_BARS"] == "1"
             let fullTrack = both || env["UZUME_FULLTRACK_DECODE"] == "1"
-            // ADOPTED default-on at PR.3d (Matt, 2026-09-04) after the BUG-114 window fix
-            // and the PR.3d threshold re-derivation. `UZUME_BARLINE=0` is the kill switch;
-            // the beat layer is provably untouched (BeatBench: F / Cemgil / CMLt / AMLt
-            // identical on all nine fixtures), so a rollback only restores wrong bars.
-            let barLine = both || env["UZUME_BARLINE"] != "0"
+            // NOT adopted. Default-on was tried at PR.3d and REVERTED the same day
+            // (Matt: "the failure rate here is too high"). It was recommended off nine
+            // benchmark fixtures without measuring the album Matt actually reviewed; on
+            // Bowie's Low it takes bar coverage 11/11 -> 5/11, fixes What In The World
+            // (2 -> 4) and SILENCES Be My Wife and A New Career, which both had the
+            // correct 4/4 AND the tightest phase on the record. One track fixed, two
+            // working tracks broken. See PR3D_BARLINE_ADOPTION_2026-09-04.md §6.
+            let barLine = both || env["UZUME_BARLINE"] == "1"
             let activations: (beats: [Float], downbeats: [Float])
             if fullTrack {
                 activations = try BeatThisTiledInference.predictFullTrack(
