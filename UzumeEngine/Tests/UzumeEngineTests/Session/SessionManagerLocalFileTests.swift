@@ -936,9 +936,11 @@ struct SessionManagerLocalFileTests {
 /// These pin what had to become true. Three of them fail on the pre-PREP.2 code
 /// for the same root cause — readiness never advances, so `startNow()` is refused
 /// and `.playing` is unreachable early — and `currentPlan` was `nil` until the walk
-/// ended. `pacesOnlyOncePlaying` is the guard on the other side: it passes before
-/// PREP.2 too (vacuously, since there was no pacing), and exists so a later tuning
-/// pass cannot quietly start pacing the wait itself.
+/// ended. The two pacing tests are the guard on the other side: they pass before
+/// PREP.2 too (vacuously, since there was no pacing), and exist so a later tuning
+/// pass cannot quietly start pacing the wait itself. Both are deterministic — the
+/// first version asserted elapsed wall clock, passed alone, and read 166 s inside
+/// the parallel suite, where it was measuring main-actor contention, not pacing.
 @Suite("Local files: early start and paced preparation (PREP.2)")
 @MainActor
 struct LocalFileEarlyStartTests {
