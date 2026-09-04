@@ -1038,60 +1038,47 @@ struct LocalFileEarlyStartTests {
         #expect(manager.progressiveReadinessLevel == .fullyPrepared)
     }
 
-    @Test("the walk paces itself only once playback has started")
-    func pacingIsGatedOnPlayback() async throws {
-        let manager = try makeLFManager()
-        // decodedDuration is 12.5 s per stub track; at rate 2.0 each track's share
-        // of wall clock is 6.25 s. Two tracks unpaced must finish far inside that.
-        let names = ["t1.flac", "t2.flac"]
-        let stub = MultiStubLocalFilePreparer(results: results(names), preparationDelayMs: 10)
-        manager.localFilePreparer = stub
-
-        let started = Date()
-        await manager.startLocalFiles(at: urls(names), origin: .localFiles(urls(names)))
-        let unpaced = Date().timeIntervalSince(started)
-
-        #expect(unpaced < 2.0, """
-                The walk paced itself before playback started (took \(unpaced) s for two 12.5 s \
-                tracks). Until the music is playing the walk IS the wait and must run flat out.
-                """)
-        #expect(manager.state == .ready)
-    }
-
-    @Test("the walk paces itself once the listener has started early")
-    func pacingEngagesOncePlaying() async throws {
+    @Test("pacing is armed by playback, not before it")
+    func pacingIsArmedByPlayback() async throws {
         let names = (1...6).map { "t\($0).flac" }
         let (manager, preparer) = try makeLFManagerWithPreparer()
-        let stub = MultiStubLocalFilePreparer(results: results(names), preparationDelayMs: 5)
+        let stub = MultiStubLocalFilePreparer(results: results(names), preparationDelayMs: 40)
         manager.localFilePreparer = stub
-        // Stub tracks carry 12.5 s of audio; at rate 25 each owns 0.5 s of wall
-        // clock where preparing one costs ~5 ms. Same shape as the production
-        // default (2.0 → 6.25 s a track), small enough to live in a suite.
-        preparer.pacingRate = 25
+        preparer.pacingRate = 100_000     // so an armed pace still idles ~nothing
 
-        // `_beginMultiFileTransition` clears `isPlaybackActive` on entry, so the
-        // flag can only be reached the way production reaches it: readiness →
-        // startNow → beginPlayback, with the walk still running behind.
         let walk = Task { await manager.startLocalFiles(at: urls(names), origin: .localFiles(urls(names))) }
+        #expect(!preparer.isPlaybackActive, """
+                The walk paced before playback started. Until the listener is listening the walk \
+                IS the wait, and every second of it is a second they are staring at a progress bar.
+                """)
         for _ in 0..<100 {
             try? await Task.sleep(nanoseconds: 5_000_000)
             if manager.progressiveReadinessLevel >= .readyForFirstTracks { break }
         }
         manager.startNow()
         manager.beginPlayback()
-        #expect(preparer.isPlaybackActive, "beginPlayback must arm pacing")
+        #expect(preparer.isPlaybackActive, "beginPlayback must arm pacing for the walk behind it")
 
-        let fromPlayback = Date()
         await walk.value
-        let paced = Date().timeIntervalSince(fromPlayback)
+        manager.endSession()
+        #expect(!preparer.isPlaybackActive, "a session boundary must disarm pacing")
+    }
 
-        // At least two tracks remain after the 3-track prefix; each must idle out
-        // its 0.5 s share. Unpaced the remainder finishes in milliseconds.
-        #expect(paced > 0.8, """
-                The walk did not pace after playback began. Unpaced, background preparation \
-                holds ~100 % duty on the ML queue behind a playing session (PREP.1 §5b) — the \
-                load nothing has cleared.
-                """)
-        #expect(paced < 5.0, "paced far longer than the rate asks for")
+    /// The pacing policy itself, as arithmetic — deliberately NOT a wall-clock
+    /// assertion. The first version of this test measured elapsed time and passed
+    /// alone but read 166 s inside the parallel suite, where it was measuring
+    /// main-actor contention rather than pacing.
+    @Test("pacing idles out the remainder of a track's share of wall clock")
+    func pacingPolicyArithmetic() {
+        // A 12.5 s track at 2x realtime owns 6.25 s; preparing it took 0.5 s.
+        #expect(SessionPreparer.pacingIdleSeconds(audioSeconds: 12.5, rate: 2.0, spent: 0.5) == 5.75)
+        // The production shape: PREP.1's mean track (211.7 s) at the default rate.
+        #expect(SessionPreparer.pacingIdleSeconds(audioSeconds: 211.7, rate: 2.0, spent: 14.3) > 91.0)
+        // A walk already behind its own pace is never slowed further.
+        #expect(SessionPreparer.pacingIdleSeconds(audioSeconds: 12.5, rate: 2.0, spent: 99) == 0)
+        // Unknown duration, zero duration, zero rate → prepare the next track now.
+        #expect(SessionPreparer.pacingIdleSeconds(audioSeconds: nil, rate: 2.0, spent: 0) == 0)
+        #expect(SessionPreparer.pacingIdleSeconds(audioSeconds: 0, rate: 2.0, spent: 0) == 0)
+        #expect(SessionPreparer.pacingIdleSeconds(audioSeconds: 12.5, rate: 0, spent: 0) == 0)
     }
 }

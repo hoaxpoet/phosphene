@@ -803,11 +803,31 @@ extension SessionPreparer {
     /// Cancellation-safe: a cancelled sleep returns immediately and the loop's
     /// own `Task.isCancelled` check breaks on the next pass.
     private func paceIfPlaying(preparedSeconds: TimeInterval?, spent fileStart: Date) async {
-        guard isPlaybackActive, pacingRate > 0,
-              let audioSeconds = preparedSeconds, audioSeconds > 0 else { return }
-        let share = audioSeconds / pacingRate
-        let idle = share - Date().timeIntervalSince(fileStart)
+        guard isPlaybackActive else { return }
+        let idle = Self.pacingIdleSeconds(
+            audioSeconds: preparedSeconds,
+            rate: pacingRate,
+            spent: Date().timeIntervalSince(fileStart)
+        )
         guard idle > 0 else { return }
         try? await Task.sleep(nanoseconds: UInt64(idle * 1_000_000_000))
+    }
+
+    /// How long the walk should idle after preparing a track, to hold itself to
+    /// `rate` x realtime. Pure so the policy can be tested without spending test
+    /// wall clock on the sleep — a timing assertion in a parallel suite measures
+    /// main-actor contention, not pacing.
+    ///
+    /// Returns `0` (prepare the next track immediately) when the track's audio
+    /// duration is unknown or non-positive, when the rate is non-positive, or
+    /// when preparation already overran the track's share — a walk that is
+    /// behind its own pace must not be slowed further.
+    static func pacingIdleSeconds(
+        audioSeconds: TimeInterval?,
+        rate: Double,
+        spent: TimeInterval
+    ) -> TimeInterval {
+        guard rate > 0, let audioSeconds, audioSeconds > 0 else { return 0 }
+        return max(0, audioSeconds / rate - spent)
     }
 }
