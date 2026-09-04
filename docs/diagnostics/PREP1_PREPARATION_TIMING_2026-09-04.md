@@ -224,6 +224,83 @@ instances rather than duplicating them per worker as this runner does.
 
 ---
 
+## 5b. Overlapping preparation with playback — one direction measured, one not
+
+Matt's question, and the deciding one for Option 4: if playback starts before the walk finishes,
+does the background preparation stress the machine enough to hurt the visuals? Two directions, and
+they did not turn out equally answerable.
+
+### The direction that measured cleanly: rendering barely slows the walk
+
+Same corpus, same Release build, same serial pipeline — the only difference is a GPU render load
+running alongside (`runF-sweep-under-render-load.csv`):
+
+| GPU load alongside the sweep | wall clock | vs idle |
+|---|---|---|
+| none (run A) | 157.6 s | — |
+| one 1080p ray-march meter looping | 158.7 s | +0.7 % |
+| one meter, second pairing | 161.5 s | +2.5 % |
+| three concurrent meters | 162.5 s | +3.1 % |
+
+**A GPU busy with rendering costs the walk 1–3 %.** So a walk running under playback keeps its lead:
+it needs 1× realtime to stay ahead of the listener and it runs at ~15×.
+
+### The direction that did NOT measure: does the walk cost the renderer?
+
+**It could not be measured with anything in this repo, and the attempt is recorded rather than a
+number invented for it.** The only sustained-render instrument available is
+`RayMarchPipelineTests.test_fullPipeline_under8ms_at1080p` driven in a loop (`overlap-meterloop.sh`
+— direct `xctest` invocation, ~1.2 s per pass of 10 warm 1080p frames). Four arms, ~14,000 frames:
+
+| arm | n | p50 | p90 | p99 | max | > 8 ms | > 16.7 ms |
+|---|---|---|---|---|---|---|---|
+| 1 meter, no sweep (before) | 1,840 | 1.84 | 2.24 | 3.02 | 4.64 | 0.00 % | 0.00 % |
+| 1 meter **+ sweep** | 1,870 | **0.67** | 1.05 | 1.70 | 18.84 | 0.11 % | 0.05 % |
+| 1 meter, no sweep (after) | 1,810 | 1.89 | 2.26 | 3.13 | 4.75 | 0.00 % | 0.00 % |
+| 3 meters, no sweep | 5,120 | 2.30 | 3.84 | 5.45 | 82.98 | 0.37 % | 0.04 % |
+| 3 meters **+ sweep** | 5,250 | **1.05** | 1.52 | 2.08 | 8.70 | 0.02 % | 0.00 % |
+
+**Frame time gets 2–3× FASTER under load, reproducibly, in every pairing.** That is not contention;
+it is CPU/GPU performance state. An offscreen meter that renders ~20 ms of work every 1.2 s leaves
+the machine idle 98 % of the time and pays clock ramp-up on every burst; a busy machine has already
+paid it. The confound is 2–3×, and any real contention effect is far smaller than that — so the
+instrument cannot see the thing it was pointed at. Adding render load to the control (three meters)
+made it worse, not better: that arm's own self-contention produced an 83 ms outlier, larger than
+anything the sweep caused.
+
+**What survives, weakly:** in the cleanest pair (one meter), the loaded arm is the only one with
+frames over 8 ms — 2 of 1,870, one of them 18.8 ms, against 0 of 3,650 across both controls.
+Consistent with rare interleave stalls of roughly **one frame in 1,900**. It is a 1.8 ms sphere-SDF
+scene, not a preset using most of a 16.7 ms budget, and the three-meter arm reverses even this — so
+it is a hint, not a finding.
+
+### What is actually known about the mechanism
+
+Independent, and from the real app rather than a meter: **LFSTEM.2 (session pair
+`2026-08-27T19-51-09Z` vs `18-17-50Z`)** removed a 142 ms MPSGraph separation firing every 2 s
+during 4K Skein playback and frame time did **not** improve — `frame_gpu_ms` p50 12.95 → 13.96, the
+wrong direction, inside variance. Its recorded conclusion: MPSGraph dispatches on its own queue and
+**interleaves rather than displaces** render work when the GPU has headroom. Its caveat stands and
+applies here: *"one pair on a preset with headroom, and a genuinely GPU-bound preset at 4K could
+still show the delta."*
+
+### The load is a dial, and that is the load-bearing point
+
+Flat out, the sweep issues ~8.3 separations per wall second at 121 ms each — about **100 % duty on
+the ML queue**. That is *not* the load LFSTEM.2 found free. But a walk overlapping playback does not
+need to run flat out: it needs 1× realtime to stay ahead, which is one separation per 2 s of wall
+clock — **~6 % duty, essentially the live-separation load LFSTEM.2 removed and measured as costing
+nothing**. `MLDispatchScheduler` (D-059) already defers ML dispatch against the frame budget, and
+`GPU_PRESSURE` already counts `ml_forced` / `stem_suppressed`, so the throttle has somewhere to live.
+
+**Conclusion for the decision.** Option 4 is safe *if the walk is paced*, and the pacing is what
+makes it safe — not an assumption that the GPU has room. Running the walk flat out under playback is
+the case nothing here clears. The measurement that would close this is the app itself with playback
+running and the walk continuing, which needs PREP.2's change to exist; it is PREP.2's first
+measurement, not something PREP.1 can finish.
+
+---
+
 ## 6. The streaming control
 
 Streaming prepares a 30 s preview through `SessionPreparer.analyzePreview` — the same call the
@@ -351,6 +428,9 @@ Stated so the report is not read as more than it is.
   and `project.pbxproj`. A single Release-configuration app run over the same folder would settle
   it in five minutes and is the one measurement still owed.
 - **The 23–45 GB at four workers is unexplained.** Reported, not diagnosed.
+- **Whether the walk costs the renderer frames is UNMEASURED** (§5b). Four arms, ~14,000 frames, and
+  the performance-state confound is 2–3× where the effect being hunted is smaller — so no number is
+  claimed. The reverse direction (render load costs the walk 1–3 %) did measure.
 - **`--concurrency` is a property of the measurement runner only.** The shipping loop in
   `SessionPreparer._runLocalFilePreparation` is untouched and still strictly serial.
 - **No behavioural change to beat sync.** `computeBeatGrids` is timed and nothing else; no
@@ -393,4 +473,6 @@ exactly that path (`--disable-probe`).
 
 **Artifacts:** `docs/diagnostics/PREP1/` — `runA-release-serial.csv`, `runB-debug-serial.csv`,
 `runC2-release-concurrency2.csv`, `runE-streaming-control.csv`, `runD-flac.csv`, `runD-m4a.csv`,
-each with its `.summary.txt`.
+`runF-sweep-under-render-load.csv`, each with its `.summary.txt`; plus the §5b overlap arms
+(`overlap-*-frame-ms.txt`, one frame time in ms per line) and the meter loop
+(`overlap-meterloop.sh`).

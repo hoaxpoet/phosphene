@@ -121,6 +121,22 @@ contend — but **four workers was killed by macOS `memorystatus` at 23–45 GB*
 transient footprint PREP.2 must measure before choosing a worker count. 40 tracks × 4 min projects
 to 2,467 s Debug / **650 s Release serial** / 397 s at two workers, against the 300 s budget.
 
+**The overlap question (Matt, mid-session): does a walk running under playback stress the machine?**
+One direction measured, one not, and the report says which. **Rendering costs the walk 1–3 %**
+(157.6 s idle → 158.7 / 161.5 / 162.5 s with a GPU render load), so a paced walk keeps its lead.
+**Whether the walk costs the renderer frames could not be measured with anything in the repo** —
+four arms, ~14,000 frames through the 1080p ray-march budget test in a loop, and frame time comes
+out **2–3× FASTER under load in every pairing** because an offscreen burst meter pays CPU/GPU
+performance-state ramp-up that a busy machine has already paid. The confound is larger than the
+effect; no number is claimed. What survives weakly: the loaded arm is the only one with frames over
+8 ms (2 of 1,870 vs 0 of 3,650 across two controls) on a 1.8 ms scene. Corroborating and from the
+real app, **LFSTEM.2 removed a 142 ms separation every 2 s at 4K and frame time did not improve** —
+MPSGraph interleaves rather than displaces when there is headroom. **The load is a dial:** flat out
+the sweep is ~100 % ML-queue duty, but a walk only needs 1× realtime to stay ahead — ~6 % duty,
+essentially the live-separation load LFSTEM.2 measured as free. Option 4 is safe *if paced*; running
+the walk flat out under playback is the case nothing here clears, and closing it needs the app with
+PREP.2's change in place.
+
 **Also found, not fixed:** `SessionManager.startLocalFiles` awaits the **whole** walk before
 `.ready`, so on the local path the listener waits for track 40, not track 1 — while preparation
 runs ≈15× faster than playback. `startNow()` / `progressiveReadinessLevel` already exist and the
