@@ -4776,6 +4776,26 @@ session reaches `.playing`: the walk still gains a track on the listener every t
 holding ~14 % ML-queue duty, an order of magnitude under flat out and near the ~7 % live-separation
 load LFSTEM.2 measured at 4K as costing no frames.
 
+**4. The plan grows with the walk, once per prepared track.** Matt, on being told the Orchestrator
+would be planning from three tracks: *"Start Now should not result in a degraded session in any
+way."* Two things had to be true for that, and only one of them was.
+
+*It is true that starting early costs nothing in plan quality.* `SessionPlanner.plan` is a strictly
+forward walk — a track's segments come from its own profile, the running history, the previous
+track's last preset, the session clock and the seed, and **nothing looks ahead**. So a plan grown
+3 → 6 → 12 by `extendPlan()` is byte-identical, every track and every segment, to the plan the
+listener would have got by waiting. There is no cross-playlist arc being sacrificed because there is
+no lookahead to sacrifice. Pinned by `PartialPlanTests.extendedPlanEqualsFullyPreparedPlan`, which
+is also the gate that fails the day anyone gives the planner lookahead.
+
+*It was NOT true that the plan kept up.* `extendPlan()` was triggered by `progressiveReadinessLevel`,
+which has three useful values (3 consecutive ready, ≥ 50 %, 100 %). A 40-track session therefore
+built its plan at track 3 and did not rebuild until track **20** — tracks 4–19 prepared, cached, and
+absent from the plan, playing reactively with their data sitting ready. Harmless while `.ready`
+waited for the whole walk (the plan was always built once, at the end); a real downgrade the moment
+the listener can start at the prefix. The Orchestrator now extends off a new
+`SessionManager.preparedTrackCount`, which moves once per prepared track.
+
 **What this does NOT decide, and the honest gap.** PREP.1 could not measure whether the walk costs
 the renderer frames — the performance-state confound in every available instrument is 2–3×, larger
 than the effect (report §5b). **2.0 is chosen from arithmetic, not from a frame-time measurement

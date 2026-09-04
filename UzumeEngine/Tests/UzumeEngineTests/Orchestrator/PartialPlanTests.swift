@@ -114,4 +114,73 @@ struct PartialPlanTests {
                     "Preset at track index \(i) should match: plan3='\(id3)' plan4='\(id4)'")
         }
     }
+
+    // MARK: Test 3 — PREP.2 / [D-242] amendment
+
+    /// **Start Now must not cost the listener a worse session.**
+    ///
+    /// The listener can now begin playback at the 3-track readiness prefix while
+    /// the walk continues behind them ([D-242] amendment). The obvious fear is
+    /// that the Orchestrator, seeing only three tracks, picks worse presets for
+    /// them than it would have with the whole playlist in view — that starting
+    /// early buys time by spending quality.
+    ///
+    /// It cannot, and this pins why: `SessionPlanner.plan` is a strictly forward
+    /// walk. Track *i*'s segments come from its own profile, the running
+    /// `history`, the previous track's last preset, the session clock and the
+    /// seed — **there is no lookahead**. So a plan grown 3 → 6 → 12 by
+    /// `extendPlan()` is byte-identical, every track and every segment, to the
+    /// plan the listener would have got by waiting for all twelve.
+    ///
+    /// This is a property of the algorithm, not a coincidence of determinism, and
+    /// it would silently stop being true the moment anyone gave the planner
+    /// cross-playlist lookahead — which is exactly when this test should fail.
+    @Test("A plan grown from the readiness prefix equals the plan from waiting for everything")
+    func extendedPlanEqualsFullyPreparedPlan() throws {
+        let allTracks = (0..<12).map { makeIdentity(n: $0, duration: 150 + Double($0) * 17) }
+        let catalog = makeCatalog()
+        let seed: UInt64 = 0xDEAD_BEEF_CAFE_0002
+        // Varied moods, so the planner has real reason to choose differently per
+        // track and a lookahead planner would have something to look ahead AT.
+        let profiles = (0..<12).map { i in
+            makeProfile(valence: Float(i % 5) * 0.4 - 0.8, arousal: Float(i % 3) * 0.5 - 0.5)
+        }
+        func tracks(_ count: Int) -> [(TrackIdentity, TrackProfile)] {
+            (0..<count).map { (allTracks[$0], profiles[$0]) }
+        }
+
+        // What the listener gets if they wait for the whole walk.
+        let waited = try planner.plan(
+            tracks: tracks(12), catalog: catalog, deviceTier: .tier1, seed: seed)
+
+        // What they get by pressing Start Now at the 3-track prefix: the plan is
+        // built at 3 and re-built by extendPlan() as readiness advances. Only the
+        // final rebuild survives, so that is what has to match.
+        _ = try planner.plan(tracks: tracks(3), catalog: catalog, deviceTier: .tier1, seed: seed)
+        _ = try planner.plan(tracks: tracks(6), catalog: catalog, deviceTier: .tier1, seed: seed)
+        let startedEarly = try planner.plan(
+            tracks: tracks(12), catalog: catalog, deviceTier: .tier1, seed: seed)
+
+        #expect(startedEarly.tracks.count == waited.tracks.count)
+        for i in waited.tracks.indices {
+            let a = startedEarly.tracks[i], b = waited.tracks[i]
+            #expect(a.segments.map(\.preset.id) == b.segments.map(\.preset.id), """
+                    Track \(i) got different presets when the session was started early. \
+                    Start Now would then be trading session quality for a shorter wait, which \
+                    it must never do.
+                    """)
+            #expect(a.segments.map(\.plannedStartTime) == b.segments.map(\.plannedStartTime),
+                    "Track \(i) segment boundaries differ between an early start and waiting")
+        }
+
+        // And the intermediate plans are prefixes of the final one — the listener
+        // never sees a preset that is later retracted.
+        let atThree = try planner.plan(
+            tracks: tracks(3), catalog: catalog, deviceTier: .tier1, seed: seed)
+        for i in 0..<3 {
+            #expect(atThree.tracks[i].segments.map(\.preset.id)
+                    == waited.tracks[i].segments.map(\.preset.id),
+                    "The plan shown at the prefix disagrees with the final plan at track \(i)")
+        }
+    }
 }

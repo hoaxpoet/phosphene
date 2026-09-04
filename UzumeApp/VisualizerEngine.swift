@@ -1191,7 +1191,17 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
         // Extend the plan as background preparation makes more tracks available.
         // Only fires when livePlan is already set (i.e. buildPlan() has run).
-        readinessCancellable = mgr.$progressiveReadinessLevel
+        //
+        // PREP.2: driven by `preparedTrackCount` (per track) rather than
+        // `progressiveReadinessLevel` (three useful values). The old trigger
+        // rebuilt a 40-track plan at track 3 and then not again until track 20,
+        // leaving tracks 4–19 cached but unplanned — invisible while `.ready`
+        // waited for the whole walk, a real downgrade now the listener can start
+        // at the prefix. `extendPlan()` reuses the session seed and the planner is
+        // a forward walk, so every rebuild reproduces the existing prefix
+        // byte-identically and only appends (`PartialPlanTests`).
+        readinessCancellable = mgr.$preparedTrackCount
+            .removeDuplicates()
             .dropFirst()
             .sink { [weak self] _ in
                 guard let self else { return }

@@ -1083,4 +1083,42 @@ struct LocalFileEarlyStartTests {
         #expect(SessionPreparer.pacingIdleSeconds(audioSeconds: 0, rate: 2.0, spent: 0) == 0)
         #expect(SessionPreparer.pacingIdleSeconds(audioSeconds: 12.5, rate: 0, spent: 0) == 0)
     }
+
+    /// The Orchestrator extends the plan off `preparedTrackCount`, so that signal
+    /// has to move once per prepared track. `progressiveReadinessLevel` does not:
+    /// it has three useful values, which left a 40-track session planned at track 3
+    /// and not again until track 20 — tracks 4–19 cached, ready, and playing
+    /// reactively. Invisible while `.ready` waited for the whole walk; a downgrade
+    /// the moment the listener can start at the prefix.
+    @Test("the prepared count moves once per track, so the plan can grow with the walk")
+    func preparedCountMovesPerTrack() async throws {
+        let names = (1...6).map { "t\($0).flac" }
+        let manager = try makeLFManager()
+        manager.localFilePreparer = MultiStubLocalFilePreparer(
+            results: results(names), preparationDelayMs: 5)
+
+        // Capture every emission, so the assertion does not depend on when a
+        // polling loop happened to look.
+        var counts: [Int] = []
+        var levels: [ProgressiveReadinessLevel] = []
+        let bag = [
+            manager.$preparedTrackCount.sink { counts.append($0) },
+            manager.$progressiveReadinessLevel.sink { levels.append($0) }
+        ]
+        defer { bag.forEach { $0.cancel() } }
+
+        await manager.startLocalFiles(at: urls(names), origin: .localFiles(urls(names)))
+
+        #expect(counts.last == 6, "every prepared track must be counted")
+        #expect(Set(counts).count >= 6, """
+                preparedTrackCount emitted only \(Set(counts).count) distinct values for 6 tracks — \
+                the plan can only grow as coarsely as this signal does.
+                """)
+        #expect(counts == counts.sorted(), "the prepared count must never go backwards mid-walk")
+        // The contrast that motivates the change: readiness is far coarser.
+        #expect(Set(levels).count < Set(counts).count, """
+                progressiveReadinessLevel is not coarser than preparedTrackCount here, so the \
+                trigger change bought nothing — check computeReadiness.
+                """)
+    }
 }

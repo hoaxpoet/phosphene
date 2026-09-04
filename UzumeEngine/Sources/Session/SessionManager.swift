@@ -54,6 +54,17 @@ public final class SessionManager: ObservableObject {
     /// Continues updating through `.ready` and `.playing` until `.fullyPrepared`.
     @Published public private(set) var progressiveReadinessLevel: ProgressiveReadinessLevel = .preparing
 
+    /// How many tracks have finished preparing — `.ready` or `.partial`.
+    ///
+    /// `progressiveReadinessLevel` is too coarse to drive plan growth: it has three
+    /// useful values (3 consecutive ready, ≥ 50 %, 100 %), so a 40-track session
+    /// rebuilt its plan at track 3 and then not again until track 20. Tracks 4–19
+    /// were prepared, cached, and absent from the plan — they played reactively
+    /// with their data sitting ready. Harmless while `.ready` waited for the whole
+    /// walk; a real downgrade once the listener can start at the prefix
+    /// ([D-242] amendment). The Orchestrator extends the plan off this instead.
+    @Published public private(set) var preparedTrackCount: Int = 0
+
     /// The planned session — available after `.ready` or `.playing`.
     /// `nil` in ad-hoc mode and before preparation completes.
     @Published public private(set) var currentPlan: SessionPlan?
@@ -274,12 +285,7 @@ public final class SessionManager: ObservableObject {
         statusCancellable = preparer.$trackStatuses
             .receive(on: DispatchQueue.main)
             .sink { [weak self] statuses in
-                guard let self else { return }
-                self.progressiveReadinessLevel = Self.computeReadiness(
-                    statuses: statuses,
-                    trackList: self.allSessionTracks,
-                    cache: self.preparer.cache
-                )
+                self?.applyStatuses(statuses)
             }
 
         // Launch preparation in a stored Task so startSession() can return immediately.
@@ -498,6 +504,23 @@ public final class SessionManager: ObservableObject {
     /// `preparingTracks`, and flips state.
     @MainActor
 
+    /// Recompute the readiness level and the prepared count from a fresh
+    /// `trackStatuses` snapshot. Shared by the streaming and local-file
+    /// subscriptions so the two paths cannot drift apart.
+    private func applyStatuses(_ statuses: [TrackIdentity: TrackPreparationStatus]) {
+        progressiveReadinessLevel = Self.computeReadiness(
+            statuses: statuses,
+            trackList: allSessionTracks,
+            cache: preparer.cache
+        )
+        preparedTrackCount = statuses.values.reduce(into: 0) { count, status in
+            switch status {
+            case .ready, .partial: count += 1
+            default: break
+            }
+        }
+    }
+
     /// Signal that the user has started playback.
     ///
     /// Transitions `.ready` → `.playing`. A no-op for any other state.
@@ -611,12 +634,7 @@ extension SessionManager {
         statusCancellable = preparer.$trackStatuses
             .receive(on: DispatchQueue.main)
             .sink { [weak self] statuses in
-                guard let self else { return }
-                self.progressiveReadinessLevel = Self.computeReadiness(
-                    statuses: statuses,
-                    trackList: self.allSessionTracks,
-                    cache: self.preparer.cache
-                )
+                self?.applyStatuses(statuses)
             }
         localPlanCancellable = preparer.$orderedLocalTracks
             .receive(on: DispatchQueue.main)

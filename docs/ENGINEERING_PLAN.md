@@ -188,7 +188,18 @@ listener every two tracks. **The number is arithmetic, not a frame-time measurem
 playing session** — PREP.1 could not make that measurement (report §5b), so `pacingRate` is a
 property the follow-up can tune against one.
 
-**Done-when:** ✅ engine + app green, lint 0, doc gates green; ✅ `LocalFileEarlyStartTests` (5)
+**④ The plan grows with the walk.** Found by Matt's challenge that Start Now must not degrade a
+session. Half of it was already safe — `SessionPlanner.plan` is a strictly forward walk with no
+lookahead, so a plan grown 3 → 6 → 12 is byte-identical to planning all twelve up front
+(`PartialPlanTests.extendedPlanEqualsFullyPreparedPlan` pins it, and fails the day anyone adds
+lookahead). The other half was not: `extendPlan()` was triggered by `progressiveReadinessLevel`,
+whose three useful values meant a 40-track session was planned at track 3 and **not rebuilt until
+track 20** — tracks 4–19 cached, ready, and playing reactively. Invisible while `.ready` waited for
+the whole walk; a real downgrade with an early start. Now driven by a new
+`SessionManager.preparedTrackCount` that moves once per prepared track, computed by one
+`applyStatuses` helper both the streaming and local subscriptions call so the paths cannot drift.
+
+**Done-when:** ✅ engine + app green, lint 0, doc gates green; ✅ `LocalFileEarlyStartTests` (6)
 pins readiness advancing mid-walk, the plan carrying resolved identities mid-walk, a late walk not
 resetting a playing session, pacing off before playback and on after it — three of them fail on the
 pre-PREP.2 code. ⏸ **Live validation outstanding:** one local folder session, started early from the
