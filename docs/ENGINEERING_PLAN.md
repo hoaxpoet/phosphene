@@ -118,8 +118,9 @@ phase is the remediation programme. His scope calls, 2026-09-04:
 - **Priority is sync.** Of the four candidate framings offered (sync / defects / raise-the-ceiling /
   cut-and-concentrate) he chose *"everything locks to the music"* — it is the one criticism that
   spans half the roster.
-- **The unwired presets stay out of rotation** until they are wired, rather than being wired now or
-  deleted.
+- **Every uncertified preset is certified or removed before the public beta** (Matt, 2026-09-04).
+  They are not hidden in the meantime — they stay browsable precisely because each one needs a
+  disposition. Tracked as PR.9.
 - **Repairs only.** No new presets in this phase, including the Cymatic Resonance sibling he asked
   about — an hour spent on a new preset costs roughly what fixing four existing ones costs.
 - **Observe before fixing.** Capture and watch the flagged presets against *Low* before proposing a
@@ -147,19 +148,25 @@ an unknown share of the "sync is weak" observations may be the material rather t
 Matt's Ricercar note names Subterraneans explicitly. Every PR.1 capture is therefore run on **one
 side-one and one side-two track**, and no sync verdict is recorded from side two alone.
 
-**PR.0 — stop showing the diagnostics** 🔨 next. Uncertified presets are *already* excluded by
-default: `SettingsStore.showUncertifiedPresets` ships `false` and the scorer hard-excludes
-`certified == false` (`PresetScoringContext.swift`). Matt had Settings → Visuals → "Show uncertified
-presets" switched on, which is why Gossamer, Membrane, Nebula, Plasma, Spectral Cartograph, Staged
-Sandbox, Arachne and Waveform appeared in his review at all. Two parts: **(a)** switching the
-setting off restores the 21-preset certified roster with no code change; **(b)** Matt's call
-2026-09-04 — **Staged Sandbox is hidden unconditionally**, the other uncertified presets stay
-listed under the toggle. Staged Sandbox is not a preset: it is the two-stage diagnostic scaffold the
-visual-review harness renders for pass-separated capture (`StagedCompositionTests`,
-`PresetVisualReviewTests`), so it is **hidden, never deleted** — deleting it breaks the capture
-harness. **Done-when:** Staged Sandbox cannot be selected for playback with
-`showUncertifiedPresets` either on or off; the visual-review harness still renders it; the other
-seven uncertified presets remain reachable under the toggle; suite + lint green.
+**PR.0 — the harness fixture is out of the manual cycle** ✅ (2026-09-04). Matt: *"Staged Sandbox —
+get rid of it"*, refined to *"I want to hide Staged Sandbox, the other diagnostic presets can still
+remain in the list."* **The first diagnosis of this was wrong and is recorded so it is not repeated:**
+Staged Sandbox was assumed to be reaching him through `showUncertifiedPresets`. It is not — it
+already carries `is_diagnostic: true` and has always been categorically excluded from Orchestrator
+scoring under D-074. **That gate covers scoring and does not cover cycling.**
+`PresetLoader.nextPreset()` / `previousPreset()` stepped the full name-sorted `presets` array with no
+filter of any kind, so paging through visuals landed on the harness fixture — and on every
+uncertified preset, which is how a 29-entry roster review happened against a 21-preset certified
+rotation.
+
+Staged Sandbox is not a preset: it is the two-stage scaffold proving the V.ENGINE.1 staged-composition
+path, rendered by `StagedCompositionTests` and `PresetVisualReviewTests` through `loader.presets`. So
+it is **skipped by cycling and kept everywhere else** — still in `presets`, still reachable by
+`selectPreset(named:)`. Deleting it, or filtering it out of the array, breaks the capture harness.
+Spectral Cartograph is also `is_diagnostic` and deliberately **stays** in the cycle per Matt's
+refinement. **Done-when: ✅** cycling forwards or backwards a full lap from the fixture never returns
+to it, it remains loadable and selectable by name, and Spectral Cartograph still appears in a full lap
+(`StagedCompositionTests.stagedSandboxIsSkippedByCycling`).
 
 **PR.1 — watch the flagged presets against *Low* before proposing causes** (gates PR.2/PR.5/PR.6).
 Capture each preset Matt flagged, on one rhythmic and one ambient *Low* track, and compare what the
@@ -262,6 +269,16 @@ the sequence vs. last?"* — that is `SessionPlanner` ordering. Witchlight's sid
 `section_suitability: [ambient, bridge, comedown, buildup]`; nothing in it claims opener. One
 increment to establish whether opener choice reflects any stated intent or falls out of scoring.
 **Done-when:** the opener rule is written down or shown not to exist, and Matt has a recommendation.
+
+**PR.9 — certify or remove every uncertified preset** (pre-public-beta gate, Matt 2026-09-04).
+Seven presets are `certified: false`: Gossamer, Membrane, Nebula, Plasma, Spectral Cartograph,
+Arachne, Waveform. **None ships in that state** — each is either certified against the §12 fidelity
+rubric or removed from the repo before the public beta. Five of them (all but Arachne and Waveform)
+are the zero-`audio_routes` set from the table above, so certifying one means designing its musical
+coupling from scratch, not tuning it: this is preset-authoring work per preset, and "remove" is the
+honest default for any that does not earn the effort. **Done-when:** every `certified: false` preset
+has an explicit certify-or-remove decision from Matt with a date, and none remains undecided at the
+beta cut.
 
 **Explicitly not in scope.** **Nimbus** — *"doesn't do much and yet people seem to really like it
 and think the ball has a personality."* That is the preset working; it is not touched. **Skein** —

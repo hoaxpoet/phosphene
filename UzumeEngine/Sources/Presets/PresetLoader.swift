@@ -209,12 +209,41 @@ public final class PresetLoader: @unchecked Sendable {
         }
     }
 
+    /// Presets that manual/segment cycling steps over (PR.0).
+    ///
+    /// "Staged Sandbox" is the two-stage composition harness fixture — a test
+    /// pattern proving the V.ENGINE.1 scaffold, not a visual anyone should land
+    /// on. It stays in `presets` because `StagedCompositionTests` and
+    /// `PresetVisualReviewTests` look it up there and `selectPreset(named:)`
+    /// must still reach it; only the cycle skips it. Its `is_diagnostic: true`
+    /// already keeps it out of Orchestrator scoring (D-074) — that gate does
+    /// not cover cycling, which is how it reached Matt's roster review.
+    ///
+    /// One name literal for one fixture. If a second ever appears, promote this
+    /// to a sidecar flag rather than growing the set.
+    private static let cycleExclusions: Set<String> = ["Staged Sandbox"]
+
+    /// Next cyclable index from `start`, skipping `cycleExclusions`.
+    ///
+    /// Returns `start` unchanged if every preset is excluded, so the caller can
+    /// never spin. Callers hold `lock`.
+    private func cyclableIndex(from start: Int, step: Int) -> Int {
+        var index = start
+        for _ in 0..<presets.count {
+            index = (index + step + presets.count) % presets.count
+            if !Self.cycleExclusions.contains(presets[index].descriptor.name) {
+                return index
+            }
+        }
+        return start
+    }
+
     /// Advance to the next preset, wrapping around.
     @discardableResult
     public func nextPreset() -> LoadedPreset? {
         lock.withLock {
             guard !presets.isEmpty else { return nil }
-            currentIndex = (currentIndex + 1) % presets.count
+            currentIndex = cyclableIndex(from: currentIndex, step: 1)
             let preset = presets[currentIndex]
             logger.info("Switched to preset: \(preset.descriptor.name) [\(self.currentIndex + 1)/\(self.presets.count)]")
             return preset
@@ -226,7 +255,7 @@ public final class PresetLoader: @unchecked Sendable {
     public func previousPreset() -> LoadedPreset? {
         lock.withLock {
             guard !presets.isEmpty else { return nil }
-            currentIndex = (currentIndex - 1 + presets.count) % presets.count
+            currentIndex = cyclableIndex(from: currentIndex, step: -1)
             let preset = presets[currentIndex]
             logger.info("Switched to preset: \(preset.descriptor.name) [\(self.currentIndex + 1)/\(self.presets.count)]")
             return preset
