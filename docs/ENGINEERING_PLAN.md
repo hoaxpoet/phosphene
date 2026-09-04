@@ -216,6 +216,372 @@ what he took (plus Release); **concurrency across tracks was not taken** — it 
 that no longer blocks the listener, and PREP.1 found four workers being OOM-killed at 23–45 GB, so
 it needs the memory question answered before it is worth anything.
 
+## Phase PR — Preset review remediation 🔨 (2026-09-04; from Matt's full-roster review, scope calls below)
+
+Matt watched the roster end to end against **David Bowie — *Low*** (local FLAC,
+`/Volumes/Extreme SSD/B/Bowie, David/[1977] - Low/`, 11 tracks, so the **local-file** path with
+whole-file analysis, not the 30 s streaming preview) and wrote 25 per-preset observations. This
+phase is the remediation programme. His scope calls, 2026-09-04:
+
+- **Priority is sync.** Of the four candidate framings offered (sync / defects / raise-the-ceiling /
+  cut-and-concentrate) he chose *"everything locks to the music"* — it is the one criticism that
+  spans half the roster.
+- **Every uncertified preset is certified or removed before the public beta** (Matt, 2026-09-04).
+  They are not hidden in the meantime — they stay browsable precisely because each one needs a
+  disposition. Tracked as PR.9.
+- **Repairs only.** No new presets in this phase, including the Cymatic Resonance sibling he asked
+  about — an hour spent on a new preset costs roughly what fixing four existing ones costs.
+- **Observe before fixing.** Capture and watch the flagged presets against *Low* before proposing a
+  cause (PR.1), rather than working from the review notes directly.
+
+**The central finding — "sync is weak" is three different problems.** The review reads as one
+complaint repeated across ten presets. The routing sidecars say it is not:
+
+| Cause | Presets | Evidence in the tree |
+|---|---|---|
+| **No audio coupling declared at all** | Gossamer, Membrane, Nebula, Plasma, Spectral Cartograph | `audio_routes: []` in all five sidecars. These are exactly the five Matt flagged, and all five are `certified: false`. Nothing to tune — there is no coupling to tune. |
+| **Coupled, but nothing ties motion *rate* to tempo** | Filigree, Mitosis, Cytokinesis, Nacre, Floret | 8–13 declared routes each, **zero beat or bar routes** between them (Floret has `barPhase01` for a pulse but nothing driving rate). Motion speed is constant regardless of what is playing. |
+| **Coupled *and* beat-aware — the beat itself is wrong** | Witchlight, Meniscus, Lumen Mosaic, Ferrofluid Ocean | All four consume `beatPhase01`/`barPhase01`. Their symptoms are BUG-065 (live phase drift) and BUG-028 (meter assumed simple), not preset defects. |
+
+The middle row is the single highest-leverage item in the review: one mechanism, five presets, and
+it answers four separately-worded complaints ("a movie on a loop", "speed is seemingly uniform",
+"too fast overall", "pulses to the beat but more connection could be obvious"). The third row is
+engine work that is currently **parked** (D-206) and must not be worked around inside the presets.
+
+**Material note that shapes PR.1.** *Low* is two half-albums: tracks 1–7 are rhythmic (Speed Of
+Life, Breaking Glass, What In The World, Sound And Vision, Always Crashing In The Same Car, Be My
+Wife, A New Career In A New Town) and tracks 8–11 are the Eno ambient side (Warszawa, Art Decade,
+Weeping Wall, Subterraneans) with little or no kit. **Four of eleven tracks are near-beatless**, so
+an unknown share of the "sync is weak" observations may be the material rather than the preset —
+Matt's Ricercar note names Subterraneans explicitly. Every PR.1 capture is therefore run on **one
+side-one and one side-two track**, and no sync verdict is recorded from side two alone.
+
+**PR.0 — the harness fixture is out of the manual cycle** ✅ (2026-09-04). Matt: *"Staged Sandbox —
+get rid of it"*, refined to *"I want to hide Staged Sandbox, the other diagnostic presets can still
+remain in the list."* **The first diagnosis of this was wrong and is recorded so it is not repeated:**
+Staged Sandbox was assumed to be reaching him through `showUncertifiedPresets`. It is not — it
+already carries `is_diagnostic: true` and has always been categorically excluded from Orchestrator
+scoring under D-074. **That gate covers scoring and does not cover cycling.**
+`PresetLoader.nextPreset()` / `previousPreset()` stepped the full name-sorted `presets` array with no
+filter of any kind, so paging through visuals landed on the harness fixture — and on every
+uncertified preset, which is how a 29-entry roster review happened against a 21-preset certified
+rotation.
+
+Staged Sandbox is not a preset: it is the two-stage scaffold proving the V.ENGINE.1 staged-composition
+path, rendered by `StagedCompositionTests` and `PresetVisualReviewTests` through `loader.presets`. So
+it is **skipped by cycling and kept everywhere else** — still in `presets`, still reachable by
+`selectPreset(named:)`. Deleting it, or filtering it out of the array, breaks the capture harness.
+Spectral Cartograph is also `is_diagnostic` and deliberately **stays** in the cycle per Matt's
+refinement. **Done-when: ✅** cycling forwards or backwards a full lap from the fixture never returns
+to it, it remains loadable and selectable by name, and Spectral Cartograph still appears in a full lap
+(`StagedCompositionTests.stagedSandboxIsSkippedByCycling`).
+
+**PR.1 — watch the flagged presets against *Low*** 🔨 **partially answered; two halves blocked**
+(2026-09-04). Report: [`docs/diagnostics/PR1_LOW_SESSION_OBSERVATION_2026-09-04.md`](diagnostics/PR1_LOW_SESSION_OBSERVATION_2026-09-04.md).
+Matt's own review session was already on disk (`~/Documents/uzume_sessions/2026-09-03T21-38-45Z`,
+148,842 frames, all 11 *Low* tracks in album order — segments matched to the album by duration, exact
+on every track). **The timing half needed no new capture and is answered decisively; the look half
+cannot be answered from this session at all.**
+
+Measured, per track: frames outside BUG-065's ~60 ms perceptual window range **20.8 % → 100 %**, with
+six of thirteen segments worse than BUG-065's strongest prior evidence (50 %) and two at 100 % with
+p50 drift of 166 ms and 186 ms. `beatsPerBar` is wrong on five of eleven tracks — `2` on What In The
+World, Art Decade and Weeping Wall, which is the exact degenerate value BUG-028 documents. Grid tempo
+is wrong outright on the ambient side (Weeping Wall 142.3 BPM, Warszawa 54.0 BPM). Chain health reads
+`degraded`, and the report measures why: 484/500 windows healthy, the rest scattered singles on the
+quiet ambient side where a low 5 s peak is the material — the timing numbers rest on a healthy chain,
+and the grader misreading quiet music is noted as a separate possible defect.
+
+**Two blockers, both surfaced by this increment rather than assumed:**
+1. **Video recording was OFF** (BUG-050; `UZUME_RECORD_VIDEO=1`). Zero rendered frames exist, so every
+   look-shaped observation — Dragon Bloom's whites, Glaze's brightness, Fata Morgana's darkness,
+   Murmuration's cloud, Cymatic's variation, Nacre's speed, Aurora Veil's purple — is unanswerable.
+   A second capture with video on is required and **PR.5/PR.6 are blocked until it exists**.
+2. **`SessionReplayHarness` covers one paradigm.** It drives `RayMarchPipeline.render` and its
+   coverage gate is scoped `guard descriptor.passes.contains(.rayMarch)`. **Three** of the 26 flagged
+   presets are ray-march (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph); the other 23 cannot
+   be replayed from a real session. Because the gate shares that scope, Ricercar (6 routes), Skein (7),
+   Murmuration (4), Witchlight (2), Fractal Tree (2), Nacre (1) and Stave (1) declare routes carried by
+   nothing and checked by nothing — the FLY.6 silent-zero hole, reopened for every non-ray-march preset.
+
+**Done-when:** ✅ for the timing half. ⏳ the look half reopens when a video-on *Low* capture exists;
+⏳ the per-preset production-path half reopens when the harness reaches the other paradigms (PR.10).
+
+**PR.2 — tempo-scaled motion rate** (the main lever; **gated on PR.3, not just PR.1** — PR.1 §3.3 measured the grid's TEMPO wrong on *Low*'s ambient side, and a motion rate read off a wrong BPM bakes in a compensation for a bad number). Give Filigree, Mitosis,
+Cytokinesis, Nacre and Floret a motion rate that tracks the cached grid's tempo, so a fast track
+visibly quickens and a slow one settles. Ship **Filigree first as the single proof** — it is the
+clearest-stated complaint ("seems like it's a movie on a loop") — take Matt's look, then roll the
+mechanism out. **Hazard, from BUG-097:** this is precisely the shape that bug took, a per-frame
+render `dt` used as a musical duration. The rate must be derived from the musical clock; analysis,
+render and fixture rates all differ and a steady-rate fixture cannot see the error. **Done-when:**
+Filigree's motion rate measurably differs between a fast and a slow track from the same capture
+harness, the coupling is declared in the sidecar's `audio_routes` (so QG.1 route coverage gates it),
+and Matt has confirmed the Filigree proof before any other preset is touched.
+
+**PR.3 — chasing the downbeat, not tolerating it** 🔨 (2026-09-04). **Scope changed by Matt
+mid-increment.** This began as "surface the corroboration and let Matt decide" and then as a
+proposal to keep the estimator's *meter* while declining its *phase* — a right-length bar on a
+possibly-wrong anchor. Matt rejected both: *"we want the correct downbeat to be identified. you are
+not recommending what is best for uzume and its user experience."* He is right, and the record of
+the wrong turn stays here: both were optimisations inside constraints someone else had already
+measured, not answers to what the product needs.
+
+**PR.3a — BUG-114, the estimator ran at half its calibrated window** ✅ (2026-09-04). `nFFT = 2048`
+is fixed in samples, so the per-beat analysis window is 92.9 ms at the 22050 Hz FT.3's
+`declineThreshold = 1.24` was derived on and **46.4 ms at the 44.1 kHz production passed through**.
+The parity test hardcodes 22050 and could not see it. Measured over 7 fixtures: the margin falls at
+the short window on 6 of 7, and around_the_world flips **1.265 ANSWER → 0.147 decline**. Fixed via
+`Options.resampleToReferenceRate`; `Options.legacy` unchanged and every legacy margin reproduces
+exactly. **Done-when: ✅** — but read the honest bound: it recovers **one answered track of seven**
+and removes a mis-calibration. It does not make the estimator identify more downbeats.
+
+**PR.3b — two beat-averaging arms, measured and NOT adopted** ✅ (2026-09-04). Hypothesis: the
+chroma — the strongest downbeat cue — is starved by a 46 ms window on a ~500 ms beat. Half right.
+Arm B (average all four features across the inter-beat interval) gains around_the_world 0.147 →
+3.512 but **loses** billie_jean 2.051 → 1.204, because averaging dilutes the transient `low_energy`
+/ `rms` / `flux` depend on. Arm C (average the chroma only, transient features on the attack frame)
+strengthens every answered track with no losses — and **converts no decline arm A does not**. Both
+kept behind `Options`, neither shipped, per the FT.4 rule that two changes never share one arm.
+Report: [`PR3_BARLINE_WINDOW_2026-09-04.md`](diagnostics/PR3_BARLINE_WINDOW_2026-09-04.md).
+
+**PR.3c — the objective is NOT met; here is what is actually in the way** ⏳ next. bleed,
+bohemian_rhapsody, clair_de_lune and girl_from_ipanema decline at every window tested, and the
+probe counts **answers, not correct answers** — it has no downbeat ground truth, so no arm above can
+claim a *correct* downbeat. Two things stand between here and Matt's requirement: (1) re-derive
+`declineThreshold` against FT.3's labelled set on the corrected distribution — 1.24 was fitted to a
+distribution the code no longer produces; (2) bleed and bohemian_rhapsody are D-210 wrong-metrical-
+level cases where bar phase is unrecoverable regardless of the feature front-end, so the level has
+to be right first. **Done-when:** a decline rate and a *correct*-downbeat rate measured against
+ground truth, not an answer count.
+
+**PR.3c — the metrical level is not the problem** ✅ (2026-09-04). Matt directed going at the level;
+the census says don't. **D-210's blocking argument rests on two reference values that were both
+withdrawn afterwards** (BUG-102, 2026-08-27): money 60.97 → 121.06 and bleed 226.72 → 115.38.
+Against current ground truth money is a ~4 % tempo error (BUG-107's own root cause) and bleed is
+correct. `MetricalLevelCensus` re-asked the question over all nine fixtures: **seven of nine are at
+the correct level, with zero clean doubles or halves**; the two misses are 2.733× and 0.787× — not
+octave errors — on ground truth still flagged `needs_arbitration` / `metrical_review`. What the
+census does show is the **meter**, wrong on four of the five fixtures with a tapped one and wrong
+toward the degenerate values (bleed 4→2, money 7→1, solsbury_hill 7→1, take_five 5→4) — the same
+defect Matt saw on *Low*. D-210's product call stands; its written rationale now cites withdrawn
+numbers and will mislead the next reader, as it misled this session.
+Report: [`PR3C_METRICAL_LEVEL_CENSUS_2026-09-04.md`](diagnostics/PR3C_METRICAL_LEVEL_CENSUS_2026-09-04.md).
+
+**PR.3d — `UZUME_BARLINE` adopted, after re-deriving the threshold it would have shipped wrong** ✅
+(2026-09-04, Matt "yes, adopt it"). **Adoption did not go through unchanged.** FT.4.1's headline
+("answers 2 of 9, both right, zero confident-wrong") was itself a product of the BUG-114
+mis-calibration: measured at half the analysis window, margins were depressed. With BUG-114 fixed
+**bleed rises to 1.348 and answers meter 3 on a 4/4 track** — a confident-wrong bar, the exact
+failure D-207's decline rule exists to prevent. `declineThreshold` re-derived by FT.3's own method
+(midpoint of the objective's empty plateau, now (1.348, 1.735)): **1.24 → 1.54**. Honest bound:
+three answers over nine fixtures is a much thinner basis than FT.3's.
+
+Five-suite before/after in the report; the headline is **take_five 5/2 → 5/5, downbeat F 0.26 →
+0.97**, with **F / Cemgil / CMLt / AMLt byte-identical on all nine tracks** (the estimator never
+touches `grid.beats`) and suite-1 no-regression exact. **Paid for it:** bleed had the meter *right*
+under OFF (4/4) and now declines — though its phase was dbF 0.08, a wrong bar-1 on every bar.
+**Suite 2's meter gate is still NOT met**: it asks ≥ 3/4 correct, this is 1 correct + 3 honest
+declines, up from 0. Do not read take_five as suite 2 cleared. Ships default-on with
+`UZUME_BARLINE=0` as the kill switch.
+Report: [`PR3D_BARLINE_ADOPTION_2026-09-04.md`](diagnostics/PR3D_BARLINE_ADOPTION_2026-09-04.md).
+
+**A measurement trap recorded at PR.3d:** two instruments disagreed on bleed because one downmixed
+stereo→mono with `AVAudioConverter` and the other averaged channels manually, which is what
+production does. Different downmix → different beats → different features → the margin crossed the
+threshold. **A probe that does not decode the way production decodes is not measuring production.**
+
+**PR.11 — offline period refinement is dead, for a measured reason** ✅ (2026-09-04, Matt: *"measure
+whether the offline period error is recoverable. figure out how to close the gap on BUG-065."*).
+
+**Result: NOT recoverable. The period error is 10–100× smaller than the precision of any offline
+tempo estimator we have.** The drift IS a constant period error — PR.1's ramps, R² 0.63–0.91,
+0.04–0.20 % — but the offline estimator's window-to-window scatter is 0.14–99.9 % (0.5–4 % even on
+stable tracks). The signal sits one to two orders of magnitude below the instrument's noise floor.
+
+Tested properly rather than by internal consistency: the offline estimate's implied drift was
+compared against PR.1's **independently measured** per-track ramp slopes on *Low*. **Sign agrees on
+6 of 11 — chance — and magnitudes are 8–690× too large.** A first run was two orders out because BPM
+came from the median inter-beat interval, which quantises to Beat This!'s 20 ms frame grid (±3.9 % at
+117 BPM); replaced with a regression of beat time on beat index. The cross-check against an
+independent quantity is what caught it.
+
+**The finding that reframes BUG-065: the system already measures the period error more precisely
+than it can estimate it.** Drift integrates the error over minutes — 0.1 % across 300 s is 300 ms of
+signal, which is why the ramps are so clean — while any 30 s audio estimate is a 10–100× worse
+instrument. Nothing currently consumes that measurement; TRK.1 tried with an online per-onset PI
+controller and D-206 killed it on the onset evidence layer. A batch fit of accumulated drift is a
+different estimator from an online integrator, and **this probe did not test it**. No mechanism
+proposed — two levers have failed, the two-strikes rule applies, a third needs Matt's sign-off.
+Report: [`PR11_OFFLINE_PERIOD_ERROR_2026-09-04.md`](diagnostics/PR11_OFFLINE_PERIOD_ERROR_2026-09-04.md).
+
+**PR.12 — the local path analyses the whole track** ✅ (2026-09-04, Matt: *"you need to rethink the
+beat analyzer — it cannot throw away 80 % or more of a track"* → *"the problem is beat averaging"* →
+*"fix the local path to analyze the whole track"*).
+
+`BeatThisModel.tMax` clamps inference to 1500 frames — exactly 30 s — and **nothing in the beat-grid
+path branched on local vs streaming**. A preview IS 30 s so the clamp cost it nothing; a local FLAC
+was decoded in full and truncated to **7.6–26 %** of its length. Past the end of `BeatGrid.beats`,
+`localTiming` falls back to `60.0 / bpm`, a whole-track AVERAGE — so ~90 % of every local track ran
+on one averaged tempo, and a constant period against changing music is a linear phase error. **That
+is BUG-065's ramp.** `beats` was always a tempo record over the duration; the clamp is what defeated
+it.
+
+**The evidence against fixing this was a scoring artifact.** D-210, FT.4.1 and BUG-107 all rest on
+"full-track decode regresses beats" (bleed 115.00 → 123.62). BeatBench trims the reference to each
+grid's OWN span, so the 30 s grid was graded on 30 s — the opening, the most regular part — and the
+full-track grid on six minutes. Scored over an identical span, beat F is **equal or better on 8 of 9
+fixtures**, and bleed itself goes **0.99 → 1.00**. Two stitching mechanisms were tested and rejected
+before this was found (edge taper → 124.41; nearest-centre, no averaging → 124.68, both null), which
+is what pointed at the scoring.
+
+**Shipped:** `analyzeBeatGrid` gains `wholeTrack:` with a protocol extension preserving the
+streaming-shaped call, `analyzePreview` gains `wholeTrackAudio:`, and **only the local-file call site
+passes `true`** — the DYN.1c seam. On *Low*: coverage **7.6–26 % → 92–99 %** on all 11 tracks
+(Warszawa 7.6 % → 96.3 %). Cost **+2.9 s for the whole album**, ~0.26 s/track against PREP.1's
+~50 s/track — **~0.5 % of the budget**; the earlier "10–14 passes will hurt preparation" caution was
+wrong. Gated by `WholeTrackGridWiringTests`.
+
+**Not done:** `computeMeter` still derives `beatsPerBar` from the averaged `bpm` and should use local
+period — the remaining half of Matt's point. Streaming is untouched and needs live adaptation, not
+offline analysis. **No live confirmation**: coverage and cost are measured, the felt result is not.
+Report: [`PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md`](diagnostics/PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md).
+
+**PR.3e — the original corroboration** (unchanged, still Matt's call).
+Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
+and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.
+The matching open defects:
+
+- **BUG-065** (P3, open) — live beat phase drifts monotonically across a track: 0 → 119 ms measured
+  on Matt's own Lumen Mosaic session `2026-07-30T15-39-21Z`, 50 % of frames outside the ~60 ms
+  perceptual window, BPM rock-constant so it is purely phase. Matt's note at the time: *"feels a
+  little laggy."*
+- **BUG-028** — meter is assumed simple; Money in 7/4 logged `beatsPerBar = 2`. This is the
+  Ferrofluid 4/4 observation, and **Matt confirmed 2026-09-04 that 3/4, 6/8 and 7/8 material is a
+  real part of his listening, naming Radiohead as the odd-meter test corpus** — so the meter half
+  is in scope rather than theoretical, and Radiohead joins *Low* as programme test material.
+
+Phase TRK is parked (D-206) after two levers were measured and failed; the parking condition is a
+changed *grid* premise, and this review does not supply one — it supplies a changed *priority*.
+The next identified lever remains DBN. **The actionable consequence regardless of that decision:
+these four presets are not tuned while the phase drifts.** Compensating a preset against a moving
+target bakes in an offset that has to be unpicked when the grid is fixed. **Done-when:** BUG-065 and
+BUG-028 carry the four-preset corroboration and the *Low*/Radiohead material, their priority is
+re-assessed against it, and Matt has decided whether to spend on DBN now or leave the four presets
+untuned.
+
+**PR.4 — Cytokinesis defects** (independent; runs any time). Two new reports, neither covered by an
+existing entry: **cells overlap while dividing**, and the preset **hangs for seconds before
+restarting**. The hang goes through the `defect-handling` protocol — repro capture and instrumented
+evidence before any fix, since a multi-second stall in a render loop has several possible causes and
+none of them is guessable from the symptom. The overlap is a design fix in the division model.
+**Done-when:** both are filed with BUG IDs, the hang is reproduced and root-caused before a fix is
+written, and the division no longer overlaps in a capture Matt signs off.
+
+**PR.5 — light and colour: the roster does not tone-map.** Matt's Dragon Bloom note is *"washed
+out, extreme brightness… reds look gorgeous, would like the same saturated colour across the visible
+spectrum"*, clarified 2026-09-04 as **loss of saturation from overexposure, not a request for
+spectrum cycling** — the reds are already right, he wants that saturation to survive at the other
+hues. Verified in the tree while scoping this phase:
+
+- The drawable is `.bgra8Unorm_srgb` (`MetalContext.swift:55`; the EDR path is a deferred TODO),
+  while intermediates are `.rgba16Float`. So every preset's HDR output is **hard-clipped per channel
+  at 1.0** on the final write.
+- **`Nimbus` is the only preset in the roster that calls a tone-mapping operator at all** — and it
+  calls the *legacy* `toneMapACES` in `ShaderUtilities.metal`, not the canonical `tone_map_aces` that
+  D-062 superseded it with. Dragon Bloom, Glaze, Fata Morgana and Aurora Veil call none.
+- Dragon Bloom's own source comment (`DragonBloom.metal:129`) reads *"HDR (>1) colour is intentional
+  — additive glow, tonemapped downstream."* **There is no downstream tone-map.** That is a documented
+  assumption that is false in the tree.
+
+Per-channel clipping is precisely the operation that turns a saturated additive glow white: the
+strongest channel pins at 1.0, the others catch up, and hue collapses toward the diagonal. So the
+leading candidate for Dragon Bloom is a **missing tone-map, not a brightness parameter** — and if it
+holds, it is one shared fix (route the four through `Utilities/Color/ToneMapping.metal`, which is
+already written, tested and unused by them) plus a per-preset exposure calibration, rather than the
+four independent tunings this looked like. **It is a candidate, not a conclusion:** the absence of
+the call is verified, that it dominates what Matt saw is not, and per `defect-handling` the A/B comes
+before the change. Fata Morgana ("too dark") and Glaze ("quite bright, wants more mixing and
+blending") sit on the same axis from opposite ends; Aurora Veil's fleeting purple is a palette
+residency question that may be independent. **Done-when:** an A/B of Dragon Bloom with and without a
+tone-map operator, on a full-track *Low* capture rather than a still, establishes whether clipping is
+the cause; if it is, the four presets share the operator and each gets its exposure set where Matt
+puts it; if it is not, that negative result is recorded before any brightness parameter is touched.
+
+**PR.6 — framing.** Murmuration's flock takes more of the frame; Fata Morgana's horizon moves so
+sky occupies a larger share than water, letting the pulsars grow and reflect; Glaze stops jumping
+between the top and bottom of the screen and keeps its motion inside the canvas. Camera and
+composition parameters — the cheapest items in the whole review and each an unambiguous win.
+Likely folds into PR.5 as one look increment. **Done-when:** each is a before/after sheet Matt has
+approved.
+
+**PR.7 — variation and longevity** (deliberately last). Cymatic Resonance (more pattern variation —
+and it is the preset he rates highest, *"one of the best to watch"*), Witchlight (more looping),
+Floret (*"mesmerizing but also kinda boring"*), Filigree once PR.2 has landed. Shared cause: the
+preset exhausts its visual vocabulary before the track does — and note that *Low* is the local-file
+path, so these are full-length tracks rather than 30 s previews, which is the condition under which
+a vocabulary runs out. It is last because it is the only cluster with **no shared mechanism**: each
+one is its own design problem at roughly the cost of a preset uplift.
+
+**PR.8 — opener selection** (separate track, orchestrator not presets). *"Why is Witchlight first in
+the sequence vs. last?"* — that is `SessionPlanner` ordering. Witchlight's sidecar declares
+`section_suitability: [ambient, bridge, comedown, buildup]`; nothing in it claims opener. One
+increment to establish whether opener choice reflects any stated intent or falls out of scoring.
+**Done-when:** the opener rule is written down or shown not to exist, and Matt has a recommendation.
+
+**PR.9 — certify or remove every uncertified preset** (pre-public-beta gate, Matt 2026-09-04).
+Seven presets are `certified: false`: Gossamer, Membrane, Nebula, Plasma, Spectral Cartograph,
+Arachne, Waveform. **None ships in that state** — each is either certified against the §12 fidelity
+rubric or removed from the repo before the public beta. Five of them (all but Arachne and Waveform)
+are the zero-`audio_routes` set from the table above, so certifying one means designing its musical
+coupling from scratch, not tuning it: this is preset-authoring work per preset, and "remove" is the
+honest default for any that does not earn the effort. **Done-when:** every `certified: false` preset
+has an explicit certify-or-remove decision from Matt with a date, and none remains undecided at the
+beta cut.
+
+**PR.10 — session-driven replay across every paradigm** ✅ (2026-09-04). **The premise in PR.1 was
+half wrong and the increment is much smaller than it scoped.** PR.1 reported that 23 of 26 flagged
+presets "cannot be replayed from a real session". True of `SessionReplayHarness` (it drives
+`RayMarchPipeline.render`, gate scoped `.rayMarch`) — **and wrong about the codebase**:
+`MultiPassRenderHarness.render` already dispatches Dragon Bloom, Skein, Witchlight, Ricercar,
+Filigree, Meniscus, Stave, Mitosis, Cytokinesis, Nacre, Glaze, Floret, Fata Morgana, Fractal Tree,
+Lumen Mosaic, Volumetric Lithograph, Cymatic Resonance and the four `direct` presets down their real
+paths. The only missing piece was real INPUT. Two halves existed; neither knew about the other.
+
+Delivered: **`SessionDrivenMultiPassReplay`** joins `SessionReplayHarness`'s CSV loaders to
+`MultiPassRenderHarness`'s dispatch, and the carried-primitive set goes **27 → 46**. Every one of the
+20 previously-uncarried routes (Ricercar's 6, Skein's 7, Murmuration's 4, Witchlight's 2, Fractal
+Tree's 2, Nacre's, Stave's) **was already recorded** — an earlier audit called them unrecorded because
+the CSV spells them snake_case and `FeatureVector` camelCase. `sectionIndex` is the one real gap:
+`kind: "structural"`, it lives on CPU-only `StructuralPrediction`, so the gate **names** it
+(`structuralPrimitivesNotDriven`) rather than letting Witchlight and Skein replay it as zero.
+
+The coverage gate widened with the harness in the same commit — `replayablePasses` now covers
+ray-march, mv_warp, feedback, direct, particles, mesh and post-process — and was **verified to bite**:
+removing one mapping fails it by name (`["Skein": ["drumsCentroid"]]`).
+
+**It immediately corrected PR.5.** Dragon Bloom replayed over 120 REAL *Low* frames measures
+**clipped 0.338 / saturation 0.541 / meanLuma 0.723**, against the synthetic harness's
+**0.914 / 0.141 / 0.929**. The synthetic waveform badly overstated the white-out; peaks still reach
+98.8 % clipped, so Matt's report is real but **intermittent**, not the constant wash the synthetic
+run implied. Acting on the synthetic number would have produced a far more drastic change than the
+music warrants — which is precisely what FA #27 and the PR.3d standing rule exist to prevent.
+
+**PR.10-superseded — the original scoping** (unblocks the production-path evidence route for 23 of
+26 flagged presets). `SessionReplayHarness` and `ReplayHarnessRouteCoverageTests` are both scoped to
+`.rayMarch`. The per-paradigm multi-frame templates already exist (QG.4 / D-182:
+`FeedbackPathHarnessTemplate`, `AuroraVeilMVWarpAccumulationTest`, `StagedPathHarnessTemplate`, all on
+the shared `HarnessTemplateCore` spine) and the session CSV → `FeatureVector` mapping already exists in
+the harness — the gap is joining them and mapping the ~20 fields listed in PR.1 §6. **Widen the
+coverage gate in the same commit as the harness**: a harness that reaches a paradigm without a gate
+that checks it is the FLY.6 hole with a wider mouth. **Done-when:** a feedback/mv_warp/particles preset
+replays from a real session dir through its production dispatch path, and the coverage gate fails if
+any preset in a covered paradigm declares a primitive the harness does not carry.
+
+**Explicitly not in scope.** **Nimbus** — *"doesn't do much and yet people seem to really like it
+and think the ball has a personality."* That is the preset working; it is not touched. **Skein** —
+*"fine enough."* **Spectral Cartograph** — leaves rotation via PR.0; the cleanup Matt mentioned is
+only worth doing if it is ever wired. **New presets** — Matt's call above.
+
 ## Recently Completed
 
 ### Increment DS.6 — the playback chrome, retokenized in place ✅ (2026-09-03, D-241, M7 passed)
@@ -6752,7 +7118,7 @@ Beat This! sliding-window tiling over the full track + local-file integration; t
 
 - **FT.1 — sliding-window tiling ✅ (2026-07-31).** Done-when met: parity test green (sub-window input is **byte-identical** to a single `predict`, so the tiler cannot perturb any existing grid or golden; the blended region agrees with single-window to 5.7e-05). `BeatThisTiledInference` tiles the full spectrogram at 50 % overlap and averages, with the final window anchored to the track end. **⚠️ The payoff measurement came back NEGATIVE — this is the D-208 amendment's test and it settles it.** Full-track context (13–25 windows, 13k–22k frames vs 1500) recovered **no odd meter**: money 7 still wrong, solsbury_hill 7 still wrong, take_five 5 still wrong, and bohemian_rhapsody **regressed** (decoder 4 ✓ → declined). **The 30 s window was not the confound; the evidence really is thin, and D-208's original conclusion stands — the model-family question is open.** Unproven observation recorded but not acted on: averaging overlapping windows is a low-pass, and a stream whose problem is weak discrimination may be worsened by smoothing; a tapered overlap is the obvious alternative. Instrument: `FullTrackMeterTests` (env-gated).
 - **FT.3 tasks 1–3 — measurement only, PORT NOT STARTED ⏸ (2026-07-31).** Report: [`docs/diagnostics/FT3_BARLINE_TASKS_1_3_2026-07-31.md`](diagnostics/FT3_BARLINE_TASKS_1_3_2026-07-31.md); tool `tools/barline_combine.py`. Ran the spec's §10 default (tasks 1–3, stop before the Swift port) and stopped further by task 2's own hard rule. **Task 1 — unseen tracks: 8/8.** The probe's 6/6 on meter does not degrade on eight tracks that played no part in designing it (around_the_world, dance_yrself_clean, giorgio_by_moroder, girl_from_ipanema, so_what, stayin_alive, superstition, there_there), margins +0.29 to +3.56. Two limits: all eight are in 4, so this only tests the false-positive side and puts no new evidence under the odd-meter recoveries; so_what and there_there are 30 s clips (1 tiler window), not full tracks. **Task 2 — PHASE, never measured before: 3/6 correct where the meter is correct, and this is the finding that stops the increment.** billie_jean 100 %, take_five 85 %, bohemian_rhapsody 68 % ✓; money **0 %** (off by exactly one beat against a 79 % tap-consistency ceiling — a real error a port would have shipped), bleed 16 % (ceiling 37 %), solsbury_hill 14 % (ceiling 16 % against a 14 % uniform floor — no phase evidence either way). **Root cause is upstream of the method:** bar length measured in *engine grid beats* is 3.95 / 4.86 / 4.58 / 7.57 / 2.08 / 12.12 for the six, and only billie_jean and take_five land on an integer in {3,4,5,7} — exactly two of the three tracks where phase is right. The grid runs at half the tapped rate on bleed and yyz, roughly double on money and clair_de_lune. Meter search tolerates a wrong metrical level (a period-8 pattern still shows period-4 structure); **phase cannot**. Suite-1 F 0.97 says the beats are in the right *places*, not that the grid is at the right *level*. bleed's "4 ✓" is a period-2 signal winning at its own multiple — its bar is 2 grid beats, deliberately outside D-207's set. **Task 3 — combination rule: sum the four features' null-corrected margins per meter**, the only one of three candidates both unbiased under a no-bar-information control (200 trials × 2 generators) and retaining 6/6 + 8/8. **The probe's own max-over-features rule FAILS that control** — no-information picks skew to meter 7 under both generators (33 %, 36 %) with mean margin rising monotonically with meter, i.e. the DBN.2 bias (D-208 §9.6/§9.7) is present in this method's first published number; the 6/6 is not void (the summed rule reproduces it clean) but the headline was measured with a statistic leaning the way two of its six correct answers lie. **No behavioral change to beat sync** — measurement only, no engine source touched. Recommendation: re-scope FT.3 to the grid-metrical-level question before any port; `beatsPerBar` without a trustworthy bar line ships nothing a user sees. Also flagged: solsbury_hill's ground truth is internally inconsistent (`meter_from_taps` 7, but downbeat taps ~12 tapped beats apart).
-- **FT.3 tasks 4–6 — `BarLineEstimator` ported, thresholded, A/B'd ✅ (2026-08-19).** Report: [`docs/diagnostics/FT3_BARLINE_PORT_2026-08-19.md`](diagnostics/FT3_BARLINE_PORT_2026-08-19.md); reference `tools/barline_parity.py`. **Matt answered the §10 DECISION-NEEDED "build it"**, which overrides the FT.3.1 row's recorded "supersedes FT.3's unbuilt tasks 4–7" — that superseding claim is now wrong and FT.3.1 remains open on its own question. **Task 4 — parity is exact: worst |Δmargin| 1.6e-7 across all 17 tracks** (gate 1e-3), meter agreeing 17/17 and phase on every undeclined track, both arms decoding through the identical ffmpeg invocation. **The gate as specified was unachievable and the fix is the load-bearing part:** the reference's permutation null is a 200-draw Monte-Carlo estimate off one numpy PCG64 stream, and its margins move by up to **0.029 across seeds — 29× the 1e-3 gate** — so the null was made deterministic on both sides (SplitMix64 + Fisher–Yates, known-answer tested in Swift) and both languages now compute the *same* null rather than two samples of it. That jitter does **not** mean the method was unstable: within a seed the noise is correlated across meters, and over 25 seeds under the original stochastic null money picks 7 **25/25**, bohemian 4 **25/25**, solsbury 7 **25/25**. **Task 5 — the threshold is 1.24, and the finding is the overlap it cannot remove.** Labelled by *meter*, the six truthed margins separate trivially (0 incorrect). Labelled by **bar** (meter AND phase — FT.3's own standard, since a right meter on the wrong phase is visually identical to being wrong) they **OVERLAP**: incorrect reaches +0.226 (money), correct starts at +0.136 (bohemian). That is DBN.2's situation, stated rather than hidden. The objective *(correct kept − incorrect admitted)* has two equal maxima, (0.106, 0.136] and (0.226, 2.254]; D-207's "decline when unsure" breaks the tie toward the zero-confident-wrong interval, and 1.24 is its midpoint — the nine tracks put **no** observation between 0.226 and 2.254, so it is the middle of an empty region, not a tuned value. Decline rate 7/9 on the (deliberately hard) truthed catalogue, 2/8 on the unseen set. **Task 6 — local-path A/B, both arms on the SAME full-track grid** so FT.1's window change is not folded in: meter correct **incumbent 1/6 → 2/6**, bar correct (meter AND phase) **2/6**, wrong meters emitted **5 → 0**. **Reported as a regression per the beatbench claim rules: mean downbeat F over all six truthed tracks drops 0.459 → 0.298**, every point of it a decline scoring 0.00; on the two tracks the estimator answers it is **0.895 vs 0.651**. One deviation from `Metrics.fMeasure`, applied to both arms: it trims only the *reference* to the grid's span, which mis-scores a full-track grid against partial-span taps (billie_jean scores 0.37 with a **perfect** bar line), so both sides are trimmed to the tapped span. **No behavioral change to beat sync — nothing calls `BarLineEstimator`**; `BeatGridResolver`, `BeatActivationDecoder` and every playback path are untouched, so no five-suite BeatBench table is owed. Wiring is FT.2's after its re-scope — **and wiring was REJECTED on product grounds 2026-09-04** (Matt: "B is not a viable option and I don't know why you would even suggest it"). The estimator declines on 7 of 9 truthed tracks and a decline is *no bars*, so shipping it takes the downbeat push away from Nacre and Glaze on most music — the very thing D-205 makes a hard gate. "Decline rather than guess" (D-207) is a sound property for a METRIC and not a shipped behaviour when the consumer is a visual with nothing to do when it declines. Do not re-propose wiring; revisit only with a materially lower decline rate, which is FT.3.1's wrong-metrical-level question (D-210). **What it does not establish:** 7 of 9 truthed tracks still decline, and the reason is the wrong-metrical-level gap D-210 already records — no accent-feature work closes it, which is FT.3.1's question.
+- **FT.3 tasks 4–6 — `BarLineEstimator` ported, thresholded, A/B'd ✅ (2026-08-19).** Report: [`docs/diagnostics/FT3_BARLINE_PORT_2026-08-19.md`](diagnostics/FT3_BARLINE_PORT_2026-08-19.md); reference `tools/barline_parity.py`. **Matt answered the §10 DECISION-NEEDED "build it"**, which overrides the FT.3.1 row's recorded "supersedes FT.3's unbuilt tasks 4–7" — that superseding claim is now wrong and FT.3.1 remains open on its own question. **Task 4 — parity is exact: worst |Δmargin| 1.6e-7 across all 17 tracks** (gate 1e-3), meter agreeing 17/17 and phase on every undeclined track, both arms decoding through the identical ffmpeg invocation. **The gate as specified was unachievable and the fix is the load-bearing part:** the reference's permutation null is a 200-draw Monte-Carlo estimate off one numpy PCG64 stream, and its margins move by up to **0.029 across seeds — 29× the 1e-3 gate** — so the null was made deterministic on both sides (SplitMix64 + Fisher–Yates, known-answer tested in Swift) and both languages now compute the *same* null rather than two samples of it. That jitter does **not** mean the method was unstable: within a seed the noise is correlated across meters, and over 25 seeds under the original stochastic null money picks 7 **25/25**, bohemian 4 **25/25**, solsbury 7 **25/25**. **Task 5 — the threshold is 1.24, and the finding is the overlap it cannot remove.** Labelled by *meter*, the six truthed margins separate trivially (0 incorrect). Labelled by **bar** (meter AND phase — FT.3's own standard, since a right meter on the wrong phase is visually identical to being wrong) they **OVERLAP**: incorrect reaches +0.226 (money), correct starts at +0.136 (bohemian). That is DBN.2's situation, stated rather than hidden. The objective *(correct kept − incorrect admitted)* has two equal maxima, (0.106, 0.136] and (0.226, 2.254]; D-207's "decline when unsure" breaks the tie toward the zero-confident-wrong interval, and 1.24 is its midpoint — the nine tracks put **no** observation between 0.226 and 2.254, so it is the middle of an empty region, not a tuned value. Decline rate 7/9 on the (deliberately hard) truthed catalogue, 2/8 on the unseen set. **Task 6 — local-path A/B, both arms on the SAME full-track grid** so FT.1's window change is not folded in: meter correct **incumbent 1/6 → 2/6**, bar correct (meter AND phase) **2/6**, wrong meters emitted **5 → 0**. **Reported as a regression per the beatbench claim rules: mean downbeat F over all six truthed tracks drops 0.459 → 0.298**, every point of it a decline scoring 0.00; on the two tracks the estimator answers it is **0.895 vs 0.651**. One deviation from `Metrics.fMeasure`, applied to both arms: it trims only the *reference* to the grid's span, which mis-scores a full-track grid against partial-span taps (billie_jean scores 0.37 with a **perfect** bar line), so both sides are trimmed to the tapped span. **No behavioral change to beat sync — nothing calls `BarLineEstimator`**; `BeatGridResolver`, `BeatActivationDecoder` and every playback path are untouched, so no five-suite BeatBench table is owed. Wiring is FT.2's after its re-scope — **and wiring was REJECTED on product grounds 2026-09-04** (Matt: "B is not a viable option and I don't know why you would even suggest it"). The estimator declines on 7 of 9 truthed tracks and a decline is *no bars*, so shipping it takes the downbeat push away from Nacre and Glaze on most music — the very thing D-205 makes a hard gate. "Decline rather than guess" (D-207) is a sound property for a METRIC and not a shipped behaviour when the consumer is a visual with nothing to do when it declines. Do not re-propose wiring; revisit only with a materially lower decline rate, which is FT.3.1's wrong-metrical-level question (D-210). **⚠ Note the D-210 caveat:** its evidence chain shares the span-trimming artifact PR.12 exposed (FT.4.1's bleed 115.00 → 123.62 compared a 30 s grid graded on 30 s against a full-track grid graded on six minutes), so the decline rate itself should be re-measured over identical spans before it is treated as settled. **What it does not establish:** 7 of 9 truthed tracks still decline, and the reason is the wrong-metrical-level gap D-210 already records — no accent-feature work closes it, which is FT.3.1's question.
 - **FT.3 — bar position from beat-synchronous accents (local files) ✅ COMPLETE (tasks 1–3 2026-07-31, tasks 4–6 2026-08-19; see the two rows above).** Prompt: [`docs/prompts/FT3_BARLINE_FROM_ACCENTS.md`](prompts/FT3_BARLINE_FROM_ACCENTS.md). **The changed premise D-208 asked for.** A probe (`tools/barline_probe.py`, [`docs/diagnostics/BARLINE_PROBE_2026-07-31.md`](diagnostics/BARLINE_PROBE_2026-07-31.md)) scored **6/6** on the ground-truthed catalogue against **2/6** for both the incumbent resolver and the DBN.2 decoder, recovering all three odd meters that four prior levers missed — by scoring beat-synchronous accent features (low-band energy, RMS, spectral flux, harmonic change) at the *known beat times* rather than reading the downbeat activation stream. Premise: beats are already good (suite-1 F 0.97), so on a local file the question is only *which* of 400–1000 reliable beats are bar lines. **Three caveats gate it:** the meter set was restricted to D-207's {3,4,5,7} *after* seeing the first table (2/6 → 6/6), margins are wildly uneven (+1.167 to +0.052), and no single feature works alone. **Phase was never measured** — a correct meter on the wrong phase is visually identical to being wrong. **Structurally local-file-only**, the same scope limit that sank D-170. DECISION-NEEDED in §10: build the engine component, build only the measurement, or don't — recommendation is measurement-only (tasks 1–3) then re-decide, because the 6/6 was measured on the same nine tracks that shaped the method.
 - **FT.3.1 — grid metrical level ⏸ STOPPED AT THE PREMISE (2026-08-19).** Report: [`docs/diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md`](diagnostics/FT31_METRICAL_LEVEL_2026-08-19.md); tool `tools/metrical_level_probe.py`. Tasks 1–3, 5, 6 done; **task 4 (the Swift detector) deliberately NOT built** under the two-strikes rule. **The increment's two positives do not survive contact with their own ground truth.** On both `money` and `bleed` the two independent GT.2 reference annotators (librosa AND madmom) say the **taps** are the octave-off side — verbatim "reference is double the tapped pulse (×2.01)" and "reference is half the tapped pulse (×0.51)" — and Uzume's grid sits in the backends' octave, not the taps' (bleed 115.00 against backends 114.80/115.38). Both carry `status: metrical_review`, and `money.groundtruth.json`'s own `meter_note` says "beats tapped at HALF the bar pulse". **The confound is total: across all 9 ground-truthed tracks every large AMLt−CMLt gap is a `metrical_review` track and every `confirmed` track has gap 0.00**, so the label set is a restatement of the ground truth's own unresolved-disagreement flag. **Consequence: `AMLt − CMLt` is a grid-vs-tap DISAGREEMENT metric, not a grid-error metric — it is silent about which side is wrong**, and D-210's evidence table (which reads it as the grid being wrong) needs that correction; D-210's decline-the-bar *decision* is unaffected. Second corroboration: re-gridding money cannot reach the notated beat at all — its grid already covers 94 % of tapped beats within ±70 ms and the halving its label demands drops that to **32 %** (ratio 2.139, not 2). **What was built and is worth keeping:** a synthetic re-grid control (audio untouched, level known by construction) on which the within-track detector scores **11/12 on verified bases** / 25/34 on all, with named confounds (girl_from_ipanema 0/3 — bossa's genuine two-beat surdo pattern; around_the_world 0/3 — four-on-the-floor house; there_there 0/2 — 30 s clip); and the finding that **no absolute threshold works** (both signals overlap on every pair) while within-track ordering holds 9/10. **D-210's open clause is settled negatively:** level correction "returns only if task 5 shows a near-zero confident-wrong rate" — the confusion matrix's margin carries no correctness information at all (incorrect margins median +2.910 vs correct +1.741; confident-wrong is 11 at threshold 0 and still 4 at threshold 3.0), so correction stays off the table. **No behavioral change to beat sync** — no engine source touched. **✅ DECISION ANSWERED — Matt 2026-08-19: "I would not trust my tapping on these tracks, especially Bleed."** So there are **zero** established real wrong-level tracks: FT.3.1 has no positives to detect and **CLOSES**. Filed as **BUG-102** (P1, `test.groundtruth / dsp.beat`) with the list of contaminated numbers — suite 2, *all* of suite 4 (bleed is its only track), FT.3's phase result, the FT.3 tasks 4–6 bar labels and the 1.24 threshold derived from them, and D-208/MDL.1's bleed judgment. ⚠ Distrusting the taps is **not** the same as the backends being right — the correct status is *unknown* pending re-annotation, and ground truth changes only through tap + reconcile (no JSON edited). Also still open from FT.3: solsbury_hill's internally inconsistent ground truth.
 - **FT.3.1 — original spec (superseded by the row above; kept for its rationale).** Prompt: [`docs/prompts/FT31_GRID_METRICAL_LEVEL.md`](prompts/FT31_GRID_METRICAL_LEVEL.md). ~~**Supersedes FT.3's unbuilt tasks 4–7** (the Swift port), which FT.3 task 2's result blocked.~~ **CORRECTED 2026-08-19:** Matt answered FT.3's §10 with "build it", the port shipped (see the FT.3 tasks 4–6 row), and FT.3.1 supersedes nothing — it remains open on its own question, which the port's 7/9 decline rate makes *more* live, not less. Premise: the two tracks whose bar-line *phase* failed with the meter right — money and bleed — are exactly the two with a large **AMLt−CMLt gap** in [`BEATBENCH_BASELINE_2026-07-30.md`](diagnostics/BEATBENCH_BASELINE_2026-07-30.md) (money CMLt 0.00 / AMLt 0.88, grid 116.19 vs truth 60.97; bleed CMLt 0.03 / AMLt 0.84, grid 115.00 vs truth 226.72), while the three right-level tracks have gap 0.00 and phase works. **BeatBench already names a wrong metrical level where ground truth exists; the open question is whether it can be named blind.** Not a fifth swing at D-208 — a different object, not the activation stream. **The obvious fix is ruled out up front:** money wants halving at 116 BPM and bleed wants doubling at 115 — same BPM, opposite corrections — so no global threshold separates them, and moving `BeatGrid.halvingThresholdBPM` (175, halving-only since QR.1) re-opens BUG-009 on fast rock. Whatever decides the level must come from audio content. **Methodological guard:** only 2 real positives and 3 real negatives exist, so the spec lands a *synthetic* wrong-level generator (task 2) **before** any detector (task 3). Task 7 forbids wiring. **DECISION-NEEDED in §10** surfaces a tension already inside D-205 — it gates beat feel on AMLt because a half/double grid "still reads as locked", while making bar position a hard gate because Nacre and Glaze consume it; FT.3 measured those as incompatible. **✅ ANSWERED — D-210 (Matt 2026-07-31): "decline the bar, keep the beat."** On a wrong-level track presets get no bar position and fall back to energy-driven behaviour; the beat layer is untouched; Nacre's and Glaze's downbeat pushes simply don't fire. Extends D-207's decline contract with a second reason ("the meter may be right and the bar line is still not locatable"). **Correction explicitly not chosen** — it returns only if task 5's confusion matrix shows a near-zero confident-wrong rate. This sets FT.3.1's target: a detector that declines correctly is a win even if it never corrects anything.

@@ -52,6 +52,11 @@ extension SessionPreparer {
     ///   - prefetchedProfile: Optional pre-fetched track metadata. When
     ///     `prefetchedProfile.timeSignature` is non-nil, the ML-detected
     ///     `BeatGrid.beatsPerBar` is overridden before caching.
+    ///   - wholeTrackAudio: `true` when `preview` holds the ENTIRE track, so the beat grid
+    ///     is built across all of it instead of the first 30 s. The local-file call site
+    ///     passes `true` — the same split DYN.1c already uses for `loudnessProfile`, where
+    ///     only that call site knows the decode was of the whole file. Streaming leaves it
+    ///     `false`: a preview IS 30 s and there is nothing further to analyse.
     /// - Returns: Fully populated `CachedTrackData`.
     nonisolated public static func analyzePreview(
         _ preview: PreviewAudio,
@@ -61,6 +66,7 @@ extension SessionPreparer {
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
         familyAnalyzer: (any InstrumentFamilyAnalyzing)? = nil,
         prefetchedProfile: PreFetchedTrackProfile? = nil,
+        wholeTrackAudio: Bool = false,
         probe: PrepStageProbe = .disabled
     ) throws -> CachedTrackData {
 
@@ -102,7 +108,8 @@ extension SessionPreparer {
                 preview: preview,
                 stemWaveforms: stemWaveforms,
                 beatGridAnalyzer: beatGridAnalyzer,
-                prefetchedProfile: prefetchedProfile
+                prefetchedProfile: prefetchedProfile,
+                wholeTrackAudio: wholeTrackAudio
             )
         }
 
@@ -156,13 +163,15 @@ extension SessionPreparer {
         preview: PreviewAudio,
         stemWaveforms: [[Float]],
         beatGridAnalyzer: (any BeatGridAnalyzing)?,
-        prefetchedProfile: PreFetchedTrackProfile?
+        prefetchedProfile: PreFetchedTrackProfile?,
+        wholeTrackAudio: Bool
     ) -> (beatGrid: BeatGrid, drumsBeatGrid: BeatGrid) {
         let beatGridRaw: BeatGrid
         if let gridAnalyzer = beatGridAnalyzer {
             beatGridRaw = gridAnalyzer.analyzeBeatGrid(
                 samples: preview.pcmSamples,
-                sampleRate: Double(preview.sampleRate)
+                sampleRate: Double(preview.sampleRate),
+                wholeTrack: wholeTrackAudio
             )
         } else {
             beatGridRaw = .empty
@@ -180,7 +189,8 @@ extension SessionPreparer {
         if let gridAnalyzer = beatGridAnalyzer, stemWaveforms.count > 1 {
             drumsBeatGrid = gridAnalyzer.analyzeBeatGrid(
                 samples: stemWaveforms[1],
-                sampleRate: Double(preview.sampleRate)
+                sampleRate: Double(preview.sampleRate),
+                wholeTrack: wholeTrackAudio
             )
         } else {
             drumsBeatGrid = .empty

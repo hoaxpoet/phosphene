@@ -25,7 +25,9 @@ extension BarLineEstimator {
     static func beatFeatures(
         audio: [Float],
         beats: [Double],
-        sampleRate: Double
+        sampleRate: Double,
+        fullBeatWindow: Bool = false,
+        chromaOnly: Bool = false
     ) -> [[Double]] {
         let count = beats.count
         let bins = nFFT / 2 + 1
@@ -43,28 +45,44 @@ extension BarLineEstimator {
         guard let fft = RealFFT(log2n: log2n, size: nFFT) else { return [lowEnergy, rms, flux, harmonicChange] }
         defer { fft.destroy() }
 
-        var segment = [Double](repeating: 0, count: nFFT)
+        // Median inter-beat interval, so the LAST beat (which has no successor) gets a
+        // window of the same duration as its neighbours rather than a truncated one.
+        let medianInterval = medianInterBeatInterval(beats)
         for (index, beat) in beats.enumerated() {
-            fillSegment(&segment, audio: audio, startSample: Int(beat * sampleRate))
+            let start = Int(beat * sampleRate)
+            // How many nFFT frames to average. Legacy = exactly one at the beat.
+            let frameStarts: [Int]
+            if fullBeatWindow {
+                let next = index + 1 < beats.count ? beats[index + 1] : beat + medianInterval
+                frameStarts = beatFrameStarts(
+                    start: start, end: Int(next * sampleRate))
+            } else {
+                frameStarts = [start]
+            }
 
-            var meanSquare = 0.0
-            for sample in segment { meanSquare += sample * sample }
-            rms[index] = (meanSquare / Double(nFFT)).squareRoot() + 1e-12
-
-            var windowed = segment
-            for i in 0..<nFFT { windowed[i] *= window[i] }
-            let magnitudes = fft.magnitudes(of: windowed)
+            let spectra = beatSpectra(
+                audio: audio,
+                frameStarts: frameStarts,
+                attackStart: start,
+                context: SpectraContext(
+                    bins: bins, window: window, fft: fft, splitTransient: chromaOnly)
+            )
+            rms[index] = spectra.rms
+            let magnitudes = spectra.averaged
+            let transientMagnitudes = spectra.transient
 
             var low = 0.0
-            for bin in maps.low { low += magnitudes[bin] }
+            for bin in maps.low { low += transientMagnitudes[bin] }
             lowEnergy[index] = low
 
             if let previous = previousMagnitudes {
                 var positiveChange = 0.0
-                for bin in 0..<bins { positiveChange += max(magnitudes[bin] - previous[bin], 0) }
+                for bin in 0..<bins {
+                    positiveChange += max(transientMagnitudes[bin] - previous[bin], 0)
+                }
                 flux[index] = positiveChange
             }
-            previousMagnitudes = magnitudes
+            previousMagnitudes = transientMagnitudes
 
             for bin in maps.usable { chroma[index][maps.pitchClass[bin]] += magnitudes[bin] }
             normalise(&chroma[index])
@@ -80,6 +98,91 @@ extension BarLineEstimator {
     }
 
     // MARK: - Helpers
+
+    /// Per-beat spectra: the beat-averaged magnitudes (for the chroma), the magnitudes the
+    /// transient features should read, and the matching RMS.
+    ///
+    /// `splitTransient` is PR.3 arm C — the four features have different natural windows,
+    /// so the chroma averages across the beat while `low_energy` / `rms` / `flux` stay on
+    /// the attack frame.
+    struct BeatSpectra {
+        /// Magnitudes averaged across the beat — what the chroma reads.
+        let averaged: [Double]
+        /// Magnitudes the transient features read: the attack frame under arm C,
+        /// otherwise the same averaged spectrum.
+        let transient: [Double]
+        let rms: Double
+    }
+
+    /// Shared per-beat FFT inputs, grouped to keep `beatSpectra`'s parameter list honest.
+    struct SpectraContext {
+        let bins: Int
+        let window: [Double]
+        let fft: RealFFT
+        let splitTransient: Bool
+    }
+
+    private static func beatSpectra(
+        audio: [Float],
+        frameStarts: [Int],
+        attackStart: Int,
+        context: SpectraContext
+    ) -> BeatSpectra {
+        let bins = context.bins
+        let window = context.window
+        let fft = context.fft
+        var segment = [Double](repeating: 0, count: nFFT)
+        var meanSquare = 0.0
+        var averaged = [Double](repeating: 0, count: bins)
+        for frameStart in frameStarts {
+            fillSegment(&segment, audio: audio, startSample: frameStart)
+            for sample in segment { meanSquare += sample * sample }
+            var windowed = segment
+            for i in 0..<nFFT { windowed[i] *= window[i] }
+            let frameMagnitudes = fft.magnitudes(of: windowed)
+            for bin in 0..<bins { averaged[bin] += frameMagnitudes[bin] }
+        }
+        let frames = Double(frameStarts.count)
+        for bin in 0..<bins { averaged[bin] /= frames }
+        var rms = (meanSquare / (Double(nFFT) * frames)).squareRoot() + 1e-12
+
+        guard context.splitTransient, frameStarts.count > 1 else {
+            return BeatSpectra(averaged: averaged, transient: averaged, rms: rms)
+        }
+        fillSegment(&segment, audio: audio, startSample: attackStart)
+        var attackMeanSquare = 0.0
+        for sample in segment { attackMeanSquare += sample * sample }
+        rms = (attackMeanSquare / Double(nFFT)).squareRoot() + 1e-12
+        var windowed = segment
+        for i in 0..<nFFT { windowed[i] *= window[i] }
+        return BeatSpectra(averaged: averaged, transient: fft.magnitudes(of: windowed), rms: rms)
+    }
+
+    /// Frame start offsets tiling `[start, end)` at 50 % overlap, always at least one.
+    ///
+    /// 50 % is the standard STFT overlap for a Hann window (COLA) and keeps the averaged
+    /// spectrum an unbiased picture of the beat rather than of its first frame.
+    private static func beatFrameStarts(start: Int, end: Int) -> [Int] {
+        let hop = nFFT / 2
+        guard end > start else { return [start] }
+        var starts: [Int] = []
+        var position = start
+        while position + nFFT <= end || starts.isEmpty {
+            starts.append(position)
+            position += hop
+            if starts.count >= 64 { break }   // guard a pathological beat gap
+        }
+        return starts
+    }
+
+    /// Median of the successive beat differences; `0.5` (120 BPM) when undefined.
+    private static func medianInterBeatInterval(_ beats: [Double]) -> Double {
+        guard beats.count > 1 else { return 0.5 }
+        var gaps = zip(beats.dropFirst(), beats).map(-)
+        guard !gaps.isEmpty else { return 0.5 }
+        gaps.sort()
+        return gaps[gaps.count / 2]
+    }
 
     /// The 2048 samples starting at `startSample`, zero-padded past the end of the track.
     private static func fillSegment(_ segment: inout [Double], audio: [Float], startSample: Int) {

@@ -18,6 +18,40 @@ struct StagedCompositionTests {
 
     // MARK: - Discovery
 
+    /// PR.0 — the harness fixture is reachable by name and by the harness's own
+    /// `loader.presets` lookup, but manual/segment cycling never lands on it.
+    /// Matt hit it during the 2026-09-04 roster review because `is_diagnostic`
+    /// gates Orchestrator scoring (D-074) and does NOT gate cycling.
+    @Test("Staged Sandbox is loaded and selectable, but cycling never lands on it")
+    func stagedSandboxIsSkippedByCycling() throws {
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+        try #require(loader.presets.count > 1)
+
+        // Still present for the harness, and still reachable deliberately.
+        #expect(loader.presets.contains { $0.descriptor.name == "Staged Sandbox" })
+        #expect(loader.selectPreset(named: "Staged Sandbox") != nil)
+
+        // A full lap forwards from the fixture itself never returns to it.
+        for _ in 0..<loader.presets.count {
+            #expect(loader.nextPreset()?.descriptor.name != "Staged Sandbox")
+        }
+        // And a full lap backwards.
+        loader.selectPreset(named: "Staged Sandbox")
+        for _ in 0..<loader.presets.count {
+            #expect(loader.previousPreset()?.descriptor.name != "Staged Sandbox")
+        }
+
+        // Spectral Cartograph is also is_diagnostic but stays in the cycle —
+        // Matt keeps the other diagnostics browsable (2026-09-04).
+        loader.selectPreset(named: "Spectral Cartograph")
+        var sawCartograph = false
+        for _ in 0..<loader.presets.count {
+            if loader.nextPreset()?.descriptor.name == "Spectral Cartograph" { sawCartograph = true }
+        }
+        #expect(sawCartograph)
+    }
+
     @Test("StagedSandbox loads with two compiled stages")
     func stagedSandboxLoadsWithTwoStages() throws {
         let ctx = try MetalContext()
