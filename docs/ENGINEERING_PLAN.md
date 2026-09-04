@@ -246,7 +246,43 @@ level cases where bar phase is unrecoverable regardless of the feature front-end
 to be right first. **Done-when:** a decline rate and a *correct*-downbeat rate measured against
 ground truth, not an answer count.
 
-**PR.3d — the original corroboration** (unchanged, still Matt's call).
+**PR.3c — the metrical level is not the problem** ✅ (2026-09-04). Matt directed going at the level;
+the census says don't. **D-210's blocking argument rests on two reference values that were both
+withdrawn afterwards** (BUG-102, 2026-08-27): money 60.97 → 121.06 and bleed 226.72 → 115.38.
+Against current ground truth money is a ~4 % tempo error (BUG-107's own root cause) and bleed is
+correct. `MetricalLevelCensus` re-asked the question over all nine fixtures: **seven of nine are at
+the correct level, with zero clean doubles or halves**; the two misses are 2.733× and 0.787× — not
+octave errors — on ground truth still flagged `needs_arbitration` / `metrical_review`. What the
+census does show is the **meter**, wrong on four of the five fixtures with a tapped one and wrong
+toward the degenerate values (bleed 4→2, money 7→1, solsbury_hill 7→1, take_five 5→4) — the same
+defect Matt saw on *Low*. D-210's product call stands; its written rationale now cites withdrawn
+numbers and will mislead the next reader, as it misled this session.
+Report: [`PR3C_METRICAL_LEVEL_CENSUS_2026-09-04.md`](diagnostics/PR3C_METRICAL_LEVEL_CENSUS_2026-09-04.md).
+
+**PR.3d — `UZUME_BARLINE` adopted, after re-deriving the threshold it would have shipped wrong** ✅
+(2026-09-04, Matt "yes, adopt it"). **Adoption did not go through unchanged.** FT.4.1's headline
+("answers 2 of 9, both right, zero confident-wrong") was itself a product of the BUG-114
+mis-calibration: measured at half the analysis window, margins were depressed. With BUG-114 fixed
+**bleed rises to 1.348 and answers meter 3 on a 4/4 track** — a confident-wrong bar, the exact
+failure D-207's decline rule exists to prevent. `declineThreshold` re-derived by FT.3's own method
+(midpoint of the objective's empty plateau, now (1.348, 1.735)): **1.24 → 1.54**. Honest bound:
+three answers over nine fixtures is a much thinner basis than FT.3's.
+
+Five-suite before/after in the report; the headline is **take_five 5/2 → 5/5, downbeat F 0.26 →
+0.97**, with **F / Cemgil / CMLt / AMLt byte-identical on all nine tracks** (the estimator never
+touches `grid.beats`) and suite-1 no-regression exact. **Paid for it:** bleed had the meter *right*
+under OFF (4/4) and now declines — though its phase was dbF 0.08, a wrong bar-1 on every bar.
+**Suite 2's meter gate is still NOT met**: it asks ≥ 3/4 correct, this is 1 correct + 3 honest
+declines, up from 0. Do not read take_five as suite 2 cleared. Ships default-on with
+`UZUME_BARLINE=0` as the kill switch.
+Report: [`PR3D_BARLINE_ADOPTION_2026-09-04.md`](diagnostics/PR3D_BARLINE_ADOPTION_2026-09-04.md).
+
+**A measurement trap recorded at PR.3d:** two instruments disagreed on bleed because one downmixed
+stereo→mono with `AVAudioConverter` and the other averaged channels manually, which is what
+production does. Different downmix → different beats → different features → the margin crossed the
+threshold. **A probe that does not decode the way production decodes is not measuring production.**
+
+**PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.
 The matching open defects:

@@ -32,25 +32,31 @@ struct MetricalLevelCensus {
         let source: String?
     }
 
-    private static func decodeMono(url: URL, rate: Double) throws -> [Float] {
+    /// Production-faithful decode: native rate, manual channel average — byte-identical
+    /// to `AudioDecode.monoFloat32` in BeatBench and to the local-file path in
+    /// `SessionTypes`. An `AVAudioConverter` mono downmix is NOT the same thing and moved
+    /// bleed's margin across the decline threshold when this probe first used one.
+    private static func decodeMono(url: URL) throws -> ([Float], Double) {
         let file = try AVAudioFile(forReading: url)
-        guard let outFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                         sampleRate: rate, channels: 1, interleaved: false),
-              let conv = AVAudioConverter(from: file.processingFormat, to: outFmt),
-              let inBuf = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
-                                           frameCapacity: AVAudioFrameCount(file.length))
-        else { return [] }
-        try file.read(into: inBuf)
-        let cap = AVAudioFrameCount(Double(file.length) * rate / file.processingFormat.sampleRate) + 4096
-        guard let out = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: cap) else { return [] }
-        var done = false
-        var err: NSError?
-        conv.convert(to: out, error: &err) { _, status in
-            if done { status.pointee = .endOfStream; return nil }
-            done = true; status.pointee = .haveData; return inBuf
+        let format = file.processingFormat
+        let frames = AVAudioFrameCount(file.length)
+        guard frames > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)
+        else { return ([], 0) }
+        try file.read(into: buffer)
+        guard let channels = buffer.floatChannelData else { return ([], 0) }
+        let count = Int(buffer.frameLength)
+        let channelCount = Int(format.channelCount)
+        if channelCount == 1 {
+            return (Array(UnsafeBufferPointer(start: channels[0], count: count)), format.sampleRate)
         }
-        guard let ch = out.floatChannelData else { return [] }
-        return Array(UnsafeBufferPointer(start: ch[0], count: Int(out.frameLength)))
+        var mono = [Float](repeating: 0, count: count)
+        let scale = 1.0 / Float(channelCount)
+        for channel in 0..<channelCount {
+            let pointer = UnsafeBufferPointer(start: channels[channel], count: count)
+            for index in 0..<count { mono[index] += pointer[index] * scale }
+        }
+        return (mono, format.sampleRate)
     }
 
     private static func medianBPM(_ beats: [Double]) -> Double {
@@ -99,19 +105,28 @@ struct MetricalLevelCensus {
                 if FileManager.default.fileExists(atPath: u.path) { audioURL = u; break }
             }
             guard let audioURL,
-                  let audio = try? Self.decodeMono(url: audioURL, rate: 44100), !audio.isEmpty
+                  let (audio, rate) = try? Self.decodeMono(url: audioURL), !audio.isEmpty
             else {
                 print("  \(name)  — fixture missing, not measured")
                 continue
             }
-            let grid = analyzer.analyzeBeatGrid(samples: audio, sampleRate: 44100)
+            let grid = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate)
+            let est = BarLineEstimator.estimate(
+                beats: grid.beats,
+                audio: audio,
+                sampleRate: rate,
+                options: .init(resampleToReferenceRate: true)
+            )
             let truthBPM = Self.medianBPM(truthBeats)
             let gridBPM = Self.medianBPM(grid.beats)
             let pad = String(repeating: " ", count: max(0, 20 - name.count))
             print("  \(name)\(pad) \(String(format: "%8.2f", truthBPM))  "
                   + "\(gt.status ?? "?")\(String(repeating: " ", count: max(0, 18 - (gt.status ?? "?").count)))"
                   + "\(String(format: "%8.2f", gridBPM))  \(Self.levelLabel(grid: gridBPM, truth: truthBPM))"
-                  + "   meter \(gt.meterFromTaps.map(String.init) ?? "-")  gridMeter \(grid.beatsPerBar)")
+                  + "   meter \(gt.meterFromTaps.map(String.init) ?? "-")  gridMeter \(grid.beatsPerBar)"
+                  + "   | \(Int(rate))Hz margin \(String(format: "%6.3f", est.margin))"
+                  + " -> \(est.beatsPerBar.map(String.init) ?? "decline")"
+                  + " \(est.margin >= BarLineEstimator.declineThreshold ? "ANSWER" : "")")
         }
     }
 }

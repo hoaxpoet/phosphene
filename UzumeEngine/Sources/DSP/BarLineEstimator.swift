@@ -134,11 +134,31 @@ public enum BarLineEstimator {
 
     /// Minimum summed margin to return a bar rather than decline.
     ///
-    /// Set from the measured margin distribution in FT.3 task 5, not from taste (D-207:
-    /// "a threshold set from the margin's measured distribution"). See
-    /// `docs/diagnostics/FT3_BARLINE_PORT_2026-08-19.md` for the distribution and the
-    /// correct/incorrect overlap this operating point sits in.
-    public static let declineThreshold: Double = 1.24
+    /// Set from the measured margin distribution, not from taste (D-207: "a threshold set
+    /// from the margin's measured distribution"), by FT.3's own method: the objective
+    /// *(correct kept − incorrect admitted)* plateaus over an interval containing no
+    /// observation, and the threshold is that interval's midpoint.
+    ///
+    /// **Re-derived at PR.3d from 1.24.** FT.3 fitted 1.24 to margins measured at 22050 Hz;
+    /// FT.4.1 then A/B'd the arm through the production analyzer, which — per BUG-114 — was
+    /// running the estimator at HALF that analysis window and so produced systematically
+    /// smaller margins. FT.4.1's "answers 2 of 9, both right, zero confident-wrong" was a
+    /// product of that mis-calibration. With BUG-114 fixed the margins rise, and **bleed
+    /// crosses 1.24 at 1.348 answering meter 3 on a 4/4 track** — a confident-wrong bar,
+    /// the precise failure D-207's decline rule exists to prevent.
+    ///
+    /// Corrected distribution (production decode: native rate, manual channel average;
+    /// `MetricalLevelCensus`), answers only:
+    ///
+    ///     bleed        1.348   meter 3 vs tapped 4   INCORRECT
+    ///     take_five    1.735   meter 5 vs tapped 5   correct
+    ///     billie_jean  2.603   meter 4 vs tapped 4   correct
+    ///
+    /// The empty interval separating the incorrect answer from the correct ones is
+    /// (1.348, 1.735); 1.54 is its midpoint. **Honest bound: three answers over nine
+    /// fixtures is a thin basis** — much thinner than FT.3's, whose empty region spanned
+    /// (0.226, 2.254). Re-derive again when the catalogue grows or the front-end moves.
+    public static let declineThreshold: Double = 1.54
 
     // MARK: - PR.3 options
 

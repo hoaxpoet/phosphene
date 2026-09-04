@@ -87,7 +87,11 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
             let env = ProcessInfo.processInfo.environment
             let both = env["UZUME_FULLTRACK_BARS"] == "1"
             let fullTrack = both || env["UZUME_FULLTRACK_DECODE"] == "1"
-            let barLine = both || env["UZUME_BARLINE"] == "1"
+            // ADOPTED default-on at PR.3d (Matt, 2026-09-04) after the BUG-114 window fix
+            // and the PR.3d threshold re-derivation. `UZUME_BARLINE=0` is the kill switch;
+            // the beat layer is provably untouched (BeatBench: F / Cemgil / CMLt / AMLt
+            // identical on all nine fixtures), so a rollback only restores wrong bars.
+            let barLine = both || env["UZUME_BARLINE"] != "0"
             let activations: (beats: [Float], downbeats: [Float])
             if fullTrack {
                 activations = try BeatThisTiledInference.predictFullTrack(
