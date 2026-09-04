@@ -80,6 +80,34 @@ behaviour or hierarchy and each needs its own review; DS.1 deliberately does not
 **DS.4** design pass 2026-09-02 (`docs/reviews/DS.4/DESIGN.md`, [#189](https://github.com/hoaxpoet/uzume/pull/189)); ✅ **merged 2026-09-02 (D-238)**, M7 approved, as [#190](https://github.com/hoaxpoet/uzume/pull/190) (`6de5b58e`). **DS.4a** ✅ same-day follow-up (D-239) — Matt's live feedback that the preparation-view preference had no reachable control during `.preparing` at all. **DS.5** design pass 2026-09-02 (`docs/reviews/DS.5/DESIGN.md`) + camera-push prototype; ✅ **2026-09-03 (D-240), M7 passed** — two ready experiences over the open cave, one camera push into it, plan preview deleted; the M7 found that Ready's first-audio autodetect had never listened (BUG-112, fixed same day); see the entries below.
 **DS.6** ✅ 2026-09-03 (D-241), **M7 passed** (*"Looks good."*) on `claude/ds6-prompt-execution-bbd3e4`, unpushed — the chrome retokenized in place, gone completely after inactivity and back on mouse / tap / key / track change (Matt's call), Show/Hide track info, the orchestrator pill removed; found and fixed BUG-113 (toasts stretched to the window height). **DS.7** waits on a design pass with Matt: `PerformancePreflight` comes only after its integration point and settings summary model are defined in the app (census §Migration order, step 7).
 
+## Phase PREP — Session preparation throughput 🔨 (2026-09-03; D-242)
+
+Preparation has a stated time budget for the first time: **40 tracks in 5 minutes** — 7.5 s/track,
+cold cache, wall-clock to `.ready` ([D-242]). It is currently missed by ~6.7×: Matt measured
+**12 FLAC files at 10 minutes** (50 s/track) on 2026-09-03. The gap is on the local path, which
+decodes and analyses whole files where streaming analyses a 30 s preview, and whose outer loop
+(`SessionPreparer._runLocalFilePreparation`) is serial.
+
+**PREP.1 — where the preparation minutes go** 🔨 next. **Measurement only**, run as the
+`defect-handling` protocol's instrumentation step: per-stage, per-track timings on a cold-cache
+local run (hash, decode, `analyzePreview`, the LFSTEM.1 stem sweep, the DYN.1c loudness profile,
+beat grid, instrument family, cache write), emitted as a `preparation.csv` session sidecar; the
+same treatment on a streaming playlist as the control; format (FLAC vs AAC) and track-length
+comparisons; a report at `docs/diagnostics/PREP1_PREPARATION_TIMING_<date>.md` ending in ranked
+options, each stating what the listener loses. **Nothing is optimised in PREP.1** — the obvious
+suspect (the whole-file stem sweep) is also work that passed an M7 and removed a 2.5 s stem
+latency, so cutting it is a product decision that needs numbers first. Prompt:
+`prompts/PREP.1-prompt.md`. **Done-when:** the 50 s/track figure is reproduced, every stage is
+timed, and Matt has the report and has picked a direction.
+
+**PREP.2** is whichever option Matt picks. Two are named in the prompt so the report addresses
+them directly: **concurrency across tracks** (the serial loop — worth it only if the dominant
+stage is not already saturating the machine, which is why PREP.1 measures CPU/GPU/disk behaviour
+and not just durations), and **splitting the budget in two** — progressive readiness already lets
+playback start before the walk finishes, so "time to `.ready`" and "time to fully prepared" may
+deserve separate targets, since the listener waits only for the first. That split would be a
+[D-242] amendment.
+
 ## Recently Completed
 
 ### Increment DS.6 — the playback chrome, retokenized in place ✅ (2026-09-03, D-241, M7 passed)
