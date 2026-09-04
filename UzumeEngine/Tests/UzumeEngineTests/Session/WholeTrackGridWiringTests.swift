@@ -64,4 +64,31 @@ struct WholeTrackGridWiringTests {
         #expect(wholeSpan > 250, "whole-track span was \(wholeSpan) s")
         #expect(wholeSpan / clampedSpan > 5)
     }
+
+    /// PREP.1 moved the LF.4 worker out of `VisualizerEngine+LocalFilePlayback` into
+    /// `Session.LocalFilePreparationPipeline`, and PR.12's `wholeTrackAudio: true`
+    /// landed on the old location in a parallel branch. The merge had to carry it
+    /// across by hand.
+    ///
+    /// PR.12's own commit names this risk — *"the wiring is what a refactor silently
+    /// breaks"* — and its other three tests all exercise the analyzer, not the one
+    /// call site that decides a real local session gets a whole-track grid. Nothing
+    /// else fails if that argument is dropped: the build stays green and the grid
+    /// quietly covers 7.6 % of the track again.
+    @Test("the local-file pipeline still asks for a whole-track grid after the PREP.1 move")
+    func localPipelineRequestsWholeTrack() throws {
+        // …/UzumeEngine/Tests/UzumeEngineTests/Session/<this file> → UzumeEngine
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let pipeline = root
+            .appendingPathComponent("Sources/Session/LocalFilePreparationPipeline.swift")
+        let source = try String(contentsOf: pipeline, encoding: .utf8)
+
+        #expect(source.contains("wholeTrackAudio: true"), """
+                LocalFilePreparationPipeline no longer passes wholeTrackAudio: true to \
+                analyzePreview. The local path decoded the whole file and then threw ~90 % of \
+                it away at the beat grid — PR.12's regression, silently restored.
+                """)
+    }
 }

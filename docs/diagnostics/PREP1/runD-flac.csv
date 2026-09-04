@@ -1,0 +1,43 @@
+track,stage,wall_ms,cpu_ms,cpu_cores,audio_s,ms_per_audio_s
+"02 - Breaking Glass.flac",content_hash,20.7,8.5,0.41,112.89,0.18
+"02 - Breaking Glass.flac",cache_probe,0.1,0.1,0.91,112.89,0.00
+"02 - Breaking Glass.flac",metadata_artwork,31.9,18.3,0.58,112.89,0.28
+"02 - Breaking Glass.flac",decode,122.1,120.9,0.99,112.89,1.08
+"02 - Breaking Glass.flac",loudness_profile,12.3,12.1,0.99,112.89,0.11
+"02 - Breaking Glass.flac",stem_separation,227.6,172.2,0.76,112.89,2.02
+"02 - Breaking Glass.flac",stem_warmup,35.6,35.4,1.00,112.89,0.31
+"02 - Breaking Glass.flac",mir,140.2,133.5,0.95,112.89,1.24
+"02 - Breaking Glass.flac",beat_grid,833.8,797.7,0.96,112.89,7.39
+"02 - Breaking Glass.flac",grid_onset_calibration,32.9,32.9,1.00,112.89,0.29
+"02 - Breaking Glass.flac",instrument_family,221.2,197.8,0.89,112.89,1.96
+"02 - Breaking Glass.flac",stem_series_sweep,6973.0,4918.1,0.71,112.89,61.77
+"02 - Breaking Glass.flac",cache_write,7.7,5.2,0.67,112.89,0.07
+"02 - Breaking Glass.flac",TRACK_TOTAL,8660.0,6453.1,0.75,112.89,76.71
+"04 - Sound And Vision.flac",content_hash,40.1,16.4,0.41,183.43,0.22
+"04 - Sound And Vision.flac",cache_probe,0.1,0.1,1.00,183.43,0.00
+"04 - Sound And Vision.flac",metadata_artwork,1.4,2.5,1.82,183.43,0.01
+"04 - Sound And Vision.flac",decode,221.7,343.6,1.55,183.43,1.21
+"04 - Sound And Vision.flac",loudness_profile,19.1,18.9,0.99,183.43,0.10
+"04 - Sound And Vision.flac",stem_separation,125.6,85.5,0.68,183.43,0.68
+"04 - Sound And Vision.flac",stem_warmup,35.8,35.4,0.99,183.43,0.19
+"04 - Sound And Vision.flac",mir,303.8,298.6,0.98,183.43,1.66
+"04 - Sound And Vision.flac",beat_grid,147.0,90.3,0.61,183.43,0.80
+"04 - Sound And Vision.flac",grid_onset_calibration,54.3,53.7,0.99,183.43,0.30
+"04 - Sound And Vision.flac",instrument_family,295.3,272.9,0.92,183.43,1.61
+"04 - Sound And Vision.flac",stem_series_sweep,11428.6,8052.3,0.70,183.43,62.31
+"04 - Sound And Vision.flac",cache_write,7.4,5.7,0.78,183.43,0.04
+"04 - Sound And Vision.flac",TRACK_TOTAL,12680.3,9275.8,0.73,183.43,69.13
+"08 - Warszawa.flac",content_hash,50.7,19.8,0.39,383.67,0.13
+"08 - Warszawa.flac",cache_probe,0.1,0.1,1.00,383.67,0.00
+"08 - Warszawa.flac",metadata_artwork,1.2,2.3,1.87,383.67,0.00
+"08 - Warszawa.flac",decode,411.0,627.2,1.53,383.67,1.07
+"08 - Warszawa.flac",loudness_profile,42.9,42.8,1.00,383.67,0.11
+"08 - Warszawa.flac",stem_separation,142.1,87.0,0.61,383.67,0.37
+"08 - Warszawa.flac",stem_warmup,35.1,35.0,1.00,383.67,0.09
+"08 - Warszawa.flac",mir,1093.9,1086.7,0.99,383.67,2.85
+"08 - Warszawa.flac",beat_grid,216.6,162.6,0.75,383.67,0.56
+"08 - Warszawa.flac",grid_onset_calibration,111.0,110.7,1.00,383.67,0.29
+"08 - Warszawa.flac",instrument_family,593.5,543.4,0.92,383.67,1.55
+"08 - Warszawa.flac",stem_series_sweep,24000.6,16770.1,0.70,383.67,62.56
+"08 - Warszawa.flac",cache_write,20.5,12.9,0.63,383.67,0.05
+"08 - Warszawa.flac",TRACK_TOTAL,26719.3,19500.7,0.73,383.67,69.64

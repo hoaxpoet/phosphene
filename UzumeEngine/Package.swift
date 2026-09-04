@@ -207,6 +207,18 @@ let package = Package(
             path: "Sources/ColdStartVerifier"
         ),
         .executableTarget(
+            name: "PrepTimingRunner",
+            dependencies: [
+                "Session",
+                "Shared",
+                "ML",
+                "DSP",
+                "Audio",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/PrepTimingRunner"
+        ),
+        .executableTarget(
             name: "ChainHealthAnalyzer",
             dependencies: ["Shared"],
             path: "Sources/ChainHealthAnalyzer"

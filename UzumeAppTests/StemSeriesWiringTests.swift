@@ -134,7 +134,11 @@ struct StemSeriesWiringTests {
     /// Invariant 3 — the sweep is local-file-only.
     @Test("Only the local-file path builds a series; the shared preview analysis does not")
     func test_streamingNeverGetsASeries() {
-        guard let localFile = source("UzumeApp/VisualizerEngine+LocalFilePlayback.swift"),
+        // PREP.1 moved the LF.4 worker out of the app layer into the engine so a headless
+        // runner could measure the shipping pipeline. The invariant is unchanged — the sweep is
+        // still local-file-only — only the file it lives in moved.
+        guard let localFile =
+                source("UzumeEngine/Sources/Session/LocalFilePreparationPipeline.swift"),
               let sharedAnalysis =
                 source("UzumeEngine/Sources/Session/SessionPreparer+Analysis.swift")
         else { return }
