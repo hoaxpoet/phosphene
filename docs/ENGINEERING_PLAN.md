@@ -168,16 +168,38 @@ refinement. **Done-when: ✅** cycling forwards or backwards a full lap from the
 to it, it remains loadable and selectable by name, and Spectral Cartograph still appears in a full lap
 (`StagedCompositionTests.stagedSandboxIsSkippedByCycling`).
 
-**PR.1 — watch the flagged presets against *Low* before proposing causes** (gates PR.2/PR.5/PR.6).
-Capture each preset Matt flagged, on one rhythmic and one ambient *Low* track, and compare what the
-declared routing actually does against what he perceived. Per the "render and look before building
-a metric" rule (FTR.30–32) this is a **looking** increment — a contact sheet plus a per-preset note,
-not a new metric. Ricercar and Volumetric Lithograph are held entirely for this increment: Ricercar's
-only reported failure is on Subterraneans and may be a material artefact. **Done-when:** every
-flagged preset has a capture on both halves of the album, each observation is classified into one of
-the three cause rows above (or a fourth, named), and Matt has the sheet.
+**PR.1 — watch the flagged presets against *Low*** 🔨 **partially answered; two halves blocked**
+(2026-09-04). Report: [`docs/diagnostics/PR1_LOW_SESSION_OBSERVATION_2026-09-04.md`](diagnostics/PR1_LOW_SESSION_OBSERVATION_2026-09-04.md).
+Matt's own review session was already on disk (`~/Documents/uzume_sessions/2026-09-03T21-38-45Z`,
+148,842 frames, all 11 *Low* tracks in album order — segments matched to the album by duration, exact
+on every track). **The timing half needed no new capture and is answered decisively; the look half
+cannot be answered from this session at all.**
 
-**PR.2 — tempo-scaled motion rate** (the main lever; gated on PR.1). Give Filigree, Mitosis,
+Measured, per track: frames outside BUG-065's ~60 ms perceptual window range **20.8 % → 100 %**, with
+six of thirteen segments worse than BUG-065's strongest prior evidence (50 %) and two at 100 % with
+p50 drift of 166 ms and 186 ms. `beatsPerBar` is wrong on five of eleven tracks — `2` on What In The
+World, Art Decade and Weeping Wall, which is the exact degenerate value BUG-028 documents. Grid tempo
+is wrong outright on the ambient side (Weeping Wall 142.3 BPM, Warszawa 54.0 BPM). Chain health reads
+`degraded`, and the report measures why: 484/500 windows healthy, the rest scattered singles on the
+quiet ambient side where a low 5 s peak is the material — the timing numbers rest on a healthy chain,
+and the grader misreading quiet music is noted as a separate possible defect.
+
+**Two blockers, both surfaced by this increment rather than assumed:**
+1. **Video recording was OFF** (BUG-050; `UZUME_RECORD_VIDEO=1`). Zero rendered frames exist, so every
+   look-shaped observation — Dragon Bloom's whites, Glaze's brightness, Fata Morgana's darkness,
+   Murmuration's cloud, Cymatic's variation, Nacre's speed, Aurora Veil's purple — is unanswerable.
+   A second capture with video on is required and **PR.5/PR.6 are blocked until it exists**.
+2. **`SessionReplayHarness` covers one paradigm.** It drives `RayMarchPipeline.render` and its
+   coverage gate is scoped `guard descriptor.passes.contains(.rayMarch)`. **Three** of the 26 flagged
+   presets are ray-march (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph); the other 23 cannot
+   be replayed from a real session. Because the gate shares that scope, Ricercar (6 routes), Skein (7),
+   Murmuration (4), Witchlight (2), Fractal Tree (2), Nacre (1) and Stave (1) declare routes carried by
+   nothing and checked by nothing — the FLY.6 silent-zero hole, reopened for every non-ray-march preset.
+
+**Done-when:** ✅ for the timing half. ⏳ the look half reopens when a video-on *Low* capture exists;
+⏳ the per-preset production-path half reopens when the harness reaches the other paradigms (PR.10).
+
+**PR.2 — tempo-scaled motion rate** (the main lever; **gated on PR.3, not just PR.1** — PR.1 §3.3 measured the grid's TEMPO wrong on *Low*'s ambient side, and a motion rate read off a wrong BPM bakes in a compensation for a bad number). Give Filigree, Mitosis,
 Cytokinesis, Nacre and Floret a motion rate that tracks the cached grid's tempo, so a fast track
 visibly quickens and a slow one settles. Ship **Filigree first as the single proof** — it is the
 clearest-stated complaint ("seems like it's a movie on a loop") — take Matt's look, then roll the
@@ -279,6 +301,17 @@ coupling from scratch, not tuning it: this is preset-authoring work per preset, 
 honest default for any that does not earn the effort. **Done-when:** every `certified: false` preset
 has an explicit certify-or-remove decision from Matt with a date, and none remains undecided at the
 beta cut.
+
+**PR.10 — the replay harness past ray-march** (unblocks the production-path evidence route for 23 of
+26 flagged presets). `SessionReplayHarness` and `ReplayHarnessRouteCoverageTests` are both scoped to
+`.rayMarch`. The per-paradigm multi-frame templates already exist (QG.4 / D-182:
+`FeedbackPathHarnessTemplate`, `AuroraVeilMVWarpAccumulationTest`, `StagedPathHarnessTemplate`, all on
+the shared `HarnessTemplateCore` spine) and the session CSV → `FeatureVector` mapping already exists in
+the harness — the gap is joining them and mapping the ~20 fields listed in PR.1 §6. **Widen the
+coverage gate in the same commit as the harness**: a harness that reaches a paradigm without a gate
+that checks it is the FLY.6 hole with a wider mouth. **Done-when:** a feedback/mv_warp/particles preset
+replays from a real session dir through its production dispatch path, and the coverage gate fails if
+any preset in a covered paradigm declares a primitive the harness does not carry.
 
 **Explicitly not in scope.** **Nimbus** — *"doesn't do much and yet people seem to really like it
 and think the ball has a personality."* That is the preset working; it is not touched. **Skein** —
