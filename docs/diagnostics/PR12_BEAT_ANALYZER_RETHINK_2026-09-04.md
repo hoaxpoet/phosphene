@@ -149,3 +149,66 @@ is what a refactor silently breaks, so that is what is gated.
   answer has to be live adaptation, not offline analysis.
 - **No live confirmation.** Coverage and cost are measured; whether Matt *feels* the sync improve
   needs a session on the new build.
+
+---
+
+## 7. `computeMeter` counts beats instead of dividing by an average
+
+Matt, 2026-09-04: *"fix computeMeter to use local period."* The direct answer turned out not to be a
+local period at all — the meter *is* the number of beats in a bar, and `beats` holds the beats, so
+it counts them and never forms a period.
+
+**Before:** `round(median_downbeat_IOI / (60 / bpm))`, where `bpm` is `computeBPM`'s mean of the
+inlier inter-onset intervals across the whole input. On a track whose tempo moves, that average is a
+period the music is never at — bars in faster sections divided high, slower sections low — so a
+wrong average produced a wrong meter *even when every downbeat was in the right place*.
+
+**After:** count the beats in `[downbeat_i, downbeat_i+1)`. Downbeats are snapped onto beats
+upstream, so a 4/4 bar counts exactly 4. `beatsPerBar` is the MODE of the per-bar counts (meter is
+categorical; the mode survives a missed downbeat where a median drifts between values), and
+`barConfidence` is the fraction of bars agreeing. The period-division form is retained only for the
+no-beats path.
+
+### BeatBench, five suites
+
+**bohemian_rhapsody 4/2 → 4/4 — now correct.** yyz —/2 → —/1 (no tapped meter, unknowable). Every
+other meter unchanged, and **every beat metric — F, Cemgil, CMLt, AMLt — identical on all nine
+fixtures**, as it must be: `computeMeter` never touches `beats`.
+
+### On *Low*, with whole-track grids — a wash, and the reason is now visible
+
+| track | meter | confidence | downbeats per beat |
+|---|---:|---:|---:|
+| 01 Speed Of Life | **4** | **1.00** | 0.25 |
+| 04 Sound And Vision | **4** | **1.00** | 0.25 |
+| 05 Always Crashing | **4** | **1.00** | 0.25 |
+| 06 Be My Wife | **4** | **1.00** | 0.25 |
+| 07 A New Career | **4** | **1.00** | 0.25 |
+| 09 Art Decade | 4 | 0.86 | 0.28 |
+| 02 Breaking Glass | 2 | 0.73 | 0.39 |
+| 03 What In The World | 2 | 0.75 | 0.40 |
+| 08 Warszawa | 4 | 0.43 | 0.34 |
+| 10 Weeping Wall | 1 | 0.37 | 0.39 |
+| 11 Subterraneans | 3 | 0.36 | 0.39 |
+
+**The threshold is crisp.** Every track whose downbeat stream fires once per four beats
+(`db/beat = 0.25`) gets meter 4 at confidence **1.00**. Every failure has the model's downbeat head
+**over-firing** at 0.28–0.40 — a downbeat every ~2.5 beats — and counting reports that faithfully
+instead of hiding it inside a division.
+
+**One regression, correctly attributed.** Breaking Glass reads 4 under the clamped grid and 2 under
+whole-track. That is **not** this change: counting at the clamped grid returns 4. Whole-track exposes
+more of an over-firing downbeat stream, so it belongs to §6, and it is a meter cost of whole-track
+decoding that §6 did not measure (it measured beat F only).
+
+### What this actually buys
+
+Not "correct meters" — the remaining errors are all upstream, in the downbeat head that has defeated
+four prior attempts (TRK.2, DBN.2, MDL.1, FT.1). What it buys is that **`barConfidence` now means
+something**: 1.00 where the bar structure is real, 0.36–0.86 where it is not. Before, division
+against an average returned a number regardless of whether the downbeats supported it. A consumer
+can now gate bar-locked visual events on that confidence — which is D-207's "decline when unsure",
+with a signal that finally reflects reality.
+
+**The remaining defect is named and unchanged: the downbeat head over-fires.** Nothing here
+addresses it, and nothing here should be read as claiming it does.

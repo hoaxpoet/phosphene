@@ -338,6 +338,28 @@ period — the remaining half of Matt's point. Streaming is untouched and needs 
 offline analysis. **No live confirmation**: coverage and cost are measured, the felt result is not.
 Report: [`PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md`](diagnostics/PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md).
 
+**PR.13 — `computeMeter` counts beats instead of dividing by an average** ✅ (2026-09-04, Matt: *"fix
+computeMeter to use local period"*). The direct answer was not a local period: the meter IS the
+number of beats in a bar and `beats` holds the beats, so it counts them in
+`[downbeat_i, downbeat_i+1)` and never forms a period. `beatsPerBar` is the MODE of the per-bar
+counts (meter is categorical); `barConfidence` is the fraction agreeing. The old
+`round(median_downbeat_IOI / (60/bpm))` survives only for the no-beats path.
+
+**BeatBench:** bohemian_rhapsody **4/2 → 4/4, now correct**; yyz —/2 → —/1 (no tapped meter);
+every other meter unchanged; **every beat metric identical on all nine fixtures**, as it must be.
+
+**On *Low* it is a wash, and the reason is now visible.** Every track whose downbeat stream fires
+once per four beats (`db/beat = 0.25`) gets meter **4 at confidence 1.00** — five of eleven. Every
+failure has the model's downbeat head **over-firing at 0.28–0.40** (a downbeat every ~2.5 beats),
+and counting reports that faithfully where division hid it inside an average. Breaking Glass reads 4
+clamped and 2 whole-track — **that regression belongs to PR.12, not here** (counting at the clamped
+grid returns 4), and is a meter cost of whole-track decoding that PR.12 measured beat-F only.
+
+**What it buys is not correct meters** — those errors are upstream in the downbeat head that has
+defeated four attempts (TRK.2, DBN.2, MDL.1, FT.1). It is that **`barConfidence` now means
+something**: 1.00 where the bar structure is real, 0.36–0.86 where it is not. A consumer can gate
+bar-locked events on it — D-207's "decline when unsure" with a signal that reflects reality.
+
 **PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.

@@ -46,7 +46,8 @@ public struct BeatGridResolver {
         let snapDist = Double(snapFrames) / frameRate
         let downbeatTimes = snapToBeats(candidates: candidateTimes, beats: beatTimes, maxDistance: snapDist)
         let bpm = computeBPM(beats: beatTimes)
-        let (beatsPerBar, barConf) = computeMeter(downbeats: downbeatTimes, bpm: bpm)
+        let (beatsPerBar, barConf) = computeMeter(
+            downbeats: downbeatTimes, beats: beatTimes, bpm: bpm)
         return BeatGrid(
             beats: beatTimes,
             downbeats: downbeatTimes,
@@ -156,13 +157,70 @@ public struct BeatGridResolver {
 
     // MARK: - Meter
 
-    /// Compute beatsPerBar and barConfidence from downbeat IOIs and bpm.
+    /// Compute beatsPerBar and barConfidence by COUNTING the beats in each bar.
     ///
-    /// Algorithm: `round(median_downbeat_IOI / beat_period)` — matches the Python
-    /// reference `beats_per_bar_from_downbeats` function in `dump_beatthis_reference.py`.
+    /// The meter is "how many beats are in a bar", and `beats` holds the beats — so this
+    /// counts them, rather than dividing a downbeat interval by a period.
     ///
-    /// Returns (4, 0) when there are fewer than 2 downbeats or bpm is zero.
+    /// **Why it changed (PR.12, Matt 2026-09-04: "you should not be averaging BPM / tempo").**
+    /// The previous algorithm was `round(median_downbeat_IOI / (60 / bpm))`, and `bpm` is
+    /// `computeBPM`'s mean of the inlier inter-onset intervals across the WHOLE input. On a
+    /// track whose tempo moves, that average is a period the music is never at, so bars in
+    /// faster sections divided high and bars in slower sections divided low — and a wrong
+    /// average produced a wrong meter even when every downbeat was in the right place. That
+    /// is the mechanism behind the degenerate meters seen all through the 2026-09-04 roster
+    /// review (bleed 4/4 read as 2, money 7/4 as 1, and `beatsPerBar = 2` on three of Bowie's
+    /// Low tracks, PR.1 §2).
+    ///
+    /// Counting is immune to that: it never forms a period, so it cannot be wrong about one.
+    /// Downbeats are snapped onto beats upstream (`snapToBeats`), so the half-open interval
+    /// `[downbeat_i, downbeat_i+1)` contains exactly the bar's beats, including its own
+    /// downbeat — 4 for a 4/4 bar.
+    ///
+    /// `beatsPerBar` is the MODE of the per-bar counts, not the median: meter is categorical,
+    /// and the mode survives a few missed downbeats that would drag a median between values.
+    /// `barConfidence` is the fraction of bars agreeing with it.
+    ///
+    /// Falls back to the period-division form when `beats` is empty, so a caller that has
+    /// downbeats without beats degrades as before rather than failing.
+    ///
+    /// Returns (4, 0) when there are fewer than 2 downbeats.
     private static func computeMeter(
+        downbeats: [Double],
+        beats: [Double],
+        bpm: Double
+    ) -> (beatsPerBar: Int, barConfidence: Float) {
+        guard downbeats.count >= 2 else { return (4, 0) }
+        guard !beats.isEmpty else { return legacyMeterFromPeriod(downbeats: downbeats, bpm: bpm) }
+
+        // Beats per bar, counted. `epsilon` absorbs the float error in a snapped downbeat
+        // that should compare exactly equal to its beat.
+        let epsilon = 1e-6
+        var counts: [Int] = []
+        for (start, end) in zip(downbeats, downbeats.dropFirst()) {
+            let beatsInBar = beats.reduce(into: 0) { acc, beat in
+                if beat >= start - epsilon && beat < end - epsilon { acc += 1 }
+            }
+            if beatsInBar > 0 { counts.append(beatsInBar) }
+        }
+        guard !counts.isEmpty else { return legacyMeterFromPeriod(downbeats: downbeats, bpm: bpm) }
+
+        var histogram: [Int: Int] = [:]
+        for count in counts { histogram[count, default: 0] += 1 }
+        // Ties break toward the larger meter: a bar undercounted by a missed beat is a more
+        // common error than one overcounted by a spurious beat.
+        guard let beatsPerBar = histogram.max(by: {
+            $0.value != $1.value ? $0.value < $1.value : $0.key < $1.key
+        })?.key else { return legacyMeterFromPeriod(downbeats: downbeats, bpm: bpm) }
+
+        let matching = counts.filter { $0 == beatsPerBar }.count
+        return (max(1, beatsPerBar), Float(matching) / Float(counts.count))
+    }
+
+    /// The pre-PR.12 meter: `round(median_downbeat_IOI / beat_period)` against the averaged
+    /// `bpm`, matching the Python reference `beats_per_bar_from_downbeats`. Retained only for
+    /// the no-beats path.
+    private static func legacyMeterFromPeriod(
         downbeats: [Double],
         bpm: Double
     ) -> (beatsPerBar: Int, barConfidence: Float) {
@@ -173,9 +231,7 @@ public struct BeatGridResolver {
         let beatPeriod = 60.0 / bpm
         guard beatPeriod > 0 else { return (4, 0) }
         let beatsPerBar = max(1, Int((median / beatPeriod).rounded()))
-        // barConfidence: fraction of IOIs whose rounded bpb matches the estimate.
         let matching = dbIOIs.filter { Int(($0 / beatPeriod).rounded()) == beatsPerBar }.count
-        let confidence = Float(matching) / Float(dbIOIs.count)
-        return (beatsPerBar, confidence)
+        return (beatsPerBar, Float(matching) / Float(dbIOIs.count))
     }
 }

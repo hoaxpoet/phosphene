@@ -66,8 +66,13 @@ struct LowBarLineProbe {
             let ws = (whole.beats.last ?? 0) - (whole.beats.first ?? 0)
             let name = url.deletingPathExtension().lastPathComponent
             let pad = String(repeating: " ", count: max(0, 32 - name.count))
-            print(String(format: "  %@%@%6.0fs %8.0fs %6.1f%% %9.0fs %6.1f%% %8.2f %8.2f",
-                         name, pad, len, cs, cs / len * 100, ws, ws / len * 100, clampS, wholeS))
+            // Downbeats per beat: >0.5 means the model's downbeat head is over-firing,
+            // which counting reports faithfully and division hid behind an average.
+            let dbRate = whole.beats.isEmpty ? 0
+                : Double(whole.downbeats.count) / Double(whole.beats.count)
+            print(String(format: "  %@%@%6.0fs %6.1f%% -> %5.1f%%  meter %d -> %d (conf %.2f)  db/beat %.2f",
+                         name, pad, len, cs / len * 100, ws / len * 100,
+                         clamp.beatsPerBar, whole.beatsPerBar, whole.barConfidence, dbRate))
         }
         print(String(format: "\n  TOTAL analysis time — clamped %.1f s, whole-track %.1f s (%.1fx)",
                      totalClamp, totalWhole, totalWhole / max(totalClamp, 0.001)))
