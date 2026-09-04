@@ -19,56 +19,12 @@
 import Audio
 import DSP
 import Foundation
-import ML
 import Shared
 import os.log
 
 private let lfLogger = Logger(subsystem: "io.uzume.mac", category: "LocalFilePrep")
 
-// MARK: - Worker inputs
-
-/// Bundle of injected dependencies the LF.4 worker reads. Collapses what would
-/// otherwise be an 8-parameter call into one, and keeps the worker itself
-/// Sendable-safe (every field is either an immutable value or a Sendable
-/// reference type).
-public struct LocalFilePrepWorkerInputs: Sendable {
-    public let url: URL
-    public let filename: String
-    public let separator: (any StemSeparating)?
-    public let analyzer: any StemAnalyzing
-    public let classifier: any MoodClassifying
-    public let beatGridAnalyzer: (any BeatGridAnalyzing)?
-    public let familyAnalyzer: (any InstrumentFamilyAnalyzing)?
-    public let persistentCache: PersistentStemCache?
-    public let recorder: SessionRecorder?
-    /// PREP.1 — per-stage timing sink. `nil` in production unless
-    /// `UZUME_PREP_TIMING=1`.
-    public let timingSink: PrepStageSink?
-
-    public init(
-        url: URL,
-        filename: String,
-        separator: (any StemSeparating)?,
-        analyzer: any StemAnalyzing,
-        classifier: any MoodClassifying,
-        beatGridAnalyzer: (any BeatGridAnalyzing)?,
-        familyAnalyzer: (any InstrumentFamilyAnalyzing)?,
-        persistentCache: PersistentStemCache?,
-        recorder: SessionRecorder?,
-        timingSink: PrepStageSink? = nil
-    ) {
-        self.url = url
-        self.filename = filename
-        self.separator = separator
-        self.analyzer = analyzer
-        self.classifier = classifier
-        self.beatGridAnalyzer = beatGridAnalyzer
-        self.familyAnalyzer = familyAnalyzer
-        self.persistentCache = persistentCache
-        self.recorder = recorder
-        self.timingSink = timingSink
-    }
-}
+// MARK: - Fresh-analysis bundle
 
 /// LF.5 fresh-analysis output bundle. Collapses the four values the
 /// `analyzeAndPersist` worker hands to `persistToDisk` (cached + preview

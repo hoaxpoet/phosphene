@@ -74,10 +74,16 @@ struct PrepTimingRunner: AsyncParsableCommand {
     @Flag(name: .long, help: "Write the summary to disk only; no progress on stderr.")
     var quiet: Bool = false
 
+    @Flag(
+        name: .long,
+        help: "Run with the timing probe OFF, to measure what the instrumentation itself costs."
+    )
+    var disableProbe: Bool = false
+
     // MARK: Run
 
     mutating func run() async throws {
-        guard PrepStageSink.isEnabled else {
+        guard PrepStageSink.isEnabled || disableProbe else {
             throw ValidationError(
                 "UZUME_PREP_TIMING=1 must be set — the timing probe is gated on it. "
                 + "Re-run as: UZUME_PREP_TIMING=1 swift run …"
@@ -96,7 +102,11 @@ struct PrepTimingRunner: AsyncParsableCommand {
             throw ValidationError("no Metal device")
         }
 
-        let sink = PrepStageSink(destination: outDir.appendingPathComponent("preparation.csv"))
+        // --disable-probe is how the gate gets proved with a number rather than
+        // an assertion: same files, same build, probe off.
+        let sink = disableProbe
+            ? nil
+            : PrepStageSink(destination: outDir.appendingPathComponent("preparation.csv"))
         let workers = try (0..<max(1, concurrency)).map { _ in
             try Worker(device: device, cacheRoot: cacheRoot)
         }
@@ -115,8 +125,8 @@ struct PrepTimingRunner: AsyncParsableCommand {
         }
         let wall = Date().timeIntervalSince(started)
 
-        sink.flush()
-        Summary(rows: sink.snapshot, wallSeconds: wall, trackCount: urls.count)
+        sink?.flush()
+        Summary(rows: sink?.snapshot ?? [], wallSeconds: wall, trackCount: urls.count)
             .write(to: outDir.appendingPathComponent("summary.txt"), alsoPrinting: !quiet)
     }
 
@@ -125,7 +135,7 @@ struct PrepTimingRunner: AsyncParsableCommand {
     private func prepare(
         _ url: URL,
         worker: Worker,
-        sink: PrepStageSink,
+        sink: PrepStageSink?,
         index: Int,
         of total: Int
     ) async throws {
@@ -136,8 +146,8 @@ struct PrepTimingRunner: AsyncParsableCommand {
         } else {
             _ = await LocalFilePreparationPipeline.run(inputs: worker.inputs(for: url, sink: sink))
         }
-        note(String(format: "  [%d/%d] %@  %.1f s", index + 1, total, name,
-                    Date().timeIntervalSince(started)))
+        let elapsed = Date().timeIntervalSince(started)
+        note(String(format: "  [%d/%d] %@  %.1f s", index + 1, total, name, elapsed))
     }
 
     /// Concurrency is a MEASUREMENT here, never a pipeline change: the shipping
@@ -145,7 +155,7 @@ struct PrepTimingRunner: AsyncParsableCommand {
     /// This mode exists to answer whether two tracks at once would overlap or
     /// merely contend — task 3's question — with a wall-clock number instead of
     /// an inference from CPU percentages.
-    private func runConcurrently(urls: [URL], workers: [Worker], sink: PrepStageSink) async throws {
+    private func runConcurrently(urls: [URL], workers: [Worker], sink: PrepStageSink?) async throws {
         var next = 0
         try await withThrowingTaskGroup(of: Void.self) { group in
             for (slot, worker) in workers.enumerated() where slot < urls.count {
@@ -230,7 +240,7 @@ private final class Worker: @unchecked Sendable {
         cache = try PersistentStemCache(rootDirectory: cacheRoot)
     }
 
-    func inputs(for url: URL, sink: PrepStageSink) -> LocalFilePrepWorkerInputs {
+    func inputs(for url: URL, sink: PrepStageSink?) -> LocalFilePrepWorkerInputs {
         LocalFilePrepWorkerInputs(
             url: url,
             filename: url.lastPathComponent,
@@ -250,7 +260,7 @@ private final class Worker: @unchecked Sendable {
     /// the local path makes, minus the two whole-file extras. Decoding a local
     /// file and truncating to the same window isolates the shared analysis cost
     /// from the whole-file cost, on identical material.
-    func runPreviewControl(url: URL, seconds: Double, sink: PrepStageSink) throws {
+    func runPreviewControl(url: URL, seconds: Double, sink: PrepStageSink?) throws {
         let name = url.lastPathComponent
         var probe = PrepStageProbe(sink: sink, track: name)
         let trackStart = Date()
@@ -306,42 +316,62 @@ struct Summary {
         let totals = rows.filter { $0.stage == PrepStage.trackTotal }
         let audioSeconds = totals.reduce(0) { $0 + $1.audioSeconds }
         let trackWall = totals.reduce(0) { $0 + $1.wallMs } / 1000
+        let perTrack = wallSeconds / Double(max(trackCount, 1))
+        let perAudioSecond = audioSeconds > 0 ? wallSeconds / audioSeconds : 0
+        let totalShare = wallSeconds > 0 ? trackWall / wallSeconds * 100 : 0
 
-        var out = ""
-        out += "tracks                 \(trackCount)\n"
-        out += String(format: "audio decoded          %.1f s (%.1f min)\n",
-                      audioSeconds, audioSeconds / 60)
+        var out = "tracks                 \(trackCount)\n"
+        out += String(format: "audio decoded          %.1f s (%.1f min)\n", audioSeconds, audioSeconds / 60)
         out += String(format: "wall clock             %.1f s\n", wallSeconds)
-        out += String(format: "per track              %.1f s\n",
-                      wallSeconds / Double(max(trackCount, 1)))
-        out += String(format: "per second of audio    %.3f s\n",
-                      audioSeconds > 0 ? wallSeconds / audioSeconds : 0)
-        out += String(format: "sum of TRACK_TOTAL     %.1f s (%.0f%% of wall — the rest is the "
-                      + "runner's own loop)\n",
-                      trackWall, audioSeconds > 0 ? trackWall / wallSeconds * 100 : 0)
+        out += String(format: "per track              %.1f s\n", perTrack)
+        out += String(format: "per second of audio    %.3f s\n", perAudioSecond)
+        out += String(format: "sum of TRACK_TOTAL     %.1f s (%.0f%% of wall)\n", trackWall, totalShare)
         out += "\nstage                     wall_s   share   cores   ms/audio_s\n"
 
-        var byStage: [(String, Double, Double, Double)] = []
-        for stage in stageOrder {
-            let matching = rows.filter { $0.stage == stage }
-            guard !matching.isEmpty else { continue }
-            let wall = matching.reduce(0) { $0 + $1.wallMs } / 1000
-            let cpu = matching.reduce(0) { $0 + $1.cpuMs } / 1000
-            byStage.append((stage, wall, wall > 0 ? cpu / wall : 0,
-                            audioSeconds > 0 ? wall * 1000 / audioSeconds : 0))
-        }
-        let stageWall = byStage.reduce(0) { $0 + $1.1 }
-        for (stage, wall, cores, perAudio) in byStage.sorted(by: { $0.1 > $1.1 }) {
-            out += pad(stage) + String(format: " %7.1f  %5.1f%%  %6.2f  %10.1f\n",
-                                       wall, stageWall > 0 ? wall / stageWall * 100 : 0,
-                                       cores, perAudio)
+        let stages = stageTotals(audioSeconds: audioSeconds)
+        let stageWall = stages.reduce(0) { $0 + $1.wallSeconds }
+        for stage in stages.sorted(by: { $0.wallSeconds > $1.wallSeconds }) {
+            let share = stageWall > 0 ? stage.wallSeconds / stageWall * 100 : 0
+            let numbers = String(
+                format: " %7.1f  %5.1f%%  %6.2f  %10.1f\n",
+                stage.wallSeconds,
+                share,
+                stage.cores,
+                stage.msPerAudioSecond)
+            out += pad(stage.name) + numbers
         }
         out += pad("SUM OF STAGES") + String(format: " %7.1f\n", stageWall)
         if trackWall > 0 {
-            out += String(format: "unattributed remainder   %7.1f s (%.1f%% of per-track wall)\n",
-                          trackWall - stageWall, (trackWall - stageWall) / trackWall * 100)
+            let remainder = trackWall - stageWall
+            out += String(
+                format: "unattributed remainder   %7.1f s (%.1f%% of per-track wall)\n",
+                remainder,
+                remainder / trackWall * 100)
         }
         return out
+    }
+
+    /// One row of the stage table. A named type rather than a tuple so the four
+    /// numbers cannot be swapped at a call site.
+    private struct StageTotal {
+        let name: String
+        let wallSeconds: Double
+        let cores: Double
+        let msPerAudioSecond: Double
+    }
+
+    private func stageTotals(audioSeconds: Double) -> [StageTotal] {
+        stageOrder.compactMap { stage in
+            let matching = rows.filter { $0.stage == stage }
+            guard !matching.isEmpty else { return nil }
+            let wall = matching.reduce(0) { $0 + $1.wallMs } / 1000
+            let cpu = matching.reduce(0) { $0 + $1.cpuMs } / 1000
+            return StageTotal(
+                name: stage,
+                wallSeconds: wall,
+                cores: wall > 0 ? cpu / wall : 0,
+                msPerAudioSecond: audioSeconds > 0 ? wall * 1000 / audioSeconds : 0)
+        }
     }
 
     private func pad(_ text: String, to width: Int = 24) -> String {
