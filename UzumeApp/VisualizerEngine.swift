@@ -681,6 +681,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `~/Documents/uzume_sessions/<timestamp>/`.
     let sessionRecorder: SessionRecorder?
 
+    /// PREP.1 — per-stage preparation timing sink. `nil` unless
+    /// `UZUME_PREP_TIMING=1` is in the environment, in which case the local-file
+    /// preparation pipeline writes `preparation.csv` beside `features.csv` in the
+    /// session directory. Measurement scaffolding for D-242; costs a nil check
+    /// when off.
+    let prepTimingSink: PrepStageSink?
+
     // MARK: - Signal Quality Monitor
 
     /// Continuous assessment of tap input quality (peak dBFS + spectral balance).
@@ -980,6 +987,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
         self.sessionRecorder = SessionRecorder()
+        self.prepTimingSink = PrepStageSink.ifEnabled(
+            inSessionDirectory: self.sessionRecorder?.sessionDir)
         // Round 26 (2026-05-15): construct the metadata fetcher early so it
         // can be shared between SessionPreparer (offline prep-time meter
         // override via time_signature) and `makeAudioRouter`'s track-change
