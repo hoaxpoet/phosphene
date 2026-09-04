@@ -108,6 +108,166 @@ playback start before the walk finishes, so "time to `.ready`" and "time to full
 deserve separate targets, since the listener waits only for the first. That split would be a
 [D-242] amendment.
 
+## Phase PR — Preset review remediation 🔨 (2026-09-04; from Matt's full-roster review, scope calls below)
+
+Matt watched the roster end to end against **David Bowie — *Low*** (local FLAC,
+`/Volumes/Extreme SSD/B/Bowie, David/[1977] - Low/`, 11 tracks, so the **local-file** path with
+whole-file analysis, not the 30 s streaming preview) and wrote 25 per-preset observations. This
+phase is the remediation programme. His scope calls, 2026-09-04:
+
+- **Priority is sync.** Of the four candidate framings offered (sync / defects / raise-the-ceiling /
+  cut-and-concentrate) he chose *"everything locks to the music"* — it is the one criticism that
+  spans half the roster.
+- **The unwired presets stay out of rotation** until they are wired, rather than being wired now or
+  deleted.
+- **Repairs only.** No new presets in this phase, including the Cymatic Resonance sibling he asked
+  about — an hour spent on a new preset costs roughly what fixing four existing ones costs.
+- **Observe before fixing.** Capture and watch the flagged presets against *Low* before proposing a
+  cause (PR.1), rather than working from the review notes directly.
+
+**The central finding — "sync is weak" is three different problems.** The review reads as one
+complaint repeated across ten presets. The routing sidecars say it is not:
+
+| Cause | Presets | Evidence in the tree |
+|---|---|---|
+| **No audio coupling declared at all** | Gossamer, Membrane, Nebula, Plasma, Spectral Cartograph | `audio_routes: []` in all five sidecars. These are exactly the five Matt flagged, and all five are `certified: false`. Nothing to tune — there is no coupling to tune. |
+| **Coupled, but nothing ties motion *rate* to tempo** | Filigree, Mitosis, Cytokinesis, Nacre, Floret | 8–13 declared routes each, **zero beat or bar routes** between them (Floret has `barPhase01` for a pulse but nothing driving rate). Motion speed is constant regardless of what is playing. |
+| **Coupled *and* beat-aware — the beat itself is wrong** | Witchlight, Meniscus, Lumen Mosaic, Ferrofluid Ocean | All four consume `beatPhase01`/`barPhase01`. Their symptoms are BUG-065 (live phase drift) and BUG-028 (meter assumed simple), not preset defects. |
+
+The middle row is the single highest-leverage item in the review: one mechanism, five presets, and
+it answers four separately-worded complaints ("a movie on a loop", "speed is seemingly uniform",
+"too fast overall", "pulses to the beat but more connection could be obvious"). The third row is
+engine work that is currently **parked** (D-206) and must not be worked around inside the presets.
+
+**Material note that shapes PR.1.** *Low* is two half-albums: tracks 1–7 are rhythmic (Speed Of
+Life, Breaking Glass, What In The World, Sound And Vision, Always Crashing In The Same Car, Be My
+Wife, A New Career In A New Town) and tracks 8–11 are the Eno ambient side (Warszawa, Art Decade,
+Weeping Wall, Subterraneans) with little or no kit. **Four of eleven tracks are near-beatless**, so
+an unknown share of the "sync is weak" observations may be the material rather than the preset —
+Matt's Ricercar note names Subterraneans explicitly. Every PR.1 capture is therefore run on **one
+side-one and one side-two track**, and no sync verdict is recorded from side two alone.
+
+**PR.0 — stop showing the diagnostics** 🔨 next. Uncertified presets are *already* excluded by
+default: `SettingsStore.showUncertifiedPresets` ships `false` and the scorer hard-excludes
+`certified == false` (`PresetScoringContext.swift`). Matt had Settings → Visuals → "Show uncertified
+presets" switched on, which is why Gossamer, Membrane, Nebula, Plasma, Spectral Cartograph, Staged
+Sandbox, Arachne and Waveform appeared in his review at all. Two parts: **(a)** switching the
+setting off restores the 21-preset certified roster with no code change; **(b)** Matt's call
+2026-09-04 — **Staged Sandbox is hidden unconditionally**, the other uncertified presets stay
+listed under the toggle. Staged Sandbox is not a preset: it is the two-stage diagnostic scaffold the
+visual-review harness renders for pass-separated capture (`StagedCompositionTests`,
+`PresetVisualReviewTests`), so it is **hidden, never deleted** — deleting it breaks the capture
+harness. **Done-when:** Staged Sandbox cannot be selected for playback with
+`showUncertifiedPresets` either on or off; the visual-review harness still renders it; the other
+seven uncertified presets remain reachable under the toggle; suite + lint green.
+
+**PR.1 — watch the flagged presets against *Low* before proposing causes** (gates PR.2/PR.5/PR.6).
+Capture each preset Matt flagged, on one rhythmic and one ambient *Low* track, and compare what the
+declared routing actually does against what he perceived. Per the "render and look before building
+a metric" rule (FTR.30–32) this is a **looking** increment — a contact sheet plus a per-preset note,
+not a new metric. Ricercar and Volumetric Lithograph are held entirely for this increment: Ricercar's
+only reported failure is on Subterraneans and may be a material artefact. **Done-when:** every
+flagged preset has a capture on both halves of the album, each observation is classified into one of
+the three cause rows above (or a fourth, named), and Matt has the sheet.
+
+**PR.2 — tempo-scaled motion rate** (the main lever; gated on PR.1). Give Filigree, Mitosis,
+Cytokinesis, Nacre and Floret a motion rate that tracks the cached grid's tempo, so a fast track
+visibly quickens and a slow one settles. Ship **Filigree first as the single proof** — it is the
+clearest-stated complaint ("seems like it's a movie on a loop") — take Matt's look, then roll the
+mechanism out. **Hazard, from BUG-097:** this is precisely the shape that bug took, a per-frame
+render `dt` used as a musical duration. The rate must be derived from the musical clock; analysis,
+render and fixture rates all differ and a steady-rate fixture cannot see the error. **Done-when:**
+Filigree's motion rate measurably differs between a fast and a slow track from the same capture
+harness, the coupling is declared in the sidecar's `audio_routes` (so QG.1 route coverage gates it),
+and Matt has confirmed the Filigree proof before any other preset is touched.
+
+**PR.3 — the review re-corroborates a parked beat-sync defect** (decision, not implementation).
+Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
+and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.
+The matching open defects:
+
+- **BUG-065** (P3, open) — live beat phase drifts monotonically across a track: 0 → 119 ms measured
+  on Matt's own Lumen Mosaic session `2026-07-30T15-39-21Z`, 50 % of frames outside the ~60 ms
+  perceptual window, BPM rock-constant so it is purely phase. Matt's note at the time: *"feels a
+  little laggy."*
+- **BUG-028** — meter is assumed simple; Money in 7/4 logged `beatsPerBar = 2`. This is the
+  Ferrofluid 4/4 observation, and **Matt confirmed 2026-09-04 that 3/4, 6/8 and 7/8 material is a
+  real part of his listening, naming Radiohead as the odd-meter test corpus** — so the meter half
+  is in scope rather than theoretical, and Radiohead joins *Low* as programme test material.
+
+Phase TRK is parked (D-206) after two levers were measured and failed; the parking condition is a
+changed *grid* premise, and this review does not supply one — it supplies a changed *priority*.
+The next identified lever remains DBN. **The actionable consequence regardless of that decision:
+these four presets are not tuned while the phase drifts.** Compensating a preset against a moving
+target bakes in an offset that has to be unpicked when the grid is fixed. **Done-when:** BUG-065 and
+BUG-028 carry the four-preset corroboration and the *Low*/Radiohead material, their priority is
+re-assessed against it, and Matt has decided whether to spend on DBN now or leave the four presets
+untuned.
+
+**PR.4 — Cytokinesis defects** (independent; runs any time). Two new reports, neither covered by an
+existing entry: **cells overlap while dividing**, and the preset **hangs for seconds before
+restarting**. The hang goes through the `defect-handling` protocol — repro capture and instrumented
+evidence before any fix, since a multi-second stall in a render loop has several possible causes and
+none of them is guessable from the symptom. The overlap is a design fix in the division model.
+**Done-when:** both are filed with BUG IDs, the hang is reproduced and root-caused before a fix is
+written, and the division no longer overlaps in a capture Matt signs off.
+
+**PR.5 — light and colour: the roster does not tone-map.** Matt's Dragon Bloom note is *"washed
+out, extreme brightness… reds look gorgeous, would like the same saturated colour across the visible
+spectrum"*, clarified 2026-09-04 as **loss of saturation from overexposure, not a request for
+spectrum cycling** — the reds are already right, he wants that saturation to survive at the other
+hues. Verified in the tree while scoping this phase:
+
+- The drawable is `.bgra8Unorm_srgb` (`MetalContext.swift:55`; the EDR path is a deferred TODO),
+  while intermediates are `.rgba16Float`. So every preset's HDR output is **hard-clipped per channel
+  at 1.0** on the final write.
+- **`Nimbus` is the only preset in the roster that calls a tone-mapping operator at all** — and it
+  calls the *legacy* `toneMapACES` in `ShaderUtilities.metal`, not the canonical `tone_map_aces` that
+  D-062 superseded it with. Dragon Bloom, Glaze, Fata Morgana and Aurora Veil call none.
+- Dragon Bloom's own source comment (`DragonBloom.metal:129`) reads *"HDR (>1) colour is intentional
+  — additive glow, tonemapped downstream."* **There is no downstream tone-map.** That is a documented
+  assumption that is false in the tree.
+
+Per-channel clipping is precisely the operation that turns a saturated additive glow white: the
+strongest channel pins at 1.0, the others catch up, and hue collapses toward the diagonal. So the
+leading candidate for Dragon Bloom is a **missing tone-map, not a brightness parameter** — and if it
+holds, it is one shared fix (route the four through `Utilities/Color/ToneMapping.metal`, which is
+already written, tested and unused by them) plus a per-preset exposure calibration, rather than the
+four independent tunings this looked like. **It is a candidate, not a conclusion:** the absence of
+the call is verified, that it dominates what Matt saw is not, and per `defect-handling` the A/B comes
+before the change. Fata Morgana ("too dark") and Glaze ("quite bright, wants more mixing and
+blending") sit on the same axis from opposite ends; Aurora Veil's fleeting purple is a palette
+residency question that may be independent. **Done-when:** an A/B of Dragon Bloom with and without a
+tone-map operator, on a full-track *Low* capture rather than a still, establishes whether clipping is
+the cause; if it is, the four presets share the operator and each gets its exposure set where Matt
+puts it; if it is not, that negative result is recorded before any brightness parameter is touched.
+
+**PR.6 — framing.** Murmuration's flock takes more of the frame; Fata Morgana's horizon moves so
+sky occupies a larger share than water, letting the pulsars grow and reflect; Glaze stops jumping
+between the top and bottom of the screen and keeps its motion inside the canvas. Camera and
+composition parameters — the cheapest items in the whole review and each an unambiguous win.
+Likely folds into PR.5 as one look increment. **Done-when:** each is a before/after sheet Matt has
+approved.
+
+**PR.7 — variation and longevity** (deliberately last). Cymatic Resonance (more pattern variation —
+and it is the preset he rates highest, *"one of the best to watch"*), Witchlight (more looping),
+Floret (*"mesmerizing but also kinda boring"*), Filigree once PR.2 has landed. Shared cause: the
+preset exhausts its visual vocabulary before the track does — and note that *Low* is the local-file
+path, so these are full-length tracks rather than 30 s previews, which is the condition under which
+a vocabulary runs out. It is last because it is the only cluster with **no shared mechanism**: each
+one is its own design problem at roughly the cost of a preset uplift.
+
+**PR.8 — opener selection** (separate track, orchestrator not presets). *"Why is Witchlight first in
+the sequence vs. last?"* — that is `SessionPlanner` ordering. Witchlight's sidecar declares
+`section_suitability: [ambient, bridge, comedown, buildup]`; nothing in it claims opener. One
+increment to establish whether opener choice reflects any stated intent or falls out of scoring.
+**Done-when:** the opener rule is written down or shown not to exist, and Matt has a recommendation.
+
+**Explicitly not in scope.** **Nimbus** — *"doesn't do much and yet people seem to really like it
+and think the ball has a personality."* That is the preset working; it is not touched. **Skein** —
+*"fine enough."* **Spectral Cartograph** — leaves rotation via PR.0; the cleanup Matt mentioned is
+only worth doing if it is ever wired. **New presets** — Matt's call above.
+
 ## Recently Completed
 
 ### Increment DS.6 — the playback chrome, retokenized in place ✅ (2026-09-03, D-241, M7 passed)
