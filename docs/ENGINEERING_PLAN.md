@@ -446,6 +446,58 @@ period — the remaining half of Matt's point. Streaming is untouched and needs 
 offline analysis. **No live confirmation**: coverage and cost are measured, the felt result is not.
 Report: [`PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md`](diagnostics/PR12_BEAT_ANALYZER_RETHINK_2026-09-04.md).
 
+**PR.13 — `computeMeter` counts beats instead of dividing by an average** ✅ (2026-09-04, Matt: *"fix
+computeMeter to use local period"*). The direct answer was not a local period: the meter IS the
+number of beats in a bar and `beats` holds the beats, so it counts them in
+`[downbeat_i, downbeat_i+1)` and never forms a period. `beatsPerBar` is the MODE of the per-bar
+counts (meter is categorical); `barConfidence` is the fraction agreeing. The old
+`round(median_downbeat_IOI / (60/bpm))` survives only for the no-beats path.
+
+**BeatBench:** bohemian_rhapsody **4/2 → 4/4, now correct**; yyz —/2 → —/1 (no tapped meter);
+every other meter unchanged; **every beat metric identical on all nine fixtures**, as it must be.
+
+**On *Low* it is a wash, and the reason is now visible.** Every track whose downbeat stream fires
+once per four beats (`db/beat = 0.25`) gets meter **4 at confidence 1.00** — five of eleven. Every
+failure has the model's downbeat head **over-firing at 0.28–0.40** (a downbeat every ~2.5 beats),
+and counting reports that faithfully where division hid it inside an average. Breaking Glass reads 4
+clamped and 2 whole-track — **that regression belongs to PR.12, not here** (counting at the clamped
+grid returns 4), and is a meter cost of whole-track decoding that PR.12 measured beat-F only.
+
+**What it buys is not correct meters** — those errors are upstream in the downbeat head that has
+defeated four attempts (TRK.2, DBN.2, MDL.1, FT.1). It is that **`barConfidence` now means
+something**: 1.00 where the bar structure is real, 0.36–0.86 where it is not. A consumer can gate
+bar-locked events on it — D-207's "decline when unsure" with a signal that reflects reality.
+
+**PR.15 — the bar problem is mis-shaped, not unsolvable** 🔨 (2026-09-04, Matt: *"The beat and bar
+issue is not resolved … why are we abandoning it?"*). It should not have been abandoned.
+
+**The confound behind "four failed attempts":** `BarLineEstimator.estimate`'s own doc says its
+`beats` should come from a **full-track decode, "not a 30 s window"** — and in production it has
+never had that, because `applyBarLineEstimate` receives the clamped grid. FT.3's calibration, FT.4's
+A/B, FT.4.1's split and PR.3d's adoption ALL fed it ~40–60 beats where it was designed for ~300–700.
+PR.12 removed that confound.
+
+**First hypothesis — more beats — FALSIFIED.** Whole-track beats made margins *worse* (bleed
+1.348 → 0.075; take_five 1.735 → 1.428, losing a correct answer). Correct answers 2 → 1. The margin
+is a contrast against a permutation null over the whole span, so one bar-phase across 900 beats
+blends verse, chorus and bridge.
+
+**The finding: bar structure is LOCAL.** Scored over 80-beat (~40 s) windows of the same beat
+sequence: **take_five 11 of 11 windows → 5** (global declines), **money 2 windows → 7** — the
+defining hard case of the programme (BUG-001, BUG-013, D-207, four attempts) — billie_jean 6 of 7
+→ 4. The meterless tracks stay silent (clair_de_lune peak 0.17, pyramid_song 0.33), so the
+confident-wrong protection is intact. Three more sit just under the gate (bleed 1.179,
+bohemian_rhapsody 1.419, solsbury_hill 1.412 vs 1.54) — and that threshold was fitted to a GLOBAL
+margin distribution, so it is the wrong operating point here and must be re-derived.
+
+**Same lesson as PR.12:** Matt's *"record it over the duration, don't average it"* applies to the bar
+exactly as it did to tempo — and this increment's first hypothesis went the wrong way, making the bar
+MORE global. One meter-and-phase per track is the wrong output shape.
+
+**Nothing ships yet:** `BeatGrid` carries one `beatsPerBar` and one phase, no consumer can express a
+per-section bar, and the threshold needs re-deriving first.
+Report: [`PR15_BAR_IS_LOCAL_2026-09-04.md`](diagnostics/PR15_BAR_IS_LOCAL_2026-09-04.md).
+
 **PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.

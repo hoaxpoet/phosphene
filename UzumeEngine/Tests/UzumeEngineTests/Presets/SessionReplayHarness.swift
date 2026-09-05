@@ -97,8 +97,12 @@ struct SessionReplayHarness {
 
     private static func loadRows(_ csv: URL) throws -> [Row] {
         let text = try String(contentsOf: csv, encoding: .utf8)
-        // CRLF-safe split (the CENSUS harness hit \r\n graphemes before).
-        let lines = text.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+        // CRLF-safe split (the CENSUS harness hit \r\n graphemes before). It must be
+        // `\.isNewline`, NOT `$0 == "\n" || $0 == "\r"`: Swift treats CRLF as a SINGLE
+        // grapheme cluster, so that comparison matches NEITHER half and a CRLF file comes
+        // back as one "line" — zero data rows, silently. The old form carried this same
+        // comment while not being safe; PR.14 hit it for real on the corpus manifest.
+        let lines = text.split(whereSeparator: \.isNewline)
         guard let header = lines.first else { return [] }
         let cols = header.split(separator: ",").map(String.init)
         var index: [String: Int] = [:]
@@ -185,7 +189,8 @@ struct SessionReplayHarness {
 
     private static func loadStems(_ csv: URL) -> [StemFeatures] {
         guard let text = try? String(contentsOf: csv, encoding: .utf8) else { return [] }
-        let lines = text.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+        // CRLF-safe: see `loadRows` — `\.isNewline`, not a two-way character compare.
+        let lines = text.split(whereSeparator: \.isNewline)
         guard let header = lines.first else { return [] }
         var index: [String: Int] = [:]
         for (i, c) in header.split(separator: ",").map(String.init).enumerated() { index[c] = i }
