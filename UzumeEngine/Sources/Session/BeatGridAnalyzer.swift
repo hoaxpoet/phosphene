@@ -124,6 +124,17 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
             // correct 4/4 AND the tightest phase on the record. One track fixed, two
             // working tracks broken. See PR3D_BARLINE_ADOPTION_2026-09-04.md §6.
             let barLine = both || env["UZUME_BARLINE"] == "1"
+            // PR.17 (Matt, 2026-09-05: "sparse and correct"). The windowed arm — the same
+            // estimator asked once per ~80 beats instead of once per track, emitting bars
+            // ONLY where a window answers. PR.15 measured why: scored globally, one number
+            // has to describe an intro, a chorus and an outro at once, and it is worse than
+            // either the windows or the old 30 s clip. Per window, money answers 7 and
+            // take_five answers 5 on 11 of 11 windows.
+            //
+            // Gated on `fullTrack` as well as the flag, because the estimator's scope is
+            // the whole file: a 30 s streaming grid is one short window and would just
+            // decline. The name says local because that is the only path it can serve.
+            let barLineLocal = env["UZUME_BARLINE_LOCAL"] == "1"
             let activations: (beats: [Float], downbeats: [Float])
             if fullTrack {
                 activations = try BeatThisTiledInference.predictFullTrack(
@@ -140,6 +151,13 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
                 downbeatProbs: activations.downbeats,
                 frameRate: Self.frameRate
             )
+            if barLineLocal, fullTrack {
+                return Self.applyWindowedBarLine(
+                    to: grid,
+                    samples: samples,
+                    sampleRate: sampleRate
+                )
+            }
             guard barLine else { return grid }
             return Self.applyBarLineEstimate(
                 to: grid,
@@ -202,6 +220,53 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
             bpm: grid.bpm,
             beatsPerBar: beatsPerBar,
             barConfidence: Float(min(1.0, estimate.margin / 4.0)),
+            frameRate: grid.frameRate,
+            frameCount: grid.frameCount
+        )
+    }
+
+    // MARK: - PR.17 windowed bar line
+
+    /// Lay downbeats from the per-window estimator: bars where a window answers, and
+    /// NOTHING where it declines.
+    ///
+    /// Matt's call (2026-09-05) between sparse-and-correct and dense-with-fallback was
+    /// sparse. So a declined window is not backfilled from the model's downbeat head —
+    /// a preset gets no bar-driven motion through that stretch rather than an accent on
+    /// the wrong beat. `beatsPerBar` carries the modal answered meter as a summary for
+    /// the consumers that read it when `downbeats` is empty; `downbeats` is the truth.
+    ///
+    /// `barConfidence` stays what D-154's irregularity gate expects — the strength of the
+    /// bars that WERE found, not how much of the track they cover. A track where every
+    /// window declines reports 0, exactly as the global decline path already does, so the
+    /// beat-locked-preset exclusion behaves identically.
+    static func applyWindowedBarLine(
+        to grid: BeatGrid,
+        samples: [Float],
+        sampleRate: Double
+    ) -> BeatGrid {
+        let windowed = BarLineEstimator.estimateWindowed(
+            beats: grid.beats,
+            audio: samples,
+            sampleRate: sampleRate,
+            options: .init(resampleToReferenceRate: true)
+        )
+        let confident = windowed.estimates.filter(\.isConfident)
+        let meanMargin = confident.isEmpty
+            ? 0
+            : confident.reduce(0) { $0 + $1.margin } / Double(confident.count)
+        let answered = windowed.windowsAnswered
+        let total = windowed.windowCount
+        let cover = Int(windowed.coverage * 100)
+        let meter = windowed.modalMeter ?? 0
+        let bars = windowed.downbeats.count
+        logger.info("BeatGrid PR.17: \(answered)/\(total) windows, \(cover) % of beats, meter \(meter), \(bars) bars")
+        return BeatGrid(
+            beats: grid.beats,
+            downbeats: windowed.downbeats,
+            bpm: grid.bpm,
+            beatsPerBar: windowed.modalMeter ?? 1,
+            barConfidence: Float(min(1.0, meanMargin / 4.0)),
             frameRate: grid.frameRate,
             frameCount: grid.frameCount
         )
