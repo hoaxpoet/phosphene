@@ -751,3 +751,28 @@ The BSAudit.3.impl architecture (commits `efaf8cb4..30d032ea`, shipped 2026-05-2
 - [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`](docs/CAPABILITY_REGISTRY/BEAT_SYNC.md) — full audit per-component verdicts.
 - [`docs/BPM_ANCHORED_PHASE_ACQUISITION_DESIGN_2026-05-24.md`](docs/BPM_ANCHORED_PHASE_ACQUISITION_DESIGN_2026-05-24.md) — the architecture that was implemented and then reverted (historical record).
 - [`docs/diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md`](docs/diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md) — root-cause characterization of why ±60 ms within 3 s isn't achievable, written about the BSAudit.3.impl attempt; the structural limit it characterizes applies to any short-window signal source.
+
+---
+
+## Addendum — bar position is a per-window record (PR.17, 2026-09-05; [D-243])
+
+**Capability change: meter/bar decoding moves from Missing to Partial on the local path.**
+
+`BarLineEstimator.estimateWindowed` scores bar position once per ~80 beats (~40 s) over a
+whole-track grid and lays `BeatGrid.downbeats` **only where a window answers**. A declined window
+emits nothing; it is never backfilled from the model's downbeat head, which over-fires (78 % of
+beats on money). Behind `UZUME_BARLINE_LOCAL=1`, gated on a whole-track grid, default off.
+
+**What it decodes that nothing before it did:** take_five 5/4 (11 of 11 windows), money 7/4 (2 of
+10 windows) — the case four separate levers failed on (TRK.2, DBN.2, MDL.1, FT.1). Over 68 labelled
+windows: 20 correct, 0 incorrect, 44 declined.
+
+**What it does not do.** It does not touch beats — beat F, Cemgil, CMLt and AMLt are bit-identical
+either side of the flag. It does not help the streaming path, where a 30 s grid is one short window.
+And it is silent on solsbury_hill (a real 7/4 miss) and on three of eleven *Low* tracks that
+currently carry a correct bar.
+
+**The confound worth remembering:** every earlier bar measurement (FT.3's calibration, FT.4's A/B,
+FT.4.1's split, PR.3d's adoption, D-210's decline rate) fed a whole-track estimator ~40–60 beats
+from a 30 s clamped grid. "Four failed attempts" shared one input defect, removed at PR.12.
+
