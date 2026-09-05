@@ -10,6 +10,24 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-09-05-132958] PR.17 — bar position is recorded per window, and local files get it by default
+
+Uzume asked one question per song — *what meter is this, and which beat is the bar line* — and applied the answer to the whole track. It now asks once per ~40 seconds, and **lays bars only where the answer is solid**. Where it isn't, nothing fires: a declined stretch is never backfilled from the model's downbeat head, which over-fires on 78 % of Money's beats. Matt's call between sparse-and-correct and dense-with-fallback (2026-09-05) was **sparse**, and he turned it on the same day after seeing what it does to his own album.
+
+**This reverses FT.2's wiring rejection of 2026-09-04** (*"B is not a viable option"*), whose recorded revisit condition was a materially lower decline rate. Two premises moved. The decline rate was an artifact of the input — every earlier bar measurement (FT.3's calibration, FT.4's A/B, FT.4.1's split, PR.3d's adoption, D-210's decline rate) fed a whole-track estimator ~40–60 beats from a 30 s clamped grid when its own documentation specifies 300–700, and PR.12 removed that clamp. And the granularity changed: a track is no longer all-or-nothing.
+
+**Two meters decode for the first time.** Take Five reads 5/4 across 11 of 11 windows; **Money reads 7/4** — the case four separate levers failed on (TRK.2, DBN.2, MDL.1, FT.1) and the reason BUG-001 and BUG-013 have stayed open. Across 68 labelled windows: **20 correct, 0 incorrect, 44 declined.** Clair de Lune and Pyramid Song stay silent, which is suite 5's stated target rather than a shortfall.
+
+**Five suites, both arms full-track so the spans match** (the scoring artifact PR.12 exposed). Beat F, Cemgil, CMLt and AMLt are **identical on every track** — only `downbeats`/`beatsPerBar`/`barConfidence` move, so suite-1 no-regression holds by construction, not by luck. Downbeat F improves on all five tracks that keep bars: take_five 0.34 → 0.89, money 0.08 → 0.53, bohemian_rhapsody 0.29 → 0.47, billie_jean 0.37 → 0.43, yyz 0.14 → 0.15; mean over the eight scoreable tracks 0.18 → 0.31. **Reported per the claim rules:** solsbury_hill (0.15), bleed (0.09) and clair_de_lune (0.00) lose their downbeats entirely, and solsbury_hill is a genuine 7/4 miss.
+
+**On Bowie's *Low*, measured before recommending** (PR.3d's standing rule, which exists because that increment recommended adoption off nine benchmark fixtures without testing Matt's album): head 5 correct / 5 wrong / 1 collapsed → **5 correct / 0 wrong / 1 unresolved / 5 silent**. It fixes What In The World and removes every wrong bar on the record. **It loses Be My Wife**, which PR.3d identified as the clean counterexample — correct meter and the tightest phase on the album. Art Decade now answers 4/4 on an ambient piece and is recorded as unresolved rather than claimed.
+
+**Costs 0.89 s/track** against D-242's 7.5 s/track budget for all of preparation — ~12 % of the budget for one net-new stage, nearly all of it the front-end (whole-file resample + a per-beat STFT) rather than the windowing. Streaming is untouched: the branch is gated on a whole-track grid, and a 30 s preview is one short window that would only decline.
+
+**Shipped without a live M7.** Every number is offline. Whether bars going quiet mid-song reads as *responsive* or as *flickering* is a felt question nothing has answered yet — `UZUME_BARLINE_LOCAL=0` restores the previous behaviour in one line. Decision: [D-243]. Evidence: `docs/diagnostics/PR17_LOCAL_BARS_2026-09-05.md`.
+
+---
+
 ### [dev-2026-09-03-184358] DS.6 — the playback chrome, retokenized in place (M7 passed)
 
 **Same chrome, made right.** The track card, controls cluster, listening badge, progress dots,

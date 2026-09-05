@@ -277,7 +277,11 @@ struct BarLineWholeTrackProbe {
     /// track's tail and re-resamples per window. Production does neither. This runs the
     /// real function so the number that gets quoted is the number that ships.
     ///
-    /// UZUME_BARLINE_PROD=1 swift test --package-path UzumeEngine --filter BarLineWholeTrackProbe
+    /// Run with the production default OFF so `global` and the grid's own meter are the
+    /// incumbent behaviour, not this change reflected back:
+    ///
+    ///     UZUME_BARLINE_PROD=1 UZUME_BARLINE_LOCAL=0 \
+    ///       swift test --package-path UzumeEngine --filter BarLineWholeTrackProbe
     @Test("PR.17 — shipped estimateWindowed vs tapped meter",
           .enabled(if: ProcessInfo.processInfo.environment["UZUME_BARLINE_PROD"] == "1"))
     func shippedWindowed() throws {

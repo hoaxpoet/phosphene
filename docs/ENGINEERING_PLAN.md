@@ -509,8 +509,9 @@ withdrawn. Recorded in [`PR15_BAR_IS_LOCAL_2026-09-04.md`](diagnostics/PR15_BAR_
 **PR.17 — bar position is recorded per window, and declines are silent** 🔨 (2026-09-05, Matt:
 *"Proceed with the BeatGrid work"* + *"Sparse and correct"*). `BarLineEstimator.estimateWindowed`
 scores bar position once per ~80 beats and lays downbeats **only where a window answers**; a declined
-window emits nothing and is never backfilled from the model's downbeat head. Wired behind
-`UZUME_BARLINE_LOCAL=1`, gated on a whole-track grid, **default off**.
+window emits nothing and is never backfilled from the model's downbeat head. Gated on a whole-track
+grid, so streaming is untouched. **Default ON** — Matt flipped it the same day (*"Flip it"*) after
+the measurements below; `UZUME_BARLINE_LOCAL=0` restores the model's downbeat head.
 
 **PR.15's "no consumer can express a per-section bar" was wrong** — `BeatGrid.downbeats: [Double]`
 already is that record, and `beatsSinceDownbeat` already counts from the nearest preceding entry.
@@ -538,9 +539,9 @@ moved from one all-or-nothing answer per track to per-section.
 
 **Cost: 0.89 s/track** (measured over *Low*'s eleven files), against D-242's 7.5 s/track budget for **all** of preparation — ~12 % of the whole budget for one net-new stage. Nearly all of it is the front-end (whole-file resample + a per-beat STFT), not the windowing; a global `estimate` costs the same. Not optimised here, flagged because PREP is actively working that budget.
 
-**Done-when:** Matt decides whether `barLineLocal` goes on by default for local files, and confirms
-live whether sparse bars read as responsive or as flickering — no live M7 exists yet; every number
-here is offline. Report: [`PR17_LOCAL_BARS_2026-09-05.md`](diagnostics/PR17_LOCAL_BARS_2026-09-05.md).
+**Done-when:** ✅ the default is decided (on, 2026-09-05). ⏳ **Outstanding: live M7.** Every number
+here is offline, and whether sparse bars read as responsive or as flickering when an accent stops
+mid-song is a felt question this shipped ahead of. Report: [`PR17_LOCAL_BARS_2026-09-05.md`](diagnostics/PR17_LOCAL_BARS_2026-09-05.md).
 
 **PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat

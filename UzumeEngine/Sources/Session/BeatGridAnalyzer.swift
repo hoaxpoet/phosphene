@@ -131,10 +131,18 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
             // either the windows or the old 30 s clip. Per window, money answers 7 and
             // take_five answers 5 on 11 of 11 windows.
             //
-            // Gated on `fullTrack` as well as the flag, because the estimator's scope is
-            // the whole file: a 30 s streaming grid is one short window and would just
-            // decline. The name says local because that is the only path it can serve.
-            let barLineLocal = env["UZUME_BARLINE_LOCAL"] == "1"
+            // Gated on `fullTrack`, because the estimator's scope is the whole file: a
+            // 30 s streaming grid is one short window and would just decline. The name
+            // says local because that is the only path it can serve.
+            //
+            // DEFAULT ON since 2026-09-05 (Matt: "Flip it"), measured on Bowie's Low and
+            // on every truthed fixture first (PR17_LOCAL_BARS_2026-09-05.md, [D-243]).
+            // What it buys: take_five decodes 5/4 and money 7/4 for the first time, and
+            // every wrong bar on Low disappears. What it costs: bar-driven motion goes
+            // quiet on ~half of Low, including Be My Wife, which had a correct bar — and
+            // 0.89 s/track of preparation against D-242's 7.5 s/track budget.
+            // `UZUME_BARLINE_LOCAL=0` restores the model's downbeat head.
+            let barLineLocal = Self.usesWindowedBarLine(environment: env)
             let activations: (beats: [Float], downbeats: [Float])
             if fullTrack {
                 activations = try BeatThisTiledInference.predictFullTrack(
@@ -226,6 +234,14 @@ public final class DefaultBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendab
     }
 
     // MARK: - PR.17 windowed bar line
+
+    /// Whether the windowed bar line is active. Default ON; `UZUME_BARLINE_LOCAL=0` opts
+    /// out. Pure and testable because the DEFAULT is the load-bearing part — an inverted
+    /// comparison here silently reverts every local track to the over-firing downbeat head
+    /// with no test failing.
+    static func usesWindowedBarLine(environment: [String: String]) -> Bool {
+        environment["UZUME_BARLINE_LOCAL"] != "0"
+    }
 
     /// Lay downbeats from the per-window estimator: bars where a window answers, and
     /// NOTHING where it declines.

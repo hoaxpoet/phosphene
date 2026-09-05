@@ -18,7 +18,7 @@ That is the same correction PR.12 made to tempo, applied to the bar. Matt's word
 track"*. A single global meter-and-phase has to describe an intro, a chorus and an outro at once,
 and PR.15 measured that it is worse at it than the old 30 s clip was.
 
-Wired behind `UZUME_BARLINE_LOCAL=1`, default **off**, per the program's env-flag house rule.
+Wired on the local path, gated on a whole-track grid. **Default ON** — Matt flipped it on 2026-09-05 (*"Flip it"*) after the measurements below. `UZUME_BARLINE_LOCAL=0` restores the model's downbeat head.
 
 ---
 
@@ -164,20 +164,18 @@ what makes it expensive. Not optimised here; flagged because PREP is actively wo
 
 ---
 
-## 6. Recommendation
+## 7. What shipped
 
-**Adopt on the local path** — `barLineLocal` default-on wherever the grid is whole-track — and leave
-the streaming path alone, where a 30 s grid is one short window and the estimator would only decline.
+**On by default for local files.** Matt's call, 2026-09-05, after §3–§6: *"Flip it."*
 
-What Matt sees if it goes on: on *Low*, bar-locked motion becomes correct wherever it appears and
-disappears on five of eleven tracks, including Be My Wife, where it currently works. On the
-odd-meter material the programme has failed on for months, bars appear for the first time.
+Streaming is untouched — a 30 s grid is one short window and the estimator would only decline there,
+so the branch is gated on a whole-track grid as well as the flag.
 
-**This is a default that changes what he sees, so it is his call, and the code ships flag-gated
-until he makes it** (PR.3d's standing rule: a change to what the listener sees is not recommended
-until measured on Matt's own material — that measurement is §3, and it is what this recommendation
-rests on).
+What changes for a listener on *Low*: bar-locked motion is correct wherever it appears, and it
+disappears on five of eleven tracks — including Be My Wife, where it works today. On the odd-meter
+material the programme has failed on for months, bars appear for the first time.
 
-**Not yet established:** no live M7. Every number here is offline. Whether sparse bars read as
+**Still not established: no live M7.** Every number here is offline. Whether sparse bars read as
 *responsive* or as *flickering* when a bar accent stops mid-song is a felt question that only
-playback answers.
+playback answers, and this shipped before that question was asked. If it reads wrong,
+`UZUME_BARLINE_LOCAL=0` is the one-line revert.

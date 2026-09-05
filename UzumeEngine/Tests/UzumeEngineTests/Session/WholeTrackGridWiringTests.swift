@@ -115,4 +115,11 @@ struct WholeTrackGridWiringTests {
         #expect(applied.beats == beats)
         #expect(applied.bpm == grid.bpm)
     }
+
+    @Test("the windowed bar line is ON by default, and UZUME_BARLINE_LOCAL=0 opts out")
+    func windowedBarLineDefaultsOn() {
+        #expect(DefaultBeatGridAnalyzer.usesWindowedBarLine(environment: [:]))
+        #expect(DefaultBeatGridAnalyzer.usesWindowedBarLine(environment: ["UZUME_BARLINE_LOCAL": "1"]))
+        #expect(!DefaultBeatGridAnalyzer.usesWindowedBarLine(environment: ["UZUME_BARLINE_LOCAL": "0"]))
+    }
 }

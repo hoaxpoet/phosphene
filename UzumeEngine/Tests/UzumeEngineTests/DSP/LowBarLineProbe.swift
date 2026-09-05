@@ -129,7 +129,11 @@ struct LowBarLineProbe {
     /// This asks what the windowed estimator does to Matt's own record — the measurement
     /// that has to come BEFORE any recommendation (PR.3d's standing rule).
     ///
-    /// Run: UZUME_LOW_WINDOWED=1 swift test --package-path UzumeEngine --filter LowBarLineProbe
+    /// Run with the production default OFF, or the `head` column measures this change
+    /// against itself rather than against the model's downbeat head:
+    ///
+    ///     UZUME_LOW_WINDOWED=1 UZUME_BARLINE_LOCAL=0 \
+    ///       swift test --package-path UzumeEngine --filter LowBarLineProbe
     @Test("PR.17 — windowed bar line on Low",
           .enabled(if: ProcessInfo.processInfo.environment["UZUME_LOW_WINDOWED"] == "1"))
     func lowWindowed() throws {

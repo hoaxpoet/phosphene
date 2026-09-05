@@ -5520,7 +5520,7 @@ strictly stronger than a human looking at a still.
 
 ## D-243: Bar position is recorded per window, and a declined window emits no bars
 
-**Date:** 2026-09-05 · **Increment:** PR.17 · **Status:** Accepted (mechanism shipped behind `UZUME_BARLINE_LOCAL`, default off pending Matt's call on the default)
+**Date:** 2026-09-05 · **Increment:** PR.17 · **Status:** Accepted; **default ON for local files from 2026-09-05** (Matt: *"Flip it"*), `UZUME_BARLINE_LOCAL=0` opts out
 
 ### The decision
 
@@ -5562,7 +5562,13 @@ all-or-nothing granularity is gone: a track can now carry bars through the secti
 
 On *Low*, bar coverage drops from 10 of 11 tracks to 6, and one of the losses — Be My Wife — has a
 correct meter and the tightest phase on the record today. That cost is the direct consequence of the
-shape Matt chose, and it is the reason the default is his call rather than this increment's.
+shape Matt chose; it was put to him with those numbers and he turned it on anyway.
+
+It also costs **0.89 s/track** of preparation against [D-242]'s 7.5 s/track budget for all stages.
+
+**It shipped without a live M7.** Whether bars going quiet mid-song reads as responsive or as
+flickering is a felt question, and nothing has played this yet. `UZUME_BARLINE_LOCAL=0` is the
+revert if it reads wrong.
 
 **References.** [D-205] (meter/downbeat is a hard gate); [D-207] (decline is part of the output
 contract); [D-210]; PR.12/PR.15/PR.16;

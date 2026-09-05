@@ -761,7 +761,8 @@ The BSAudit.3.impl architecture (commits `efaf8cb4..30d032ea`, shipped 2026-05-2
 `BarLineEstimator.estimateWindowed` scores bar position once per ~80 beats (~40 s) over a
 whole-track grid and lays `BeatGrid.downbeats` **only where a window answers**. A declined window
 emits nothing; it is never backfilled from the model's downbeat head, which over-fires (78 % of
-beats on money). Behind `UZUME_BARLINE_LOCAL=1`, gated on a whole-track grid, default off.
+beats on money). Gated on a whole-track grid; **default ON for local files** from 2026-09-05,
+`UZUME_BARLINE_LOCAL=0` opts out.
 
 **What it decodes that nothing before it did:** take_five 5/4 (11 of 11 windows), money 7/4 (2 of
 10 windows) — the case four separate levers failed on (TRK.2, DBN.2, MDL.1, FT.1). Over 68 labelled
