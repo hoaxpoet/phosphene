@@ -57,6 +57,88 @@ struct BarLineWholeTrackProbe {
     }
 
 
+
+    /// PR.16 task 1 — the per-window margin distribution, LABELLED correct/incorrect
+    /// against the tapped meter, so `declineThreshold` can be re-derived for windowed
+    /// scoring the way FT.3 derived it for global scoring: the objective
+    /// (correct kept − incorrect admitted) plateaus over an interval containing no
+    /// observation, and the threshold is that interval's midpoint.
+    ///
+    /// The shipping 1.54 was fitted to ONE-ANSWER-PER-TRACK margins and is the wrong
+    /// operating point here — PR.15 measured bleed 1.179, bohemian_rhapsody 1.419 and
+    /// solsbury_hill 1.412 sitting just under it with no answer at all.
+    @Test("per-window margin distribution, labelled",
+          .enabled(if: ProcessInfo.processInfo.environment["UZUME_BARLINE_THRESHOLD"] == "1"))
+    func thresholdDerivation() throws {
+        let fixtures = URL(fileURLWithPath: (NSHomeDirectory() as NSString)
+            .appendingPathComponent("uzume_beatbench_fixtures"))
+        let gtDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fixtures/beatbench/groundtruth")
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+        let opts = BarLineEstimator.Options(resampleToReferenceRate: true)
+        let beatsPerWindow = 80
+
+        // (margin, isCorrect?) — nil isCorrect = track has no tapped meter, so the window
+        // is neither correct nor incorrect and only informs the "never answer here" side.
+        var samples: [(margin: Double, correct: Bool?)] = []
+
+        for gtURL in (try FileManager.default.contentsOfDirectory(
+                        at: gtDir, includingPropertiesForKeys: nil)).sorted(by: {
+                            $0.lastPathComponent < $1.lastPathComponent }) {
+            guard gtURL.lastPathComponent.hasSuffix(".groundtruth.json") else { continue }
+            let name = gtURL.lastPathComponent.replacingOccurrences(of: ".groundtruth.json", with: "")
+            let gt = try? JSONDecoder().decode(GroundTruth.self, from: Data(contentsOf: gtURL))
+            var audioURL: URL?
+            for ext in ["mp3", "wav", "m4a", "flac"] {
+                let u = fixtures.appendingPathComponent("\(name).\(ext)")
+                if FileManager.default.fileExists(atPath: u.path) { audioURL = u; break }
+            }
+            guard let audioURL, let (audio, rate) = try? Self.decodeMono(url: audioURL),
+                  !audio.isEmpty else { continue }
+            let grid = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate, wholeTrack: true)
+            guard grid.beats.count > beatsPerWindow else { continue }
+            var start = 0
+            while start + beatsPerWindow <= grid.beats.count {
+                let slice = Array(grid.beats[start..<(start + beatsPerWindow)])
+                let est = BarLineEstimator.estimate(
+                    beats: slice, audio: audio, sampleRate: rate, options: opts)
+                let correct: Bool? = gt?.meterFromTaps.map { est.beatsPerBar == $0 }
+                samples.append((est.margin, correct))
+                start += beatsPerWindow
+            }
+        }
+
+        // Sweep every observed margin as a candidate threshold.
+        let candidates = samples.map(\.margin).sorted()
+        print("\n  Per-window threshold sweep — \(samples.count) windows\n")
+        print("  threshold   kept  correct  INCORRECT  objective")
+        var best: (thr: Double, objective: Int) = (0, Int.min)
+        for cand in candidates {
+            let kept = samples.filter { $0.margin >= cand }
+            let correct = kept.filter { $0.correct == true }.count
+            let incorrect = kept.filter { $0.correct == false }.count
+            let objective = correct - incorrect
+            if objective > best.objective { best = (cand, objective) }
+        }
+        // Print the interesting band around the optimum.
+        for cand in candidates where abs(cand - best.thr) < 1.0 {
+            let kept = samples.filter { $0.margin >= cand }
+            let correct = kept.filter { $0.correct == true }.count
+            let incorrect = kept.filter { $0.correct == false }.count
+            print(String(format: "  %9.3f  %5d  %7d  %9d  %+9d",
+                         cand, kept.count, correct, incorrect, correct - incorrect))
+        }
+        print("""
+
+          best objective \(best.objective) first reached at margin \(String(format: "%.3f", best.thr))
+          shipping threshold 1.54 keeps: \
+        \(samples.filter { $0.margin >= 1.54 }.filter { $0.correct == true }.count) correct, \
+        \(samples.filter { $0.margin >= 1.54 }.filter { $0.correct == false }.count) incorrect
+        """)
+    }
+
     /// Is bar structure LOCAL? Score the estimator over successive ~40 s windows of the
     /// whole-track beat sequence. If per-window margins are strong where the single global
     /// margin is weak, the bar is a local property and one answer per track is the wrong
