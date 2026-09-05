@@ -1,3 +1,5 @@
+import Foundation
+
 extension PresetLoader {
 
     // MARK: - MV-Warp Preamble (MV-2, D-027)
@@ -16,7 +18,17 @@ extension PresetLoader {
     ///
     /// Compiled per-preset alongside `sceneSDF`/`sceneMaterial` so that `mvWarp_vertex`
     /// can call the preset's `mvWarpPerFrame` and `mvWarpPerVertex` implementations.
-    static let mvWarpPreamble: String = """
+    /// The invert tint, as MSL initialiser components. Overridable with
+    /// `UZUME_MVWARP_INVERT_TINT="r,g,b"` so the A/B needs no recompile — `"1,1,1"`
+    /// reproduces Milkdrop's literal `1 - c` exactly, which is the shipping arm.
+    static var invertTint: String {
+        let raw = ProcessInfo.processInfo.environment["UZUME_MVWARP_INVERT_TINT"] ?? ""
+        let parts = raw.split(separator: ",").compactMap { Float($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.count == 3 else { return "0.95, 0.50, 0.16" }
+        return parts.map { String(format: "%.4f", $0) }.joined(separator: ", ")
+    }
+
+    static var mvWarpPreamble: String { """
 
     // ── MVWarp preamble (MV-2, D-027) ────────────────────────────────────────
     // Injected only when "mv_warp" is in the preset's passes array.
@@ -247,6 +259,16 @@ extension PresetLoader {
     // (NOT fed back) makes a crisp per-beat pump that punches through. The whole
     // bloom zooms out slightly + brightens on the beat, then settles — "dancing
     // with the beat" without strobing or disturbing the feedback equilibrium.
+    // The colour an inverted-to-white pixel becomes. Milkdrop's `1 - c` sends empty
+    // accumulator to pure WHITE, which is what washed Dragon Bloom out (PR.5); tinting
+    // the inverted value sends it to warm amber instead. A TINT (multiply) rather than
+    // a ceiling (subtract): subtracting crushes every accumulator value above the
+    // ceiling to black — rendered, that flattened the feathering into blocks of flat
+    // colour and punched a black lozenge through the middle, which is FA #48's clipart
+    // symmetry, the preset's own anti-reference. Multiplying is monotonic everywhere,
+    // so the feedback texture survives. Only presets with `invert > 0` see it.
+    constant float3 kMVWarpInvertTint = float3(\(Self.invertTint));
+
     fragment float4 mvWarp_blit_fragment(
         VertexOut          in      [[stage_in]],
         texture2d<float>   warpTex [[texture(0)]],
@@ -262,10 +284,28 @@ extension PresetLoader {
         float3 ret  = mix(base, echo, post.y);   // video echo
         ret *= post.z;                            // gamma multiply (1.07)
         // brighten(sqrt)+darken(square) cancel → omitted.
-        ret  = mix(ret, 1.0 - ret, post.x);       // invert
+        // PR.5 (Matt, 2026-09-04: "washed out, extreme brightness… would like the same
+        // saturated colour across the visible spectrum") — invert about a WARM CEILING
+        // rather than pure white.
+        //
+        // `bInvert` is literally `1 - c`, so an accumulator pixel near BLACK displays
+        // near WHITE. Measured on a real Bowie *Low* capture through this exact path:
+        // 84 % of pixels clipped, mean luma 0.91, flat across all 30 s — the frame is
+        // mostly empty accumulator, and empty inverts to white. That is the whole of the
+        // "washed out, extreme brightness" report; there is no HDR to tone-map (the
+        // accumulator sits at 0.655 saturation and 10 % clipped, PR.5 §1).
+        //
+        // Tinting the inverted value instead sends empty accumulator to a warm amber
+        // ground and keeps every hue relationship the invert already produced. It is a
+        // DELIBERATE DEVIATION from the faithful port — stated plainly rather than
+        // dressed up as a fidelity fix — and it only reaches presets that actually
+        // invert, which is Dragon Bloom alone (every other mv_warp preset ships
+        // `invert: 0`, so `mix(ret, ceiling - ret, 0)` leaves them byte-identical).
+        ret  = mix(ret, kMVWarpInvertTint * (1.0 - ret), post.x);   // invert
         ret *= (1.0 + 0.12 * bp);                 // beat brighten (accent on the pump)
         return float4(saturate(ret), 1.0);
     }
 
     """
+    }
 }
