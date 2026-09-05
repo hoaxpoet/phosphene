@@ -17,6 +17,15 @@ xcodebuild -scheme UzumeApp -destination 'platform=macOS' test
 swiftlint lint --strict --config .swiftlint.yml
 ```
 
+**Any performance claim states its build configuration, or it means nothing.** `xcodebuild` and
+`swift build` default to **Debug / `-Onone`**, which cost preparation **3.8×** and reordered which
+stage looked like the bottleneck (PREP.1, [D-242] §Amendment). Measure — and quote — Release:
+
+```bash
+xcodebuild -scheme UzumeApp -configuration Release -destination 'platform=macOS' build
+swift build -c release --package-path UzumeEngine
+```
+
 Warnings-as-errors is enforced per-target via `UzumeApp/Uzume.xcconfig` — do NOT pass the flag on the command line (conflicts with SPM dependency `-suppress-warnings`).
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.

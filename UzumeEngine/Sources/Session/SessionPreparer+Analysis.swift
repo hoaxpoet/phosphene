@@ -66,15 +66,18 @@ extension SessionPreparer {
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
         familyAnalyzer: (any InstrumentFamilyAnalyzing)? = nil,
         prefetchedProfile: PreFetchedTrackProfile? = nil,
-        wholeTrackAudio: Bool = false
+        wholeTrackAudio: Bool = false,
+        probe: PrepStageProbe = .disabled
     ) throws -> CachedTrackData {
 
         // Step 1: Separate stems from preview PCM.
-        let result = try separator.separate(
-            audio: preview.pcmSamples,
-            channelCount: 1,
-            sampleRate: Float(preview.sampleRate)
-        )
+        let result = try probe.measure(PrepStage.stemSeparation) {
+            try separator.separate(
+                audio: preview.pcmSamples,
+                channelCount: 1,
+                sampleRate: Float(preview.sampleRate)
+            )
+        }
 
         // Step 2: Read the separated stems BY VALUE (CLEAN.1.2 / BUG-031) — never
         // from the shared `separator.stemBuffers`, which the live + prep paths
@@ -82,36 +85,46 @@ extension SessionPreparer {
         let stemWaveforms = result.stemWaveforms
 
         // Step 3: Multi-frame AGC warmup → StemFeatures snapshot.
-        let stemFeatures = warmUpAndAnalyze(
-            stemWaveforms: stemWaveforms,
-            sampleRate: Float(preview.sampleRate),
-            analyzer: analyzer
-        )
+        let stemFeatures = probe.measure(PrepStage.stemWarmup) {
+            warmUpAndAnalyze(
+                stemWaveforms: stemWaveforms,
+                sampleRate: Float(preview.sampleRate),
+                analyzer: analyzer
+            )
+        }
 
         // Step 4: Offline MIR analysis (BPM, key, mood, centroid).
-        let mir = analyzeMIR(
-            samples: preview.pcmSamples,
-            sampleRate: preview.sampleRate,
-            classifier: classifier
-        )
+        let mir = probe.measure(PrepStage.mir) {
+            analyzeMIR(
+                samples: preview.pcmSamples,
+                sampleRate: preview.sampleRate,
+                classifier: classifier
+            )
+        }
 
         // Steps 5 + 6: offline beat grids (full mix + drums stem), with metadata meter override.
-        let (beatGrid, drumsBeatGrid) = computeBeatGrids(
-            preview: preview,
-            stemWaveforms: stemWaveforms,
-            beatGridAnalyzer: beatGridAnalyzer,
-            prefetchedProfile: prefetchedProfile,
-            wholeTrackAudio: wholeTrackAudio
-        )
+        let (beatGrid, drumsBeatGrid) = probe.measure(PrepStage.beatGrid) {
+            computeBeatGrids(
+                preview: preview,
+                stemWaveforms: stemWaveforms,
+                beatGridAnalyzer: beatGridAnalyzer,
+                prefetchedProfile: prefetchedProfile,
+                wholeTrackAudio: wholeTrackAudio
+            )
+        }
 
         // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
-        let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
+        let gridOnsetOffsetMs = probe.measure(PrepStage.gridOnsetCalibration) {
+            Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
+        }
 
         // Step 8 (IFC.4 / D-177): PANNs family-activity sweep over the preview clip (Tier-1; nil → empty).
         // The PREPPERF.2 TIMING scaffolding (clock/stageStart/durationMs) was removed on main; the family
         // analysis itself is unchanged.
-        let familySeries = familyAnalyzer?.analyzeFamilyActivity(
-            samples: preview.pcmSamples, sampleRate: Double(preview.sampleRate)) ?? []
+        let familySeries = probe.measure(PrepStage.instrumentFamily) {
+            familyAnalyzer?.analyzeFamilyActivity(
+                samples: preview.pcmSamples, sampleRate: Double(preview.sampleRate)) ?? []
+        }
 
         let profile = TrackProfile(
             bpm: mir.bpm,

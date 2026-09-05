@@ -1,0 +1,43 @@
+track,stage,wall_ms,cpu_ms,cpu_cores,audio_s,ms_per_audio_s
+"02 - Breaking Glass.m4a",content_hash,6.3,2.3,0.36,112.89,0.06
+"02 - Breaking Glass.m4a",cache_probe,0.1,0.1,1.01,112.89,0.00
+"02 - Breaking Glass.m4a",metadata_artwork,19.1,10.1,0.53,112.89,0.17
+"02 - Breaking Glass.m4a",decode,69.0,67.4,0.98,112.89,0.61
+"02 - Breaking Glass.m4a",loudness_profile,11.8,11.8,1.00,112.89,0.10
+"02 - Breaking Glass.m4a",stem_separation,212.3,163.5,0.77,112.89,1.88
+"02 - Breaking Glass.m4a",stem_warmup,39.2,37.4,0.95,112.89,0.35
+"02 - Breaking Glass.m4a",mir,136.9,135.1,0.99,112.89,1.21
+"02 - Breaking Glass.m4a",beat_grid,835.4,804.0,0.96,112.89,7.40
+"02 - Breaking Glass.m4a",grid_onset_calibration,32.5,32.4,1.00,112.89,0.29
+"02 - Breaking Glass.m4a",instrument_family,192.2,186.3,0.97,112.89,1.70
+"02 - Breaking Glass.m4a",stem_series_sweep,6803.6,4821.2,0.71,112.89,60.27
+"02 - Breaking Glass.m4a",cache_write,6.5,4.7,0.72,112.89,0.06
+"02 - Breaking Glass.m4a",TRACK_TOTAL,8365.0,6276.3,0.75,112.89,74.10
+"04 - Sound And Vision.m4a",content_hash,9.8,3.6,0.37,183.43,0.05
+"04 - Sound And Vision.m4a",cache_probe,0.0,0.0,1.00,183.43,0.00
+"04 - Sound And Vision.m4a",metadata_artwork,1.1,2.1,1.82,183.43,0.01
+"04 - Sound And Vision.m4a",decode,108.8,216.8,1.99,183.43,0.59
+"04 - Sound And Vision.m4a",loudness_profile,20.7,36.3,1.75,183.43,0.11
+"04 - Sound And Vision.m4a",stem_separation,120.9,81.3,0.67,183.43,0.66
+"04 - Sound And Vision.m4a",stem_warmup,34.7,34.7,1.00,183.43,0.19
+"04 - Sound And Vision.m4a",mir,293.1,292.8,1.00,183.43,1.60
+"04 - Sound And Vision.m4a",beat_grid,139.9,86.6,0.62,183.43,0.76
+"04 - Sound And Vision.m4a",grid_onset_calibration,52.6,52.6,1.00,183.43,0.29
+"04 - Sound And Vision.m4a",instrument_family,280.3,261.0,0.93,183.43,1.53
+"04 - Sound And Vision.m4a",stem_series_sweep,11030.9,7738.5,0.70,183.43,60.14
+"04 - Sound And Vision.m4a",cache_write,8.0,5.5,0.69,183.43,0.04
+"04 - Sound And Vision.m4a",TRACK_TOTAL,12101.0,8811.7,0.73,183.43,65.97
+"08 - Warszawa.m4a",content_hash,20.5,8.1,0.39,383.67,0.05
+"08 - Warszawa.m4a",cache_probe,0.0,0.0,1.00,383.67,0.00
+"08 - Warszawa.m4a",metadata_artwork,1.1,2.0,1.87,383.67,0.00
+"08 - Warszawa.m4a",decode,247.8,432.9,1.75,383.67,0.65
+"08 - Warszawa.m4a",loudness_profile,38.9,38.8,1.00,383.67,0.10
+"08 - Warszawa.m4a",stem_separation,129.2,84.4,0.65,383.67,0.34
+"08 - Warszawa.m4a",stem_warmup,31.8,31.6,1.00,383.67,0.08
+"08 - Warszawa.m4a",mir,1105.9,1100.5,1.00,383.67,2.88
+"08 - Warszawa.m4a",beat_grid,219.0,166.5,0.76,383.67,0.57
+"08 - Warszawa.m4a",grid_onset_calibration,112.8,112.5,1.00,383.67,0.29
+"08 - Warszawa.m4a",instrument_family,576.8,524.4,0.91,383.67,1.50
+"08 - Warszawa.m4a",stem_series_sweep,24221.4,16783.5,0.69,383.67,63.13
+"08 - Warszawa.m4a",cache_write,31.0,12.4,0.40,383.67,0.08
+"08 - Warszawa.m4a",TRACK_TOTAL,26737.3,19297.9,0.72,383.67,69.69
