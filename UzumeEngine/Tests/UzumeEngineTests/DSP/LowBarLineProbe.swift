@@ -120,4 +120,67 @@ struct LowBarLineProbe {
         }
         print("\n  tracks with a bar — OFF: \(offBars)/\(files.count)   ON: \(onBars)/\(files.count)")
     }
+
+    /// PR.17 — the third arm: bar line scored PER WINDOW over the whole-track grid.
+    ///
+    /// PR.3d measured two arms on this album and both were measured on a 30 s grid: the
+    /// model's downbeat head (7 of 11 right, 4 wrong) and ONE global estimate (5 of 11,
+    /// silencing two tracks that were right). PR.15 then showed bar structure is local.
+    /// This asks what the windowed estimator does to Matt's own record — the measurement
+    /// that has to come BEFORE any recommendation (PR.3d's standing rule).
+    ///
+    /// Run with the production default OFF, or the `head` column measures this change
+    /// against itself rather than against the model's downbeat head:
+    ///
+    ///     UZUME_LOW_WINDOWED=1 UZUME_BARLINE_LOCAL=0 \
+    ///       swift test --package-path UzumeEngine --filter LowBarLineProbe
+    @Test("PR.17 — windowed bar line on Low",
+          .enabled(if: ProcessInfo.processInfo.environment["UZUME_LOW_WINDOWED"] == "1"))
+    func lowWindowed() throws {
+        let dir = URL(fileURLWithPath: "/Volumes/Extreme SSD/B/Bowie, David/[1977] - Low")
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+        let files = (try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))
+            .filter { $0.pathExtension == "flac" && !$0.lastPathComponent.hasPrefix("._") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let options = BarLineEstimator.Options(resampleToReferenceRate: true)
+
+        print("\n  threshold \(BarLineEstimator.declineThreshold), "
+              + "\(BarLineEstimator.defaultBeatsPerWindow) beats/window")
+        print("  track                              beats  head  global   windowed: ans/tot  cover  meters")
+        var headBars = 0, globalBars = 0, windowedBars = 0
+        var totalWindowedSeconds = 0.0
+        for url in files {
+            guard let (audio, rate) = try? Self.decodeMono(url: url), !audio.isEmpty else { continue }
+            let grid = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate, wholeTrack: true)
+            guard !grid.beats.isEmpty else { continue }
+            let global = BarLineEstimator.estimate(
+                beats: grid.beats, audio: audio, sampleRate: rate, options: options)
+            let started = Date()
+            let windowed = BarLineEstimator.estimateWindowed(
+                beats: grid.beats, audio: audio, sampleRate: rate, options: options)
+            // D-242 puts preparation on a 7.5 s/track budget, so a new per-track stage
+            // states its cost rather than assuming it is free.
+            let cost = Date().timeIntervalSince(started)
+            totalWindowedSeconds += cost
+            if grid.beatsPerBar > 1 { headBars += 1 }
+            if global.isConfident { globalBars += 1 }
+            if windowed.windowsAnswered > 0 { windowedBars += 1 }
+            let meters = windowed.estimates.compactMap(\.beatsPerBar).map(String.init).joined(separator: ",")
+            let name = url.deletingPathExtension().lastPathComponent
+            let pad = String(repeating: " ", count: max(0, 34 - name.count))
+            let globalText = global.beatsPerBar.map(String.init) ?? "-"
+            let answered = "\(windowed.windowsAnswered)/\(windowed.windowCount)"
+            print("  \(name)\(pad)"
+                  + String(format: "%5d  %4d  %6@   %8@  %5.0f%%  ",
+                           grid.beats.count, grid.beatsPerBar,
+                           globalText as NSString, answered as NSString,
+                           windowed.coverage * 100)
+                  + (meters.isEmpty ? "-" : meters))
+        }
+        print("\n  tracks with any bar — head \(headBars)/\(files.count), "
+              + "global \(globalBars)/\(files.count), windowed \(windowedBars)/\(files.count)")
+        print(String(format: "  windowed estimator cost: %.1f s total, %.2f s/track (D-242 budget 7.5 s/track, all stages)",
+                     totalWindowedSeconds, totalWindowedSeconds / Double(max(files.count, 1))))
+    }
 }

@@ -498,6 +498,51 @@ MORE global. One meter-and-phase per track is the wrong output shape.
 per-section bar, and the threshold needs re-deriving first.
 Report: [`PR15_BAR_IS_LOCAL_2026-09-04.md`](diagnostics/PR15_BAR_IS_LOCAL_2026-09-04.md).
 
+**PR.16 — the windowed threshold is already right** ✅ (2026-09-04). PR.15 read three near-misses
+(bleed 1.179, bohemian_rhapsody 1.419, solsbury_hill 1.412 vs 1.54) as evidence the threshold was
+fitted to the wrong distribution and needed re-deriving for windowed scoring. Swept over 68 labelled
+windows, **the objective *(correct kept − incorrect admitted)* peaks at 1.548 with 19 correct and 0
+incorrect** — the shipping 1.54 is already at the optimum, and lowering it to admit bohemian_rhapsody
+(1.419) admits one incorrect answer and no new correct ones. PR.15's "near miss" reading is
+withdrawn. Recorded in [`PR15_BAR_IS_LOCAL_2026-09-04.md`](diagnostics/PR15_BAR_IS_LOCAL_2026-09-04.md) §threshold sweep.
+
+**PR.17 — bar position is recorded per window, and declines are silent** 🔨 (2026-09-05, Matt:
+*"Proceed with the BeatGrid work"* + *"Sparse and correct"*). `BarLineEstimator.estimateWindowed`
+scores bar position once per ~80 beats and lays downbeats **only where a window answers**; a declined
+window emits nothing and is never backfilled from the model's downbeat head. Gated on a whole-track
+grid, so streaming is untouched. **Default ON** — Matt flipped it the same day (*"Flip it"*) after
+the measurements below; `UZUME_BARLINE_LOCAL=0` restores the model's downbeat head.
+
+**PR.15's "no consumer can express a per-section bar" was wrong** — `BeatGrid.downbeats: [Double]`
+already is that record, and `beatsSinceDownbeat` already counts from the nearest preceding entry.
+The structure supported locality all along; the *population* was the defect.
+
+**Five-suite BeatBench, both arms full-track so the spans are identical.** Beat F, Cemgil, CMLt and
+AMLt are **identical on every track** — only `downbeats`/`beatsPerBar`/`barConfidence` change, so
+suite-1 no-regression holds by construction. **Downbeat F improves on all five tracks that keep
+bars**, and the two meters the programme was built around decode for the first time: **take_five
+1 → 5 (dbF 0.34 → 0.89)** and **money 1 → 7 (dbF 0.08 → 0.53)**; billie_jean 0.37 → 0.43,
+bohemian_rhapsody 0.29 → 0.47, yyz 0.14 → 0.15. Mean over the eight scoreable tracks **0.18 → 0.31**.
+**Reported per the claim rules:** three tracks lose downbeats entirely — solsbury_hill (0.15 →
+silent, a genuine 7/4 miss), bleed (0.09), clair_de_lune (0.00, which is suite 5's stated target).
+
+**On Matt's own album, measured before recommending** (PR.3d's standing rule): head 5 correct /
+5 wrong / 1 collapsed → windowed **5 correct / 0 wrong / 1 unresolved / 5 silent**. It fixes What In
+The World and removes every wrong bar; it **loses Be My Wife**, which PR.3d identified as the clean
+counterexample (correct meter and the tightest phase on the record). Art Decade answers 4 on an
+ambient piece and is recorded as unresolved rather than claimed.
+
+**This reverses FT.2's wiring rejection** (2026-09-04, *"B is not a viable option"*), whose stated
+revisit condition was a materially lower decline rate. Two things changed: the decline rate was an
+artifact of feeding a whole-track estimator a 30 s grid (PR.12 removed it), and the output shape
+moved from one all-or-nothing answer per track to per-section.
+
+**Cost: 0.89 s/track** (measured over *Low*'s eleven files), against D-242's 7.5 s/track budget for **all** of preparation — ~12 % of the whole budget for one net-new stage. Nearly all of it is the front-end (whole-file resample + a per-beat STFT), not the windowing; a global `estimate` costs the same. Not optimised here, flagged because PREP is actively working that budget.
+
+**Done-when:** ✅ the default is decided (on, 2026-09-05). ⏳ **Outstanding: live M7.** Every number
+here is offline, and whether sparse bars read as responsive or as flickering when an accent stops
+mid-song is a felt question this shipped ahead of. Report: [`PR17_LOCAL_BARS_2026-09-05.md`](diagnostics/PR17_LOCAL_BARS_2026-09-05.md).
+
 **PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.

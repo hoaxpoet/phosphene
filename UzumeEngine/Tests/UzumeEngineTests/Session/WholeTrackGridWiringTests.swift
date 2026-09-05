@@ -91,4 +91,35 @@ struct WholeTrackGridWiringTests {
                 it away at the beat grid — PR.12's regression, silently restored.
                 """)
     }
+
+    // MARK: - PR.17 windowed bar line
+
+    @Test("a declined track carries the beats and NO bars — never a backfilled guess")
+    func windowedBarLineDeclinesToSilence() {
+        // Silence: every window declines, so the sparse contract says emit nothing.
+        let beats = (0..<200).map { Double($0) * 0.5 }
+        let grid = BeatGrid(beats: beats, downbeats: beats, bpm: 120,
+                            beatsPerBar: 4, barConfidence: 1,
+                            frameRate: 50, frameCount: 5_000)
+        let applied = DefaultBeatGridAnalyzer.applyWindowedBarLine(
+            to: grid,
+            samples: [Float](repeating: 0, count: 22_050 * 110),
+            sampleRate: 22_050
+        )
+        // The grid's own downbeats must not survive: backfilling from the model's
+        // over-firing head is the shape Matt rejected (2026-09-05, "sparse and correct").
+        #expect(applied.downbeats.isEmpty)
+        #expect(applied.beatsPerBar == 1)
+        #expect(applied.barConfidence == 0)
+        // Beats are the layer that works — they are never touched.
+        #expect(applied.beats == beats)
+        #expect(applied.bpm == grid.bpm)
+    }
+
+    @Test("the windowed bar line is ON by default, and UZUME_BARLINE_LOCAL=0 opts out")
+    func windowedBarLineDefaultsOn() {
+        #expect(DefaultBeatGridAnalyzer.usesWindowedBarLine(environment: [:]))
+        #expect(DefaultBeatGridAnalyzer.usesWindowedBarLine(environment: ["UZUME_BARLINE_LOCAL": "1"]))
+        #expect(!DefaultBeatGridAnalyzer.usesWindowedBarLine(environment: ["UZUME_BARLINE_LOCAL": "0"]))
+    }
 }

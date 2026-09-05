@@ -150,4 +150,59 @@ struct BarLineEstimatorTests {
         let variance = xs.reduce(0) { $0 + ($1 - meanX) * ($1 - meanX) }
         return variance == 0 ? 0 : covariance / variance
     }
+
+    // MARK: - PR.17 windowed
+
+    @Test("Window ranges cover every beat once, and the last absorbs the remainder")
+    func test_windowRangesCoverEveryBeat() {
+        for count in [1, 79, 80, 81, 159, 160, 161, 617] {
+            let ranges = BarLineEstimator.windowRanges(beatCount: count, beatsPerWindow: 80)
+            #expect(ranges.first?.lowerBound == 0)
+            #expect(ranges.last?.upperBound == count)
+            for (previous, next) in zip(ranges, ranges.dropFirst()) {
+                #expect(previous.upperBound == next.lowerBound)
+            }
+            // A track's tail is never dropped: PR.15's probe dropped it, which is fine for
+            // a measurement and would leave the end of every song without bars in playback.
+            #expect(ranges.reduce(0) { $0 + $1.count } == count)
+        }
+        #expect(BarLineEstimator.windowRanges(beatCount: 161, beatsPerWindow: 80).count == 2)
+    }
+
+    @Test("Silence emits no bars at all — a declined window is never backfilled")
+    func test_windowedSilenceEmitsNothing() {
+        let beats = (0..<200).map { Double($0) * 0.5 }
+        let windowed = BarLineEstimator.estimateWindowed(
+            beats: beats, audio: [Float](repeating: 0, count: 22_050 * 110))
+        #expect(windowed.downbeats.isEmpty)
+        #expect(windowed.modalMeter == nil)
+        #expect(windowed.coverage == 0)
+        #expect(windowed.windowsAnswered == 0)
+    }
+
+    @Test("A planted 4/4 accent produces downbeats on the accented beats")
+    func test_windowedRecoversPlantedBar() {
+        // 200 beats at 0.5 s, a loud click every fourth beat and a quiet one elsewhere.
+        let rate = 22_050.0
+        let period = 0.5
+        let beats = (0..<200).map { Double($0) * period }
+        var audio = [Float](repeating: 0, count: Int(rate * (period * 200 + 1)))
+        var rng = SplitMix64(seed: 7)
+        for (index, beat) in beats.enumerated() {
+            let start = Int(beat * rate)
+            let gain: Float = index % 4 == 0 ? 1.0 : 0.25
+            for offset in 0..<2_048 where start + offset < audio.count {
+                let decay = Float(1.0 - Double(offset) / 2_048.0)
+                let noise = Float(Double(rng.next() % 2_000) / 1_000.0 - 1.0)
+                audio[start + offset] = gain * decay * decay * noise
+            }
+        }
+        let windowed = BarLineEstimator.estimateWindowed(beats: beats, audio: audio, sampleRate: rate)
+        #expect(windowed.modalMeter == 4)
+        #expect(windowed.windowsAnswered == windowed.windowCount)
+        // Every downbeat lands on an accented beat, and nothing lands between them.
+        let accented = Set(beats.enumerated().filter { $0.offset % 4 == 0 }.map(\.element))
+        #expect(windowed.downbeats.allSatisfy { accented.contains($0) })
+        #expect(windowed.downbeats.count == accented.count)
+    }
 }
