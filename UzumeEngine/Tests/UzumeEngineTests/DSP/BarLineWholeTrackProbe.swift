@@ -269,4 +269,69 @@ struct BarLineWholeTrackProbe {
           correct (vs tapped meter, where one exists):  30 s \(correct30)   whole-track \(correctWhole)
         """)
     }
+
+    /// PR.17 — the SHIPPED `estimateWindowed`, not a probe reimplementation, scored
+    /// against the tapped meter on every ground-truthed fixture.
+    ///
+    /// PR.15's `windowed()` above measured the idea with its own loop, which drops the
+    /// track's tail and re-resamples per window. Production does neither. This runs the
+    /// real function so the number that gets quoted is the number that ships.
+    ///
+    /// UZUME_BARLINE_PROD=1 swift test --package-path UzumeEngine --filter BarLineWholeTrackProbe
+    @Test("PR.17 — shipped estimateWindowed vs tapped meter",
+          .enabled(if: ProcessInfo.processInfo.environment["UZUME_BARLINE_PROD"] == "1"))
+    func shippedWindowed() throws {
+        let fixtures = URL(fileURLWithPath: (NSHomeDirectory() as NSString)
+            .appendingPathComponent("uzume_beatbench_fixtures"))
+        let gtDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fixtures/beatbench/groundtruth")
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+        let opts = BarLineEstimator.Options(resampleToReferenceRate: true)
+
+        print("\n  track                tapped  global   windowed ans/tot  cover  answers")
+        var correct = 0, incorrect = 0, silentWindows = 0, unscoreable = 0
+        for gtURL in (try FileManager.default.contentsOfDirectory(
+                        at: gtDir, includingPropertiesForKeys: nil)).sorted(by: {
+                            $0.lastPathComponent < $1.lastPathComponent }) {
+            guard gtURL.lastPathComponent.hasSuffix(".groundtruth.json") else { continue }
+            let name = gtURL.lastPathComponent.replacingOccurrences(of: ".groundtruth.json", with: "")
+            let gt = try? JSONDecoder().decode(GroundTruth.self, from: Data(contentsOf: gtURL))
+            var audioURL: URL?
+            for ext in ["mp3", "wav", "m4a", "flac"] {
+                let u = fixtures.appendingPathComponent("\(name).\(ext)")
+                if FileManager.default.fileExists(atPath: u.path) { audioURL = u; break }
+            }
+            guard let audioURL, let (audio, rate) = try? Self.decodeMono(url: audioURL),
+                  !audio.isEmpty else { continue }
+            let grid = analyzer.analyzeBeatGrid(samples: audio, sampleRate: rate, wholeTrack: true)
+            guard !grid.beats.isEmpty else { continue }
+            let global = BarLineEstimator.estimate(
+                beats: grid.beats, audio: audio, sampleRate: rate, options: opts)
+            let windowed = BarLineEstimator.estimateWindowed(
+                beats: grid.beats, audio: audio, sampleRate: rate, options: opts)
+            for estimate in windowed.estimates {
+                guard let meter = estimate.beatsPerBar else { silentWindows += 1; continue }
+                // No tapped meter (clair_de_lune, pyramid_song, yyz) means the window
+                // cannot be scored EITHER way. Counting those as incorrect would be a
+                // false failure — yyz's four 4s are very likely right, its ground truth
+                // just records "no clean meter; unresolved".
+                guard let tapped = gt?.meterFromTaps else { unscoreable += 1; continue }
+                if meter == tapped { correct += 1 } else { incorrect += 1 }
+            }
+            let answers = windowed.estimates.compactMap(\.beatsPerBar).map(String.init)
+                .joined(separator: ",")
+            let pad = String(repeating: " ", count: max(0, 20 - name.count))
+            print("  \(name)\(pad) "
+                  + String(format: "%5@   %5@   %8@  %5.0f%%  ",
+                           (gt?.meterFromTaps.map(String.init) ?? "-") as NSString,
+                           (global.beatsPerBar.map(String.init) ?? "-") as NSString,
+                           "\(windowed.windowsAnswered)/\(windowed.windowCount)" as NSString,
+                           windowed.coverage * 100)
+                  + (answers.isEmpty ? "-" : answers))
+        }
+        print("\n  windows: \(correct) correct, \(incorrect) incorrect, "
+              + "\(unscoreable) unscoreable (no tapped meter), \(silentWindows) declined")
+    }
 }
