@@ -23,6 +23,9 @@
 import Testing
 import Foundation
 import Metal
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 @testable import Renderer
 @testable import Presets
 @testable import Shared
@@ -96,10 +99,31 @@ struct SessionDrivenMultiPassReplay {
         print("[multipass-replay] \(presetName): \(features.count) frames "
               + "from row \(lo) (audio starts \(firstAudio)) of \(rows.count)")
 
-        let harness = try MultiPassRenderHarness()
+        // PR.5: bigger than the 320x180 default when we are going to LOOK at frames
+        // rather than only reduce them to three numbers. The stats are the same either
+        // way; a contact sheet at 320x180 is not something a trait verdict can be
+        // written from.
+        let width = Int(env["REPLAY_W"] ?? "") ?? 320
+        let height = Int(env["REPLAY_H"] ?? "") ?? 180
+        let harness = try MultiPassRenderHarness(width: width, height: height)
+        // REPLAY_OUT was documented in this file's usage block from PR.10 and never
+        // implemented. Writing every Nth frame is what makes the replay a perception
+        // check (D-181) instead of a metric-only run.
+        let outDir = (env["REPLAY_OUT"].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) })
+        if let outDir { try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true) }
+        let every = Int(env["REPLAY_EVERY"] ?? "") ?? 20
+        var frameIndex = 0
         let measured = try harness.render(
             preset: presetName, features: features, stems: stemSlice, settle: 8
-        ) { Self.stats($0) }
+        ) { bgra -> FrameStats in
+            defer { frameIndex += 1 }
+            if let outDir, frameIndex % every == 0 {
+                let url = outDir.appendingPathComponent(String(format: "f_%04d.png", frameIndex))
+                try? Self.writePNG(bgra: bgra, width: width, height: height, to: url)
+            }
+            return Self.stats(bgra)
+        }
+        if let outDir { print("[multipass-replay] frames → \(outDir.path)") }
 
         guard !measured.isEmpty else { Issue.record("no frames measured"); return }
         let clip = measured.map(\.clipped)
@@ -112,9 +136,43 @@ struct SessionDrivenMultiPassReplay {
           saturation mean \(String(format: "%.3f", mean(sat)))  min \(String(format: "%.3f", sat.min() ?? 0))
           meanLuma   mean \(String(format: "%.3f", mean(lum)))  max \(String(format: "%.3f", lum.max() ?? 0))
         """)
+        // PR.5: the TRAJECTORY, not just the mean. Dragon Bloom's fill is documented as a
+        // feedback attractor that develops over ~20 s (DRAGON_BLOOM_PLAN.md L4 item 3), so
+        // a single mean cannot tell "converged and wrong" apart from "still filling".
+        let bucket = max(1, measured.count / 10)
+        var trajectory: [String] = []
+        for start in stride(from: 0, to: measured.count, by: bucket) {
+            let slice = Array(measured[start..<min(start + bucket, measured.count)])
+            trajectory.append(String(format: "%3d:%.2f/%.2f",
+                                     start, mean(slice.map(\.clipped)), mean(slice.map(\.saturation))))
+        }
+        print("  trajectory (frame:clipped/saturation)  " + trajectory.joined(separator: "  "))
         // The harness must not be rendering a dead image — that is the FLY.6 failure.
         #expect(lum.max()! > 0.0, "every frame is pure black — the replay drove nothing")
         #expect(Set(lum.map { Int($0 * 1000) }).count > 1,
                 "meanLuma is constant across \(measured.count) frames — the preset is not moving")
+    }
+
+    /// BGRA8 bytes → an sRGB PNG. Same recipe as the sketch render tests.
+    static func writePNG(bgra: [UInt8], width: Int, height: Int, to url: URL) throws {
+        struct PNGError: Error {}
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { throw PNGError() }
+        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                | CGBitmapInfo.byteOrder32Little.rawValue)
+        var copy = bgra
+        let made = copy.withUnsafeMutableBytes { raw -> CGImage? in
+            guard let base = raw.baseAddress,
+                  let context = CGContext(data: base, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * 4,
+                                          space: space, bitmapInfo: info.rawValue)
+            else { return nil }
+            return context.makeImage()
+        }
+        guard let image = made,
+              let dest = CGImageDestinationCreateWithURL(
+                url as CFURL, UTType.png.identifier as CFString, 1, nil)
+        else { throw PNGError() }
+        CGImageDestinationAddImage(dest, image, nil)
+        guard CGImageDestinationFinalize(dest) else { throw PNGError() }
     }
 }

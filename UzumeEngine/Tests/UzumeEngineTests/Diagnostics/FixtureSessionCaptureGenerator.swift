@@ -62,6 +62,17 @@ struct FixtureSessionCaptureGenerator {
     /// lead in different windows (what the colour-freeze gate's switch needs).
     private static let fixtures = ["love_rehab.m4a", "so_what.m4a", "there_there.m4a"]
 
+    /// PR.5: absolute audio paths to capture instead of the vendored fixtures, set as a
+    /// `:`-separated `UZUME_GEN_SESSION_AUDIO`. The three fixtures above are chosen for
+    /// stem contrast, not for resembling what Matt listens to — and the standing rule
+    /// (PR.3d) is that a user-visible change is measured on his own material first. This
+    /// is how a Bowie *Low* track becomes a real production-chain capture that
+    /// `SessionDrivenMultiPassReplay` can drive a preset with.
+    private static var requestedAudioPaths: [String] {
+        (ProcessInfo.processInfo.environment["UZUME_GEN_SESSION_AUDIO"] ?? "")
+            .split(separator: ":").map(String.init).filter { !$0.isEmpty }
+    }
+
     /// Cap analysis at preview-clip length — matches the production
     /// SessionPreparer input contract and bounds MPSGraph inference time.
     private static let maxSeconds: Float = 30
@@ -92,13 +103,22 @@ struct FixtureSessionCaptureGenerator {
         // columns carry real (non-constant) family-capture values instead of
         // structural 0. Same analyzer SessionPreparer.analyzePreview uses.
         let familyAnalyzer = try InstrumentFamilyAnalyzer(device: device)
-        for fixture in Self.fixtures {
-            let audioURL = fixturesDir.appendingPathComponent(fixture)
+        let requested = Self.requestedAudioPaths
+        let sources: [URL] = requested.isEmpty
+            ? Self.fixtures.map { fixturesDir.appendingPathComponent($0) }
+            : requested.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+        for audioURL in sources {
             guard FileManager.default.fileExists(atPath: audioURL.path) else {
-                Issue.record("Fixture absent at \(audioURL.path) — run Scripts/fetch_tempo_fixtures.sh")
+                Issue.record("Audio absent at \(audioURL.path) — run Scripts/fetch_tempo_fixtures.sh")
                 continue
             }
-            let sessionName = "fixturegen-\(audioURL.deletingPathExtension().lastPathComponent)"
+            let fixture = audioURL.lastPathComponent
+            // Spaces and punctuation are normal in a real music filename ("01 - Speed Of
+            // Life.flac") and a session dir name is used as a path component everywhere.
+            let stem = audioURL.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: " ", with: "_")
+                .filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
+            let sessionName = "fixturegen-\(stem)"
             let sessionDir = outDir.appendingPathComponent(sessionName)
             try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
 
