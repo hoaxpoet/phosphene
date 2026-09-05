@@ -10,6 +10,24 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-09-05-151248] PR.5 — Dragon Bloom's white-out is inverted emptiness, not a missing tone-map
+
+Matt's roster note was *"washed out, extreme brightness… reds look gorgeous, would like the same saturated colour across the visible spectrum."* The scoping hypothesis was a missing tone-map; PR.5's diagnosis increment falsified that (the accumulator is dark and saturated, with no HDR to compress). This increment measured the two levers it left open — **on Matt's own album, through the real `direct + mv_warp` dispatch**.
+
+**Two small instruments first, because no measurement of his material existed.** `FixtureSessionCaptureGenerator` gained `UZUME_GEN_SESSION_AUDIO` so it captures ANY audio file through the production analysis chain rather than only the three vendored tempo fixtures, and `SessionDrivenMultiPassReplay` gained the `REPLAY_OUT` frame dump its own PR.10 usage block had documented and never implemented (plus `REPLAY_W`/`REPLAY_H`). Two *Low* tracks are now real 1290-frame captures, closing PR.5 §4's stated FA #27 bound. Three numbers are not a perception check; the frames are.
+
+**Baseline, confirmed and flat:** 83.6 % of pixels clipped, mean luma 0.909, and clipped never leaves 0.76–0.89 across all 30 s. That is not a fill still developing — `DRAGON_BLOOM_PLAN.md` gives the fill ~20 s — it is a field that reaches a blown-out steady state in about three seconds. The plan named this outcome on 2026-06-01: *"invert-before-fill whited-out."*
+
+**A hypothesis that was open-and-shut on paper and wrong in the render.** The bass breathing is an absolute threshold on AGC-normalised `f.bass` — the exact FA #31 / D-026 pattern — sitting at 1.024 median / 1.070 p90 against a 0.99951 baseline whose own comment says it prevents *"the field draining off-edge / white-collapse."* Routing it to the signed deviation primitive `bass_rel` made things **worse** (clipped 0.836 → 0.868, saturation 0.265 → 0.099): the outward push is the CONVEYOR carrying strand colour out from the centre before the warp transfer's B-fade extinguishes it. Reverted and filed as **BUG-115** rather than fixed — correctness on paper does not outrank what the frame looks like.
+
+**The fix: invert about a warm tint instead of pure white.** `bInvert` is literally `1 - c`, so empty accumulator displays as WHITE, and the frame is mostly empty accumulator — that is the whole report. A first attempt to SUBTRACT from a deep ember gave perfect numbers (clipped 0.000, saturation 0.942, luma 0.487) and a render that flattened the feathering into blocks of flat colour and punched a black lozenge through the middle — FA #48 clipart symmetry, this preset's own named anti-reference. **A metric win, not a product win; rejected on the image, not the table.** Shipping `tint * (1 - c)` instead, monotonic everywhere so the texture survives intact: **clipped 0.836 → 0.361, saturation 0.265 → 0.677, mean luma 0.909 → 0.714**. `UZUME_MVWARP_INVERT_TINT="1,1,1"` reproduces the shipping arm exactly, so the flag is a true no-op at that value, and only presets with `invert > 0` are reachable — Dragon Bloom alone (1911 engine tests green, `PresetRegression` goldens unmoved).
+
+**Not fixed, and said rather than skipped:** the bloom's core is still magenta/teal rather than warm; the bottom two-thirds of the frame carries no feedback texture (a fill-dynamics question, as the falsified arm shows, not a constant to nudge); BUG-115 stays open; and **this preset's reference IMAGES are absent from the repo**, so the trait verdicts are against the README's written traits rather than a side-by-side — weaker than D-181 asks for.
+
+**Dragon Bloom is CERTIFIED and this changes its look, so its certification does not mean anything again until Matt watches it.** He also picks the depth: the shipped `0.95, 0.50, 0.16`, or the deeper `0.80, 0.34, 0.10` (0 % clipped, luma 0.616). Report: `docs/diagnostics/PR5_DRAGON_BLOOM_FIX_2026-09-05.md`; sheet: `docs/diagnostics/PR5_DRAGON_BLOOM_OPTIONS_2026-09-05.png`.
+
+---
+
 ### [dev-2026-09-05-132958] PR.17 — bar position is recorded per window, and local files get it by default
 
 Uzume asked one question per song — *what meter is this, and which beat is the bar line* — and applied the answer to the whole track. It now asks once per ~40 seconds, and **lays bars only where the answer is solid**. Where it isn't, nothing fires: a declined stretch is never backfilled from the model's downbeat head, which over-fires on 78 % of Money's beats. Matt's call between sparse-and-correct and dense-with-fallback (2026-09-05) was **sparse**, and he turned it on the same day after seeing what it does to his own album.

@@ -543,6 +543,52 @@ moved from one all-or-nothing answer per track to per-section.
 here is offline, and whether sparse bars read as responsive or as flickering when an accent stops
 mid-song is a felt question this shipped ahead of. Report: [`PR17_LOCAL_BARS_2026-09-05.md`](diagnostics/PR17_LOCAL_BARS_2026-09-05.md).
 
+**PR.5 fix — the white-out is inverted emptiness; the invert is the lever** 🔨 (2026-09-05, Matt:
+*"Do Dragon Bloom first"*). The tone-map hypothesis was already falsified; this measured the two
+candidates PR.5 left open, on Matt's own album, through the real `direct + mv_warp` dispatch.
+
+**First, an instrument, because no measurement of his material existed.** `FixtureSessionCaptureGenerator`
+gained `UZUME_GEN_SESSION_AUDIO` (capture ANY audio file through the production analysis chain, not
+just the three vendored tempo fixtures) and `SessionDrivenMultiPassReplay` gained the `REPLAY_OUT`
+frame dump its own PR.10 usage block documented and never implemented. Two *Low* tracks are now real
+1290-frame captures; PR.5 §4's honest bound ("synthetic, FA #27") is closed.
+
+**Baseline confirmed and flat:** 83.6 % clipped, mean luma 0.909, and clipped never leaves 0.76–0.89
+across all 30 s. Not a fill still developing (the plan gives it ~20 s) — a field that reaches a
+blown-out steady state in ~3 s. `DRAGON_BLOOM_PLAN.md` named this in 2026-06-01: *"invert-before-fill
+whited-out."*
+
+**A falsified hypothesis worth recording.** The bass breathing is an absolute threshold on
+AGC-normalised `f.bass` — the FA #31 / D-026 pattern — sitting at 1.024 median / 1.070 p90 against a
+0.99951 baseline, i.e. a 2.4–7 % outward push per frame, and the baseline's own comment says it
+prevents *"the field draining off-edge / white-collapse."* Open and shut on paper. **Rendered, it is
+wrong:** routing it to `bass_rel` made things worse (clipped 0.836 → 0.868, saturation 0.265 → 0.099),
+because the outward push is the CONVEYOR carrying strand colour out before the transfer's B-fade
+kills it. Reverted; filed as **BUG-115** rather than fixed, because correctness on paper does not
+outrank the frame.
+
+**The fix: invert about a warm tint rather than pure white.** `bInvert` is literally `1 - c`, so empty
+accumulator displays as WHITE, and the frame is mostly empty accumulator. A first attempt to SUBTRACT
+from a deep ember produced perfect numbers (clipped 0.000, saturation 0.942) and a render that
+flattened the feathering into blocks and punched a black lozenge through the middle — FA #48 clipart
+symmetry, the preset's own anti-reference. **A metric win, not a product win; rejected on the image.**
+Shipping `tint * (1 - c)`, monotonic everywhere so the texture survives: **clipped 0.836 → 0.361,
+saturation 0.265 → 0.677, luma 0.909 → 0.714**. `UZUME_MVWARP_INVERT_TINT="1,1,1"` reproduces the
+shipping arm exactly, so the flag is a true no-op there; only presets with `invert > 0` are touched,
+which is Dragon Bloom alone.
+
+**Not fixed, stated:** the bloom's core is still magenta/teal rather than warm; the bottom two-thirds
+of the frame still carries no feedback texture (a fill-dynamics question, per the falsified arm, not a
+constant to nudge); BUG-115; and **the reference IMAGES for this preset are absent from the repo**, so
+the trait verdicts are against the README's written traits rather than a side-by-side — weaker than
+D-181 asks and stated rather than papered over.
+
+**Done-when:** ⏳ **Matt's M7.** Dragon Bloom is CERTIFIED and this changes its look, so its
+certification does not mean anything again until he watches it; he also picks the tint depth (the
+shipped `0.95, 0.50, 0.16` or the deeper `0.80, 0.34, 0.10`, which reaches 0 % clipped and luma 0.616).
+Report: [`PR5_DRAGON_BLOOM_FIX_2026-09-05.md`](diagnostics/PR5_DRAGON_BLOOM_FIX_2026-09-05.md);
+sheet: [`PR5_DRAGON_BLOOM_OPTIONS_2026-09-05.png`](diagnostics/PR5_DRAGON_BLOOM_OPTIONS_2026-09-05.png).
+
 **PR.3e — the original corroboration** (unchanged, still Matt's call).
 Witchlight "inconsistent with downbeat", Meniscus "timing could be improved", Lumen Mosaic "downbeat
 and beat", Ferrofluid Ocean "everything seems like 4/4" — four presets that *do* have beat routing.
