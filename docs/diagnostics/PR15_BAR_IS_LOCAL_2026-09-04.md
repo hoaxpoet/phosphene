@@ -82,3 +82,36 @@ shape for music whose sections differ.
   shape rather than a shortfall, but it is not "money is solved".
 - **Nine fixtures.** The whole finding rests on a small catalogue, and three of the nine have
   unsettled ground truth.
+
+
+---
+
+## 6. The threshold does NOT need re-deriving — and §3's "just under the gate" reading was wrong
+
+§3 noted bleed (1.179), bohemian_rhapsody (1.419) and solsbury_hill (1.412) sitting just below
+`declineThreshold = 1.54` and said the threshold, fitted to a global margin distribution, was "the
+wrong operating point here and must be re-derived". **Derived it. It is already right, and those
+three are below the gate for a good reason.**
+
+Per-window margins over the nine fixtures, labelled correct/incorrect against the tapped meter
+(68 windows), swept by FT.3's own method — objective = correct kept − incorrect admitted:
+
+| threshold | kept | correct | incorrect | objective |
+|---:|---:|---:|---:|---:|
+| 1.183 | 33 | 19 | **9** | +10 |
+| 1.412 | 25 | 19 | **2** | +17 |
+| 1.419 | 24 | 19 | **1** | +18 |
+| **1.548** | **23** | **19** | **0** | **+19** ← optimum |
+| 1.600 | 22 | 18 | 0 | +18 |
+
+**The objective peaks at 1.548, keeping 19 correct and ZERO incorrect** — and the shipping threshold
+is 1.54. It is very nearly the optimum for the windowed distribution as well as the global one.
+
+**The "near miss" reading is refuted.** Lowering to 1.419 to admit bohemian_rhapsody's best window
+buys **one incorrect answer and no additional correct ones**; lowering to 1.183 for bleed's admits
+**nine wrong answers**. Those windows are not correct answers narrowly excluded — they are wrong
+answers the gate is doing its job on. Had the threshold been "re-derived" on the assumption in §3,
+the result would have been strictly worse.
+
+**So the windowed design needs no calibration change: 19 correct, 0 incorrect across 68 windows at
+the threshold already shipping.**
